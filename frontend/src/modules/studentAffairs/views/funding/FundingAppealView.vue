@@ -36,7 +36,7 @@
                   :aria-pressed="appealStatus === f.key" :class="{ 'is-on': appealStatus === f.key }" @click="setStatus(f.key)">{{ f.label }}</button><span class="ob-total">{{ appealPage.total }} 件</span>
         </div>
         <DataTable v-if="appeals.length" :columns="appealColumns" :rows="appeals" row-key="appealId">
-          <template #cell-student="{ row }"><strong>{{ row.realName || ('学生#' + row.studentId) }}</strong><span class="ob-opinion">{{ row.studentNo }} · 申请 #{{ row.applicationId }}</span></template>
+          <template #cell-student="{ row }"><strong>{{ row.realName || ('学生#' + row.studentId) }}</strong><span class="ob-opinion">{{ row.studentNo }} · 申请编号 {{ row.applicationId }}</span></template>
           <template #cell-appellant="{ row }">{{ row.appellantName || '匿名' }}</template>
           <template #cell-reason="{ row }"><span class="ob-reason">{{ row.reason }}</span></template>
           <template #cell-status="{ row }">
@@ -70,7 +70,7 @@
       confirm-text="提交复核" require-reason :reason-min-length="5" reason-label="复核意见（≥5 字）"
       :submitting="acting === revDlg.appealId" @confirm="submitReview"
     >
-      <div class="ob-review-context"><strong>申请 #{{ revDlg.applicationId }}</strong><p>{{ revDlg.reason }}</p></div>
+      <div class="ob-review-context"><strong>申请编号 {{ revDlg.applicationId }}</strong><p>{{ revDlg.reason }}</p></div>
       <AppFormItem label="复核结论" required>
         <AppSelect v-model="revDlg.result" :options="APPEAL_RESULTS" />
       </AppFormItem>

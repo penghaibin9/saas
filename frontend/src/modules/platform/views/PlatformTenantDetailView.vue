@@ -52,7 +52,7 @@
         <!-- 品牌配置 -->
         <section v-else-if="tab === 'brand'" class="mp-card">
           <header class="mp-card__head">
-            <span class="mp-card__title">租户品牌配置（tenantBrandConfig）</span>
+            <span class="mp-card__title">学校品牌配置</span>
             <span class="mp-note">学校名称由合同核定；简称 / 主色 / 口号 / 水印可代维护</span>
           </header>
           <div class="mp-card__body">

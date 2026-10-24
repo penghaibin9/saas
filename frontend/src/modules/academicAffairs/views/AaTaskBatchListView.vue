@@ -224,7 +224,7 @@ export default {
       this.generating = true
       const termId = String(this.gen.termId), collegeId = String(this.gen.collegeId), context = this.generationContext, seq = ++this.generateSeq
       const valid = () => !this.disposed && seq === this.generateSeq && context === this.generationContext
-      this.receipt = { object: `学期 #${termId}`, status: '结果待确认', pending: true, next: '生成后查询正式批次；请勿重复提交。' }
+      this.receipt = { object: `学期编号 ${termId}`, status: '结果待确认', pending: true, next: '生成后查询正式批次；请勿重复提交。' }
       try {
         const res = await academicAffairsApi.generateTaskBatch({ termId, collegeId, batchName: this.gen.batchName || undefined, ...(classId ? { classId } : {}) })
         if (!valid()) return
@@ -244,7 +244,7 @@ export default {
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
       if (isDeniedResult(result)) { this.revision++; this.generateSeq++; this.collegeSeq++; this.generating = false; this.loading = false; this.rows = []; this.receipt = null; this.gen = { termId: '', collegeId: '', classId: '', batchName: '' }; this.showGen = false }
-      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.gen.termId}`, status: '数据已变化，保留输入', pending: true, next: '核对已发布方案和年级绑定后再生成。' }
+      else if (isConflictResult(result)) this.receipt = { object: `学期编号 ${this.gen.termId}`, status: '数据已变化，保留输入', pending: true, next: '核对已发布方案和年级绑定后再生成。' }
     },
     async load() {
       const revision = ++this.revision

@@ -157,7 +157,7 @@
                     <p class="sp-muted">我的更换申请</p>
                     <div v-for="r in changeRequests" :key="r.id" class="gd-change-item">
                       <span>{{ r.oldTopicTitle || '原课题' }} → {{ r.newTopicTitle || '新课题' }}</span>
-                      <em>{{ r.statusLabel || r.status }}</em>
+                      <em>{{ r.statusLabel || '待确认' }}</em>
                     </div>
                   </div>
                 </template>

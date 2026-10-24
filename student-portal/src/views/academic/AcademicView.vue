@@ -831,7 +831,7 @@ function isLevelRegistered(examId) {
 }
 function levelExamName(examId) {
   const e = (levelExam.value.openExams || []).find((x) => String(x.examId) === String(examId))
-  return e?.examName || e?.name || (`考试#${examId}`)
+  return e?.examName || e?.name || (`考试编号 ${examId}`)
 }
 function canCancelLevel(r) {
   return String(r.status || '').toUpperCase() === 'REGISTERED'

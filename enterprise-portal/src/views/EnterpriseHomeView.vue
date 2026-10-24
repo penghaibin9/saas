@@ -46,7 +46,7 @@ onBeforeUnmount(()=>{alive=false;requestSequence++})
     <div class="metrics">
       <div v-for="item in metricItems" :key="item[0]" class="metric ep-card"><div class="metric-top"><span>{{ item[2] }}</span><i></i></div><strong>{{ metricValue(item[0]) }}</strong><span class="metric-label">{{ item[1] }}</span></div>
     </div>
-    <div class="history ep-card"><div class="card-head"><div><span>历史记录</span><h2 class="ep-section-title">历史招聘季</h2></div></div><div v-if="campaignError" class="ep-error" role="alert">{{ campaignError }}，可重新读取。</div><div v-else-if="loading" class="ep-empty compact">正在读取历史招聘季…</div><div v-else-if="!history.length" class="ep-empty compact">暂无可确认的历史招聘季。</div><div v-for="item in history" :key="item.id||item.campaignId" class="history-row"><div><b>{{ item.name||item.campaignName||`招聘季 #${item.id||item.campaignId}` }}</b><span>{{ item.status }}</span></div><small>{{ item.period||`${item.startAt||'—'} ~ ${item.endAt||'—'}` }}</small></div></div>
+    <div class="history ep-card"><div class="card-head"><div><span>历史记录</span><h2 class="ep-section-title">历史招聘季</h2></div></div><div v-if="campaignError" class="ep-error" role="alert">{{ campaignError }}，可重新读取。</div><div v-else-if="loading" class="ep-empty compact">正在读取历史招聘季…</div><div v-else-if="!history.length" class="ep-empty compact">暂无可确认的历史招聘季。</div><div v-for="item in history" :key="item.id||item.campaignId" class="history-row"><div><b>{{ item.name||item.campaignName||`招聘季编号 ${item.id||item.campaignId}` }}</b><span>{{ item.status }}</span></div><small>{{ item.period||`${item.startAt||'—'} ~ ${item.endAt||'—'}` }}</small></div></div>
   </section>
 </template>
 <style scoped>

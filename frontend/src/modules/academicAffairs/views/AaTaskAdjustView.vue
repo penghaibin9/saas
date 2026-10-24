@@ -13,7 +13,7 @@
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
-        :identity="`教学任务调整 · 任务 #${primaryRow.taskId} · 批次 #${primaryRow.batchId}`"
+        :identity="`教学任务调整 · 任务编号 ${primaryRow.taskId} · 批次编号 ${primaryRow.batchId}`"
         source="来源：已确认的教学任务及其正式下游引用；申请记录拟更正的内容，不先改正式记录。"
         :status="statusLabel(primaryRow.status)"
         owner="学院教务 / 任课教师"
@@ -41,7 +41,7 @@
           <div class="mp-cell-main">{{ row.courseName }}</div>
           <div class="mp-cell-sub">{{ row.teachingClassName || row.courseCode }}{{ row.isMerged ? ' · 合班' : '' }}</div>
         </template>
-        <template #cell-batch="{ row }">批次 #{{ row.batchId }}</template>
+        <template #cell-batch="{ row }">批次编号 {{ row.batchId }}</template>
         <template #cell-teacher="{ row }">
           <span v-if="row.teacherName">{{ row.teacherName }}</span>
           <span v-else class="mp-cell-sub">未分配</span>
@@ -68,9 +68,9 @@
       :confirm-disabled="!canAdjust || actionLoading"
       @confirm="doAdjust"
     >
-      <AaObjectContext :name="adjust.courseName" :identity="`任务 #${adjust.taskId} · 批次 #${adjust.batchId}`" :source="adjust.teachingClassName" />
+      <AaObjectContext :name="adjust.courseName" :identity="`任务编号 ${adjust.taskId} · 批次编号 ${adjust.batchId}`" :source="adjust.teachingClassName" />
       <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
-      <p class="mp-note">调整前：{{ adjust.origTeacherName || '未分配' }} · 工号 {{ adjust.origTeacherKey || '未绑定' }}。提交时服务端核对下游引用；当前没有独立影响预览接口。</p>
+      <p class="mp-note">调整前：\1 · 工号 \2。提交时系统核对下游引用；当前没有独立的影响预览。</p>
       <div class="aa-adjust-form">
         <label>调整任课教师<AppTeacherPicker v-model="adjust.teacherKey" :query="teacherKeyQuery" placeholder="不变可留空" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="adjust.weeklyHours" type="number" min="0" class="aa-input" /></label>
@@ -236,7 +236,7 @@ export default {
       }
       try {
         if (!await this.readAdjustmentActions(form.batchId) || !valid() || !this.canAdjust) return
-        this.receipt = { object: `任务 #${form.taskId}`, status: '结果待确认', pending: true, next: '提交后重新读取正式任务；请勿重复调整。' }
+        this.receipt = { object: `任务编号 ${form.taskId}`, status: '结果待确认', pending: true, next: '提交后重新读取正式任务；请勿重复调整。' }
         const res = await academicAffairsApi.adjustTask(form.taskId, body)
         if (!valid()) return
         if (res.code !== 0) { this.handleFailure(res, '调整失败'); return }
@@ -248,14 +248,14 @@ export default {
         const confirmed = row && fields.every(key => body[key] === undefined || String(row[key]) === String(body[key]))
         form.visible = false
         await this.load()
-        if (valid() && !this.error) this.receipt = { object: `任务 #${form.taskId}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, next: confirmed ? (this.teacherChangedInDialog ? '由新教师本人确认；已完成学院确认或学校终审的原批次须重新院审、校审。' : '以正式任务当前状态继续办理；本次未变更任课教师身份。') : '尚未读到与本次调整一致的正式记录，请刷新来源批次核对。' }
+        if (valid() && !this.error) this.receipt = { object: `任务编号 ${form.taskId}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, next: confirmed ? (this.teacherChangedInDialog ? '由新教师本人确认；已完成学院确认或学校终审的原批次须重新院审、校审。' : '以正式任务当前状态继续办理；本次未变更任课教师身份。') : '尚未读到与本次调整一致的正式记录，请刷新来源批次核对。' }
       } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请重新读取正式任务，勿重复调整。') }
       finally { form.submitting = false }
     },
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
       if (isDeniedResult(result)) { this.revision++; this.loading = false; this.all = []; this.receipt = null; this.adjust = { visible: false, submitting: false } }
-      else if (isConflictResult(result)) this.receipt = { object: `任务 #${this.adjust.taskId}`, status: '数据已变化，保留输入', pending: true, next: '核对当前正式任课关系、周次与下游引用；已有课表时从排课变更流程办理。' }
+      else if (isConflictResult(result)) this.receipt = { object: `任务编号 ${this.adjust.taskId}`, status: '数据已变化，保留输入', pending: true, next: '核对当前正式任课关系、周次与下游引用；已有课表时从排课变更流程办理。' }
     }
   }
 }

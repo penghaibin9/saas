@@ -78,7 +78,7 @@
               <select v-model="relationSourceBatchNo" aria-label="已完成的教师导入任务">
                 <option value="">请选择已完成的教师导入任务</option>
                 <option v-for="item in completedIdentityImports" :key="item.id" :value="item.adapterRef">
-                  教师导入 #{{ item.id }} · {{ item.totalRows }} 行 · {{ importCompletedAt(item) }}
+                  教师导入编号 {{ item.id }} · {{ item.totalRows }} 行 · {{ importCompletedAt(item) }}
                 </option>
               </select>
               <button class="mp-btn mp-btn--primary" :disabled="saving || !relationSourceBatchNo" @click="discoverRelationsFromCompletedImport">生成业务关系候选</button>

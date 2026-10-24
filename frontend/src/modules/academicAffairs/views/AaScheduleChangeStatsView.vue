@@ -19,7 +19,7 @@
       <EmptyState v-else-if="!stat || !stat.total" title="暂无调停课记录" description="所选范围/学期暂无调课、停课、补课数据" />
       <template v-else>
         <div class="sc-metrics">
-          <AppMetricCard title="当前统计范围" :value="termId ? `学期 #${termId}` : '全部学期'" accent="primary" />
+          <AppMetricCard title="当前统计范围" :value="termId ? `学期编号 ${termId}` : '全部学期'" accent="primary" />
           <AppMetricCard title="范围内申请" :value="stat.total" unit="单" accent="primary" />
           <AppMetricCard title="待办理" :value="pendingCount" unit="单" accent="warning" />
           <AppMetricCard title="完成比例" :value="completionRate" unit="%" accent="success" />

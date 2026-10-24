@@ -1,7 +1,7 @@
 <template>
   <view class="page-wrap">
     <MobilePrivacyGate />
-    <MobileNavBar variant="teacher" :title="tab === 'checkout' ? '退宿办理' : tab === 'recheck' ? '整改复检' : recordId ? '调宿办理' : '宿舍现场工作台'" :subtitle="recordId ? `申请 #${recordId}` : '调宿 / 退宿 / 巡检 / 整改复查'" show-back />
+    <MobileNavBar variant="teacher" :title="tab === 'checkout' ? '退宿办理' : tab === 'recheck' ? '整改复检' : recordId ? '调宿办理' : '宿舍现场工作台'" :subtitle="recordId ? `申请编号 ${recordId}` : '调宿 / 退宿 / 巡检 / 整改复查'" show-back />
     <view v-if="loadError" class="page-pad">{{ loadError }}</view>
     <button v-if="needsLogin && recordId && tab === 'recheck'" size="mini" @click="loginForRectification">登录后继续整改</button>
     <button v-if="recordId" size="mini" @click="clearFocus">返回{{ tab === 'checkout' ? '退宿' : tab === 'recheck' ? '整改' : '调宿' }}队列</button>
@@ -39,7 +39,7 @@
           <text v-if="!checkouts.length">当前范围暂无{{ checkoutStatus === 'PENDING' ? '待确认退宿单' : '已退宿记录' }}</text>
           <view v-for="x in checkouts" :key="x.requestId" class="checkout-row">
             <view class="row-between"><text class="t-bold">{{ x.studentName }} · {{ x.studentNo }}</text><text>{{ checkoutLabel(x.status) }}</text></view>
-            <text class="ar__sub">{{ x.bedLabel }} · 退宿单 #{{ x.requestId }}</text>
+            <text class="ar__sub">{{ x.bedLabel }} · 退宿单编号 {{ x.requestId }}</text>
             <text class="ar__sub">{{ x.reason }}</text>
             <text v-for="b in x.blockers" :key="b.code" class="ar__sub">需先处理：{{ b.message }}</text>
             <button v-if="can(x, 'CONFIRM')" class="ar__ok" :disabled="acting || !!x.blockers?.length || !x.bedLabel" @click="confirmCheckout(x)">核对并确认退宿</button>
@@ -73,7 +73,7 @@
         <MobileGlobalState v-if="tab === 'exception' && !exceptions.length" state="empty" title="暂无宿舍异常" description="查寝异常、夜不归宿等待处置记录会显示在这里。" />
         <view class="stack" v-else-if="tab === 'exception'">
           <view v-for="x in exceptions" :key="x.exceptionId" class="card ar">
-            <view class="row-between"><view class="flex-1"><text class="t-md t-bold">{{ x.realName || '房间级异常' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.excTypeLabel || x.excType || '异常' }}</text></view><MobileStatusTag :label="x.statusLabel || x.status || '待处置'" type="warning" /></view>
+            <view class="row-between"><view class="flex-1"><text class="t-md t-bold">{{ x.realName || '房间级异常' }}</text><text class="ar__sub">{{ x.studentNo || '' }} · {{ x.excTypeLabel || x.excType || '异常' }}</text></view><MobileStatusTag :label="x.statusLabel || '待处置'" type="warning" /></view>
             <text class="ar__sub" v-if="x.buildingName || x.roomNo">位置：{{ [x.buildingName, x.roomNo && (x.roomNo + '室')].filter(Boolean).join(' / ') }}</text>
             <text class="ar__sub" v-if="x.occurredAt || x.createdAt">发生时间：{{ fmt(x.occurredAt || x.createdAt) }}</text>
             <text class="ar__detail" v-if="x.detail">{{ x.detail }}</text>
@@ -239,7 +239,7 @@ export default {
     fallbackBed(x, side) {
       const prefix = side === 'from' ? 'from' : 'to'
       const parts = [x[prefix + 'BuildingName'], x[prefix + 'RoomNo'] && (x[prefix + 'RoomNo'] + '室'), x[prefix + 'BedNo'] && (x[prefix + 'BedNo'] + '床')].filter(Boolean)
-      return parts.join(' / ') || (x[prefix + 'BedId'] ? `床位 #${x[prefix + 'BedId']}` : '未记录')
+      return parts.join(' / ') || (x[prefix + 'BedId'] ? `床位编号 ${x[prefix + 'BedId']}` : '未记录')
     },
     can(x, action) {
       return Array.isArray(x.allowedActions) && x.allowedActions.includes(action)

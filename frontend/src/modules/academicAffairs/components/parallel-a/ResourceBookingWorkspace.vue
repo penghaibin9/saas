@@ -30,7 +30,7 @@
       <section class="booking-card">
         <header><h2>{{ isAcademicTeacher ? (workspaceTab === 'mine' ? '我的预约' : '我的当日预约') : '当日预约记录' }}</h2><AppSelect v-model="filterStatus" :options="statusOptions" @change="changeStatus" /></header>
         <DataTable v-if="rows.length" :columns="columns" :rows="rows" row-key="bookingId">
-          <template #cell-resource="{ row }">{{ row[textKey] }}<small v-if="!isAcademicTeacher">预约 #{{ row.bookingId }}</small></template>
+          <template #cell-resource="{ row }">{{ row[textKey] }}<small v-if="!isAcademicTeacher">预约编号 {{ row.bookingId }}</small></template>
           <template #cell-slot="{ row }">{{ row.bookingDate }} 第{{ row.slotNo }}节</template>
           <template #cell-status="{ row }"><StatusTag :label="statusLabel(row.status)" :type="row.status === 'APPROVED' ? 'success' : row.status === 'REJECTED' ? 'danger' : 'warning'" /></template>
           <template #cell-actions="{ row }"><template v-if="canReview && row.status === 'PENDING'"><AppButton :disabled="saving || Boolean(pending) || Boolean(approvalBlockReason(row))" :title="approvalBlockReason(row)" @click="openReview(row, 'APPROVE')">审核通过</AppButton><AppButton :disabled="saving || Boolean(pending)" @click="openReview(row, 'REJECT')">驳回</AppButton></template><span v-else-if="!canReview">{{ teacherBookingNext(row) }}</span></template>
@@ -44,7 +44,7 @@
       <template #footer><AppButton :disabled="saving" @click="bookVisible = false">关闭</AppButton><AppButton variant="primary" :disabled="saving || Boolean(pending)" @click="submitBook">提交预约</AppButton></template>
     </AppDrawer>
     <AppDrawer :visible="review.visible" title="核对预约并审核" mode="modal" size="medium" @close="!saving && (review.visible = false)">
-      <div class="booking-form"><strong>{{ review.row?.resourceText }} · 预约 #{{ review.row?.bookingId }}</strong><p>{{ review.row?.bookingDate }} 第{{ review.row?.slotNo }}节 · {{ review.row?.applicantName }}</p><p>{{ review.row?.purpose || '未提供用途' }}</p><AppFormItem v-if="review.action === 'REJECT'" label="驳回原因（不少于5字）" required><AppTextarea v-model="review.reason" :disabled="saving" /></AppFormItem><AppInlineAlert v-if="review.error" type="danger" :description="review.error" /><p>将重新读取该预约状态，办理后查询正式结果。</p></div>
+      <div class="booking-form"><strong>{{ review.row?.resourceText }} · 预约编号 {{ review.row?.bookingId }}</strong><p>{{ review.row?.bookingDate }} 第{{ review.row?.slotNo }}节 · {{ review.row?.applicantName }}</p><p>{{ review.row?.purpose || '未提供用途' }}</p><AppFormItem v-if="review.action === 'REJECT'" label="驳回原因（不少于5字）" required><AppTextarea v-model="review.reason" :disabled="saving" /></AppFormItem><AppInlineAlert v-if="review.error" type="danger" :description="review.error" /><p>将重新读取该预约状态，办理后查询正式结果。</p></div>
       <template #footer><AppButton :disabled="saving" @click="review.visible = false">取消</AppButton><AppButton variant="primary" :disabled="saving || Boolean(pending) || review.row?.status !== 'PENDING' || (review.action === 'APPROVE' && Boolean(approvalBlockReason(review.row)))" @click="submitReview">{{ review.action === 'REJECT' ? '确认驳回' : '确认通过' }}</AppButton></template>
     </AppDrawer>
     <AppDrawer :visible="evidence.visible" title="占用来源" mode="modal" size="medium" @close="evidence.visible = false"><p v-for="(item, index) in evidence.items" :key="index">{{ item.source === 'SCHEDULE' ? '教学占用' : '已批准预约' }} · {{ item.resourceLabel }} · 第{{ item.slotNo }}节 · {{ item.occupant }} · {{ item.purpose }}</p><p>{{ evidence.note }}</p></AppDrawer>

@@ -46,7 +46,7 @@
           <template #cell-issueType="{ row }"><strong>{{ severityLabel(row.severity) }}</strong><small class="cell-sub">{{ row.score == null ? '未评分' : `${row.score} 分` }}</small></template>
           <template #cell-detail="{ row }">{{ row.detail || '—' }}</template>
           <template #cell-risk="{ row }">
-            <a v-if="row.relatedRiskId" class="sa-link" @click="$router.push(`/admin/student-affairs/risk/${row.relatedRiskId}`)">风险 #{{ row.relatedRiskId }} →</a>
+            <a v-if="row.relatedRiskId" class="sa-link" @click="$router.push(`/admin/student-affairs/risk/${row.relatedRiskId}`)">风险编号 {{ row.relatedRiskId }} →</a>
             <span v-else class="sa-muted">—</span>
           </template>
         </DataTable>
@@ -112,7 +112,7 @@
                               placeholder="按姓名 / 学号搜索" :disabled="actioning" />
           </AppFormItem>
         </template>
-        <AppFormItem label="现场照片证据"><FileUploader biz-type="TEMP_PRIVATE" accept="image/*" button-text="上传现场照片" :disabled="actioning" @uploaded="onRecordFileUploaded" @error="onUploadError" /><div v-if="recDlg.files.length" class="file-chips"><span v-for="file in recDlg.files" :key="file.fileId">{{ file.fileName || `文件 #${file.fileId}` }} <button type="button" @click="removeRecordFile(file.fileId)">×</button></span></div><p class="dr-hint">高风险/重大风险异常必须上传照片；文件只保存稳定 ID，不在检查记录存 URL。</p></AppFormItem>
+        <AppFormItem label="现场照片证据"><FileUploader biz-type="TEMP_PRIVATE" accept="image/*" button-text="上传现场照片" :disabled="actioning" @uploaded="onRecordFileUploaded" @error="onUploadError" /><div v-if="recDlg.files.length" class="file-chips"><span v-for="file in recDlg.files" :key="file.fileId">{{ file.fileName || `文件编号 ${file.fileId}` }} <button type="button" @click="removeRecordFile(file.fileId)">×</button></span></div><p class="dr-hint">高风险/重大风险异常必须上传照片；文件只保存稳定 ID，不在检查记录存 URL。</p></AppFormItem>
         <AppInlineAlert v-if="recDlg.error" type="danger" :description="recDlg.error" />
       </div>
       <template #footer>
@@ -129,7 +129,7 @@
         <button v-for="file in rectDlg.row.rectificationFiles || []" :key="file.fileId" type="button" class="sa-link" @click="previewEvidence(file)">{{ file.fileName || '查看整改照片' }}</button>
         <template v-if="rectDlg.row.recheckNote"><h3>上次复检</h3><p>{{ rectDlg.row.recheckNote }}</p></template>
         <button v-for="file in rectDlg.row.recheckFiles || []" :key="file.fileId" type="button" class="sa-link" @click="previewEvidence(file)">{{ file.fileName || '查看复检照片' }}</button>
-      </section><template v-if="rectDlg.mode !== 'VIEW'"><AppFormItem v-if="rectDlg.mode !== 'SUBMIT'" label="复检结论" required><AppSelect v-model="rectDlg.action" :options="RECHECK_ACTIONS" :disabled="actioning" /></AppFormItem><AppFormItem :label="rectDlg.mode === 'SUBMIT' ? '整改说明（5-1000字）' : '复检意见（5-1000字）'" required><AppTextarea v-model="rectDlg.note" :rows="4" :maxlength="1000" :disabled="actioning" /></AppFormItem><AppFormItem label="照片证据"><FileUploader biz-type="TEMP_PRIVATE" accept="image/*" button-text="上传照片" :disabled="actioning" @uploaded="onRectFileUploaded" @error="onUploadError" /><div v-if="rectDlg.files.length" class="file-chips"><span v-for="file in rectDlg.files" :key="file.fileId">{{ file.fileName || `文件 #${file.fileId}` }} <button type="button" @click="removeRectFile(file.fileId)">×</button></span></div></AppFormItem></template><AppInlineAlert v-if="rectDlg.error" type="danger" :description="rectDlg.error" /></div>
+      </section><template v-if="rectDlg.mode !== 'VIEW'"><AppFormItem v-if="rectDlg.mode !== 'SUBMIT'" label="复检结论" required><AppSelect v-model="rectDlg.action" :options="RECHECK_ACTIONS" :disabled="actioning" /></AppFormItem><AppFormItem :label="rectDlg.mode === 'SUBMIT' ? '整改说明（5-1000字）' : '复检意见（5-1000字）'" required><AppTextarea v-model="rectDlg.note" :rows="4" :maxlength="1000" :disabled="actioning" /></AppFormItem><AppFormItem label="照片证据"><FileUploader biz-type="TEMP_PRIVATE" accept="image/*" button-text="上传照片" :disabled="actioning" @uploaded="onRectFileUploaded" @error="onUploadError" /><div v-if="rectDlg.files.length" class="file-chips"><span v-for="file in rectDlg.files" :key="file.fileId">{{ file.fileName || `文件编号 ${file.fileId}` }} <button type="button" @click="removeRectFile(file.fileId)">×</button></span></div></AppFormItem></template><AppInlineAlert v-if="rectDlg.error" type="danger" :description="rectDlg.error" /></div>
       <template #footer><AppButton variant="ghost" :disabled="actioning" @click="rectDlg.visible = false">取消</AppButton><AppButton v-if="rectDlg.mode !== 'VIEW'" variant="primary" :loading="actioning" @click="submitRectificationAction">{{ rectDlg.mode === 'SUBMIT' ? '提交复检' : '保存复检结论' }}</AppButton></template>
     </AppDrawer>
   </AppPageShell>
@@ -231,10 +231,10 @@ export default {
     templateOptions() { return (this.policy.items || []).map((item) => ({ value: item.key, label: `${item.name} · ${this.typeLabel(item.checkType)} · v${item.version}` })) },
     taskFloorOptions() { const row = this.buildings.find((item) => String(item.buildingId) === String(this.taskDlg.buildingId)); return Array.from({ length: Number(row?.floorCount || 0) }, (_, i) => i + 1) },
     buildingOptions() {
-      return this.buildings.map((b) => ({ value: String(b.buildingId), label: b.buildingName || `楼栋 #${b.buildingId}` }))
+      return this.buildings.map((b) => ({ value: String(b.buildingId), label: b.buildingName || `楼栋编号 ${b.buildingId}` }))
     },
     roomOptions() {
-      return this.rooms.map((r) => ({ value: String(r.roomId), label: r.roomNo || `房间 #${r.roomId}` }))
+      return this.rooms.map((r) => ({ value: String(r.roomId), label: r.roomNo || `房间编号 ${r.roomId}` }))
     },
     recordAbnormal() { return this.recDlg.itemResults.some((item) => item.status === 'FAIL') }
   },

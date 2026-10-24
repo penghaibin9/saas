@@ -195,7 +195,7 @@ export default {
       const studentId = String(row.studentId || '').trim()
       return {
         ...row,
-        realName: String(row.realName || row.studentName || '').trim() || (studentId ? `学生 #${studentId}` : '姓名未提供'),
+        realName: String(row.realName || row.studentName || '').trim() || (studentId ? `学生编号 ${studentId}` : '姓名未提供'),
         studentNo: String(row.studentNo || row.studentCode || '').trim() || '学号未提供'
       }
     },

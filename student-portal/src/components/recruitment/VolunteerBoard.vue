@@ -24,7 +24,7 @@
 
         <template v-if="slot.positionId">
           <div class="slot-position">
-            <strong>{{ slot.position?.title || `岗位 #${slot.positionId}` }}</strong>
+            <strong>{{ slot.position?.title || `岗位编号 ${slot.positionId}` }}</strong>
             <span>{{ slot.position?.companyName || '企业信息加载中' }}</span>
             <span>{{ slot.position?.workLocation || '' }}</span>
           </div>

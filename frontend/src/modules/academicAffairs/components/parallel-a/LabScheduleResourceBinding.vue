@@ -3,7 +3,7 @@
     <LoadingState v-if="loading" />
     <template v-else-if="lab">
       <p>{{ lab.labName }} · {{ lab.labCode }}</p>
-      <p>当前关联：{{ lab.classroomId ? `场地 #${lab.classroomId}` : '未关联' }} · 资源版本 {{ lab.version }}</p>
+      <p>当前关联：{{ lab.classroomId ? `场地编号 ${lab.classroomId}` : '未关联' }} · 资源版本 {{ lab.version }}</p>
       <p>请确认这两条资源记录代表同一实际场地。关联后，实训室预约、教室借用和正式课表共同核对占用。</p>
       <AppFormItem label="正式排课场地"><AppClassroomPicker v-model="classroomId" :disabled="saving || !!pending" /></AppFormItem>
       <p>不按名称自动关联；已有批准预约的实训室不能直接改换场地。</p>

@@ -33,7 +33,7 @@
         </template>
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.courseName }}</div>
-          <div class="mp-cell-sub">正式课程 #{{ row.courseId }}</div>
+          <div class="mp-cell-sub">正式课程编号 {{ row.courseId }}</div>
         </template>
         <template #cell-nature="{ row }">
           <span>{{ row.natureLabel || '性质待核验' }}</span>

@@ -12,11 +12,11 @@
     </template>
     <div class="mp-stack">
       <AaOperationReceipt :receipt="receipt" />
-      <AaObjectContext v-if="batchId" name="教学任务批次" :identity="`批次 #${batchId}`" source="从来源批次进入的派师队列" />
+      <AaObjectContext v-if="batchId" name="教学任务批次" :identity="`批次编号 ${batchId}`" source="从来源批次进入的派师队列" />
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班待生成'}`"
-        :identity="`教学任务 #${primaryRow.taskId} · 批次 #${primaryRow.batchId}`"
+        :identity="`教学任务编号 ${primaryRow.taskId} · 批次编号 ${primaryRow.batchId}`"
         source="来源：已发布培养方案生成的正式教学任务；教师姓名仅用于展示，权限按稳定工号绑定。"
         :status="statusLabel(primaryRow.status)"
         owner="学院教务 / 任课教师"
@@ -39,7 +39,7 @@
           <div class="mp-cell-main">{{ row.courseName }}</div>
           <div class="mp-cell-sub">{{ row.teachingClassName || row.courseCode }}{{ row.isMerged ? ' · 合班' : '' }}</div>
         </template>
-        <template #cell-batch="{ row }"><button class="mp-link" @click="openBatch(row)">批次 #{{ row.batchId }}</button></template>
+        <template #cell-batch="{ row }"><button class="mp-link" @click="openBatch(row)">批次编号 {{ row.batchId }}</button></template>
         <template #cell-teacher="{ row }">
           <span v-if="row.teacherName">{{ row.teacherName }}</span>
           <span v-else class="mp-cell-sub">未分配</span>
@@ -64,7 +64,7 @@
       :submitting="assign.submitting"
       @confirm="doAssign"
     >
-      <AaObjectContext :name="assign.courseName" :identity="`任务 #${assign.taskId} · 批次 #${assign.batchId}`" :source="assign.teachingClassName" />
+      <AaObjectContext :name="assign.courseName" :identity="`任务编号 ${assign.taskId} · 批次编号 ${assign.batchId}`" :source="assign.teachingClassName" />
       <div class="aa-assign-form">
         <label>任课教师<AppTeacherPicker v-model="assign.teacherKey" :query="teacherKeyQuery" placeholder="选择任课教师" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="assign.weeklyHours" type="number" min="0" class="aa-input" /></label>
@@ -172,7 +172,7 @@ export default {
         this.error = `${message}；已清除先前内容。`
       } else {
         this.error = message
-        if (isConflictResult(result)) this.receipt = { title: '重新核对派师', object: `任务 #${this.assign.taskId}`, status: '数据已变化，保留输入', pending: true, next: '请刷新来源批次后重新核对，不会自动重提。' }
+        if (isConflictResult(result)) this.receipt = { title: '重新核对派师', object: `任务编号 ${this.assign.taskId}`, status: '数据已变化，保留输入', pending: true, next: '请刷新来源批次后重新核对，不会自动重提。' }
       }
     },
     async doAssign() {

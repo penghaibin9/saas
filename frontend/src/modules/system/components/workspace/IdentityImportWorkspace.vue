@@ -40,11 +40,11 @@
             </div>
             <div v-else class="sw-alert">当前可查看任务，但不能上传名单。请从已有导入任务链接进入，不会自动扩大权限。</div>
           </template>
-          <div v-else-if="!state.job" class="sw-state" role="status"><h3>{{ state.busy ? '正在读取任务…' : '尚未取得任务' }}</h3><p class="sw-muted">任务 #{{ routeJobId }}；读取失败不代表不存在，也不代表已经导入。</p></div>
+          <div v-else-if="!state.job" class="sw-state" role="status"><h3>{{ state.busy ? '正在读取任务…' : '尚未取得任务' }}</h3><p class="sw-muted">任务编号 {{ routeJobId }}；读取失败不代表不存在，也不代表已经导入。</p></div>
           <template v-else>
             <div class="iw-task-summary">
               <span class="sw-symbol" aria-hidden="true">▤</span>
-              <div><h3>{{ state.job.sourceFile?.fileName || state.file?.name || (personLabel + '导入任务') }}</h3><p class="sw-code">任务 #{{ state.job.id }} · 版本 {{ state.job.version }}</p></div>
+              <div><h3>{{ state.job.sourceFile?.fileName || state.file?.name || (personLabel + '导入任务') }}</h3><p class="sw-code">任务编号 {{ state.job.id }} · 版本 {{ state.job.version }}</p></div>
               <span class="sw-tag" :class="state.job.status === 'SUCCEEDED' ? 'sw-tag--green' : 'sw-tag--orange'" data-testid="identity-status">{{ statusLabel }}</span>
             </div>
             <dl class="iw-counts" data-testid="identity-counts">
@@ -168,7 +168,7 @@ export default {
     refreshJob() { if (this.canRead) this.controller.resume(String(this.state.job?.id || this.routeJobId)) },
     async startAnother() {
       if (this.writing || !this.canUpload) return
-      if (this.state.job && !await systemConfirm({ title:'确认准备另一批名单', message:`当前任务 #${this.state.job.id} 仍会保留。`, confirmText:'准备另一批' })) return
+      if (this.state.job && !await systemConfirm({ title:'确认准备另一批名单', message:`当前任务编号 ${this.state.job.id} 仍会保留。`, confirmText:'准备另一批' })) return
       const query = { ...this.$route.query }; delete query.jobId
       if (this.routeJobId) this.$router.push({ path: this.$route.path, query })
       else this.recreate()

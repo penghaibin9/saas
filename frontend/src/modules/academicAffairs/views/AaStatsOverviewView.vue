@@ -179,7 +179,7 @@
           </div>
           <section class="stats-export-card stats-export-receipt">
             <header><h2>文件结果与回执</h2></header>
-            <div v-if="exp.receipt"><strong>{{ exp.receipt.fileName }}</strong><span>已于 {{ exp.receipt.completedAt }} 收到服务端 Excel 文件</span></div>
+            <div v-if="exp.receipt"><strong>{{ exp.receipt.fileName }}</strong><span>已于 \1 收到系统生成的 Excel 文件</span></div>
             <EmptyState v-else title="尚未执行导出" description="填写正式用途后生成文件；浏览器下载失败不会被报告为成功。" />
           </section>
         </template>
@@ -589,7 +589,7 @@ export default {
     overviewDistributionSpec() {
       return { type: 'interval', data: (this.distributionMetric?.groups || []).filter(group => typeof group.count === 'number' && Number.isFinite(group.count)).map(group => ({ name: statsGroupLabel(group), value: group.count })), encode: { x: 'name', y: 'value' }, coordinate: { transform: [{ type: 'transpose' }] }, axis: { y: { title: null }, x: { title: null } } }
     },
-    appliedScopeLabel() { return [this.appliedFilters.termId ? `学期 #${this.appliedFilters.termId}` : '各指标原有学期范围', this.appliedFilters.collegeId ? `学院 #${this.appliedFilters.collegeId}` : '当前授权范围', this.appliedFilters.majorId ? `专业 #${this.appliedFilters.majorId}` : ''].filter(Boolean).join(' · ') },
+    appliedScopeLabel() { return [this.appliedFilters.termId ? `学期编号 ${this.appliedFilters.termId}` : '各指标原有学期范围', this.appliedFilters.collegeId ? `学院编号 ${this.appliedFilters.collegeId}` : '当前授权范围', this.appliedFilters.majorId ? `专业编号 ${this.appliedFilters.majorId}` : ''].filter(Boolean).join(' · ') },
     filtersDirty() { return JSON.stringify(this.filters) !== JSON.stringify(this.appliedFilters) },
     contextSignature() { return JSON.stringify([this.ctx.ctxKey, this.ctx.permissionPatterns, this.ctx.dataScope, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
     canExport() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.stats.export') },

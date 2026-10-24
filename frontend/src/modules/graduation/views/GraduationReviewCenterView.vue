@@ -194,7 +194,7 @@
           <div><span>班级</span><b>{{ dossier?.className || currentRecord?.className || '—' }}</b></div>
           <div><span>课题</span><b>{{ dossier?.topicTitle || currentRecord?.topicTitle || '—' }}</b></div>
           <div><span>指导教师</span><b>{{ dossier?.advisorName || currentRecord?.advisorName || '—' }}</b></div>
-          <div><span>当前阶段</span><b>{{ dossier?.stageLabel || dossier?.stage || '—' }}</b></div>
+          <div><span>当前阶段</span><b>{{ dossier?.stageLabel || '—' }}</b></div>
           <div><span>风险</span><b>{{ dossier?.riskLevel || '—' }}</b></div>
         </div>
         <footer><button type="button" class="w74-primary" @click="closeDossier">返回评阅中心</button></footer>

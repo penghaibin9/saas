@@ -78,7 +78,7 @@
             <view v-if="item.currentSubmission" class="ta__submission">
               <view class="flex-1">
                 <text class="ta__label">V{{ item.currentSubmission.versionNo }} · {{ item.currentSubmission.fileName }}</text>
-                <text class="ta__sub">{{ item.currentSubmission.statusLabel || item.currentSubmission.status }} · {{ formatTime(item.currentSubmission.submittedAt) }}</text>
+                <text class="ta__sub">{{ item.currentSubmission.statusLabel || '待确认' }} · {{ formatTime(item.currentSubmission.submittedAt) }}</text>
               </view>
               <text class="ta__link" @click="downloadMaterial(item.currentSubmission)">查看材料</text>
             </view>
@@ -109,14 +109,14 @@
         <view v-if="!batchJobs.length" class="ta__empty card"><text>暂无批次记录</text></view>
         <view v-else class="stack">
           <view v-for="job in batchJobs" :key="job.batchJobId" class="ta__card" @click="openBatch(job)">
-            <view class="flex-1"><text class="ta__label">{{ job.batchNo }}</text><text class="ta__sub">{{ job.statusLabel || job.status }} · 成功 {{ job.successCount }} / 失败 {{ job.failureCount }}</text></view>
+            <view class="flex-1"><text class="ta__label">{{ job.batchNo }}</text><text class="ta__sub">{{ job.statusLabel || '待确认' }} · 成功 {{ job.successCount }} / 失败 {{ job.failureCount }}</text></view>
             <button v-if="(job.allowedActions || []).includes('RETRY_FAILED')" class="btn btn-secondary ta__small" :disabled="batchBusy" @click.stop="retryBatch(job)">重试失败项</button>
             <text v-else class="ta__go">›</text>
           </view>
         </view>
         <button v-if="batchHasMore" class="btn btn-secondary ta__load-more" :disabled="batchLoading" @click="loadMoreBatches">{{ batchLoading ? '加载中…' : '继续加载批次' }}</button>
         <view v-if="activeBatch" class="card ta__batch-detail">
-          <text class="ta__label">{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel || activeBatch.status }}</text>
+          <text class="ta__label">{{ activeBatch.batchNo }} · {{ activeBatch.statusLabel || '待确认' }}</text>
           <view v-for="detail in (activeBatch.items || [])" :key="detail.itemId" class="ta__batch-item">
             <view class="flex-1"><text class="ta__title">任务项编号 {{ detail.itemKey }}</text><text class="ta__sub">{{ batchItemStatusLabel(detail.status) }} · 尝试 {{ detail.attemptCount }} 次</text><text v-if="detail.errorMessage" class="ta__error">{{ detail.errorMessage }}</text></view>
           </view>
@@ -220,7 +220,7 @@ export default {
     materialStudentLine(item) {
       const c = (item && item.businessContext) || {}
       const parts = [c.studentName, c.studentNo, c.className].filter(Boolean)
-      return parts.length ? parts.join(' · ') : `学生 #${item.studentId}`
+      return parts.length ? parts.join(' · ') : `学生编号 ${item.studentId}`
     },
     materialBizLine(item) {
       const c = (item && item.businessContext) || {}

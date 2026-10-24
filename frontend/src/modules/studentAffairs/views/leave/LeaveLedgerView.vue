@@ -18,7 +18,7 @@
 
       <div v-if="exportJob" class="lv-export-job" role="status" aria-live="polite">
         <div>
-          <div class="mp-cell-main">导出任务 #{{ exportJob.jobId || exportJob.id }}</div>
+          <div class="mp-cell-main">导出任务编号 {{ exportJob.jobId || exportJob.id }}</div>
           <div class="mp-cell-sub">{{ exportStatusText }} · {{ exportJob.progress || 0 }}%<span v-if="exportJob.rowCount"> · {{ exportJob.rowCount }} 条</span></div>
         </div>
         <button v-if="exportJob.downloadable" type="button" class="mp-link" @click="downloadExport">下载 Excel</button>

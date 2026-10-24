@@ -30,7 +30,7 @@
         <header>
           <div>
             <h3>站内材料阅读器</h3>
-            <p>{{ activePreviewFile.categoryLabel || activePreviewFile.title }} · 当前 v{{ activePreviewFile.versionNo }} · FileVersion {{ activePreviewFile.versionId }}</p>
+            <p>\1 · 当前 v\2 · 文件版本 \3</p>
           </div>
           <AppStatusTag type="success">只读当前安全版本</AppStatusTag>
         </header>
@@ -126,7 +126,7 @@ export default {
     studentTitle() {
       return this.detail
         ? `${this.detail.studentName || '学生'} · ${this.detail.studentNo || '—'} · 真实材料版本链`
-        : `实习记录 #${this.internshipId}`
+        : `实习记录编号 ${this.internshipId}`
     },
     previewFiles() {
       return (this.detail?.items || []).filter((item) => item.canPreview && item.readyForBusiness)

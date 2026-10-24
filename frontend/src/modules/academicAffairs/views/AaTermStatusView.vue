@@ -20,7 +20,7 @@
       <AppInlineAlert
         v-if="currentError"
         type="warning"
-        :description="`当前学期解析失败，本页不再依据历史 isCurrent 标记猜测“当前”；状态台账与冻结/解冻仍按显式学期执行。${currentError}`"
+        :description="`当前学期解析失败，本页不再依据历史“当前学期”标记猜测；状态台账与冻结/解冻仍按显式学期执行。${currentError}`"
       />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />

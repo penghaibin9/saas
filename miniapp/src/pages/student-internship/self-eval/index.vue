@@ -4,7 +4,7 @@
       <view class="page-pad stack" v-if="loaded">
         <view v-if="receipt" class="card se__receipt">
           <view class="row-between"><text class="t-bold">✓ 自评已提交</text><text>v{{ receipt.version }}</text></view>
-          <text>鉴定 #{{ receipt.id }} · {{ receipt.statusLabel }}</text><text>{{ receipt.nextStep }}</text>
+          <text>鉴定编号 {{ receipt.id }} · {{ receipt.statusLabel }}</text><text>{{ receipt.nextStep }}</text>
         </view>
         <view class="card se__head">
           <view class="row-between">
@@ -30,7 +30,7 @@
           </template>
           <text v-else class="se__hint">完成自评、企业评价和指导教师评价后，由学校核算、复核并发布正式成绩。</text>
           <view v-if="appealData?.hasAppeal" class="se__appeal-state">
-            <text>最近申诉 · {{ appealData.statusLabel || appealData.status }}</text>
+            <text>最近申诉 · {{ appealData.statusLabel || '待确认' }}</text>
             <text>{{ appealNextStep }}</text>
           </view>
           <view v-if="canAppeal" class="se__appeal-form">

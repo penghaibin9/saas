@@ -11,7 +11,7 @@ const nav = [
 const router = useRouter()
 const context = useEnterpriseContextStore()
 const mobileOpen = ref(false)
-const title = computed(() => context.campaign?.name || context.campaign?.campaignName || (context.campaign?.id ? `招聘季 #${context.campaign.id}` : '当前招聘季尚未加载'))
+const title = computed(() => context.campaign?.name || context.campaign?.campaignName || (context.campaign?.id ? `招聘季编号 ${context.campaign.id}` : '当前招聘季尚未加载'))
 const roleLabel = computed(() => ({COMPANY_ADMIN:'企业管理员',HR:'企业 HR',MENTOR:'企业导师'}[String(context.memberRole||'').toUpperCase()] || context.memberRole || '企业成员'))
 function navAllowed(item){return !item.applicationPermission||context.applicationViewAllowed}
 function logout(){

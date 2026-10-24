@@ -5,7 +5,7 @@
       <view v-if="context" class="page-pad stack">
         <view v-if="receipt" class="card sc__receipt">
           <view class="row-between"><text class="t-bold">✓ {{ receipt.actionLabel }}</text><text>v{{ receipt.version }}</text></view>
-          <text>申请 #{{ receipt.id }} · {{ receipt.statusLabel }}</text>
+          <text>申请编号 {{ receipt.id }} · {{ receipt.statusLabel }}</text>
           <text>{{ receipt.nextStep }}</text>
         </view>
 
@@ -13,7 +13,7 @@
           <text class="sc__eyebrow">当前实习关系</text>
           <text class="sc__company">{{ context.company || '未落实单位' }}</text>
           <text class="sc__position">{{ context.post || '未落实岗位' }} · {{ context.batch }}</text>
-          <text class="sc__version">批次 #{{ context.batchId }} · 实习记录 #{{ context.recordId }} · {{ context.statusText }}</text>
+          <text class="sc__version">批次编号 {{ context.batchId }} · 实习记录编号 {{ context.recordId }} · {{ context.statusText }}</text>
         </view>
 
         <view class="card stack">

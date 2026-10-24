@@ -222,7 +222,7 @@ export default {
         this.confirmVisible = false
         this.backfillReport = res.data
         await this.load()
-        if (!this.disposed && termId === this.filters.termId && !this.error) this.receipt = { object: `学期 #${termId}`, status: '回填请求已处理，列表已重新读取', next: '逐班打开正式名单及版本核对；当前页不代表全学期验收通过。' }
+        if (!this.disposed && termId === this.filters.termId && !this.error) this.receipt = { object: `学期编号 ${termId}`, status: '回填请求已处理，列表已重新读取', next: '逐班打开正式名单及版本核对；当前页不代表全学期验收通过。' }
       } else {
         this.handleFailure(res, '回填失败')
       }
@@ -232,7 +232,7 @@ export default {
     handleFailure(result, fallback) {
       this.error = result?.message || fallback; this.backfillReport = null; this.checkedTermId = ''
       if (isDeniedResult(result)) { this.revision++; this.loading = false; this.rows = []; this.confirmVisible = false; this.receipt = null }
-      else if (isConflictResult(result)) this.receipt = { object: `学期 #${this.filters.termId}`, status: '数据已变化，保留输入', pending: true, next: '重新执行存量对账，再核对回填范围。' }
+      else if (isConflictResult(result)) this.receipt = { object: `学期编号 ${this.filters.termId}`, status: '数据已变化，保留输入', pending: true, next: '重新执行存量对账，再核对回填范围。' }
     }
   }
 }

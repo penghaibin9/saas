@@ -29,7 +29,7 @@
       <ol class="confirm-volunteers">
         <li v-for="slot in activeSlots" :key="slot.volunteerNo">
           <span>第{{ slot.volunteerNo }}志愿</span>
-          <strong>{{ slot.position?.title || `岗位 #${slot.positionId}` }}</strong>
+          <strong>{{ slot.position?.title || `岗位编号 ${slot.positionId}` }}</strong>
           <small>{{ slot.position?.companyName || '' }}</small>
         </li>
       </ol>

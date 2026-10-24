@@ -101,5 +101,5 @@ test('risky module freeze requires explicit acknowledgement and a successful ser
   assert.match(view, /:disabled="busy \|\| !offboardForm\.confirmed \|\| !preview\.canRequest"/)
   assert.match(view, /if \(!module \|\| !this\.preview\?\.canRequest\) return/)
   assert.match(view, /当前不执行物理销毁/)
-  assert.match(view, /冻结此模块 generation/)
+  assert.match(view, /冻结此模块授权代次/)
 })

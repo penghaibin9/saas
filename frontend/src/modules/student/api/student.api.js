@@ -214,7 +214,7 @@ function detailRow(row = {}) {
 
 function fromBackendStatusChange(x = {}) {
   return {
-    id: x.changeId, studentId: x.studentId, studentName: x.realName || '', className: x.toClassId ? `班级#${x.toClassId}` : '',
+    id: x.changeId, studentId: x.studentId, studentName: x.realName || '', className: x.toClassId ? `班级编号 ${x.toClassId}` : '',
     fromStatus: x.fromStatus || '', toStatus: x.toStatus || '', reason: x.reason || '', auditStatus: x.status,
     operatedAt: x.effectiveDate || x.updatedAt || '', operator: x.operatorName || '', roleName: x.operatorRole || '',
     attachment: '', version: x.version
@@ -227,7 +227,7 @@ function fromBackendCorrection(r = {}) {
   return {
     id: r.correctionId, studentId: r.studentId, studentName: r.realName || '', studentNo: r.studentNo || '',
     className: r.className || '', fieldKey: r.fieldKey, fieldLabel: r.fieldLabel, oldValue: r.oldValue, newValue: r.newValue,
-    sensitive: !!r.sensitive, reason: r.reason || '', attachments: (r.materialFileIds || []).map((fid) => `附件#${fid}`),
+    sensitive: !!r.sensitive, reason: r.reason || '', attachments: (r.materialFileIds || []).map((fid) => `附件编号 ${fid}`),
     channel: r.channel || '教务发起', submitTime: r.createdAt || '', status: CORRECTION_STATUS_TO_UI[r.status] || r.status,
     reviewer: r.reviewerName || '', reviewTime: r.reviewedAt || '', reviewComment: r.reviewNote || ''
   }
@@ -281,7 +281,7 @@ function permissionActions(patterns = []) {
 function normalizeClassOptions(payload) {
   const rows = payload?.items || payload?.list || []
   return rows.map((row) => ({
-    value: String(row.classId || row.id || ''), label: row.className || row.name || `班级#${row.classId || row.id}`,
+    value: String(row.classId || row.id || ''), label: row.className || row.name || `班级编号 ${row.classId || row.id}`,
     collegeId: String(row.collegeId || ''), collegeName: row.collegeName || '', majorId: String(row.majorId || ''),
     majorName: row.majorName || '', grade: row.grade || ''
   })).filter((x) => x.value)
@@ -295,8 +295,8 @@ async function buildContext() {
   ])
   const patterns = Array.isArray(ctx?.permissionPatterns) ? ctx.permissionPatterns : []
   const classes = normalizeClassOptions(classesResult)
-  const colleges = [...new Map(classes.filter((x) => x.collegeId).map((x) => [x.collegeId, { value: x.collegeId, label: x.collegeName || `学院#${x.collegeId}` }])).values()]
-  const majors = [...new Map(classes.filter((x) => x.majorId).map((x) => [x.majorId, { value: x.majorId, label: x.majorName || `专业#${x.majorId}` }])).values()]
+  const colleges = [...new Map(classes.filter((x) => x.collegeId).map((x) => [x.collegeId, { value: x.collegeId, label: x.collegeName || `学院编号 ${x.collegeId}` }])).values()]
+  const majors = [...new Map(classes.filter((x) => x.majorId).map((x) => [x.majorId, { value: x.majorId, label: x.majorName || `专业编号 ${x.majorId}` }])).values()]
   const grades = [...new Set(classes.map((x) => x.grade).filter(Boolean))].sort().map((x) => ({ value: x, label: x }))
   const role = ctx?.currentRole || {}
   const scope = ctx?.dataScope || {}

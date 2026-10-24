@@ -95,8 +95,8 @@
               <div class="tk-content__title">谈话内容</div>
               <p class="tk-content__body" :class="{ 'tk-masked': selected.psyMasked }">{{ selected.content || '（无）' }}</p>
               <p v-if="selected.result" class="tk-content__result">小结：{{ selected.result }}</p>
-              <button v-if="selected.relatedRiskId" type="button" class="tk-linked" @click="goRelatedRisk">已转风险单 #{{ selected.relatedRiskId }} → 查看风险处置</button>
-              <button v-if="selected.relatedContactId" type="button" class="tk-linked" @click="goRelatedFamily">已转家校联系 #{{ selected.relatedContactId }} → 查看联系记录</button>
+              <button v-if="selected.relatedRiskId" type="button" class="tk-linked" @click="goRelatedRisk">已转风险单编号 {{ selected.relatedRiskId }} → 查看风险处置</button>
+              <button v-if="selected.relatedContactId" type="button" class="tk-linked" @click="goRelatedFamily">已转家校联系编号 {{ selected.relatedContactId }} → 查看联系记录</button>
             </section>
             <div v-if="detailActions.length" class="tk-actions">
               <AppPermissionButton :allowed="canBtn('studentAffairs.talk.create')"

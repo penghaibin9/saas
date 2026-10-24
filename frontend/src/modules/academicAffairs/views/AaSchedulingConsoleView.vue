@@ -532,13 +532,13 @@ export default {
     contextObject() {
       if (this.workbench) return {
         name: this.workbench.batchName || '当前课表批次',
-        identity: `批次 #${this.workbench.batchId} · 学期 #${this.workbench.termId}`,
+        identity: `批次编号 ${this.workbench.batchId} · 学期编号 ${this.workbench.termId}`,
         source: '来源：正式教学任务、排课规则、教师时间与资源可用性',
         status: this.batchStatusLabel(this.workbench.batchStatus)
       }
       if (this.termInfo) return {
         name: this.termInfo.termName || `${this.termInfo.yearCode || ''} 第${this.termInfo.termNo || '—'}学期`,
-        identity: `学期 #${this.termId} · ${this.pageMeta.title}`,
+        identity: `学期编号 ${this.termId} · ${this.pageMeta.title}`,
         source: '来源：当前正式学期与排课规则目录',
         status: this.termStatusLabel(this.termInfo.status)
       }

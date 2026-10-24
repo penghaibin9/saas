@@ -102,7 +102,7 @@ export async function ensurePlatformAccessContext({ force = false } = {}) {
   }
   try {
     const context = await request('/platform/context', { forceProbe: true })
-    if (String(context?.principalPlane || '').toUpperCase() !== 'PLATFORM') throw new Error('平台上下文 principalPlane 非 PLATFORM，拒绝进入控制面')
+    if (String(context?.principalPlane || '').toUpperCase() !== 'PLATFORM') throw new Error('当前账号无权进入平台控制台')
     if (String(context?.subjectId || '') !== subjectId) throw new Error('平台上下文主体与当前 access token 不一致')
     setPermissionPatterns(platformDutyPatterns(context?.duties))
     setModuleEntitlements(null)

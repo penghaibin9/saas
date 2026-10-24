@@ -161,7 +161,7 @@
       <template v-if="!detailLoading && detail">
         <div class="aacw-detail-head">
           <div>
-            <strong>纠错 #{{ detail.correctionNo }}</strong>
+            <strong>纠错编号 {{ detail.correctionNo }}</strong>
             <span class="aacw-muted"> · {{ businessLabel(detail.businessType) }} · 目标 {{ detail.targetRef }}</span>
           </div>
           <StatusTag :type="statusType(detail.status)" :label="statusLabel(detail.status)" dot />

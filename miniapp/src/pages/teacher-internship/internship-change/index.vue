@@ -35,7 +35,7 @@
         <view v-else class="stack">
           <view v-for="c in list" :key="c.id" class="card tc">
             <view class="row-between tc__head">
-              <view><text class="t-md t-bold">{{ c.studentName || '—' }}</text><text class="tc__sub">{{ c.studentNo }} · 申请 #{{ c.id }}</text></view>
+              <view><text class="t-md t-bold">{{ c.studentName || '—' }}</text><text class="tc__sub">{{ c.studentNo }} · 申请编号 {{ c.id }}</text></view>
               <MobileStatusTag :label="c.statusLabel" type="warning" />
             </view>
             <view class="tc__type"><text>{{ c.changeTypeLabel }}</text><text>申请 v{{ c.version }} · 主记录快照 v{{ c.recordVersionSnapshot }}</text></view>

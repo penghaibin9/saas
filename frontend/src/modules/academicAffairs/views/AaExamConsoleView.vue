@@ -558,7 +558,7 @@ export default {
         const row = this.selectedDefer
         return {
           title: row ? `${row.studentName || '学生'} · ${row.courseName || '考试课程'}` : '缓考审核责任队列',
-          objectId: row ? `缓考申请 #${row.deferId}` : `${this.modePagination.total} 条正式申请`,
+          objectId: row ? `缓考申请编号 ${row.deferId}` : `${this.modePagination.total} 条正式申请`,
           source: '考务管理 / 缓考审批', status: row ? this.deferStatusLabel(row.status) : '等待选择申请',
           owner: row ? this.deferOwner(row.status) : (this.ctx.currentRole.roleName || '当前受理岗位'),
           blocker: row?.returnReason || (row?.status === 'APPROVED' ? '审核链已完成' : '无已知阻断'),
@@ -568,7 +568,7 @@ export default {
       if (this.viewMode === 'archive') {
         const row = this.selectedArchive
         return {
-          title: row?.batchName || '考务归档清单', objectId: row ? `考试批次 #${row.batchId}` : `${this.modePagination.total} 个封存批次`,
+          title: row?.batchName || '考务归档清单', objectId: row ? `考试批次编号 ${row.batchId}` : `${this.modePagination.total} 个封存批次`,
           source: '考务管理 / 考务归档', status: row ? '已归档' : '只读核验', owner: this.batchDetailLoading ? '正在读取当前批次责任' : row && !row.responsibility ? '学校已完成考务归档' : academicFlowOwner(row?.responsibility),
           blocker: this.readinessError || (row && this.archiveHasRisk(row) ? '封存摘要含异常计数' : '无已知阻断'), blocked: !!this.readinessError || !!(row && this.archiveHasRisk(row)), nextOwner: row && !row.nextStep ? '已办结，后续按权限查阅' : academicFlowNextOwner(row?.nextStep)
         }
@@ -578,7 +578,7 @@ export default {
       const archived = status === 'ARCHIVED'
       const blocker = this.readinessError || (publishStage && this.readiness && !this.readiness.canPublish ? (this.readiness.blockingReasons || []).join('；') : '')
       return {
-        title: this.current?.batchName || '考试批次责任队列', objectId: this.current ? `考试批次 #${this.current.batchId}` : `${this.pagination.total} 个批次`,
+        title: this.current?.batchName || '考试批次责任队列', objectId: this.current ? `考试批次编号 ${this.current.batchId}` : `${this.pagination.total} 个批次`,
         source: '考务管理 / 考务安排', status: this.current ? this.statusLabel(status) : '等待选择批次',
         owner: this.batchDetailLoading ? '正在读取当前批次责任' : archived && !this.current?.responsibility ? '学校已完成考务归档' : academicFlowOwner(this.current?.responsibility),
         blocker: blocker || (archived ? '已归档，无当前办理阻断' : status === 'FINISHED' ? '考试已结束，待完成归档' : publishStage && this.readiness?.canPublish ? '本次就绪检查通过，发布时再次校验' : (this.current ? '按当前阶段核验，尚无本次就绪结论' : '选择批次后核验')),

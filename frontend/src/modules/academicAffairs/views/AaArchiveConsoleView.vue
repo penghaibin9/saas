@@ -30,7 +30,7 @@
             @keydown.enter.prevent="select(b)"
             @keydown.space.prevent="select(b)"
           >
-            <span class="aaar-item__name"><strong>{{ b.batchName }}</strong><small>#{{ b.batchId }} · {{ b.termCode || `学期 #${b.termId || '—'}` }}</small></span>
+            <span class="aaar-item__name"><strong>{{ b.batchName }}</strong><small>#{{ b.batchId }} · {{ b.termCode || `学期编号 ${b.termId || '—'}` }}</small></span>
             <span class="aaar-item__facts"><small>{{ batchMissingLabel(b) }}</small><StatusTag :type="sType(b.status)" :label="sLabel(b.status)" dot /></span>
           </li>
         </ul>
@@ -41,7 +41,7 @@
         <template v-else>
           <section class="aaar-object-card">
             <div class="aaar-object-main">
-              <small>当前业务对象 · 学期归档批次 #{{ current.batchId }}</small>
+              <small>当前业务对象 · 学期归档批次编号 {{ current.batchId }}</small>
               <div class="aaar-title">{{ current.batchName }}</div>
               <p>{{ isCollegeScope ? '来源：学校归档批次正式进度；本院实时缺项以预检结果为准' : '来源：学期正式记录与十三个数据域的汇总检查；责任以当前批次最新结果为准' }}</p>
             </div>

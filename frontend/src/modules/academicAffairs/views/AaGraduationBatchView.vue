@@ -14,7 +14,7 @@
       <GraduationStageRail v-if="batch" :active="batch.status === 'ARCHIVED' ? 5 : (batch.status === 'PRECHECKED' ? 2 : 1)" />
 
       <section v-if="batch" class="grad-object" aria-label="当前毕业审核对象">
-        <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>{{ batchTermLabel(batch) }}</small><small>来源：毕业审核批次 #{{ batch.batchId }}</small></div>
+        <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>{{ batchTermLabel(batch) }}</small><small>来源：毕业审核批次编号 {{ batch.batchId }}</small></div>
         <div><span>当前状态</span><strong>{{ academicStatusLabel(batch.status) }}</strong><small>应审 {{ batch.total || 0 }} 人 · 系统异常 {{ batch.abnormal || 0 }} 人</small></div>
         <div><span>当前责任</span><strong>{{ Number(batch.abnormal || 0) ? '证据责任岗' : '学院审核岗' }}</strong><small>{{ Number(batch.abnormal || 0) ? '先治理阻断项并重新预审' : '核对十一项正式证据' }}</small></div>
         <div><span>下一岗位</span><strong>{{ Number(batch.abnormal || 0) ? '学院审核岗' : '教务终审岗' }}</strong><small>完成当前阶段后自动进入下一队列</small></div>

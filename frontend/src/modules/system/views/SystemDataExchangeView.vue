@@ -52,7 +52,7 @@
                   <p v-if="!state.detail.item.receiptJobs" class="sw-muted">当前没有返回关联的回执清单，请在导出任务中核对；不能把文件编号当作下载任务编号。</p>
                   <template v-else>
                     <p v-if="!state.detail.item.receiptJobs.list.length" class="sw-muted">当前授权视图未返回关联回执。</p>
-                    <div v-for="receipt in state.detail.item.receiptJobs.list" :key="taskKey(receipt)" class="dx-receipt-row"><div><b>{{ taskLabel(receipt) }}</b><p class="sw-muted">导出 #{{ receipt.id }} · {{ taskStatus(receipt) }}</p></div><button type="button" class="sw-btn" :disabled="locked" @click="openDetail(receipt)">核对并下载</button></div>
+                    <div v-for="receipt in state.detail.item.receiptJobs.list" :key="taskKey(receipt)" class="dx-receipt-row"><div><b>{{ taskLabel(receipt) }}</b><p class="sw-muted">导出编号 {{ receipt.id }} · {{ taskStatus(receipt) }}</p></div><button type="button" class="sw-btn" :disabled="locked" @click="openDetail(receipt)">核对并下载</button></div>
                     <p v-if="state.detail.item.receiptJobs.total > state.detail.item.receiptJobs.list.length" class="sw-muted">共 {{ state.detail.item.receiptJobs.total }} 项，当前展示最近 {{ state.detail.item.receiptJobs.list.length }} 项；其余请在导出清单核对。</p>
                   </template>
                 </section>

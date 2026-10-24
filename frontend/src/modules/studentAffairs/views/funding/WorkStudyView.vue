@@ -228,7 +228,7 @@ export default {
     allows(row, action) { return Array.isArray(row?.allowedActions) && row.allowedActions.includes(action) },
     ratingLabel(value) { return ({GOOD:'优秀',PASS:'合格',FAIL:'不合格'})[value] || '待核对' },
     statusCount(status) { return Number(this.statusCounts?.[status] || 0) },
-    postName(id) { return this.posts.find((post) => String(post.postId) === String(id))?.postName || `岗位#${id}` },
+    postName(id) { return this.posts.find((post) => String(post.postId) === String(id))?.postName || `岗位编号 ${id}` },
     money(value) { return value == null || value === '' ? '待确认' : `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
     hours(value) { return value == null || value === '' ? '40 小时' : `${Number(value)} 小时` },
     dateTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },

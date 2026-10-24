@@ -97,9 +97,9 @@ export const graduationApi = {
         if (ctx?.roleNeedsOrgScope && ctx.scopeConfigured === false) {
           scopeName = '未配置学院/专业数据范围（fail-closed）'
         } else if (ctx?.collegeId && !ctx.fullScope) {
-          scopeName = `学院范围 collegeId=${ctx.collegeId}` + (ctx.majorId ? ` / majorId=${ctx.majorId}` : '')
+          scopeName = `学院范围（编号 ${ctx.collegeId}）` + (ctx.majorId ? ` / majorId=${ctx.majorId}` : '')
         } else if (ctx?.majorId && !ctx.fullScope) {
-          scopeName = `专业范围 majorId=${ctx.majorId}`
+          scopeName = `专业范围（编号 ${ctx.majorId}）`
         }
         scopeHint = ctx?.scopeHint || ''
         orgScope = {

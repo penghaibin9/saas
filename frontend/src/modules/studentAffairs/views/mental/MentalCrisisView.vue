@@ -25,7 +25,7 @@
           <template #cell-level="{ row }"><AppStatusTag :type="levelKind(row.level)" :label="row.levelLabel || row.level" /></template>
           <template #cell-status="{ row }"><AppStatusTag :type="statusKind(row.status)" :label="row.statusLabel || row.status" /></template>
           <template #cell-reason="{ row }"><span class="mental-crisis-reason sa-cell-wrap">{{ row.reasonSummary || '—' }}</span></template>
-          <template #cell-risk="{ row }"><a v-if="row.riskId" class="sa-link" @click="gotoRisk(row.riskId)">风险 #{{ row.riskId }} →</a><span v-else class="sa-muted">未升级</span></template>
+          <template #cell-risk="{ row }"><a v-if="row.riskId" class="sa-link" @click="gotoRisk(row.riskId)">风险编号 {{ row.riskId }} →</a><span v-else class="sa-muted">未升级</span></template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
               <AppPermissionButton

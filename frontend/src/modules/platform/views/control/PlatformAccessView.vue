@@ -117,7 +117,7 @@
               <td><AppButton v-if="isActive(item)" @click="beginAction('elevation', item)">撤销</AppButton></td>
             </tr>
             <tr v-for="item in sessions" :key="`s-${item.id}`">
-              <td>受控协助</td><td>{{ item.operatorUserId }}</td><td>{{ item.tenantId }} · {{ scopeLabels(item.scopes) }}</td><td>工单 #{{ item.ticketId }}</td><td>{{ item.expiresAt }}</td><td>{{ platformStatusLabel(isActive(item) ? item.status : 'EXPIRED') }}</td>
+              <td>受控协助</td><td>{{ item.operatorUserId }}</td><td>{{ item.tenantId }} · {{ scopeLabels(item.scopes) }}</td><td>工单编号 {{ item.ticketId }}</td><td>{{ item.expiresAt }}</td><td>{{ platformStatusLabel(isActive(item) ? item.status : 'EXPIRED') }}</td>
               <td class="access-ops">
                 <AppButton v-if="canOpenSupport(item)" variant="primary" @click="openSupportWorkspace(item)">进入协助</AppButton>
                 <AppButton v-if="isActive(item)" @click="beginAction('support', item)">终止</AppButton>
@@ -131,7 +131,7 @@
       <section v-if="supportWorkspace.session" class="panel support-workspace">
         <div class="review-head">
           <div>
-            <h3>受控协助工作区 · 工单 #{{ supportWorkspace.session.ticketId }}</h3>
+            <h3>受控协助工作区 · 工单编号 {{ supportWorkspace.session.ticketId }}</h3>
             <p class="hint">仅显示本次会话批准的只读数据；会话到期或终止后，系统立即拒绝访问。</p>
           </div>
           <AppButton @click="closeSupportWorkspace">关闭工作区</AppButton>

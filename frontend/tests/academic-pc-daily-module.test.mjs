@@ -26,7 +26,7 @@ test('attendance routes expose the exact business page title and preserve stable
   const student = state.normalizeStudent({ studentId: '991', sessions: 3 })
   assert.equal(student.studentId, '991')
   assert.equal(student.sessions, 3)
-  assert.equal(student.realName, '学生 #991')
+  assert.equal(student.realName, '学生编号 991')
   assert.equal(student.studentNo, '学号未提供')
 })
 

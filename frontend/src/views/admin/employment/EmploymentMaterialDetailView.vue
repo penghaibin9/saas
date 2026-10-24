@@ -26,7 +26,7 @@
               <template v-if="detail.material.formalEvidence">
                 <span>
                   提交于 {{ detail.material.submitTime }} ·
-                  正式材料（文件 #{{ detail.material.file.fileId }} · 第 {{ detail.material.file.fileVersion }} 版 ·
+                  正式材料（文件编号 {{ detail.material.file.fileId }} · 第 {{ detail.material.file.fileVersion }} 版 ·
                   安全扫描 {{ scanText(detail.material.file.scanStatus) }}）
                 </span>
               </template>

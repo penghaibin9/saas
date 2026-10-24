@@ -14,8 +14,8 @@
       @retry="load"
       @back="$router.push('/admin/student-affairs/funding')"
     >
-      <AppInlineAlert v-if="genBatchId && routeSource === 'publicity'" type="info" :description="`已承接公示批次 #${genBatchId}；下方记录、生成与导出保持同一批次上下文。`" />
-      <p v-if="genBatchId" class="fd-scope-note">当前批次 #{{ genBatchId }} · 汇总、记录与导出使用同一批次。</p>
+      <AppInlineAlert v-if="genBatchId && routeSource === 'publicity'" type="info" :description="`已承接公示批次编号 ${genBatchId}；下方记录、生成与导出保持同一批次上下文。`" />
+      <p v-if="genBatchId" class="fd-scope-note">当前批次编号 {{ genBatchId }} · 汇总、记录与导出使用同一批次。</p>
       <div class="fd-commandbar">
         <div class="fd-kpis"><span v-for="card in metricCards" :key="card.key"><span>{{ card.label }}</span><strong>{{ card.value }}</strong></span></div>
         <div class="fd-gen">
@@ -41,7 +41,7 @@
 
       <div v-if="exportJob" class="fd-export-job" role="status" aria-live="polite">
         <div>
-          <div class="mp-cell-main">Excel 导出任务 #{{ exportJob.jobId || exportJob.id }}</div>
+          <div class="mp-cell-main">Excel 导出任务编号 {{ exportJob.jobId || exportJob.id }}</div>
           <div class="mp-cell-sub">{{ exportStatusText }} · {{ exportJob.progress || 0 }}%<span v-if="exportJob.rowCount != null"> · {{ exportJob.rowCount }} 条</span></div>
         </div>
         <button v-if="exportJob.downloadable" type="button" class="fd-link" @click="downloadExport">下载 Excel</button>
@@ -131,7 +131,7 @@
       :submitting="acting === 'export'"
       @confirm="createExport"
     >
-<p class="fd-record-context">{{ exportDlg.batchId ? `批次 #${exportDlg.batchId}` : '当前负责范围的全部批次' }} · {{ statusFilters.find(f => f.key === exportDlg.bankStatus)?.label || '全部状态' }}</p>
+<p class="fd-record-context">{{ exportDlg.batchId ? `批次编号 ${exportDlg.batchId}` : '当前负责范围的全部批次' }} · {{ statusFilters.find(f => f.key === exportDlg.bankStatus)?.label || '全部状态' }}</p>
       <AppFormItem label="导出用途" required>
         <AppTextInput v-model="exportDlg.purpose" placeholder="至少5字，如：财务发放结果复核归档" :maxlength="500" />
       </AppFormItem>
@@ -147,7 +147,7 @@
       :submitting="acting === issDlg.disbursementId"
       @confirm="submitIssue"
     >
-      <p class="fd-record-context">申请 #{{ issDlg.applicationId }} · {{ issDlg.amount }} · 批次 #{{ issDlg.batchId }}</p>
+      <p class="fd-record-context">申请编号 {{ issDlg.applicationId }} · {{ issDlg.amount }} · 批次编号 {{ issDlg.batchId }}</p>
       <AppFormItem label="发放批次号" required>
         <AppTextInput v-model="issDlg.disburseNo" placeholder="必填，如银行回单批次号" :maxlength="100" />
       </AppFormItem>
@@ -166,7 +166,7 @@
       require-reason
       :reason-min-length="5"
       reason-label="失败原因（5-500字）"
-      :message="`申请 #${failDlg.applicationId} · 批次 #${failDlg.batchId} · ${amountText(failDlg.amount)}。请按银行回执登记失败原因，保存后通知学生，可在核对完成后重新登记结果。`"
+      :message="`申请编号 ${failDlg.applicationId} · 批次编号 ${failDlg.batchId} · ${amountText(failDlg.amount)}。请按银行回执登记失败原因，保存后通知学生，可在核对完成后重新登记结果。`"
       :submitting="acting === failDlg.disbursementId"
       @confirm="submitFail"
     />

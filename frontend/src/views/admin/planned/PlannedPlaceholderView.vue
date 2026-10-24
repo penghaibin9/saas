@@ -49,7 +49,7 @@
           <div v-if="info.instruction" class="pp-instr">
             <pre class="pp-instr__pre">{{ info.instruction }}</pre>
             <button type="button" class="pp-copy" @click="copyInstruction">
-              {{ copied ? '已复制 ✓' : '复制推进指令发给 Claude' }}
+              {{ copied ? '已复制 ✓' : '复制需求说明' }}
             </button>
           </div>
           <div v-else class="pp-empty">暂无推进指令</div>

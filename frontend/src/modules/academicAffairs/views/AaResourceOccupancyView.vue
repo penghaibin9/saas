@@ -38,7 +38,7 @@
           <template #cell-resourceKind="{ row }">{{ row.resourceKind === 'LAB' ? '实训室' : '教室' }}</template>
           <template #cell-resourceLabel="{ row }">
             <div class="mp-cell-main">{{ row.resourceLabel || '资源名称待确认' }}</div>
-            <div class="mp-cell-sub">{{ row.resourceId ? `资源 ID ${row.resourceId}` : '缺少教室信息' }} · {{ row.classroomId ? `正式场地 #${row.classroomId}` : '正式场地待核实' }}</div>
+            <div class="mp-cell-sub">{{ row.resourceId ? `资源 ID ${row.resourceId}` : '缺少教室信息' }} · {{ row.classroomId ? `正式场地编号 ${row.classroomId}` : '正式场地待核实' }}</div>
           </template>
           <template #cell-slotNo="{ row }">第{{ row.slotNo }}节</template>
           <template #cell-source="{ row }">
@@ -46,8 +46,8 @@
               <StatusTag :type="row.source === 'BOOKING' ? 'primary' : 'default'" :label="row.source === 'BOOKING' ? '已批准预约' : '正式课表'" />
               <div v-if="row.source === 'BOOKING'" class="mp-cell-sub">{{ row.bookingResourceKind === 'LAB' ? '实训室预约' : '教室预约' }} #{{ row.bookingId }}</div>
               <template v-else>
-                <div class="mp-cell-sub">课位 #{{ row.scheduleItemId }} · 批次 #{{ row.batchId }} · 学期 #{{ row.termId }}</div>
-                <div class="mp-cell-sub">{{ row.classId ? `班级 #${row.classId}` : '班级 ID 缺失' }} · {{ row.taskId ? `任务 #${row.taskId}` : '任务 ID 缺失' }}</div>
+                <div class="mp-cell-sub">课位编号 {{ row.scheduleItemId }} · 批次编号 {{ row.batchId }} · 学期编号 {{ row.termId }}</div>
+                <div class="mp-cell-sub">{{ row.classId ? `班级编号 ${row.classId}` : '班级 ID 缺失' }} · {{ row.taskId ? `任务编号 ${row.taskId}` : '任务 ID 缺失' }}</div>
                 <div :class="['mp-cell-sub', { 'aaro-swap': row.calendarSource === 'SWAP' }]">{{ scheduleDateFact(row) }}</div>
               </template>
             </div>
@@ -261,7 +261,7 @@ export default {
     scheduleDateFact(row) {
       const coordinate = `第 ${row.weekNo} 周 · ${WEEKDAY[row.weekday] || '星期待确认'}`
       return row.calendarSource === 'SWAP'
-        ? `SWAP 调课：实际 ${this.resultDate} · 逻辑课日 ${row.logicalDate} · 校历事件 #${row.calendarEventId || '待确认'} · ${coordinate}`
+        ? `SWAP 调课：实际 ${this.resultDate} · 逻辑课日 ${row.logicalDate} · 校历事件编号 ${row.calendarEventId || '待确认'} · ${coordinate}`
         : `教学日 ${row.logicalDate} · ${coordinate}`
     },
     canOpenSchedule(row) { return row.source === 'SCHEDULE' && row.scheduleItemId && row.batchId && row.classId && row.taskId },

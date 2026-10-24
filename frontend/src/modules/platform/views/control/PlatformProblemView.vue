@@ -52,7 +52,7 @@
           <input v-model.trim="fixChangeId" class="ppb__input" placeholder="永久修复变更编号" />
           <button class="mp-link" @click="linkFix">链接永久修复变更</button>
         </div>
-        <p v-if="selected.permanentFixChangeId" class="ppb__note">已链接变更 #{{ selected.permanentFixChangeId }}</p>
+        <p v-if="selected.permanentFixChangeId" class="ppb__note">已链接变更编号 {{ selected.permanentFixChangeId }}</p>
 
         <AppSectionHeader title="事故复盘" class="ppb__gap" />
         <div class="ppb__form">

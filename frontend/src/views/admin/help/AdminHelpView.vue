@@ -57,7 +57,7 @@
       <section v-if="qualityMetrics" class="help-quality" aria-label="帮助中心近30天质量指标">
         <div class="help-quality__heading">
           <div>
-            <p class="help-eyebrow">V3-08 · 近 {{ qualityMetrics.windowDays }} 天</p>
+            <p class="help-eyebrow">近 \1 天</p>
             <h2>帮助中心质量</h2>
           </div>
           <small>只统计真实搜索和用户明确反馈；未打通人工工单前，不伪造“真实自助解决率”。</small>

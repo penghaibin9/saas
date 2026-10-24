@@ -14,7 +14,7 @@
 
     <view v-if="receipt" class="card is__receipt">
       <view class="row-between"><text class="t-bold">✓ {{ receipt.actionLabel }}</text><text>v{{ receipt.version }}</text></view>
-      <text>成绩 #{{ receipt.id }} · {{ receipt.statusLabel }}</text>
+      <text>成绩编号 {{ receipt.id }} · {{ receipt.statusLabel }}</text>
       <text>{{ receipt.nextStep }}</text>
     </view>
 

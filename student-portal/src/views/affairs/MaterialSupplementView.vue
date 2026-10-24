@@ -142,7 +142,7 @@ function bizLabel(value) {
 function bizLine(item) {
   const c = item.businessContext || {}
   const parts = [c.bizPeriod, c.bizDisplayTitle || bizLabel(item.bizType), c.bizDisplaySubtitle].filter(Boolean)
-  return parts.length ? parts.join(' · ') : `${bizLabel(item.bizType)} · 业务记录 #${item.bizId}`
+  return parts.length ? parts.join(' · ') : `${bizLabel(item.bizType)} · 业务记录编号 ${item.bizId}`
 }
 function fmt(value) { return value ? String(value).replace('T', ' ').slice(0, 10) : '' }
 function fmtTime(value) { return value ? new Date(value).toLocaleString('zh-CN', { hour12: false }) : '' }

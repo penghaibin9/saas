@@ -33,8 +33,8 @@
             <article v-for="row in group.rows" :key="row.repairId" class="aarr-card">
               <div class="aarr-card-head">
                 <div>
-                  <strong>{{ row.resourceLabel || `资源 #${row.resourceId}` }}</strong>
-                  <span>{{ kindLabel(row.resourceKind) }} · 工单 #{{ row.repairId }}</span>
+                  <strong>{{ row.resourceLabel || `资源编号 ${row.resourceId}` }}</strong>
+                  <span>{{ kindLabel(row.resourceKind) }} · 工单编号 {{ row.repairId }}</span>
                 </div>
                 <StatusTag :type="sType(row.status)" :label="row.statusLabel || statusLabel(row.status)" dot />
               </div>
@@ -93,7 +93,7 @@
       :type="noteDialog.type" :confirm-text="noteDialog.confirmText"
       :submitting="noteDialog.submitting" @confirm="onNoteConfirm"
     >
-      <p>{{ noteDialog.row?.resourceLabel }} · 工单 #{{ noteDialog.row?.repairId }} · {{ noteDialog.row?.statusLabel }}</p>
+      <p>{{ noteDialog.row?.resourceLabel }} · 工单编号 {{ noteDialog.row?.repairId }} · {{ noteDialog.row?.statusLabel }}</p>
       <AppInlineAlert v-if="noteDialog.error" type="danger" :description="noteDialog.error" />
       <label v-if="noteDialog.action !== 'START'" class="aarr-note-label">{{ noteDialog.label }}
         <AppTextarea v-model="noteDialog.note" :placeholder="noteDialog.placeholder" :disabled="noteDialog.submitting" />
@@ -242,7 +242,7 @@ export default {
         const valid = fresh && String(fresh.resourceId) === String(dialog.row.resourceId) && fresh.resourceKind === dialog.row.resourceKind && (dialog.action === 'START' ? fresh.status === 'REPORTED' : ['REPORTED', 'IN_REPAIR'].includes(fresh.status))
         if (!valid) throw { code: 409001, message: '工单状态或关联资源已变化。' }
         this.pendingResult = { id: fresh.repairId, row: fresh, expected: { START: 'IN_REPAIR', COMPLETE: 'DONE', CANCEL: 'CANCELLED' }[dialog.action] }
-        this.receipt = { title: '维修办理回执', object: `工单 #${fresh.repairId} · ${fresh.resourceLabel}`, status: '结果待确认', pending: true, next: '办理后读取正式工单与资源状态。' }
+        this.receipt = { title: '维修办理回执', object: `工单编号 ${fresh.repairId} · ${fresh.resourceLabel}`, status: '结果待确认', pending: true, next: '办理后读取正式工单与资源状态。' }
         const note = dialog.note.trim()
         const res = dialog.action === 'START' ? await academicAffairsResourceApi.startRepair(fresh.repairId) : dialog.action === 'COMPLETE' ? await academicAffairsResourceApi.completeRepair(fresh.repairId, note) : await academicAffairsResourceApi.cancelRepair(fresh.repairId, note)
         if (!current()) return
@@ -268,7 +268,7 @@ export default {
         if (res.code === 0) resourceNote = `资源当前状态：${res.data.statusLabel || res.data.status}。有其它未结工单时，完成本单不等于恢复可用。`
       }
       const confirmed = row?.status === pending.expected
-      this.receipt = { title: '维修办理回执', object: `工单 #${pending.id} · ${row?.resourceLabel || pending.row.resourceId}`, status: confirmed ? _STATUS_LABEL[row.status] : '结果待确认', pending: !confirmed, time: row?.resolvedAt || (row?.status === 'REPORTED' ? row.createdAt : undefined), next: resourceNote + (confirmed ? '请在正式维修台账继续核对。' : '尚未读到对应办理状态，请继续查询。') }
+      this.receipt = { title: '维修办理回执', object: `工单编号 ${pending.id} · ${row?.resourceLabel || pending.row.resourceId}`, status: confirmed ? _STATUS_LABEL[row.status] : '结果待确认', pending: !confirmed, time: row?.resolvedAt || (row?.status === 'REPORTED' ? row.createdAt : undefined), next: resourceNote + (confirmed ? '请在正式维修台账继续核对。' : '尚未读到对应办理状态，请继续查询。') }
       if (confirmed) this.pendingResult = null
       await this.load()
     },

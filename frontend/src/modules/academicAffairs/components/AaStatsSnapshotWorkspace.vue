@@ -121,7 +121,7 @@
       <template v-else-if="detail">
         <div class="assw-detail-head">
           <div>
-            <strong>快照 #{{ detail.snapshotId }} · {{ snapshotTypeLabel(detail.snapshotType) }}</strong>
+            <strong>快照编号 {{ detail.snapshotId }} · {{ snapshotTypeLabel(detail.snapshotType) }}</strong>
             <div class="mp-cell-sub">冻结于 {{ formatTime(detail.generatedAt) }} · 源数据截至 {{ formatTime(detail.sourceAsOf) }}</div>
           </div>
           <StatusTag type="success" label="不可变" dot />
@@ -253,13 +253,13 @@ export default {
       return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '—'
     },
     scopeLabel(row) {
-      if (row.collegeId) return `学院 #${row.collegeId}`
+      if (row.collegeId) return `学院编号 ${row.collegeId}`
       return '全校 / 当前账号授权范围'
     },
     filterLabel(row) {
       const parts = []
-      if (row.termId) parts.push(`学期 #${row.termId}`)
-      if (row.majorId) parts.push(`专业 #${row.majorId}`)
+      if (row.termId) parts.push(`学期编号 ${row.termId}`)
+      if (row.majorId) parts.push(`专业编号 ${row.majorId}`)
       return parts.length ? parts.join(' · ') : '无额外筛选'
     },
     async load() {

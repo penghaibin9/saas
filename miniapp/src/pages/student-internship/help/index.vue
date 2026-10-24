@@ -7,8 +7,8 @@
         <text class="hp__hint">用于岗位不适、安全隐患、沟通困难等。提交后进入实习风险台，由指导教师跟进。不替代就业去向登记，也不会伪造监管上报。</text>
       </view>
       <view v-if="receipt" class="card hp__receipt">
-        <text class="t-bold">✓ 求助已提交 · {{ receipt.statusLabel || receipt.status }}</text>
-        <text>记录 #{{ receipt.id }}，指导教师将在风险处置台持续跟进。</text>
+        <text class="t-bold">✓ 求助已提交 · {{ receipt.statusLabel || '待确认' }}</text>
+        <text>记录编号 {{ receipt.id }}，指导教师将在风险处置台持续跟进。</text>
       </view>
       <view v-if="records.length" class="card stack">
         <text class="card-title">我的求助进度</text>

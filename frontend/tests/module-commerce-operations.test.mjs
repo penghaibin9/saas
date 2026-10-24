@@ -44,7 +44,7 @@ test('SLA editor requires all four explicit targets and optimistic version', () 
 
 test('customer-success ticket remains the processing authority', () => {
   assert.match(operations, /退款后授权复核工单/)
-  assert.match(operations, /SupportTicket/)
+  assert.match(operations, /售后工单/)
   assert.match(operations, /\/admin\/platform\/customer-success/)
   assert.doesNotMatch(operations, /关闭工单|解决工单|transitionSupportTicket/)
 })

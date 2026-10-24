@@ -487,7 +487,7 @@ export default {
     },
     workflowObjectMeta() {
       if (!this.activeProgram) return ''
-      const majorLabel = this.activeProgram.majorName || (this.activeProgram.majorId ? `专业 #${this.activeProgram.majorId}` : '专业待核验')
+      const majorLabel = this.activeProgram.majorName || (this.activeProgram.majorId ? `专业编号 ${this.activeProgram.majorId}` : '专业待核验')
       return `${majorLabel} · ${this.activeProgram.gradeYear ? `${this.activeProgram.gradeYear}级` : '年级待核验'} · v${this.activeProgram.version} · ${this.statusLabel(this.activeProgram.status)}`
     },
     workflowIdentity() { return JSON.stringify([currentUserFromToken(), this.ctx.ctxKey, this.ctx.currentRole, this.ctx.permissionPatterns, this.ctx.dataScope, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
@@ -513,7 +513,7 @@ export default {
         card('课程身份与版本', ['courseId', 'courses'], Number(validation?.courseCount) > 0, `${validation?.courseCount ?? program.courseCount ?? 0} 门课程来自稳定课程版本。`),
         card('课程结构', ['module', 'courseName', 'openTermNo'], Number(validation?.courseCount) > 0, `课程模块与开设学期按方案 v${program.version || '—'} 复验。`),
         card('学分学时', ['credit', 'hoursTotal', 'totalCredits'], validation?.courseCreditSum != null && Number(validation.courseCreditSum) <= Number(program.totalCredits || validation.courseCreditSum), `课程学分 ${validation?.courseCreditSum ?? program.creditSum ?? '—'} / 毕业要求 ${program.totalCredits ?? '—'}。`),
-        card('专业年级绑定', ['majorId', 'gradeYear'], Boolean(program.majorId && program.gradeYear), `${program.majorName || (program.majorId ? `专业 #${program.majorId}` : '专业待核验')} / ${program.gradeYear ? `${program.gradeYear}级` : '年级待核验'}。`),
+        card('专业年级绑定', ['majorId', 'gradeYear'], Boolean(program.majorId && program.gradeYear), `${program.majorName || (program.majorId ? `专业编号 ${program.majorId}` : '专业待核验')} / ${program.gradeYear ? `${program.gradeYear}级` : '年级待核验'}。`),
         card('实践环节', ['practiceSegments', 'segmentName', 'weeks'], !issues.some((item) => item.level === 'BLOCKER' && /practice|segment/i.test(item.fieldPath || '')), `已登记 ${validation?.practiceCount ?? '—'} 个实践环节。`),
         card('毕业要求', ['graduationRequirements', 'requirement'], !issues.some((item) => item.level === 'BLOCKER' && /graduation|requirement/i.test(item.fieldPath || '')), '毕业要求按当前方案版本读取，不使用全校统一硬编码。')
       ]

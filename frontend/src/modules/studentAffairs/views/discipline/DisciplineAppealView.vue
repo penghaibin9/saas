@@ -273,7 +273,7 @@ export default {
       const q = this.$route.query || {}
       this.caseFocusId = String(q.caseId || '').trim()
       this.appealFocusId = String(q.appealId || '').trim()
-      this.focusNotice = this.caseFocusId ? `已锁定处分案件 #${this.caseFocusId}；所有查询仍由后端权限与数据范围重新校验。` : ''
+      this.focusNotice = this.caseFocusId ? `已锁定处分案件编号 ${this.caseFocusId}；所有查询仍由后端权限与数据范围重新校验。` : ''
       this.casePagination.page = 1; this.appealPagination.page = 1
     },
     canBtn(code) { return canCode(this.ctx, code) },

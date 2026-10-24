@@ -59,8 +59,8 @@
             <span class="mp-card__title">{{ detail.registry.label }} · 校验结果</span>
           </header>
           <div class="mp-card__body">
-            <p class="mp-note">owner：{{ detail.registry.ownerModule }} ·
-              resolver：{{ detail.registry.resolver || '未登记' }} ·
+            <p class="mp-note">负责人：\1 ·
+              解析方式：\1 ·
               测试：{{ detail.registry.test }}</p>
             <p v-if="detail.registry.notes" class="mp-note">{{ detail.registry.notes }}</p>
             <p v-if="detail.data.error" class="mp-note">体检失败：{{ detail.data.error }}</p>

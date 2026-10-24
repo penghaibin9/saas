@@ -23,7 +23,7 @@
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
-        :identity="`本人教学任务 #${primaryRow.taskId} · ${primaryRow.courseCode || '课程代码待提供'}`"
+        :identity="`本人教学任务编号 ${primaryRow.taskId} · ${primaryRow.courseCode || '课程代码待提供'}`"
         source="来源：学院已分配至当前登录教师的稳定工号；本入口不能代办他人任务。"
         :status="statusLabel(primaryRow.status)"
         :owner="currentOwner(primaryRow)"

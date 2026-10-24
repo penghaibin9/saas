@@ -59,7 +59,7 @@
       <DataTable v-else :columns="columns" :rows="rows" row-key="programId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.programName }}</div>
-          <div class="mp-cell-sub">{{ row.courseCount ?? '—' }} 门课程 · 正式方案 #{{ row.programId }}</div>
+          <div class="mp-cell-sub">{{ row.courseCount ?? '—' }} 门课程 · 正式方案编号 {{ row.programId }}</div>
         </template>
         <template #cell-majorGrade="{ row }">
           <div class="mp-cell-main">{{ row.majorName || '专业待核验' }}</div>

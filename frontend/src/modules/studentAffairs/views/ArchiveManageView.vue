@@ -97,7 +97,7 @@
               <li v-for="p in packages" :key="p.packageId" class="av-pkg">
                 <span class="av-pkg__student">{{ p.realName || p.studentName || ('学生 #' + p.studentId) }}</span>
                 <span class="av-pkg__status" :class="`is-${String(p.status || '').toLowerCase()}`">{{ pkgStatusLabel(p.status) }}</span>
-                <span v-if="p.exportTaskId" class="av-pkg__task">水印包 #{{ p.exportTaskId }}</span>
+                <span v-if="p.exportTaskId" class="av-pkg__task">水印包编号 {{ p.exportTaskId }}</span>
               </li>
             </ul>
           </div>
@@ -267,7 +267,7 @@ export default {
       const batchId = String(value || '')
       if (!/^[1-9]\d*$/.test(batchId) || String(this.current?.batchId || '') === batchId) return
       const row = this.batches.find((item) => String(item.batchId) === batchId)
-      this.selectBatch(row || { batchId, batchName: `归档批次 #${batchId}` }, false)
+      this.selectBatch(row || { batchId, batchName: `归档批次编号 ${batchId}` }, false)
     },
     syncBatchRoute(batchId) {
       const value = String(batchId || '')

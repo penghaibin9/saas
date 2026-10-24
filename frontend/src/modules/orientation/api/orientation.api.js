@@ -155,17 +155,17 @@ export async function getFilterOptions() {
     .filter((row) => row.collegeId)
     .map((row) => [String(row.collegeId), {
       value: String(row.collegeId),
-      label: row.collegeName || `学院#${row.collegeId}`
+      label: row.collegeName || `学院编号 ${row.collegeId}`
     }])).values()]
   return envelope({
     colleges,
     classes: classes.map((row) => ({
       value: String(row.classId || row.id || ''),
-      label: row.className || row.name || `班级#${row.classId || row.id}`
+      label: row.className || row.name || `班级编号 ${row.classId || row.id}`
     })).filter((row) => row.value),
     buildings: buildings.map((row) => ({
       value: String(row.buildingId || row.id || ''),
-      label: row.buildingName || row.name || `楼栋#${row.buildingId || row.id}`
+      label: row.buildingName || row.name || `楼栋编号 ${row.buildingId || row.id}`
     })).filter((row) => row.value),
     availability: {
       classes: classResult.status === 'fulfilled' ? 'REAL' : 'UNAVAILABLE',

@@ -144,7 +144,7 @@ export default {
     applyContactFocus() {
       if (!this.contactFocusId) { this.focusNotice = ''; return }
       const hit = this.contacts.some((item) => String(item.contactId) === String(this.contactFocusId))
-      this.focusNotice = hit ? `已定位谈话转出的家校联系 #${this.contactFocusId}` : '该联系记录未在当前页，已定位到该生时间线；可翻页继续查看，不会跨学生搜索。'
+      this.focusNotice = hit ? `已定位谈话转出的家校联系编号 ${this.contactFocusId}` : '该联系记录未在当前页，已定位到该生时间线；可翻页继续查看，不会跨学生搜索。'
     },
     canBtn(code) { return canCode(this.ctx, code) },
     consumeRouteIntent() {

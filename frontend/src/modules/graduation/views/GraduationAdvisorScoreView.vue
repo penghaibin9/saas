@@ -43,7 +43,7 @@
           <template v-else>
             <div class="as-context">
               <div><span>当前导师分</span><b>{{ grade && grade.advisorScore != null ? grade.advisorScore : '还没打' }}</b></div>
-              <div><span>成绩状态</span><b>{{ grade ? (grade.statusLabel || grade.status) : '—' }}</b></div>
+              <div><span>成绩状态</span><b>{{ grade ? (grade.statusLabel || '待确认') : '—' }}</b></div>
             </div>
             <p v-if="published" class="as-warn">成绩已经发布，导师分不能再改。如确实要改，请联系管理员先撤回成绩。</p>
             <template v-else>

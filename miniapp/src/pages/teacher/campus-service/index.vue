@@ -15,7 +15,7 @@
             <view class="cs__hint">请假审批、退回、销假和续假均在统一审批中心按正式状态机办理。</view>
             <view class="stack">
               <view v-for="x in leaveList" :key="x.id" class="card cs">
-                <view class="row-between"><view class="flex-1"><view class="row" style="gap:6px;"><text class="t-md t-bold">{{ x.name || '—' }}</text><text class="cs__type">{{ x.typeLabel || x.type }}</text></view><text class="cs__sub">{{ x.className || '' }}<text v-if="x.code"> · {{ x.code }}</text></text></view><MobileStatusTag :label="x.statusLabel || x.status" type="warning" /></view>
+                <view class="row-between"><view class="flex-1"><view class="row" style="gap:6px;"><text class="t-md t-bold">{{ x.name || '—' }}</text><text class="cs__type">{{ x.typeLabel || '待确认' }}</text></view><text class="cs__sub">{{ x.className || '' }}<text v-if="x.code"> · {{ x.code }}</text></text></view><MobileStatusTag :label="x.statusLabel || '待确认'" type="warning" /></view>
                 <view class="cs__period" v-if="x.startTime"><text class="cs__period-k">起止</text><text class="flex-1 t-sm">{{ (x.startTime || '').slice(5, 16) }} ~ {{ (x.endTime || '').slice(5, 16) }}</text></view>
                 <view class="cs__reason" v-if="x.reason"><text class="cs__reason-k">事由</text><text class="flex-1 t-sm">{{ x.reason }}</text></view>
               </view>
@@ -33,7 +33,7 @@
           <MobileGlobalState v-else-if="!workList.length" state="empty" title="暂无服务工单" description="学生的服务申请会在这里进入处理队列。" />
           <template v-else>
             <view class="cs__hint">工单只展示你当前数据范围内的学生；处理说明会写入正式审计轨迹。</view>
-            <view class="stack"><view v-for="x in workList" :key="x.id" class="card cs cs--tap" @click="openWorkOrder(x)"><view class="row-between"><view class="flex-1"><text class="t-md t-bold">{{ x.title || '服务申请' }}</text><text class="cs__sub">{{ x.name || '学生' }}{{ x.className ? ' · ' + x.className : '' }}</text></view><MobileStatusTag :label="x.statusLabel || x.status" :type="workStatusType(x.status)" /></view><text class="cs__reason-text">{{ x.detail || '未填写补充说明' }}</text><text class="cs__apply">提交于 {{ formatTime(x.createTime) }} · 点击查看并处理</text></view></view>
+            <view class="stack"><view v-for="x in workList" :key="x.id" class="card cs cs--tap" @click="openWorkOrder(x)"><view class="row-between"><view class="flex-1"><text class="t-md t-bold">{{ x.title || '服务申请' }}</text><text class="cs__sub">{{ x.name || '学生' }}{{ x.className ? ' · ' + x.className : '' }}</text></view><MobileStatusTag :label="x.statusLabel || '待确认'" :type="workStatusType(x.status)" /></view><text class="cs__reason-text">{{ x.detail || '未填写补充说明' }}</text><text class="cs__apply">提交于 {{ formatTime(x.createTime) }} · 点击查看并处理</text></view></view>
             <button v-if="workList.length < workTotal" class="btn btn-secondary cs__more" :loading="workState === 'loading'" @click="loadMoreWorkOrders">加载更多</button>
           </template>
           </view>
@@ -41,7 +41,7 @@
 
           <view v-if="selected && selected.order" class="card work-detail">
             <button class="btn btn-secondary" :disabled="submitting" @click="selected = null">返回工单列表</button>
-            <view class="row-between"><text class="t-lg t-bold">处理服务申请</text><MobileStatusTag :label="selected.order.statusLabel || selected.order.status" :type="workStatusType(selected.order.status)" /></view>
+            <view class="row-between"><text class="t-lg t-bold">处理服务申请</text><MobileStatusTag :label="selected.order.statusLabel || '待确认'" :type="workStatusType(selected.order.status)" /></view>
             <view class="work-detail__line"><text>学生</text><text>{{ selected.order.name || selected.student?.name || '—' }}{{ selected.order.className ? ' · ' + selected.order.className : '' }}</text></view>
             <view class="work-detail__line"><text>申请事项</text><text>{{ selected.order.title || '—' }}</text></view>
             <view class="work-detail__body"><text>学生说明</text><text>{{ selected.order.detail || '未填写补充说明' }}</text></view>

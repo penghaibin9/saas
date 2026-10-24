@@ -76,7 +76,7 @@
                 <strong>{{ item.stageLabel }} · 第 {{ item.roundNo || '—' }} 轮</strong>
                 <span>{{ formatTime(item.createdAt) }}</span>
               </div>
-              <b>{{ item.resultLabel || item.result }}</b>
+              <b>{{ item.resultLabel || '待确认' }}</b>
             </header>
             <p v-if="item.summary" class="w75__event-summary">{{ item.summary }}</p>
             <ul v-if="item.issues?.length" class="w75__issues">

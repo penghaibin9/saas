@@ -214,15 +214,15 @@ export default {
         { key: 't', label: '合计', value: s === null ? '—' : Number(s.ALL || Object.values(s).reduce((a, b) => a + Number(b || 0), 0)), accent: 'primary' }
       ]
     },
-    buildingOptions() { return this.buildings.map((b) => ({ value: String(b.buildingId), label: b.buildingName || `楼栋 #${b.buildingId}` })) },
-    roomOptions() { return this.rooms.map((r) => ({ value: String(r.roomId), label: `${r.roomNo || `房间 #${r.roomId}`}${r.vacantBeds != null ? `（空 ${r.vacantBeds}）` : ''}` })) },
+    buildingOptions() { return this.buildings.map((b) => ({ value: String(b.buildingId), label: b.buildingName || `楼栋编号 ${b.buildingId}` })) },
+    roomOptions() { return this.rooms.map((r) => ({ value: String(r.roomId), label: `${r.roomNo || `房间编号 ${r.roomId}`}${r.vacantBeds != null ? `（空 ${r.vacantBeds}）` : ''}` })) },
     bedOptions() { return this.beds.filter((b) => b.status === 'VACANT' && !b.isCurrent).map((b) => ({ value: String(b.bedId), label: `${b.bedNo} 号床` })) },
     bedPlaceholder() { if (!this.dlg.roomId) return '请先选房间'; return this.bedOptions.length ? '选择空床' : '该房间当前无空床' },
     selectedTargetLabel() {
       const b = this.buildings.find((x) => String(x.buildingId) === String(this.dlg.buildingId)) || {}
       const r = this.rooms.find((x) => String(x.roomId) === String(this.dlg.roomId)) || {}
       const bed = this.beds.find((x) => String(x.bedId) === String(this.dlg.toBedId)) || {}
-      return [b.buildingName, r.roomNo && `${r.roomNo}室`, bed.bedNo && `${bed.bedNo}床`].filter(Boolean).join(' / ') || `床位 #${this.dlg.toBedId}`
+      return [b.buildingName, r.roomNo && `${r.roomNo}室`, bed.bedNo && `${bed.bedNo}床`].filter(Boolean).join(' / ') || `床位编号 ${this.dlg.toBedId}`
     },
     validTransferForm() {
       const reason = (this.dlg.reason || '').trim()
@@ -248,7 +248,7 @@ export default {
     canAction(row, action) { return Array.isArray(row.allowedActions) && row.allowedActions.includes(action) },
     fallbackBed(row, side) {
       const prefix = side === 'from' ? 'from' : 'to'
-      return [row[`${prefix}BuildingName`], row[`${prefix}RoomNo`] && `${row[`${prefix}RoomNo`]}室`, row[`${prefix}BedNo`] && `${row[`${prefix}BedNo`]}床`].filter(Boolean).join(' / ') || (row[`${prefix}BedId`] ? `床位 #${row[`${prefix}BedId`]}` : '未记录')
+      return [row[`${prefix}BuildingName`], row[`${prefix}RoomNo`] && `${row[`${prefix}RoomNo`]}室`, row[`${prefix}BedNo`] && `${row[`${prefix}BedNo`]}床`].filter(Boolean).join(' / ') || (row[`${prefix}BedId`] ? `床位编号 ${row[`${prefix}BedId`]}` : '未记录')
     },
     applyRouteFilters() {
       const q = this.$route.query || {}; this.activeTab = ['checkout', 'history'].includes(q.tab) ? q.tab : 'transfer'; this.studentFilter = readStudentFilter(q)

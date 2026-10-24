@@ -13,7 +13,7 @@
             <text class="lv__receipt-title">{{ receipt.actionLabel }}</text>
             <text class="lv__receipt-close" @click="receipt = null">关闭</text>
           </view>
-          <text class="lv__receipt-meta">记录 {{ receipt.id }} · {{ receipt.statusLabel || receipt.status }} · v{{ receipt.version ?? 0 }}</text>
+          <text class="lv__receipt-meta">记录 {{ receipt.id }} · {{ receipt.statusLabel || '待确认' }} · v{{ receipt.version ?? 0 }}</text>
           <text class="lv__receipt-next">{{ receipt.nextStep }}</text>
         </view>
 

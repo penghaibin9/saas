@@ -370,7 +370,7 @@ export default {
       if (res.code !== 0) { this.error = res.message || '投诉加载失败'; this.rows = []; this.total = 0; return }
       this.rows = (res.data.list || []).map((c) => ({
         ...c,
-        studentName: c.studentName || (c.studentId ? `学生#${c.studentId}` : '企业投诉'),
+        studentName: c.studentName || (c.studentId ? `学生编号 ${c.studentId}` : '企业投诉'),
         studentNo: c.complaintNo || '',
         riskCode: c.category || 'COMPLAINT',
         riskTitle: (c.content || '').slice(0, 40),

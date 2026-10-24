@@ -326,7 +326,7 @@ export default {
         this.error = `${message}；已清除先前教学班内容。`
       } else {
         this.error = message
-        if (isConflictResult(result)) this.receipt = { object: `教学班 #${this.teachingClassId}`, status: '数据已变化，保留输入', pending: true, next: '重新读取正式名单并预览影响后再提交。' }
+        if (isConflictResult(result)) this.receipt = { object: `教学班编号 ${this.teachingClassId}`, status: '数据已变化，保留输入', pending: true, next: '重新读取正式名单并预览影响后再提交。' }
       }
     },
     openCreateTeacher() {
@@ -378,7 +378,7 @@ export default {
       const id = this.teachingClassId
       const current = () => !this.disposed && id === this.teachingClassId
       form.submitting = true
-      this.receipt = { object: `教学班 #${id}`, status: '结果待确认', pending: true, next: '读取正式教师关系后确认本次办理结果。' }
+      this.receipt = { object: `教学班编号 ${id}`, status: '结果待确认', pending: true, next: '读取正式教师关系后确认本次办理结果。' }
       try {
         const result = await command()
         if (!current()) return
@@ -389,7 +389,7 @@ export default {
         const relation = relationId && this.teachingClass.teachers.find(row => String(row.teacherRelationId) === String(relationId))
         const confirmed = relation && matches(relation)
         form.visible = false
-        this.receipt = { object: `教学班 #${id} · 教师关系 #${relationId || '未返回'}`, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? '后续授课权限由系统按正式关系和有效周次裁定；历史关系保留。' : '请重新查询正式教师关系，不要重复提交。' }
+        this.receipt = { object: `教学班编号 ${id} · 教师关系编号 ${relationId || '未返回'}`, status: confirmed ? status : '结果待确认', pending: !confirmed, next: confirmed ? '后续授课权限由系统按正式关系和有效周次裁定；历史关系保留。' : '请重新查询正式教师关系，不要重复提交。' }
       } catch (error) { if (current()) this.handleFailure(error, '连接中断，请重新查询正式教师关系。') }
       finally { form.submitting = false }
     },
@@ -428,7 +428,7 @@ export default {
         const members = this.teachingClass.currentMembers.map(row => String(row.studentId)).sort()
         const confirmed = returnedVersion && String(returnedVersion) === String(currentVersion) && JSON.stringify(members) === JSON.stringify([...new Set(studentIds.map(String))].sort()) && this.teachingClass.rosterStatus === 'LOCKED'
         const version = confirmed ? this.teachingClass.rosterVersions?.find(row => String(row.rosterVersionId) === String(currentVersion)) : null
-        this.receipt = { object: `教学班 #${id}`, status: confirmed ? `第${this.teachingClass.rosterVersionNo}版名单已生效` : '结果待确认', pending: !confirmed, time: version?.lockedAt, next: confirmed ? '历史版本保留；下游读取正式生效名单。' : '尚未读到一致的正式名单版本，请刷新核对，不要重复创建。' }
+        this.receipt = { object: `教学班编号 ${id}`, status: confirmed ? `第${this.teachingClass.rosterVersionNo}版名单已生效` : '结果待确认', pending: !confirmed, time: version?.lockedAt, next: confirmed ? '历史版本保留；下游读取正式生效名单。' : '尚未读到一致的正式名单版本，请刷新核对，不要重复创建。' }
         if (confirmed) this.rosterForm.reason = ''
       } catch (error) { if (current()) this.handleFailure(error, '连接中断，请核对正式名单，勿重复创建。') }
       finally { this.saving = false }

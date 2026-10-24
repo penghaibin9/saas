@@ -140,7 +140,7 @@
       <template v-else-if="tab === 'leave'">
         <div v-if="leaveReceipt" class="makeup-receipt" role="status">
           <strong>{{ leaveReceipt.actionLabel }}</strong>
-          <span>记录编号 {{ leaveReceipt.id }} · {{ leaveReceipt.statusLabel || leaveReceipt.status }} · 数据版本 v{{ leaveReceipt.version ?? 0 }}</span>
+          <span>记录编号 {{ leaveReceipt.id }} · {{ leaveReceipt.statusLabel || '待确认' }} · 数据版本 v{{ leaveReceipt.version ?? 0 }}</span>
           <span>{{ leaveReceipt.nextStep }}</span>
         </div>
         <p v-if="leaveError" class="makeup-error" role="alert">{{ leaveError }}</p>
@@ -175,7 +175,7 @@
                     <div style="font-size:13.5px;color:var(--t1)">{{ lv.leaveTypeLabel || lv.leaveType }} · {{ lv.startDate }} ~ {{ lv.endDate }}</div>
                     <div style="font-size:12px;color:var(--t4);margin-top:2px">{{ lv.reason }}</div>
                   </div>
-                  <StatusTag :text="lv.statusLabel || lv.status" :tone="lv.status==='APPROVED'||lv.status==='RETURNED'?'success':lv.status==='REJECTED'?'danger':'warn'" />
+                  <StatusTag :text="lv.statusLabel || '待确认'" :tone="lv.status==='APPROVED'||lv.status==='RETURNED'?'success':lv.status==='REJECTED'?'danger':'warn'" />
                 </div>
                 <div style="display:flex;gap:8px">
                   <button v-if="lv.status==='PENDING'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="withdrawLeave(lv)">撤回</button>
@@ -233,7 +233,7 @@
               <div v-for="m in makeups" :key="m.id" class="repitem" style="flex-direction:column;align-items:stretch;gap:6px">
                 <div style="display:flex;justify-content:space-between;align-items:center">
                   <span>{{ m.checkinDate }} · {{ m.makeupTypeLabel || m.makeupType || '补卡' }}</span>
-                  <StatusTag :text="m.statusLabel || m.status" :tone="m.status==='APPROVED'?'success':m.status==='REJECTED'?'danger':'warn'" />
+                  <StatusTag :text="m.statusLabel || '待确认'" :tone="m.status==='APPROVED'?'success':m.status==='REJECTED'?'danger':'warn'" />
                 </div>
                 <div class="sp-muted" style="font-size:12px">{{ m.reason }}</div>
                 <div v-if="m.reviewComment" class="makeup-review-note">教师意见：{{ m.reviewComment }}</div>
@@ -262,7 +262,7 @@
             <button v-if="intentionCanSubmit" class="sp-btn" :disabled="busy" @click="submitIntention">提交意向</button>
             <button v-if="intentionCanWithdraw" class="sp-btn sp-btn--ghost" :disabled="busy" @click="withdrawIntention">撤回意向</button>
           </div>
-          <p class="sp-muted" style="margin-top:10px">当前状态：{{ intentionMeta.statusLabel || intentionMeta.status || '未填写' }}（匹配只认已提交）</p>
+          <p class="sp-muted" style="margin-top:10px">当前状态：{{ intentionMeta.statusLabel || '未填写' }}（匹配只认已提交）</p>
         </section>
       </template>
 
@@ -389,7 +389,7 @@
           </section>
           <section class="sp-card">
             <div class="sp-panel__head">当前保险</div>
-            <p class="sp-muted">状态：{{ insuranceMeta?.statusLabel || insuranceMeta?.status || '未提交' }}</p>
+            <p class="sp-muted">状态：{{ insuranceMeta?.statusLabel || '未提交' }}</p>
             <p v-if="insuranceMeta?.policyNo" class="sp-muted">保单号：{{ insuranceMeta.policyNo }} · {{ insuranceMeta.insurerName }}</p>
             <p v-if="insuranceMeta?.status === 'PENDING_VERIFY'" class="sp-muted">已交学校核验，核验结果会在这里更新。</p>
             <p v-if="insuranceMeta?.canRenew" class="sp-muted">更新后交学校重新核验，旧保单的核验记录会保留。新保障确认前，不能凭本次提交办理上岗。</p>
@@ -404,7 +404,7 @@
           <div class="sp-panel__head">实习计划书</div>
           <template v-if="planMeta && (planMeta.title || planMeta.planTitle || planMeta.id)">
             <p style="font-size:15px;font-weight:600">{{ planMeta.title || planMeta.planTitle || '实习计划' }}</p>
-            <p class="sp-muted" style="margin-top:8px">状态：{{ planMeta.statusLabel || planMeta.status || '—' }}</p>
+            <p class="sp-muted" style="margin-top:8px">状态：{{ planMeta.statusLabel || '—' }}</p>
             <p v-if="planMeta.content || planMeta.summary" class="sp-muted" style="margin-top:10px;white-space:pre-wrap">{{ planMeta.content || planMeta.summary }}</p>
             <button v-if="planMeta.canAcknowledge !== false && planMeta.status !== 'ACKNOWLEDGED'" class="sp-btn" style="margin-top:12px" :disabled="busy" @click="ackPlan">确认计划</button>
           </template>
@@ -542,7 +542,7 @@
             </template>
             <p v-else class="sp-muted">综合成绩由企业导师、指导教师、周月报打卡按权重生成，发布后可在此查看。</p>
             <div v-if="appealMeta?.hasAppeal" class="notebox" style="margin-top:14px">
-              最近申诉：{{ appealMeta.statusLabel || appealMeta.status }}
+              最近申诉：{{ appealMeta.statusLabel || '待确认' }}
               <span v-if="appealMeta.status === 'APPROVED_RECALCULATING'"> · 原成绩已撤回，学校正在重新核算</span>
               <span v-else-if="appealMeta.status === 'CLOSED'"> · 新成绩已重新发布</span>
             </div>
@@ -1475,8 +1475,8 @@ async function submitAppeal() {
   try {
     const result = await portalApi.internshipScoreAppeal({ ...currentInternshipContext(), reason: appealReason.value })
     evalReceipt.value = { actionLabel: '成绩申诉已提交', id: result?.id || '', version: result?.version,
-      statusLabel: result?.statusLabel || result?.status || '待处理',
-      nextStep: `学校处理时将校验成绩 #${result?.scoreId || '—'} 的 v${result?.scoreVersion ?? '—'} 快照` }
+      statusLabel: result?.statusLabel || '待处理',
+      nextStep: `学校处理时将校验成绩编号 ${result?.scoreId || '—'} 的 v${result?.scoreVersion ?? '—'} 快照` }
     ui.notify('成绩申诉已提交')
     appealReason.value = ''
     appealMeta.value = await portalApi.internshipScoreAppealStatus(currentInternshipContext())

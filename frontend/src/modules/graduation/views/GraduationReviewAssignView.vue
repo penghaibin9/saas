@@ -43,7 +43,7 @@
           <div class="ra-context">
             <div><span>课题</span><b>{{ current.topicTitle || '未确认课题' }}</b></div>
             <div><span>指导教师</span><b>{{ current.advisorName || '未分配' }}</b></div>
-            <div><span>当前阶段</span><b>{{ current.stageLabel || current.stage || '—' }}</b></div>
+            <div><span>当前阶段</span><b>{{ current.stageLabel || '—' }}</b></div>
             <div><span>正式定稿</span><b>{{ current.finalStatusLabel || current.finalStatus || '已通过' }}</b></div>
           </div>
           <label class="ra-field">

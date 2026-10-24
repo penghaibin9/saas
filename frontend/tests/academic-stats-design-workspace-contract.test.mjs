@@ -25,7 +25,7 @@ test('analytics pages expose the design hierarchy without fabricating a time ser
 })
 
 test('report export records scope, purpose and an honest blob receipt', () => {
-  for (const token of ['统计导出流程', '三种范围不要混淆', '导出用途（至少5个字）', '收到服务端 Excel 文件']) {
+  for (const token of ['统计导出流程', '三种范围不要混淆', '导出用途（至少5个字）', '收到系统生成的 Excel 文件']) {
     assert.match(source, new RegExp(token))
   }
   assert.match(source, /exportStats\(/)

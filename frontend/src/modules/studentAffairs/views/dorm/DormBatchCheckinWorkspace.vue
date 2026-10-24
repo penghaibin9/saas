@@ -1,8 +1,8 @@
 <template>
   <section class="batch-workspace" aria-label="批量入住">
     <div class="batch-toolbar">
-      <select v-model="orientationBatchId" aria-label="迎新批次" :disabled="busy || selecting" @change="changeBatch"><option value="">全部迎新批次</option><option v-if="orientationBatchId && !filterOptions.batches.some(item => item.value === orientationBatchId)" :value="orientationBatchId">当前批次 #{{ orientationBatchId }}</option><option v-for="item in filterOptions.batches" :key="item.value" :value="item.value">{{ item.label }}</option></select>
-      <select v-model="classId" aria-label="班级" :disabled="busy || selecting" @change="filter"><option value="">全部班级</option><option v-if="classId && !filterOptions.classes.some(item => item.value === classId)" :value="classId">当前班级 #{{ classId }}</option><option v-for="item in filterOptions.classes" :key="item.value" :value="item.value">{{ item.label }}</option></select>
+      <select v-model="orientationBatchId" aria-label="迎新批次" :disabled="busy || selecting" @change="changeBatch"><option value="">全部迎新批次</option><option v-if="orientationBatchId && !filterOptions.batches.some(item => item.value === orientationBatchId)" :value="orientationBatchId">当前批次编号 {{ orientationBatchId }}</option><option v-for="item in filterOptions.batches" :key="item.value" :value="item.value">{{ item.label }}</option></select>
+      <select v-model="classId" aria-label="班级" :disabled="busy || selecting" @change="filter"><option value="">全部班级</option><option v-if="classId && !filterOptions.classes.some(item => item.value === classId)" :value="classId">当前班级编号 {{ classId }}</option><option v-for="item in filterOptions.classes" :key="item.value" :value="item.value">{{ item.label }}</option></select>
       <AppDormBuildingPicker v-model="buildingId" :disabled="busy || selecting" :options="buildings" placeholder="全部楼栋" @change="filter" />
       <input v-model="keyword" :disabled="busy || selecting" aria-label="搜索已预留床位的学生" placeholder="姓名 / 学号" @keyup.enter="filter">
       <button type="button" :disabled="busy" @click="filter">查询</button>

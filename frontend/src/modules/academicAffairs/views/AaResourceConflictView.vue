@@ -38,17 +38,17 @@
           <template #cell-resourceKind="{ row }">{{ row.resourceKind === 'LAB' ? '实训室' : '教室' }}</template>
           <template #cell-resourceLabel="{ row }">
             <div class="mp-cell-main">{{ row.resourceLabel || '资源名称待确认' }}</div>
-            <div class="mp-cell-sub">资源 ID {{ row.resourceId }} · 正式场地 #{{ row.classroomId }}</div>
+            <div class="mp-cell-sub">资源 ID {{ row.resourceId }} · 正式场地编号 {{ row.classroomId }}</div>
           </template>
           <template #cell-slotNo="{ row }">{{ row.date }} · 第{{ row.slotNo }}节</template>
           <template #cell-booking="{ row }">
             <div class="mp-cell-main">{{ row.applicantName || '申请人待确认' }}</div>
-            <div class="mp-cell-sub">预约 #{{ row.bookingId }} · {{ row.purpose || '未填用途' }}</div>
+            <div class="mp-cell-sub">预约编号 {{ row.bookingId }} · {{ row.purpose || '未填用途' }}</div>
           </template>
           <template #cell-schedule="{ row }">
             <div class="mp-cell-main">{{ row.scheduleCourseName || '课程待确认' }}｜{{ row.scheduleClassName || '班级待确认' }}</div>
-            <div class="mp-cell-sub">{{ row.scheduleTeacherName || '教师待确认' }} · 课位 #{{ row.scheduleItemId }} · 批次 #{{ row.batchId }}</div>
-            <div class="mp-cell-sub">{{ row.classId ? `班级 #${row.classId}` : '班级 ID 缺失' }} · {{ row.taskId ? `任务 #${row.taskId}` : '任务 ID 缺失' }}</div>
+            <div class="mp-cell-sub">{{ row.scheduleTeacherName || '教师待确认' }} · 课位编号 {{ row.scheduleItemId }} · 批次编号 {{ row.batchId }}</div>
+            <div class="mp-cell-sub">{{ row.classId ? `班级编号 ${row.classId}` : '班级 ID 缺失' }} · {{ row.taskId ? `任务编号 ${row.taskId}` : '任务 ID 缺失' }}</div>
             <div :class="['mp-cell-sub', { 'aarc-swap': row.calendarSource === 'SWAP' }]">{{ scheduleDateFact(row) }}</div>
           </template>
           <template #cell-actions="{ row }">
@@ -248,7 +248,7 @@ export default {
     scheduleDateFact(row) {
       const coordinate = `第 ${row.weekNo} 周 · ${WEEKDAY[row.weekday] || '星期待确认'}`
       return row.calendarSource === 'SWAP'
-        ? `SWAP 调课：实际 ${row.date} · 逻辑课日 ${row.logicalDate} · 校历事件 #${row.calendarEventId || '待确认'} · ${coordinate}`
+        ? `SWAP 调课：实际 ${row.date} · 逻辑课日 ${row.logicalDate} · 校历事件编号 ${row.calendarEventId || '待确认'} · ${coordinate}`
         : `教学日 ${row.logicalDate} · ${coordinate}`
     },
     canOpenSchedule(row) { return row.scheduleItemId && row.batchId && row.classId && row.taskId },

@@ -41,7 +41,7 @@ test('student monitoring stays anonymous and role task generation uses the forma
 test('appeal review binds the visible appeal and result before each high-risk action', async () => {
   const source = await readFile(viewUrl, 'utf8')
   for (const token of [
-    '申诉 #${row.appealId}、结果 #${row.resultId}',
+    '申诉编号 ${row.appealId}、结果编号 ${row.resultId}',
     "api.reviewAppeal(row.appealId, 'RESOLVE', note)",
     "api.reviewAppeal(id, 'REJECT', String(reason || '').trim())",
     'syncObjectQuery({ appealId: row.appealId })'

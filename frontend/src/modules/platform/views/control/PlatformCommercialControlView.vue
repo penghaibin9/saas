@@ -38,7 +38,7 @@
           <header>
             <div>
               <span class="module-name">{{ moduleName(mod.moduleKey) }}</span>
-              <small>generation {{ mod.generation || '-' }}</small>
+              <small>授权代次 \1</small>
             </div>
             <span class="pill" :class="mod.entitled ? 'ok' : 'muted'">{{ mod.entitled ? '已授权' : '未授权' }}</span>
           </header>
@@ -50,7 +50,7 @@
           </div>
           <footer>
             <span>{{ mod.deliveryAcceptance ? '交付已验收' : (mod.staleDeliveryAcceptance ? '合同来源已变化，需重新验收' : '待交付验收') }}</span>
-            <span v-if="mod.offboardingJobId">退出任务 #{{ mod.offboardingJobId }}</span>
+            <span v-if="mod.offboardingJobId">退出任务编号 {{ mod.offboardingJobId }}</span>
           </footer>
         </article>
       </section>
@@ -152,16 +152,16 @@
                   <input v-model="offboardForm.confirmed" type="checkbox">
                   <span>我确认这是“单模块退出”，不是整校退租；当前不执行物理销毁。</span>
                 </label>
-                <button class="btn danger" :disabled="busy || !offboardForm.confirmed || !preview.canRequest" @click="requestOffboarding">冻结此模块 generation</button>
+                <button class="btn danger" :disabled="busy || !offboardForm.confirmed || !preview.canRequest" @click="requestOffboarding">冻结此模块授权代次</button>
               </div>
             </div>
 
             <div v-if="job" class="job-box">
               <div class="job-title">
-                <strong>退出任务 #{{ job.jobId }}</strong>
+                <strong>退出任务编号 {{ job.jobId }}</strong>
                 <span class="pill warn">{{ job.state }}</span>
               </div>
-              <p>scopeHash：<code>{{ job.scopeHash }}</code></p>
+              <p>范围校验码：<code>{{ job.scopeHash }}</code></p>
               <p>保留政策：{{ job.retentionPolicyVersion }} · {{ job.retentionDays }} 天</p>
               <div v-if="job.consumerDependencies" class="job-consumer-summary">
                 <span>{{ dispositionLabel(job.consumerDependencies.disposition) }}</span>

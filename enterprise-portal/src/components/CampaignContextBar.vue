@@ -6,7 +6,7 @@ let timer=null
 onMounted(()=>{timer=setInterval(()=>{now.value=Date.now()},60_000)})
 onUnmounted(()=>{if(timer)clearInterval(timer)})
 const deadline=computed(()=>props.campaign?.currentDeadlineAt||props.campaign?.phaseDeadlineAt||props.campaign?.enterpriseDecisionDeadline||props.campaign?.enterpriseDecisionEndAt||'')
-const campaignLabel=computed(()=>props.campaign?.name||props.campaign?.campaignName||(props.campaign?.id?`招聘季 #${props.campaign.id}`:'未选择招聘季'))
+const campaignLabel=computed(()=>props.campaign?.name||props.campaign?.campaignName||(props.campaign?.id?`招聘季编号 ${props.campaign.id}`:'未选择招聘季'))
 const phaseLabel=computed(()=>props.campaign?.phaseLabel||props.campaign?.status||'状态待学校更新')
 const remaining=computed(()=>{
   if(!deadline.value)return '—'

@@ -91,7 +91,7 @@
             <details>
               <summary>查看冻结证据摘要</summary>
               <pre>{{ pretty(stage.evidence) }}</pre>
-              <div class="sp-hash">evidenceHash: {{ stage.evidenceHash }}</div>
+              <div class="sp-hash">证据校验码：\1</div>
             </details>
           </article>
           <EmptyState v-if="!(detail.stages || []).length" title="尚未检查" description="执行六阶段检查后，这里会显示服务器冻结的真实证据与阻断项" />

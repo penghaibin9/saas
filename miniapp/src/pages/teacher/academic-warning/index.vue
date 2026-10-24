@@ -26,7 +26,7 @@
                   <text class="t-md t-bold">{{ w.studentName || w.name || '—' }}</text>
                   <MobileStatusTag :label="w.levelLabel || w.level" :type="levelTone(w.level)" />
                 </view>
-                <text class="aw__sub">{{ w.className || '' }} · {{ w.typeLabel || w.type }}</text>
+                <text class="aw__sub">{{ w.className || '' }} · {{ w.typeLabel || '待确认' }}</text>
               </view>
               <text class="aw__time">{{ (w.triggerTime || '').slice(5, 16) }}</text>
             </view>
@@ -34,7 +34,7 @@
             <view class="aw__meta">
               <text class="aw__meta-item" v-if="w.deadline">处理时限 {{ w.deadline }}</text>
               <text class="aw__meta-item" v-if="w.remindCount">已催办 {{ w.remindCount }} 次</text>
-              <text class="aw__meta-item aw__meta-status">{{ w.statusLabel || w.status }}</text>
+              <text class="aw__meta-item aw__meta-status">{{ w.statusLabel || '待确认' }}</text>
             </view>
             <template v-if="detailId">
               <view class="aw__evidence"><text>预警编号 {{ warningId(w) }}</text><text>责任人 {{ w.owner || '未提供' }}</text></view>

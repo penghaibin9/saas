@@ -82,7 +82,7 @@
               <article><div class="aamk-fact-title"><strong>当前节点与可办动作</strong><StatusTag :type="rtType(activeApplication.status)" :label="applicationStatus(activeApplication)" /></div><p>{{ tab === 'retake' ? '补重修责任岗' : nodeLabel(activeApplication.currentNode) }}</p><p>{{ actionText(activeApplication) }}</p><p v-if="blockers(activeApplication).length" class="aamk-danger">{{ blockers(activeApplication).join('；') }}</p><p v-else class="aamk-muted">{{ activeApplication.returnReason || activeApplication.reviewReason || '暂无办理意见' }}</p></article>
               <article><div class="aamk-fact-title"><strong>{{ tab === 'retake' ? '新修读安排' : '证据文件版本' }}</strong><StatusTag :type="tab === 'retake' && activeApplication.enrollment?.rosterCoverage === 'FROZEN_AT_ENROLLMENT' ? 'success' : 'default'" :label="tab === 'retake' ? enrollmentLabel(activeApplication) : `${formalEvidenceFiles(activeApplication).length}份已登记`" /></div>
                 <template v-if="tab === 'retake'"><p>教学任务：{{ activeApplication.enrollment?.teachingTaskId || activeApplication.teachingTaskId || '尚未编入' }}</p><p>教学班：{{ activeApplication.enrollment?.teachingClassId || '待核对' }}</p><p class="aamk-muted">{{ rosterIdentity(activeApplication) }}</p></template>
-                <ul v-else-if="formalEvidenceFiles(activeApplication).length" class="aamk-evidence-list"><li v-for="file in formalEvidenceFiles(activeApplication)" :key="file.frozenBindingId || file.fileId"><strong>{{ file.fileName || `文件 #${file.fileId}` }}</strong><span>{{ evidenceVersion(file) }}</span><small>SHA-256 {{ shortHash(file.sha256) }} · {{ file.bindingStatus || '绑定状态待核对' }}</small></li></ul>
+                <ul v-else-if="formalEvidenceFiles(activeApplication).length" class="aamk-evidence-list"><li v-for="file in formalEvidenceFiles(activeApplication)" :key="file.frozenBindingId || file.fileId"><strong>{{ file.fileName || `文件编号 ${file.fileId}` }}</strong><span>{{ evidenceVersion(file) }}</span><small>SHA-256 {{ shortHash(file.sha256) }} · {{ file.bindingStatus || '绑定状态待核对' }}</small></li></ul>
                 <p v-else class="aamk-muted">未返回冻结证据文件；不使用旧附件名称替代正式清单。</p>
               </article>
             </div>
@@ -382,7 +382,7 @@ export default {
       const id=course.id||row?.courseId||grade.courseId
       const code=course.code||grade.courseCode
       const version=course.version??grade.courseVersion
-      return [row?.courseName||course.name||'课程待核对',id?`课程 #${id}`:'课程ID待核对',code||'课程代码待核对',version==null?'课程版本待核对':`课程V${version}`].join(' · ')
+      return [row?.courseName||course.name||'课程待核对',id?`课程编号 ${id}`:'课程ID待核对',code||'课程代码待核对',version==null?'课程版本待核对':`课程V${version}`].join(' · ')
     },
     evidenceProblems(row) { return Array.isArray(row?.evidenceProblems) ? row.evidenceProblems.filter(Boolean) : [] },
     blockers(row) {
@@ -397,7 +397,7 @@ export default {
     enrollmentLabel(row) { return row?.enrollment?.rosterCoverage==='FROZEN_AT_ENROLLMENT'?'编班版本已冻结':row?.status==='ENROLLED'?'编班来源待处理':'尚未编班' },
     rosterIdentity(row) {
       const enrollment=row?.enrollment||{}
-      if(enrollment.rosterVersionId)return `名单版本 #${enrollment.rosterVersionId}${enrollment.rosterVersionNo==null?'':` · V${enrollment.rosterVersionNo}`}`
+      if(enrollment.rosterVersionId)return `名单版本编号 ${enrollment.rosterVersionId}${enrollment.rosterVersionNo==null?'':` · V${enrollment.rosterVersionNo}`}`
       return enrollment.rosterCoverage==='UNRESOLVED'?'无法证明当时的名单版本':'完成编班后，系统会返回当时锁定的名单版本'
     },
     hasEvidenceContract(row) {
@@ -540,7 +540,7 @@ export default {
     processKey(row) { return String(row?.batchId || row?.deferId || '') },
     focusProcess(row) { if (this.saving || this.pendingWrite) return; this.activeProcessKey = this.processKey(row) },
     processObjectTitle(row) { return this.tab === 'deferred' ? `${row.studentName || '学生待核对'} · ${row.courseName || '课程待核对'}` : (row.batchName || `${this.modeSpec.objectType} #${row.batchId || '待核对'}`) },
-    processObjectIdentity(row) { if (this.tab === 'deferred') return `缓考申请 #${row.deferId || '待核对'}${row.nextBatchRef ? ` · 目标批次 ${row.nextBatchRef}` : ''}`; return `批次 #${row.batchId || '待核对'} · ${row.termCode || '学期待核对'}` },
+    processObjectIdentity(row) { if (this.tab === 'deferred') return `缓考申请编号 ${row.deferId || '待核对'}${row.nextBatchRef ? ` · 目标批次 ${row.nextBatchRef}` : ''}`; return `批次编号 ${row.batchId || '待核对'} · ${row.termCode || '学期待核对'}` },
     captureScope() { return { identity: this.identityKey, seq: this.scopeSeq, tab: this.tab } },
     currentScope(c) { return this.alive && c.identity === this.identityKey && c.seq === this.scopeSeq && c.tab === this.tab },
     resetScope() {

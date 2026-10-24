@@ -19,7 +19,7 @@
         <div class="agc-context__object">
           <span class="agc-eyebrow">当前毕业审核批次</span>
           <strong>{{ currentBatch ? currentBatch.batchName : '选择一个审核批次' }}</strong>
-          <small>{{ currentBatch ? `来源：毕业审核批次 #${currentBatch.batchId} · 年级 ${currentBatch.gradeYear || '未指定'}` : '请先选择正式审核批次' }}</small>
+          <small>{{ currentBatch ? `来源：毕业审核批次编号 ${currentBatch.batchId} · 年级 ${currentBatch.gradeYear || '未指定'}` : '请先选择正式审核批次' }}</small>
           <small v-if="currentBatch">所属学期：{{ currentBatchTermLabel }}</small>
           <AppGraduationBatchPicker
             v-model="batchId"
@@ -59,7 +59,7 @@
         </aside>
         <article v-if="focusedRow" class="agc-focus">
           <header>
-            <div><span class="agc-eyebrow">当前学生对象</span><h2>{{ focusedRow.realName || focusedRow.studentName || `学生 ${focusedRow.studentId}` }}</h2><small>正式审核结果 #{{ focusedRow.resultId }} · 来源批次 #{{ focusedRow.batchId }}</small></div>
+            <div><span class="agc-eyebrow">当前学生对象</span><h2>{{ focusedRow.realName || focusedRow.studentName || `学生 ${focusedRow.studentId}` }}</h2><small>正式审核结果编号 {{ focusedRow.resultId }} · 来源批次编号 {{ focusedRow.batchId }}</small></div>
             <AppStatusTag :type="overallColor(focusedRow.overall)" dot>{{ overallLabel(focusedRow.overall) }}</AppStatusTag>
           </header>
           <div class="agc-focus__items">
@@ -67,7 +67,7 @@
               <span>{{ itemLabel(item.item) }}</span>
               <AppStatusTag :type="gradItemColor(item.result)" dot>{{ itemResultLabel(item.result) }}</AppStatusTag>
               <p>{{ evidenceText(item.evidence, item.item) }}</p>
-              <small>证据责任：{{ ownerLabel(item.owner) }}<template v-if="item.refId"> · 来源对象 #{{ item.refId }}</template></small>
+              <small>证据责任：{{ ownerLabel(item.owner) }}<template v-if="item.refId"> · 来源对象编号 {{ item.refId }}</template></small>
               <small v-if="!item.refId && ['INTERNSHIP', 'GRADUATION_DESIGN'].includes(item.item)">当前尚无学生台账，须由有本业务学生管理权限的人员先建档。</small>
               <router-link v-if="linkForItem(focusedRow, item)" class="mp-link" :to="linkForItem(focusedRow, item)">{{ sourceLinkLabel(item) }}</router-link>
             </div>

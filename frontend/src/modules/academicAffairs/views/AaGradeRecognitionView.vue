@@ -296,7 +296,7 @@ export default {
         const sameDecision=c.kind!=='review'||expectedStatus!=='REJECTED'||(!!expectedReason&&String(row.reviewReason||'').trim()===expectedReason)
         const statusConsistent=c.kind==='create'?['SUBMITTED','APPROVED','REJECTED'].includes(row.status):row.status===expectedStatus
         if(!statusConsistent||!sameObject||!sameDecision){
-          const message=`已保存的回执确认“${this.statusLabel(persisted.result.status)}”，但原申请 #${id} 的正式记录尚未形成同一结果；不会自动重复提交。`
+          const message=`已保存的回执确认“${this.statusLabel(persisted.result.status)}”，但原申请编号 ${id} 的正式记录尚未形成同一结果；不会自动重复提交。`
           this.receipt={id,description:c.description,commandStatus:persisted.result.status,status:row.status,acknowledged:true,verified:false}
           this.error=message;this.formError=message;this.rejectError=message
           return

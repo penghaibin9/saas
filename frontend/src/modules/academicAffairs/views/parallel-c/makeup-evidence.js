@@ -43,7 +43,7 @@ export function shortHash(value) {
 
 export function gradeIdentity(grade) {
   if (!grade?.gradeId) return '未返回正式成绩ID'
-  const parts = [`成绩 #${grade.gradeId}`]
+  const parts = [`成绩编号 ${grade.gradeId}`]
   if (grade.courseCode) parts.push(grade.courseCode)
   if (grade.courseVersion != null) parts.push(`课程V${grade.courseVersion}`)
   if (grade.attemptNo != null) parts.push(`第${grade.attemptNo}次修读`)

@@ -32,7 +32,7 @@
         </header>
         <div class="sdg-current">
           <div><span>学生</span><strong>{{ student.name }}</strong><small>{{ student.studentNo }} · {{ student.topicTitle || '题目待确认' }}</small></div>
-          <div><span>当前答辩组</span><strong>{{ student.defenseGroup || student.defenseGroupName || '尚未分配' }}</strong><small>{{ student.stageLabel || student.stage || '阶段待确认' }}</small></div>
+          <div><span>当前答辩组</span><strong>{{ student.defenseGroup || student.defenseGroupName || '尚未分配' }}</strong><small>{{ student.stageLabel || '阶段待确认' }}</small></div>
         </div>
       </section>
 

@@ -185,7 +185,7 @@ export function createExchangeController({ state, api, rights }) {
         const pending = state.unresolved[taskKey(item)]
         if (pending && item.version > pending.version) {
           delete state.unresolved[taskKey(item)]
-          state.receipt = `已重新读取任务 #${item.id}，当前为「${taskStatus(item)}」，版本 ${item.version}。没有重复执行上次操作。`
+          state.receipt = `已重新读取任务编号 ${item.id}，当前为「${taskStatus(item)}」，版本 ${item.version}。没有重复执行上次操作。`
         }
         return true
       } catch (error) { if (current()) state.detail.error = errorText(error); return false }
@@ -250,7 +250,7 @@ export function createExchangeController({ state, api, rights }) {
         delete state.unresolved[key]
         state.receipt = p.type === 'download'
           ? `已将文件交给浏览器下载，并重新读取任务版本 ${saved.version}。请核对浏览器下载结果；下载凭证未保存在页面。`
-          : `已重新读取任务 #${saved.id}：${taskStatus(saved)} · 版本 ${saved.version}。`
+          : `已重新读取任务编号 ${saved.id}：${taskStatus(saved)} · 版本 ${saved.version}。`
       } catch (error) {
         if (!current()) return
         state.operationError = errorText(error)

@@ -63,7 +63,7 @@
             <tbody>
               <tr v-for="row in requirements" :id="`material-requirement-${row.requirementId}`" :key="row.requirementId" :class="{ selectedRow: activeRequirement?.requirementId === row.requirementId, focusRow: String(row.requirementId) === focusRequirementId }" @click="openRequirement(row)">
                 <td @click.stop><input type="checkbox" :disabled="!canRemind(row)" :checked="selected.has(row.requirementId)" @change="toggle(row)" /></td>
-                <td><strong>{{ studentLine(row) }}</strong><small>{{ bizTitleLine(row) }}</small><small class="tech-trace">{{ bizLabel(row.bizType) }} #{{ row.bizId }} · 学生 #{{ row.studentId }} · 材料编号 {{ row.assetId || '待回填' }}</small></td>
+                <td><strong>{{ studentLine(row) }}</strong><small>{{ bizTitleLine(row) }}</small><small class="tech-trace">{{ bizLabel(row.bizType) }} #{{ row.bizId }} · 学生编号 {{ row.studentId }} · 材料编号 {{ row.assetId || '待回填' }}</small></td>
                 <td><strong>{{ row.itemName }}</strong><small>{{ row.requirementReason || row.itemCode }}</small><span class="sensitivity" :class="sensitivityClass(row.sensitivityLevel)">{{ sensitivityText(row.sensitivityLevel) }}</span></td>
                 <td><span class="status" :class="statusClass(row.status)">{{ operationStatusLabel(row.status, row.statusLabel) }}</span><small :class="{ overdue: row.overdue }">{{ row.dueAt ? `截止 ${fmt(row.dueAt)}` : '未设截止时间' }}</small></td>
                 <td>

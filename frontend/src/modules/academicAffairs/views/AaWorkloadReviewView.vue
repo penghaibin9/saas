@@ -12,7 +12,7 @@
       <AaTeachingTaskObjectBar
         v-if="primaryRow"
         :name="`${primaryRow.teacherName || primaryRow.teacherKey || '教师'} · ${primaryRow.categoryLabel || '工作量申报'}`"
-        :identity="`教师工作量申报 #${primaryRow.declarationId} · ${primaryRow.termCode || '学期待提供'}`"
+        :identity="`教师工作量申报编号 ${primaryRow.declarationId} · ${primaryRow.termCode || '学期待提供'}`"
         source="来源：教师正式申报记录；审核不越过教学任务、学期与统计口径边界。"
         :status="statusLabel(primaryRow.status)"
         owner="统计授权岗"
@@ -59,7 +59,7 @@
       </template>
     </div>
     <AppConfirmDialog :visible="Boolean(approveTarget)" title="核对工作量申报" confirm-text="确认通过" :confirm-disabled="invalid || Boolean(pending)" :submitting="submitting" @update:visible="value => { if (!value) approveTarget = null }" @confirm="submitReview(approveTarget, 'APPROVE', '')">
-      <AaObjectContext :name="approveTarget?.teacherName" :identity="`申报 #${approveTarget?.declarationId} · ${approveTarget?.termCode || '学期未提供'}`" :status="statusLabel(approveTarget?.status)" />
+      <AaObjectContext :name="approveTarget?.teacherName" :identity="`申报编号 ${approveTarget?.declarationId} · ${approveTarget?.termCode || '学期未提供'}`" :status="statusLabel(approveTarget?.status)" />
       <p>{{ approveTarget?.categoryLabel }} · {{ approveTarget?.hours }} 课时</p>
       <p>{{ approveTarget?.description || '未提供申报说明' }}</p>
       <p class="aa-note-sm">当前未提供关联的教学任务与名单版本依据。通过仅表示申报的审核状态，不代表正式授课关系、名单或薪酬核算已验证。</p>
@@ -192,7 +192,7 @@ export default {
       const confirmed = Boolean(pending.acknowledged && matches && commandMatches)
       await this.load()
       if (!current() || pending !== this.pending || this.error) return
-      this.receipt = { object: pending.redacted ? `申报 #${pending.row.declarationId} · 原办理信息已清除` : `申报 #${pending.row.declarationId} · ${pending.row.teacherName || pending.row.teacherKey} · ${pending.row.termCode || '学期未提供'}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, time: confirmed ? row.reviewedAt : undefined, next: confirmed ? '正式审核状态已重新读取；统计按正式学期与授课关系核算。' : '原审核尚未确认。当前记录不能证明本次办理结果，只查询不重提，请联系教务核对。' }
+      this.receipt = { object: pending.redacted ? `申报编号 ${pending.row.declarationId} · 原办理信息已清除` : `申报编号 ${pending.row.declarationId} · ${pending.row.teacherName || pending.row.teacherKey} · ${pending.row.termCode || '学期未提供'}`, status: confirmed ? this.statusLabel(row.status) : '结果待确认', pending: !confirmed, time: confirmed ? row.reviewedAt : undefined, next: confirmed ? '正式审核状态已重新读取；统计按正式学期与授课关系核算。' : '原审核尚未确认。当前记录不能证明本次办理结果，只查询不重提，请联系教务核对。' }
       if (confirmed) { this.pending = null; this.approveTarget = null; this.rejecting = null; this.rejectNote = '' }
     },
     async queryPending() {
@@ -216,7 +216,7 @@ export default {
         if (!current()) return
         if (!sameEvidence(check, frozen) || check.status !== 'SUBMITTED') { this.handleFailure({ code: 409001, message: '申报内容已变化，原确认失效，请重新核对。' }); return }
         this.pending = { row: frozen, action, note: frozenNote, acknowledged: false }
-        this.receipt = { object: `申报 #${frozen.declarationId}`, status: '结果待确认', pending: true, next: '正在读取正式审核结果，请勿重复办理。' }
+        this.receipt = { object: `申报编号 ${frozen.declarationId}`, status: '结果待确认', pending: true, next: '正在读取正式审核结果，请勿重复办理。' }
         commandPhase = true
         const result = await academicAffairsApi.reviewWorkloadDeclaration(frozen.declarationId, { action, note: frozenNote })
         commandPhase = false

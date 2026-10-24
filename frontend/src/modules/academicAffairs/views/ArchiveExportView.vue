@@ -17,7 +17,7 @@
 
     <section v-if="current" class="aaex-object-card">
       <div>
-        <small>当前业务对象 · 学期归档批次 #{{ current.batchId }}</small>
+        <small>当前业务对象 · 学期归档批次编号 {{ current.batchId }}</small>
         <h2>{{ current.batchName }}</h2>
         <p>{{ isCollegeScope ? '来源：学校已封存学期批次进度；本页不提供学校物料和下载记录' : '来源：已封存的学期归档 · 为什么轮到我：当前岗位拥有归档导出权限' }}</p>
       </div>
