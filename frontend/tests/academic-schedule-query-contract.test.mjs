@@ -33,14 +33,14 @@ test('weekly schedule query covers all five operational dimensions with searchab
   for (const picker of ['AppClassPicker', 'AppTeacherPicker', 'AppClassroomPicker', 'AppStudentPicker', 'AppTeachingClassPicker']) {
     assert.match(source, new RegExp(`<${picker}`))
   }
-  assert.match(source, /teacher: this\.teacherName \|\| '本人课表'/)
+  assert.match(source, /teacher: this\.teacherName \|\| \(this\.teacherKey \? '教师姓名待核对'/)
   assert.doesNotMatch(source, /teacher: `教师 \$\{this\.teacherKey\}`/)
 })
 
 test('teacher schedule responses expose a display name instead of forcing internal keys into the UI', () => {
   const teacherView = read('src/modules/academicAffairs/views/AaTeacherScheduleView.vue')
   const backend = read('../backend/app/modules/academic_affairs/services/academic_affairs_schedule_teacher_relation_guard.py')
-  assert.match(teacherView, /teacherName \|\| '本人'/)
+  assert.match(teacherView, /selectedItem\.teacherName \|\| teacherName \|\| '教师待确认'/)
   assert.match(teacherView, /res\.data\.teacherName/)
   assert.match(backend, /"teacherName": next/)
 })

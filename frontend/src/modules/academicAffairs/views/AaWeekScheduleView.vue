@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
 :title="isAcademicTeacher ? '我的周课表' : '周课表'"
-    :subtitle="isAcademicTeacher ? '默认查看本人本周课程；可切换本人授课班级、教学班和教室' : '按当前教学周（自动识别，可切换）快速查看班级/教师/教室/学生/教学班课表'"
+    :subtitle="isAcademicTeacher ? '默认显示本人本周课程，可切换授课班级、教学班或教室。' : '选择查询范围和周次，查看课程安排。'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -12,11 +12,11 @@
     <div class="mp-stack">
       <AaScheduleObjectBar
         :name="scheduleObjectName"
-        :identity="`${termId ? `学期 #${termId}` : '学期待选择'} · 第${week || '—'}教学周 · ${currentDim.label}`"
-        source="来源：指定教学周内已经生效的正式课表与批准调整"
-        :status="hasSelection ? '只读正式周课表' : '对象待选择'"
+        :identity="`${termId ? '按所选学期查询' : '未选择学期'} · 第${week || '—'}教学周`"
+        source="显示已发布课表及已批准的调停课安排。"
+        :status="hasSelection ? '仅供查看' : '待选择'"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="师生按调整后的正式课次读取"
+        next-owner="师生按课表上课"
       />
       <div class="aa-filter">
         <label class="aa-filter__item">
@@ -49,13 +49,12 @@
         </div>
       </div>
       <!-- 教师 -->
-      <div v-else-if="dim === 'teacher'" class="aa-dim-body">
+      <div v-else-if="dim === 'teacher' && !isAcademicTeacher" class="aa-dim-body">
         <div class="aa-filter">
           <label v-if="!isAcademicTeacher" class="aa-filter__item">
             教师
             <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
           </label>
-          <span v-if="isAcademicTeacher" class="mp-note">当前对象：本人正式任课关系</span>
           <AppButton v-if="!isAcademicTeacher && selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
           <AppButton v-if="!isAcademicTeacher" variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
         </div>
@@ -84,7 +83,7 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!hasSelection" title="请先选择查询对象" :description="dimHint" />
+      <EmptyState v-else-if="!hasSelection" :title="`请先选择${currentDim.label}`" :description="dimHint" />
       <template v-else>
         <p v-if="note" class="mp-note">{{ note }}</p>
         <AppSectionCard :title="resultTitle">
@@ -144,7 +143,7 @@ export default {
     },
     currentDim() { return this.DIMS.find((item) => item.key === this.dim) || this.DIMS[0] },
     scheduleObjectName() {
-      return ({ class: this.className, teacher: this.teacherName || (this.teacherKey ? `教师 ${this.teacherKey}` : ''), room: this.classroomText, student: this.studentName, teachingClass: this.teachingClassName })[this.dim] || '周课表'
+      return ({ class: this.className, teacher: this.teacherName || (this.teacherKey ? '教师姓名待核对' : ''), room: this.classroomText, student: this.studentName, teachingClass: this.teachingClassName })[this.dim] || '课表查询范围'
     },
     hasSelection() {
       if (this.dim === 'class') return !!this.classId
@@ -154,14 +153,12 @@ export default {
       return !!this.teachingClassCode
     },
     dimHint() {
-      const m = { class: '搜索并选择班级', teacher: '输入教师工号或点击「查看本人课表」', room: '搜索并选择教室',
-                 student: '检索并选择学生', teachingClass: '从下方列表选择教学班' }
+      const m = { class: '可按班级名称搜索', teacher: '可按姓名或工号搜索', room: '可按楼栋或教室编号搜索',
+                 student: '可按姓名或学号搜索', teachingClass: '可按教学班或课程名称搜索' }
       return m[this.dim]
     },
     resultTitle() {
-      const name = { class: this.className, teacher: this.teacherName || '本人课表', room: this.classroomText,
-                    student: this.studentName, teachingClass: this.teachingClassName }[this.dim]
-      return (name ? `${name} · ` : '') + `第 ${this.week} 周课表`
+      return `第 ${this.week} 周课程安排`
     },
   },
   created() {

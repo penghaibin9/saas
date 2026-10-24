@@ -33,7 +33,7 @@
         </label>
         <label class="mc-field">
           <span>正文</span>
-          <textarea v-model="form.contentPlain" rows="8" placeholder="正文将按白名单清洗；勿粘贴脚本" @input="scheduleAutosave" />
+          <textarea v-model="form.contentPlain" rows="8" placeholder="请输入通知正文" @input="scheduleAutosave" />
         </label>
         <label class="mc-check">
           <input v-model="form.requireAck" type="checkbox" />
@@ -67,7 +67,7 @@
       </section>
 
       <section v-show="step === 2" class="mc-card">
-        <p class="mc-hint">仅可选择当前账号负责范围内的接收对象。</p>
+        <p class="mc-hint">仅可选择当前账号负责范围内的接收人。</p>
         <AudienceSelector
           v-model="audiences"
           :permission-patterns="permissionPatterns"

@@ -271,7 +271,7 @@ export default {
       }
     },
     contextTitle(c) {
-      return c.contextName || c.roleName || ROLE_LABEL[c.roleCode || c.contextType] || c.roleCode || c.contextType || c.contextId
+      return c.contextName || c.roleName || ROLE_LABEL[c.roleCode || c.contextType] || '其他身份'
     },
     contextScope(c) {
       return c.scopeLabel || ''

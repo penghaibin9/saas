@@ -55,7 +55,7 @@ export async function requestMultipart(path, { files = {}, fields = {}, timeoutM
     if (!error.biz) {
       error.biz = true
       error.code = 503002
-      error.message = '真实接口不可用，写操作禁止 mock 成功'
+      error.message = '上传结果尚未确认，请刷新查看'
     }
     throw error
   } finally {

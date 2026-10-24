@@ -312,7 +312,7 @@ def _grade_change_context(db, instance, *, for_update: bool = False) -> dict:
     if request and int(request.grade_record_id or 0) != int(record.id):
         return {"completeness": ERROR, "summary": "成绩更正来源关联不一致",
                 "sections": [], "attachments": [], "sourceVersion": None,
-                "note": "更正命令与工作流 sourceBizId 不一致，已阻止审批"}
+                "note": "成绩更正记录关联不一致，暂不能审批"}
 
     task = _source_row(db, AaGradeTask, record.task_id, for_update=False) if record.task_id else None
     if request:
@@ -498,13 +498,13 @@ def assert_action_context(context: dict, expected_source_version) -> None:
     if completeness != FULL:
         raise AppException(
             "APPROVAL_CONTEXT_INCOMPLETE",
-            f"业务记录不完整或无法读取（{completeness}），暂不能执行审批动作，请刷新后重试",
+            "业务信息不完整或无法读取，请刷新后再审批",
             http_status=409,
         )
     if expected_source_version is None:
         raise AppException(
             "APPROVAL_CONTEXT_VERSION_REQUIRED",
-            "当前审批需要业务版本快照，请刷新审批详情后重试",
+            "请刷新审批详情，确认最新信息后再办理",
             http_status=409,
         )
     actual = context.get("sourceVersion")
@@ -535,20 +535,18 @@ def resolve_context(db, instance, *, for_update: bool = False) -> dict:
     if not adapter:
         if biz_type in _NON_PRODUCTION_CONTEXT_EXEMPTIONS:
             base["note"] = (
-                f"业务类型 {biz_type} 为非生产审批类型："
-                f"{_NON_PRODUCTION_CONTEXT_EXEMPTIONS[biz_type]}"
+                "此类申请仅用于体验，暂不支持查看业务详情。"
             )
         else:
             base["note"] = (
-                f"业务类型 {biz_type or '（空）'} 尚未接入审批业务上下文，"
-                "详情页无法展示原始业务事实；这不代表该申请没有内容。"
+                "此类申请暂不支持在本页查看业务详情。"
             )
         return base
     try:
         result = adapter(db, instance, for_update=for_update)
-    except Exception as exc:  # noqa: BLE001 —— 单域故障不得拖垮整个审批详情
+    except Exception:  # noqa: BLE001 —— 单域故障不得拖垮整个审批详情
         base["completeness"] = ERROR
-        base["note"] = f"业务信息读取失败（{type(exc).__name__}），请稍后重试"
+        base["note"] = "业务信息读取失败，请稍后重试"
         return base
     base.update(result)
     return base

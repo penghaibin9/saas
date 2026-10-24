@@ -1,7 +1,6 @@
 <template>
   <div class="sec-error">
     <AppCard variant="elevated" class="sec-error__card">
-      <div class="sec-error__code">{{ code }}</div>
       <h1 class="sec-error__title">{{ title }}</h1>
       <p class="sec-error__desc">{{ description }}</p>
       <p v-if="rid" class="sec-error__rid">请求编号：{{ rid }}（联系管理员时提供）</p>
@@ -9,6 +8,7 @@
         <AppButton variant="primary" @click="goHome">返回首页</AppButton>
         <AppButton variant="secondary" @click="relogin">重新登录</AppButton>
       </div>
+      <details class="sec-error__technical"><summary>实施人员使用</summary>状态代码：{{ code }}</details>
     </AppCard>
   </div>
 </template>
@@ -20,7 +20,6 @@
  * "重新登录"为占位：真实登录页在认证后端阶段接入，当前回首页并提示。
  */
 import { AppCard, AppButton } from '@/components/ui'
-import { toast } from '@/utils/toast'
 
 export default {
   name: 'SecurityErrorShell',
@@ -41,7 +40,6 @@ export default {
     },
     relogin() {
       // 登录页占位：认证后端接入前先回首页
-      toast.info('登录页将在认证服务接入后开放，已返回首页')
       this.$router.push('/workbench')
     }
   }

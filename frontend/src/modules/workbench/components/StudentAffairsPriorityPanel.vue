@@ -1,7 +1,7 @@
 <template>
   <div class="priority-layout" :aria-busy="loading">
     <div class="priority-main">
-      <section class="priority-brief">
+      <section v-if="loading || error" class="priority-brief">
         <h2>今日工作摘要</h2>
         <div class="priority-brief-counts">
           <button type="button" @click="go('/admin/approval/todos')">
@@ -59,7 +59,7 @@
                 <h3>{{ row.label }}</h3>
                 <span v-if="row.value > 0" class="priority-status">{{ row.status }}</span>
               </div>
-              <p>{{ row.hint }}</p>
+              <p v-if="row.hint">{{ row.hint }}</p>
             </div>
             <div class="priority-count">
               <strong>{{ row.value ?? '—' }}</strong>
@@ -158,7 +158,7 @@ const BUSINESSES = [
     permission: 'studentAffairs.leave.view',
     icon: 'workbench',
     status: '待审批',
-    hint: '查看申请与审批进度',
+    hint: '',
     action: '进入审批'
   },
   {
@@ -167,7 +167,7 @@ const BUSINESSES = [
     permission: 'studentAffairs.aid.view',
     icon: 'students',
     status: '待审核',
-    hint: '审核认定材料与申请',
+    hint: '',
     action: '审核认定'
   },
   {
@@ -176,7 +176,7 @@ const BUSINESSES = [
     permission: 'studentAffairs.funding.view',
     icon: 'kpi',
     status: '待评审',
-    hint: '处理奖助申请与评审',
+    hint: '',
     action: '进入评审'
   },
   {
@@ -185,7 +185,7 @@ const BUSINESSES = [
     permission: 'studentAffairs.discipline.view',
     icon: 'reports',
     status: '待处理',
-    hint: '处理处分审批与后续教育',
+    hint: '',
     action: '处理处分'
   }
 ]
@@ -207,7 +207,7 @@ export default {
               key: 'approval',
               label: '我的待办',
               status: '待审批',
-              hint: '处理分配给我的审批事项',
+              hint: '',
               action: '查看待办',
               index: -1,
               value: this.pending,

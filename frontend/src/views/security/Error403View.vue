@@ -19,9 +19,9 @@ export default {
     description() {
       if (this.isServiceError) {
         return this.$route.query.message
-          || '无法加载当前账号的权限上下文。请刷新页面重试；若持续失败请联系管理员，勿将此情况当作「未开通权限」。'
+          || '权限信息加载失败，请刷新重试；仍失败请联系管理员。'
       }
-      return '当前账号没有访问该页面或资源的权限。如需开通，请联系学校管理员。'
+      return '当前账号无权访问，如需开通请联系学校管理员。'
     }
   }
 }

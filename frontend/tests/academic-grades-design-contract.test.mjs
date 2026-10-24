@@ -8,7 +8,7 @@ test('shared grade import and export routes present their own designed page iden
   const entry = read('AaGradeEntryView.vue')
   const transcript = read('AaTranscriptView.vue')
   assert.match(entry, /pageTitle\(\).*importMode \? '成绩导入' : '成绩录入'/)
-  assert.match(entry, /与正式名单和成绩方案匹配后才能确认/)
+  assert.match(entry, /名单和成绩项匹配后才能确认导入/)
   assert.match(transcript, /pageTitle\(\).*exportMode \? '成绩导出' : '学生成绩单'/)
   assert.match(transcript, /查询件与正式证明分开，导出用途写入审计/)
 })

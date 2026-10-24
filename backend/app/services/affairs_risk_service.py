@@ -222,6 +222,7 @@ def _handle(db, risk_id, action, content, frm, to):
 def _msg(db, receiver_id, title, content, mtype, risk_id):
     from app.services.message_event_outbox_service import emit_receiver_notice
     if (mtype or "").upper() == "RISK_ALERT":
+        from app.services.message_center_service import risk_notice_text
         emit_receiver_notice(
             db,
             event_code="RISK.ALERT",
@@ -230,7 +231,7 @@ def _msg(db, receiver_id, title, content, mtype, risk_id):
             source_biz_id=int(risk_id),
             receiver_id=receiver_id,
             title=title,
-            content=content,
+            content=risk_notice_text(content, title),
             receiver_as="user",
             dedup_extra=mtype,
         )

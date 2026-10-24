@@ -56,7 +56,7 @@ test('T10 schedule add shows success only after the formal class schedule contai
   await vm.doAdd()
   assert.equal(writes, 1)
   assert.equal(vm.receipt.pending, false)
-  assert.equal(vm.receipt.status, '周1第2节')
+  assert.equal(vm.receipt.status, '周一第2节')
 })
 
 test('T10 uncertain schedule command is read once and never automatically replayed', async () => {
@@ -70,7 +70,7 @@ test('T10 uncertain schedule command is read once and never automatically replay
   assert.equal(writes, 1)
   assert.equal(reads, 1)
   assert.equal(vm.receipt.pending, true)
-  assert.match(vm.receipt.next, /不会自动重复排课/)
+  assert.match(vm.receipt.next, /确认前不要重复排课/)
 })
 
 test('T10 409 preserves the frozen scheduling input and invalidates old preflight', async () => {

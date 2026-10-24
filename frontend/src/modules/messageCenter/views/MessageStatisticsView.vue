@@ -18,7 +18,7 @@
           </select>
           天
         </label>
-        <span class="mc-muted">更新于 {{ data.updatedAt || '—' }}</span>
+        <span class="mc-muted">更新于 {{ formatDateTime(data.updatedAt) }}</span>
       </div>
       <p class="mc-note">{{ data.denominatorNote }}</p>
       <div class="mc-grid">
@@ -52,7 +52,7 @@
         </div>
       </div>
       <div class="mc-actions">
-        <button type="button" class="mc-btn" @click="$router.push('/admin/messages/outbox')">下钻到发布记录</button>
+        <button type="button" class="mc-btn" @click="$router.push('/admin/messages/outbox')">查看发布记录</button>
       </div>
     </div>
   </ModulePageShell>
@@ -60,6 +60,7 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { formatDateTime } from '@/utils/dateUtils'
 import { fetchCampaignStatistics } from '@/modules/messageCenter/api/message-campaign.api'
 import {
   messageCampaignStatusLabel,
@@ -85,7 +86,7 @@ export default {
       const m = (this.data && this.data.metrics) || {}
       return [
         { key: 'c', label: '发布次数', value: m.campaignCount ?? 0 },
-        { key: 'r', label: '接收人数（分母）', value: m.recipientCount ?? 0 },
+        { key: 'r', label: '接收人次', value: m.recipientCount ?? 0 },
         { key: 'd', label: '站内送达', value: `${m.deliveredCount ?? 0}（${m.deliveryRate ?? 0}%）` },
         { key: 'rd', label: '已读', value: `${m.readCount ?? 0}（${m.readRate ?? 0}%）` },
         { key: 'a', label: '确认', value: `${m.ackCount ?? 0}（${m.ackRate ?? 0}%）` },
@@ -95,6 +96,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    formatDateTime,
     messageCampaignStatusLabel,
     messageCategoryLabel,
     messageChannelStatusLabel,

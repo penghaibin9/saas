@@ -150,6 +150,6 @@ test('schedule publication needs exact formal readback and never claims delivery
   assert.equal(count, 1)
   assert.equal(errors.length, 0)
   assert.equal(successes.length, 1)
-  assert.match(successes[0], /已核对正式课表/)
+  assert.match(successes[0], /当前课表已发布/)
   assert.doesNotMatch(successes[0], /已通知师生|全部送达/)
 })

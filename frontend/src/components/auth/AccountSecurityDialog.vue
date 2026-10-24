@@ -13,9 +13,8 @@
       <div class="security-heading">
         <span class="security-shield" aria-hidden="true">盾</span>
         <div>
-          <p class="security-eyebrow">ACCOUNT SECURITY</p>
           <h2 id="account-security-title">账号与安全</h2>
-          <p>办理本人手机号或修改登录密码。安全变更完成后需要重新登录。</p>
+          <p>修改密码或手机号后，所有设备需重新登录。</p>
         </div>
       </div>
 
@@ -53,7 +52,7 @@
             :type="visible.next ? 'text' : 'password'"
             autocomplete="new-password"
             maxlength="128"
-            placeholder="至少 8 位，请勿与当前密码相同"
+            placeholder="请输入新密码"
           >
           <button type="button" :aria-label="visible.next ? '隐藏新密码' : '显示新密码'" @click="visible.next = !visible.next">
             {{ visible.next ? '隐藏' : '显示' }}
@@ -82,8 +81,7 @@
         </ul>
 
         <p v-if="error" class="security-error" role="alert">{{ error }}</p>
-        <p class="security-note">修改后当前会话将退出，其他设备上的旧会话也会失效。不要将密码告诉他人。
-        </p>
+        <p class="security-note">请勿向他人提供密码。</p>
 
         <div class="security-actions">
           <button class="security-cancel" type="button" :disabled="loading" @click="close">取消</button>

@@ -104,7 +104,7 @@ test('missing, nondecimal or numeric IDs and wrong name, type or status are unkn
     { batchName: '另一批次' }, { registerType: 'ENROLL' }, { status: 'OPEN' }, { status: 'ARCHIVED' }]) {
     const { state, notices } = page({ createRegistrationBatch: async () => receipt(draft(), extra) }); open(state); await state.createBatch()
     assert.ok(state.createWrite.pending); assert.equal(state.createWrite.receipt, null); assert.equal(state.createBlocked, true)
-    assert.equal(state.draft.batchName, draft().batchName); assert.match(state.createWrite.error, /结果未知/); assert.deepEqual(notices, [])
+    assert.equal(state.draft.batchName, draft().batchName); assert.match(state.createWrite.error, /结果尚未确认/); assert.deepEqual(notices, [])
   }
 })
 test('503, network exceptions and missing envelopes preserve an unknown lock and never query a similar batch name', async () => {
@@ -151,6 +151,6 @@ test('409 preserves every entered field and displays its real rejection without 
   assert.equal(state.createWrite.error, '学期已归档')
 })
 test('success claims only returned canonical fields and explicitly leaves unreturned dates unverified', () => {
-  assert.match(source, /注册窗口起止未在正式回执中返回/)
-  assert.match(source, /不能根据同名或相似名称认定已经创建或未创建/)
+  assert.match(source, /注册起止时间尚待核验/)
+  assert.match(source, /创建结果尚未确认，已暂停重复创建/)
 })

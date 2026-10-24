@@ -49,8 +49,8 @@ function throwOfflineSkip(method) {
     err.biz = true
     err.code = isWriteMethod(method) ? 503002 : 503001
     err.message = isWriteMethod(method)
-      ? '真实接口不可用，写操作禁止 mock 成功'
-      : '真实接口不可用，生产环境已禁用 mock fallback'
+      ? '服务连接暂不可用，请稍后再试'
+      : '服务暂时不可用，请稍后重试'
   }
   throw err
 }
@@ -90,7 +90,7 @@ export function isWriteMethod(method = 'GET') {
 }
 
 function strictFailure(label, e) {
-  const err = e instanceof Error ? e : new Error(String(e || '真实接口不可用'))
+  const err = e instanceof Error ? e : new Error(String(e || '服务暂时不可用，请稍后重试'))
   err.strict = true
   err.label = label
   return err
@@ -196,8 +196,8 @@ async function rawRequest(path, {
     if (failClosed) {
       throw transportFailure(e, {
         message: isWriteMethod(method)
-          ? '真实接口不可用，写操作禁止 mock 成功'
-          : '真实接口不可用，生产环境已禁用 mock fallback',
+          ? '操作结果尚未确认，请刷新查看'
+          : '数据加载失败，请稍后重试',
         code: isWriteMethod(method) ? 503002 : 503001,
         biz: true
       })
@@ -561,7 +561,7 @@ export async function requestUpload(path, file, fieldName = 'file', { timeoutMs 
     if (e?.biz) throw e
     markOffline()
     throw transportFailure(e, {
-      message: '真实接口不可用，写操作禁止 mock 成功',
+      message: '上传结果尚未确认，请刷新查看',
       code: 503002,
       biz: true,
       bizCode: ['AbortError', 'TimeoutError'].includes(e?.name) ? 'REQUEST_TIMEOUT' : ''
@@ -619,7 +619,7 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
       if (e?.biz) throw e
       markOffline()
       throw transportFailure(e, {
-        message: '真实接口不可用，下载失败',
+        message: '文件下载失败，请稍后重试',
         code: 503001,
         biz: true,
         bizCode: ['AbortError', 'TimeoutError'].includes(e?.name) ? 'REQUEST_TIMEOUT' : ''
@@ -649,7 +649,7 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
 export function withFallback(label, realFn, mockFn) {
   if (!shouldTryReal()) {
     if (canUseMockFallback()) return mockFn()
-    return Promise.reject(strictFailure(label, new Error('生产环境已禁用 mock fallback')))
+    return Promise.reject(strictFailure(label, new Error('服务尚未就绪，请稍后重试')))
   }
   if (canUseMockFallback() && isBackendOffline()) return mockFn()
   return realFn().catch((e) => {
@@ -674,7 +674,7 @@ export function bizStateHint(err) {
 export async function realFirst(label, realFn, mockFn, { write = false } = {}) {
   if (!shouldTryReal()) {
     if (!write && canUseMockFallback()) return mockFn()
-    throw strictFailure(label, new Error(write ? '写操作禁止 mock 成功' : '生产环境已禁用 mock fallback'))
+    throw strictFailure(label, new Error(write ? '服务尚未就绪，暂时无法提交' : '服务尚未就绪，请稍后重试'))
   }
   if (!write && canUseMockFallback() && isBackendOffline()) return mockFn()
   try {

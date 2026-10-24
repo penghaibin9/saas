@@ -83,7 +83,7 @@ test('预发布仍只受原批次条件控制，全校未就绪不阻断公共�
     assert.equal(state.gateActionReady, true)
     await state.confirmGateAction()
     assert.equal(written, true); assert.equal(state.pendingWrite, null); assert.equal(state.gate.submitting, false)
-    assert.match(state.receipt.title, /预发布并核对/)
+    assert.match(state.receipt.title, /课表已预发布/)
   }
 })
 
@@ -97,7 +97,7 @@ test('全校核验通过后正式发布沿原命令并回读同一正式头', as
   })
   await state.confirmGateAction()
   assert.equal(writes, 1); assert.equal(state.pendingWrite, null); assert.equal(state.gate.submitting, false)
-  assert.match(state.receipt.title, /正式发布并核对/)
+  assert.match(state.receipt.title, /课表已发布/)
 })
 
 test('确认前全校条件已变化或缺失，重读阻断并显示服务端中文原因', async () => {

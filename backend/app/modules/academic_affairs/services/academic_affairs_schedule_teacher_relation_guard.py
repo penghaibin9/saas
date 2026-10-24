@@ -48,7 +48,7 @@ def _merge_windows(relations, default_end: int) -> tuple[list[tuple[int, int]], 
         if start <= 0 or end <= 0 or end < start:
             raise AppException(
                 "DATA_CONFLICT",
-                "正式教师关系存在非法有效周次，教师课表无法安全投影",
+                "任课周次有误，请联系教务处核对后查看课表",
                 details={"teacherRelationId": str(relation.id), "startWeek": start, "endWeek": end},
                 http_status=409,
             )
@@ -153,7 +153,7 @@ def teacher_view(batch_id, user, teacher_key):
 
     key = str(teacher_key or "").strip()
     if not key:
-        raise AppException("VALIDATION_ERROR", "teacherKey 必填")
+        raise AppException("VALIDATION_ERROR", "请选择教师")
     _check_query_scope(user, key)
     with schedule.session() as db:
         batch = db.query(AaScheduleBatch).filter(
@@ -181,7 +181,7 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
     """Current published teacher schedule with relation-week clipping."""
     key = str(teacher_key or "").strip()
     if not key:
-        raise AppException("VALIDATION_ERROR", "teacherKey 必填")
+        raise AppException("VALIDATION_ERROR", "请选择教师")
     _check_query_scope(user, key)
     with schedule.session() as db:
         batches = schedule._current_published_batches(db, term_id)
@@ -212,7 +212,7 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
             "teacherName": next((str(row.get("teacherName") or "").strip() for row in all_rows
                                  if str(row.get("teacherName") or "").strip()), ""),
             "teacherAuthorityPolicy": "TEACHING_CLASS_TEACHER_BY_WEEK",
-            "note": "正式教师关系周窗投影；weeklyHours 仅保留旧课表条目参考，不作为薪酬工时",
+            "note": "周学时按课表条目估算，仅供教学安排参考，不能用于薪酬核算。",
         }
 
 

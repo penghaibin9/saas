@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
 :title="isAcademicTeacher ? '个人课表' : '教师课表'"
-    :subtitle="isAcademicTeacher ? '进入即显示本人正式课表；调课、停课、补课从具体课位发起' : '按教师工号查看当前已发布课表；教师本人仅能查看自己，教务处/学院教务可查任意教师'"
+    :subtitle="isAcademicTeacher ? '点击课程可申请调课、停课或补课。' : '选择教师查看已发布的课程安排。'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,23 +11,22 @@
 
     <div class="mp-stack">
       <AaScheduleObjectBar
-        :name="teacherName || (teacherKey ? `教师 ${teacherKey}` : '教师课表')"
-        :identity="teacherKey ? `教师账号 ${teacherKey} · ${termId ? `学期 #${termId}` : '当前正式学期'}` : '选择教师或进入本人课表'"
-        source="来源：真实授课关系与当前正式课表"
-        :status="teacherKey ? '只读正式课表' : '对象待选择'"
+        :name="teacherName || (teacherKey ? '教师姓名待核对' : '课表查询范围')"
+        :identity="termId ? '按所选学期查询' : '使用默认学期'"
+        :source="isAcademicTeacher ? '仅可查看本人的授课安排。' : '仅显示已发布的课程安排。'"
+        :status="teacherKey ? '仅供查看' : '未选择教师'"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="任课教师；调整须进入调停课审批"
+        next-owner="任课教师申请调停课"
       />
       <div class="aa-filter">
         <label v-if="!isAcademicTeacher" class="aa-filter__item aa-filter__item--grow">
           教师
           <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
         </label>
-        <span v-else class="mp-note">当前对象：本人正式任课关系</span>
         <AppButton v-if="!isAcademicTeacher && selfKey" @click="showSelfSchedule">查看本人课表</AppButton>
         <label class="aa-filter__item">
           学期
-          <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
+          <AppTermEntityPicker v-model="termId" placeholder="默认学期" />
         </label>
         <label class="aa-filter__item">
           周次
@@ -38,14 +37,14 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!teacherKey" title="请先输入教师工号" description="或点击「查看本人课表」" />
+      <EmptyState v-else-if="!teacherKey" title="请先选择教师" description="可按姓名或工号搜索" />
       <template v-else>
         <AppSectionCard v-if="isSelfView" title="今天的授课安排" class="aa-today-card">
           <ErrorState v-if="todayError" :description="todayError" @retry="load" />
           <div v-else class="aa-today-head">
-            <div>
-              <strong>{{ todayItems.length ? `今天有 ${todayItems.length} 节课` : '今天没有授课安排' }}</strong>
-              <p>{{ todayNote }}</p>
+            <div v-if="todayItems.length">
+              <strong>共 {{ todayItems.length }} 节课</strong>
+              <p v-if="todayNote">{{ todayNote }}</p>
             </div>
             <span v-if="todayDate">{{ todayDate }}<template v-if="todayWeek"> · 第{{ todayWeek }}教学周</template></span>
           </div>
@@ -53,23 +52,23 @@
             <button v-for="item in todayItems" :key="item.scheduleItemId" type="button" class="aa-today-item" @click="openTodayItem(item)">
               <b>第{{ item.slotNo }}节</b>
               <span><strong>{{ item.courseName }}</strong><small>{{ item.className || '教学班' }} · {{ item.classroom || '教室待定' }}</small></span>
-              <em>查看课位与调停课 ›</em>
+              <em>查看课程与调停课 ›</em>
             </button>
           </div>
           <EmptyState v-else-if="!todayError" title="今天无课" :description="todayNote" />
         </AppSectionCard>
         <div class="aa-summary">
           <span v-if="weeklyHours" class="aa-summary__item">本学期周学时合计（近似）：<b>{{ weeklyHours }}</b></span>
-          <p v-if="note" class="mp-note">课表按正式授课关系及有效周次展示；周学时仅供教学安排参考。</p>
+          <p v-if="note" class="mp-note">{{ note }}</p>
         </div>
-        <AppSectionCard :title="`${teacherName || '本人'} · 周课表`">
+        <AppSectionCard title="课程安排">
           <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
         </AppSectionCard>
-        <AppSectionCard v-if="selectedItem" title="课位详情" class="aa-item-detail">
+        <AppSectionCard v-if="selectedItem" title="课程详情" class="aa-item-detail">
           <div class="aa-item-detail__head">
             <div>
               <strong>{{ selectedItem.courseName || '课程' }}</strong>
-              <p>{{ selectedItem.className || '教学班' }} · {{ selectedItem.teacherName || teacherKey }}</p>
+              <p>{{ selectedItem.className || '教学班' }} · {{ selectedItem.teacherName || teacherName || '教师待确认' }}</p>
             </div>
             <span>{{ weekdayLabel(selectedItem.weekday) }} 第{{ selectedItem.slotNo }}节</span>
           </div>
@@ -82,9 +81,9 @@
             <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('STOP')">申请停课</AppButton>
             <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('MAKEUP')">申请补课</AppButton>
           </div>
-          <p v-if="isSelfView && !selectedOccurrenceWeek" class="mp-note">停课/补课必须先在上方“周次”选择具体教学周；调课可在下一步选择“只调一次”或“调整周期课表”。</p>
-          <p v-else-if="isSelfView" class="mp-note">已选择第{{ selectedOccurrenceWeek }}教学周；提交申请后交学院审核，审批前不改动正式课表。</p>
-          <p v-else class="mp-note">当前为管理查询视图；只有任课教师本人可从课位发起调停课。</p>
+          <p v-if="isSelfView && !selectedOccurrenceWeek" class="mp-note">停课或补课须先选周次，调课可在下一步选择单次或周期调整。</p>
+          <p v-else-if="isSelfView" class="mp-note">第{{ selectedOccurrenceWeek }}教学周的申请先交学院审核，教务处终审通过后更新课表。</p>
+          <p v-else class="mp-note">仅任课教师本人可申请调课、停课或补课。</p>
         </AppSectionCard>
       </template>
     </div>
@@ -139,10 +138,10 @@ export default {
       return Number.isInteger(week) && week > 0 ? week : null
     },
     todayNote() {
-      if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
-      if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
+      if (this.calendarSource === 'HOLIDAY') return '今天为校历节假日，不安排上课。'
+      if (this.calendarSource === 'SWAP_SOURCE') return '今天为校历调休停课日，不安排上课。'
       if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
-      return this.todayItems.length ? '来自同一份正式课表和校历课次投影。' : '已核对学校校历和本人最新正式课表。'
+      return this.todayItems.length ? '点击课程查看详情或申请调停课。' : '可在下方查看其他周次的课程安排。'
     }
   },
   methods: {
@@ -172,7 +171,7 @@ export default {
     applyChange(changeType) {
       const originItemId = this.selectedItem?.itemId || this.selectedItem?.scheduleItemId
       if (!originItemId) {
-        toast.error('该课位缺少正式课表标识，请刷新本人课表后重试')
+        toast.error('无法确认原课程安排，请刷新课表后重试')
         return
       }
       if (['STOP', 'MAKEUP'].includes(changeType) && !this.selectedOccurrenceWeek) {

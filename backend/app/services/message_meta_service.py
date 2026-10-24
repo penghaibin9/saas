@@ -86,15 +86,14 @@ def statistics_summary(user: dict, *, days: int = 30) -> dict:
                 "ackRate": rate(ack, recipient),
             },
             "denominatorNote": (
-                "recipientCount=各发布单受理时受众快照人数合计；"
-                "delivered/read/ack 为发布单累计字段（投递后增量更新）。"
+                "接收人次按每次发布累计；送达、已读和确认人次随处理结果更新。"
             ),
             "byStatus": [{"status": k, "count": v} for k, v in sorted(by_status.items())],
             "byCategory": [{"category": k, "count": v} for k, v in sorted(by_category.items())],
             "channels": [
                 {"channel": "IN_APP", "status": "READY", "label": "站内消息"},
-                {"channel": "SMS", "status": "NOT_CONFIGURED", "label": "短信（未配置）"},
-                {"channel": "WECHAT", "status": "NOT_CONFIGURED", "label": "微信订阅（未配置）"},
+                {"channel": "SMS", "status": "NOT_CONFIGURED", "label": "短信"},
+                {"channel": "WECHAT", "status": "NOT_CONFIGURED", "label": "微信订阅"},
             ],
         }
 
@@ -167,23 +166,23 @@ def channel_settings(user: dict) -> dict:
     cats = pref.TEACHER_CATEGORIES if ut != "STUDENT" else pref.STUDENT_CATEGORIES
     prefs = pref.get_preferences(user, cats)
     return {
-        "note": "以下仅控制外部打扰；站内正式消息、紧急与强制送达不可关闭。",
+        "note": "分类偏好仅控制一般提醒，站内消息、紧急及强制通知不可关闭。",
         "preferences": prefs.get("items") or [],
         "channels": [
             {"key": "IN_APP", "label": "站内消息", "status": "FORCE_ON",
-             "hint": "正式留存，不可关闭"},
+             "hint": "可在消息中心查看"},
             {"key": "MINIAPP_POPUP", "label": "小程序弹出提醒", "status": "READY",
              "hint": "受分类偏好控制；紧急消息仍会提示"},
             {"key": "SMS", "label": "短信", "status": "NOT_CONFIGURED",
-             "hint": "未配置短信服务商，不会假发送"},
+             "hint": "请联系管理员配置短信服务"},
             {"key": "WECHAT", "label": "微信订阅消息", "status": "NOT_CONFIGURED",
-             "hint": "未配置微信模板，不会假发送"},
+             "hint": "请联系管理员配置订阅模板"},
         ],
         "quietHours": {
             "enabled": True,
             "start": "22:00",
             "end": "07:00",
-            "hint": "普通消息落在静默时段将自动顺延；紧急消息可绕过并记审计备注",
+            "hint": "普通提醒顺延至该时段后发送，紧急提醒照常发送并保留记录。",
             "inQuietNow": gov.is_in_quiet_hours(),
         },
         "rateLimit": {

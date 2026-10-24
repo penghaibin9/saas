@@ -12,24 +12,24 @@
 
     <div class="mp-stack">
       <AaScheduleObjectBar
-        :name="teachingClassName || '教学班课表'"
-        :identity="teachingClassCode ? `教学班 ${teachingClassCode} · ${termId ? `学期 #${termId}` : '当前正式学期'}` : '选择教学班后读取正式课程安排'"
-        source="来源：教学班稳定标识与当前正式课表；不按行政班近似匹配"
-        :status="teachingClassCode ? '只读正式课表' : '对象待选择'"
+        :name="teachingClassName || '课表查询范围'"
+        :identity="termId ? '按所选学期查询' : '使用默认学期'"
+        :source="isAcademicTeacher ? '仅可查看本人任课涉及的教学班。' : '仅显示所选教学班已发布的课程安排。'"
+        :status="teachingClassCode ? '仅供查看' : '未选择教学班'"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="任课教师与教学班学生读取"
+        next-owner="师生按课表上课"
       />
       <div class="aa-reg-search">
         <AppTeachingClassPicker v-model="teachingClassCode" :query="{ termId: termId || undefined }" class="aa-input--grow" placeholder="按教学班名称/课程名搜索" @change="onTeachingClassChange" />
       </div>
 
-      <EmptyState v-if="!teachingClassCode" title="请先选择教学班" description="搜索教学班名称或课程名称，选择后查看已发布课表。" />
+      <EmptyState v-if="!teachingClassCode" title="请先选择教学班" description="可按教学班或课程名称搜索" />
       <template v-else>
         <div class="aa-filter">
           <button class="mp-link" @click="teachingClassCode = ''">‹ 重新选择教学班</button>
           <label class="aa-filter__item">
             学期
-            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" @change="onTermChange" />
+            <AppTermEntityPicker v-model="termId" placeholder="默认学期" @change="onTermChange" />
           </label>
           <label class="aa-filter__item">
             周次
@@ -42,7 +42,7 @@
         <LoadingState v-else-if="loading" />
         <template v-else>
           <p v-if="note" class="mp-note">{{ note }}</p>
-          <AppSectionCard compact :title="teachingClassName ? `${teachingClassName} · 课表` : '教学班课表'">
+          <AppSectionCard compact title="课程安排">
             <AaScheduleGrid interactive :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
           </AppSectionCard>
         </template>

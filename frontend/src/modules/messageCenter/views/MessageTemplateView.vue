@@ -4,12 +4,12 @@
     <LoadingState v-else-if="loading" />
     <div v-else class="mc-tpl">
       <div class="mc-toolbar">
-        <input v-model="keyword" placeholder="搜索模板编码 / 标题 / 事件码" @keyup.enter="load" />
+        <input v-model="keyword" placeholder="搜索模板标题" @keyup.enter="load" />
         <button type="button" class="mc-btn" @click="load">搜索</button>
         <button type="button" class="mc-btn mc-btn--primary" @click="showCreate = !showCreate">新建模板</button>
       </div>
       <div v-if="showCreate" class="mc-create">
-        <label>编码 <input v-model="form.templateCode" placeholder="如 HUMAN_ANNOUNCE" /></label>
+        <label>模板标识 <input v-model="form.templateCode" placeholder="请输入唯一模板标识" /></label>
         <label>标题 <input v-model="form.title" /></label>
         <label>渠道
           <select v-model="form.channel">
@@ -21,16 +21,16 @@
         <label>正文 <textarea v-model="form.content" rows="3" /></label>
         <button type="button" class="mc-btn mc-btn--primary" :disabled="saving" @click="doCreate">保存</button>
       </div>
-      <EmptyState v-if="!items.length" title="暂无模板" description="可新建人工发布模板，或从运行预设安装。" />
+      <EmptyState v-if="!items.length" title="暂无模板" description="可新建模板，或联系管理员配置业务通知模板。" />
       <div v-else class="mc-list">
         <article v-for="t in items" :key="t.templateId + t.channel" class="mc-item">
           <header>
-            <strong>{{ t.title || t.templateCode }}</strong>
+            <strong>{{ t.title || '未命名模板' }}</strong>
             <span class="tag">{{ t.kind === 'SYSTEM' ? '系统业务' : '人工/通用' }}</span>
-            <span class="tag">{{ t.channel }}</span>
+            <span class="tag">{{ messageChannelLabel(t.channel) }}</span>
             <span class="tag" :class="t.enabled ? 'ok' : 'off'">{{ t.enabled ? '启用' : '停用' }}</span>
           </header>
-          <div class="meta">编码 {{ t.templateCode }} · 事件 {{ t.eventCode || '—' }} · 版本 {{ t.version }}</div>
+          <details class="meta"><summary>实施人员使用</summary>编码 {{ t.templateCode }} · 事件 {{ t.eventCode || '—' }} · 版本 {{ t.version }}</details>
           <pre class="preview">{{ t.previewSample }}</pre>
           <div class="mc-actions">
             <button type="button" class="mc-btn" @click="toggle(t)">
@@ -45,6 +45,7 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
+import { messageChannelLabel } from '@/modules/messageCenter/constants/message-center.constants'
 import {
   createMessageTemplate,
   fetchMessageTemplates,
@@ -67,6 +68,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    messageChannelLabel,
     async load() {
       this.loading = true
       this.error = ''

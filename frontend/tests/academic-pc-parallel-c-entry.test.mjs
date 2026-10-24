@@ -441,7 +441,7 @@ test('已损失精度的数值学生 ID 不允许提交', async () => {
   let writes = 0; const vm = mount({}, { saveDynamicGrade: async () => { writes++ } })
   vm.task = task('A')
   await vm.saveDynamicRow({ studentId: Number('1000000000000063602'), scores: {}, exceptionFlag: 'NORMAL' })
-  assert.equal(writes, 0); assert.match(vm.taskError, /标识无法准确/)
+  assert.equal(writes, 0); assert.match(vm.taskError, /学生信息无法准确核对/)
 })
 
 
@@ -494,7 +494,7 @@ test('清空既有固定分数明确传clearUsual，回读更新该行所有正�
 })
 test('清空请求回读仍为旧70时不得提示已保存', async()=>{
   const notices=[];const vm=mount({enterScore:async()=>({code:0}),getGradeRecords:async()=>({code:0,data:{items:[{studentId:'1',usualScore:70,finalScore:80,totalScore:77}]}})},{},notices)
-  vm.task=task('A');await vm.saveRow({studentId:'1',usual:'',final:80,exceptionFlag:'NORMAL'});assert.deepEqual(notices,[]);assert.match(vm.taskError,/待核实/)
+  vm.task=task('A');await vm.saveRow({studentId:'1',usual:'',final:80,exceptionFlag:'NORMAL'});assert.deepEqual(notices,[]);assert.match(vm.taskError,/待确认/)
 })
 test('成绩读取403清除所有旧数据与写权限，迟到的旧动态响应也无效',async()=>{
   const q=deferred();const vm=mount({getGradeRecords:async()=>({code:403001})},{getDynamicGradeRoster:()=>q.promise})

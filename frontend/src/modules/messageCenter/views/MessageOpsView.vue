@@ -1,45 +1,55 @@
 <template>
   <ModulePageShell
     title="投递运维"
-    subtitle="死信作业重试、对账与积压告警（partial）"
+    subtitle="查看投递异常与积压提醒，处理失败的任务可重试。"
     :role-name="roleName"
     :data-scope-name="scopeName"
   >
     <ErrorState v-if="error" :description="error" @retry="load" />
+    <LoadingState v-else-if="loading" />
     <div v-else class="mc-ops">
       <section class="mc-card">
         <div class="mc-row">
           <h3>对账与告警</h3>
           <button type="button" class="mc-btn" :disabled="loading" @click="loadReconcile">刷新对账</button>
         </div>
-        <pre v-if="reconcile" class="mc-pre">{{ reconcileText }}</pre>
+        <p v-if="reconcile?.error" role="alert">{{ safeBusinessMessage(reconcile.error, '对账失败，请重试') }}</p>
+        <template v-else-if="reconcile">
+          <p>待处理通知 {{ reconcile.backlog?.outboxPending ?? '—' }} · 处理失败 {{ reconcile.backlog?.outboxDead ?? '—' }}</p>
+          <p>待投递消息 {{ reconcile.backlog?.deliveryPending ?? '—' }} · 投递失败 {{ reconcile.backlog?.deliveryDead ?? '—' }}</p>
+          <p>本次校正 {{ reconcile.driftFixed ?? '—' }} 项统计</p>
+          <p v-for="(alert, index) in reconcile.alerts || []" :key="index">{{ messageAlertLabel(alert.code) }}：{{ alert.count }}</p>
+          <details><summary>实施人员使用</summary><pre class="mc-pre">{{ reconcileText }}</pre></details>
+        </template>
       </section>
 
       <section class="mc-card">
-        <h3>死信台账</h3>
+        <h3>失败任务</h3>
         <table class="mc-table" v-if="letters.length">
-          <thead><tr><th>ID</th><th>类型</th><th>发布单/事件</th><th>尝试</th><th>错误</th><th></th></tr></thead>
+          <thead><tr><th>序号</th><th>类型</th><th>任务信息</th><th>尝试次数</th><th>失败原因</th><th>操作</th></tr></thead>
           <tbody>
-            <tr v-for="j in letters" :key="(j.kind || '') + '-' + j.jobId">
-              <td>{{ j.jobId }}</td>
-              <td>{{ j.kind || 'DELIVERY_JOB' }}</td>
-              <td>{{ j.campaignId || j.eventCode || '-' }}</td>
+            <tr v-for="(j, index) in letters" :key="(j.kind || '') + '-' + j.jobId">
+              <td>{{ index + 1 }}</td>
+              <td>{{ messageJobKindLabel(j.kind || 'DELIVERY_JOB') }}</td>
+              <td><details><summary>实施人员使用</summary>任务编号：{{ j.jobId }}<br>发布记录：{{ j.campaignId || '—' }}<br>事件：{{ j.eventCode || '—' }}</details></td>
               <td>{{ j.attemptCount }}</td>
-              <td>{{ j.lastError || '-' }}</td>
+              <td>{{ j.lastError ? safeBusinessMessage(j.lastError, '投递失败，请联系管理员核查') : '未提供失败原因' }}</td>
               <td>
                 <button type="button" class="mc-btn mc-btn--primary" @click="retry(j)">重试</button>
               </td>
             </tr>
           </tbody>
         </table>
-        <p v-else class="mc-muted">暂无死信</p>
+        <p v-else class="mc-muted">暂无失败任务</p>
       </section>
     </div>
   </ModulePageShell>
 </template>
 
 <script>
-import { ModulePageShell, ErrorState } from '@/components/business'
+import { ModulePageShell, ErrorState, LoadingState } from '@/components/business'
+import { safeBusinessMessage } from '@/utils/presentationSafety'
+import { messageJobKindLabel, messageAlertLabel } from '@/modules/messageCenter/constants/message-center.constants'
 import {
   fetchDeadLetters,
   retryDeadLetter,
@@ -48,7 +58,7 @@ import {
 
 export default {
   name: 'MessageOpsView',
-  components: { ModulePageShell, ErrorState },
+  components: { ModulePageShell, ErrorState, LoadingState },
   props: { ctx: { type: Object, default: null } },
   data() {
     return { loading: false, error: '', letters: [], reconcile: null }
@@ -68,6 +78,9 @@ export default {
     this.load()
   },
   methods: {
+    safeBusinessMessage,
+    messageJobKindLabel,
+    messageAlertLabel,
     async load() {
       this.loading = true
       this.error = ''

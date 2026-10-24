@@ -83,7 +83,7 @@
                   @mouseenter="fnActive = r._idx"
                 >
                   <span class="bpl-cmdk__opt-lb">{{ r.label }}</span>
-                  <span v-if="r.badge" class="bpl-planbadge" :class="'bpl-planbadge--' + (r.disabled ? 'planned' : 'partial')">{{ r.badge }}</span>
+                  <span v-if="r.badge && !['暂未开放', '部分可用', '未开通'].includes(r.kind)" class="bpl-planbadge" :class="'bpl-planbadge--' + (r.disabled ? 'planned' : 'partial')">{{ r.badge }}</span>
                   <span v-if="r.sub" class="bpl-cmdk__opt-sub">{{ r.sub }}</span>
                 </a>
               </template>
@@ -97,7 +97,7 @@
       </div>
       <div class="bpl-top-r">
         <WorkspaceDeskUtilities v-if="useWorkspace" />
-        <div v-if="!useWorkspace" class="bpl-thdots" title="主题皮肤 themePreference">
+        <div v-if="!useWorkspace" class="bpl-thdots" title="界面配色">
           <span
             v-for="t in themeOptions"
             :key="t.key"
@@ -519,8 +519,8 @@ export default {
           // 防止学校角色通过全局搜索发现或直达平台控制面。
           if (!this.visibleGroupKeys.has(r.groupKey)) continue
           const kind =
-            r.status === 'planned' ? '规划 · 待施工'
-              : r.status === 'partial' ? '页面 · 待补强'
+            r.status === 'planned' ? '暂未开放'
+              : r.status === 'partial' ? '部分可用'
                 : r.status === 'unauthorized' ? '未开通' : '功能/页面'
           out.push({ kind, label: r.trail, to: r.disabled ? null : r.path, disabled: r.disabled, badge: r.badge })
         }
@@ -540,7 +540,7 @@ export default {
     },
     /** 按类别分组，供面板分区渲染 */
     fnGrouped() {
-      const order = ['学生', '功能/页面', '页面 · 待补强', '规划 · 待施工', '未开通', '帮助任务卡', '帮助文档', '业务流程图']
+      const order = ['学生', '功能/页面', '部分可用', '暂未开放', '未开通', '帮助任务卡', '帮助文档', '业务流程图']
       const map = {}
       this.fnResults.forEach((r) => {
         ;(map[r.kind] = map[r.kind] || []).push(r)
@@ -760,7 +760,7 @@ export default {
     pickFn(r) {
       if (!r) return
       if (r.disabled) {
-        toast.info(r.badge === '未开通' ? '该功能未开通' : '该功能待施工，敬请期待')
+        toast.info(r.badge === '未开通' ? '该功能未开通' : '该功能暂未开放')
         return
       }
       if (!r.to) return
@@ -904,7 +904,7 @@ export default {
       if (m.children && m.children.length) this.toggleMod(m.key)
       if (m.disabled) {
         if (!m.children || !m.children.length) {
-          toast.info(m.badge === '未开通' ? '该模块未开通' : '该功能待施工，敬请期待')
+          toast.info(m.badge === '未开通' ? '该模块未开通' : '该功能暂未开放')
         }
         return
       }
@@ -936,7 +936,7 @@ export default {
           if (leaf.path !== this.currentNavRef) router.push(leaf.path).catch(() => {})
           return
         }
-        toast.info(leaf.badge === '未开通' ? '该功能未开通' : '该功能待施工，敬请期待')
+        toast.info(leaf.badge === '未开通' ? '该功能未开通' : '该功能暂未开放')
         return
       }
       if (m) this.clickedLeafKey = this.leafKey(m, leaf)

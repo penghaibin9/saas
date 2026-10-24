@@ -57,11 +57,11 @@ test('schedule add and drag candidates use a pure-read preflight before the cano
   assert.match(scheduleApi, /move-preflight/)
   assert.match(source, /academicAffairsApi\.preflightScheduleItem\(this\.batchId, body\)/)
   assert.match(source, /academicAffairsApi\.preflightScheduleMove\(item\.itemId, weekday, slotNo\)/)
-  assert.match(source, /存在硬冲突，最终提交已锁定/)
-  assert.match(source, /可选无硬冲突时段/)
+  assert.match(source, /暂不能排入，请查看原因/)
+  assert.match(source, /可选调整时段/)
   assert.match(source, /:options="weekdayOptions"/)
   assert.match(source, /:options="slotOptions"/)
-  assert.match(source, /可改到无硬冲突时段/)
+  assert.match(source, /可选调整时段，选择后重新检查/)
   assert.match(source, /checked\.data\?\.alternatives \|\| \[\]/)
   assert.match(source, /:confirm-disabled="preflight\.loading \|\| !preflight\.result\?\.allowed"/)
   assert.match(dialog, /confirmDisabled:\s*\{ type: Boolean/)
@@ -70,7 +70,7 @@ test('schedule add and drag candidates use a pure-read preflight before the cano
 })
 
 test('task-first handoff does not expose raw class or teaching-task ids', () => {
-  assert.match(source, /已从排课工作台定位任务/)
+  assert.match(source, /当前教学任务/)
   assert.doesNotMatch(source, /<small>ID \{\{/)
   assert.doesNotMatch(source, /`班级\$\{task\.classId/)
 })

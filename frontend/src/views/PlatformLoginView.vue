@@ -2,22 +2,20 @@
   <ForcePasswordChangeView v-if="$route.query.forcePasswordChange === '1'" login-route="/platform-login" />
   <main v-else class="platform-login">
     <section class="brand-panel">
-      <div class="brand-mark">S</div>
+      <div class="brand-mark">台</div>
       <div>
-        <p class="eyebrow">SAAS CONTROL PLANE</p>
         <h1>运营平台</h1>
       </div>
       <div class="brand-copy">
         <h2>只服务平台运营方</h2>
-        <p>租户、套餐、开通、发布、安全审计在同一控制面管理；学校账号不能进入此处。</p>
+        <p>管理学校开通、套餐、发布与安全审计；学校账号请使用学校端登录。</p>
       </div>
     </section>
 
     <section class="login-panel" aria-labelledby="login-title">
       <div class="login-card">
-        <p class="kicker">平台运营人员登录</p>
-        <h2 id="login-title">进入 SaaS 运营平台</h2>
-        <p class="hint">请使用平台运营人员账号；登录后仅显示当前职责 capability 允许的控制面。</p>
+        <h2 id="login-title">运营人员登录</h2>
+        <p class="hint">请使用平台运营账号，登录后可办理职责范围内的事项。</p>
 
         <form @submit.prevent="submit">
           <label>
@@ -44,7 +42,7 @@
           </button>
         </form>
 
-        <p class="security-note">此入口不会提供演示账号或免密登录。平台职责由服务端统一判定，临时提升仍受 MFA 与到期时间约束。</p>
+        <p class="security-note">临时权限需通过多重身份验证，且仅在有效期内可用。</p>
         <router-link class="school-link" to="/login">返回学校端登录</router-link>
       </div>
     </section>
@@ -110,7 +108,7 @@ export default {
         const data = await loginWithPassword(loginName, this.form.password, this.form.tenantCode || 'platform', { captchaId: this.captcha.id, captchaCode: this.captcha.code, clientNonce: this.captcha.nonce, clientType: 'PLATFORM_PC' })
         if (!isPlatformPrincipal()) {
           clearAuthSession()
-          this.error = '此账号不是 PLATFORM 控制面身份，请使用学校端登录。'
+          this.error = '此账号不是平台运营账号，请使用学校端登录。'
           return
         }
         if (data?.user?.mustChangePassword) {
@@ -120,7 +118,7 @@ export default {
         const context = await ensurePlatformAccessContext({ force: true })
         if (!context) {
           clearAuthSession()
-          this.error = '平台主管能力上下文加载失败，已拒绝进入控制面。'
+          this.error = '平台权限加载失败，请稍后重新登录。'
           return
         }
         await this.$router.push(resolvePlatformHome(context))

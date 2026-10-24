@@ -27,7 +27,7 @@
             <template v-if="f.uploadedAt"> · {{ f.uploadedAt }}</template>
             <template v-if="f.uploader"> · {{ f.uploader }}</template>
             <template v-if="statusOf(f) === 'error'"> · <span class="app-file-list__err">上传失败</span></template>
-            <template v-if="f.sensitive"> · 下载将写入审计</template>
+            <template v-if="f.sensitive"> · 下载会保留操作记录</template>
           </div>
           <div v-if="statusOf(f) === 'uploading'" class="app-file-list__progress">
             <span class="app-file-list__bar" :style="{ width: (f.progress || 0) + '%' }" />

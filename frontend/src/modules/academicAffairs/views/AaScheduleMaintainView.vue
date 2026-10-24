@@ -1,46 +1,47 @@
 <template>
   <ModulePageShell
-    title="排课 · 课表维护"
-    subtitle="从排课任务队列进入班级网格，点击候选课位后先校验教师、班级、教室冲突，再确认写入"
+    title="课表维护"
+    subtitle="选择班级查看课表，新增或调整课程前须检查冲突。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
       <AppButton @click="returnToQueue">返回原队列</AppButton>
-      <button class="mp-btn" :disabled="!canEditBatch" @click="importVisible = true">批量导入 XLSX</button>
+      <button class="mp-btn" :disabled="!canEditBatch" @click="importVisible = true">批量导入表格</button>
     </template>
 
     <div class="mp-stack">
       <AaScheduleStageRail mode="scheduling" :active-index="scheduleBatch?.status === 'DRAFT' ? 2 : 3" />
-      <AppSectionCard v-if="scheduleBatch" compact title="课表批次与当前正式版本">
+      <AppSectionCard v-if="scheduleBatch" compact title="批次与生效版本">
         <div class="aa-batch-truth">
           <div class="aa-batch-truth__head">
             <div>
-              <strong>{{ scheduleBatch.batchName || `课表批次 ${scheduleBatch.batchId}` }}</strong>
-              <p>批次 ID {{ scheduleBatch.batchId }} · {{ batchStatusLabel }}</p>
+              <strong>{{ scheduleBatch.batchName || '课表批次' }}</strong>
+              <p>{{ batchStatusLabel }}</p>
             </div>
             <AppStatusTag :type="batchHead.type" dot>{{ batchHead.label }}</AppStatusTag>
           </div>
           <div class="aa-batch-truth__grid">
-            <div><span>正式范围</span><strong>{{ formalScopeText }}</strong></div>
-            <div><span>当前正式批次</span><strong>{{ activeBatchText }}</strong></div>
-            <div><span>正式头版本</span><strong>{{ headVersionText }}</strong></div>
-            <div><span>正式头发布时间</span><strong>{{ headPublishedAtText }}</strong></div>
+            <div><span>适用范围</span><strong>{{ formalScopeText }}</strong></div>
+            <div><span>生效课表</span><strong>{{ activeBatchText }}</strong></div>
+            <div><span>生效版本</span><strong>{{ headVersionText }}</strong></div>
+            <div><span>发布时间</span><strong>{{ headPublishedAtText }}</strong></div>
           </div>
           <p class="mp-note">{{ batchHead.detail }}</p>
+          <details><summary>实施人员使用</summary><p>本批次编号：{{ scheduleBatch.batchId }}；生效批次编号：{{ scheduleBatch.activeTruth?.activeBatchId || '—' }}；范围编号：{{ scheduleBatch.activeTruth?.scopeId ?? '—' }}</p></details>
         </div>
       </AppSectionCard>
       <div class="aa-filter">
         <label class="aa-filter__item">班级<AppClassPicker v-model="classId" placeholder="选择班级" @change="onClassPicked" /></label>
         <AppButton @click="loadClass">载入课表</AppButton>
-        <span class="mp-note">{{ scheduleBatch?.status === 'DRAFT' ? '排课新增只接受同学期“已就绪”教学任务；班级选择只决定当前课表视图与可选任务范围。' : '正式或历史批次按班级直接只读，不依赖教学任务准备链，也不会开放排课写入。' }}</span>
+        <span class="mp-note">{{ scheduleBatch?.status === 'DRAFT' ? '仅可安排同学期已就绪的教学任务，选班后查看可排课程。' : '此批次仅供查看，请选择班级载入课表。' }}</span>
       </div>
 
       <AppInlineAlert v-if="lastConflict" type="error" :message="lastConflict" />
       <AaOperationReceipt :receipt="receipt" />
-      <AppButton v-if="pendingWrite" @click="retryPendingRead">只读核对原排课结果</AppButton>
+      <AppButton v-if="pendingWrite" @click="retryPendingRead">查看上次排课结果</AppButton>
       <div v-if="moveConflict.alternatives.length" class="aa-move-alternatives">
-        <strong>可改到无硬冲突时段</strong>
+        <strong>可选调整时段，选择后重新检查</strong>
         <button
           v-for="slot in moveConflict.alternatives"
           :key="`${slot.weekday}-${slot.slotNo}`"
@@ -56,34 +57,34 @@
       <AppInlineAlert
         v-if="preferredTask"
         type="info"
-        title="已从排课工作台定位任务"
-        :description="`${preferredTask.courseName || preferredTask.courseCode || '教学任务'} · ${preferredTask.teacherName || '教师待确认'}；点击课表中的空白课位即可直接安排。`"
+        title="当前教学任务"
+        :description="`${preferredTask.courseName || preferredTask.courseCode || '教学任务'} · ${preferredTask.teacherName || '教师待确认'}；点击空白时段安排课程。`"
       />
       <AppInlineAlert
         v-if="focusItemError"
         type="error"
-        title="指定课位无法精确定位"
+        title="无法定位课程安排"
         :description="focusItemError"
       />
       <section v-else-if="focusedItem" class="aa-focused-item" aria-live="polite">
         <div class="aa-focused-item__head">
           <div>
-            <span>资源占用 / 冲突来源课位</span>
+            <span>原课程安排</span>
             <strong>{{ focusedItem.courseName || '课程待确认' }}</strong>
           </div>
-          <AppStatusTag type="success" dot>已精确定位</AppStatusTag>
+          <AppStatusTag type="success" dot>已定位</AppStatusTag>
         </div>
         <div class="aa-focused-item__grid">
-          <div><span>课位 / 批次</span><strong>#{{ focusedItem.itemId }} / #{{ focusedItem.batchId }}</strong></div>
-          <div><span>班级 / 任务</span><strong>#{{ focusedItem.classId }} / #{{ focusedItem.taskId }}</strong></div>
-          <div><span>原课位</span><strong>周{{ focusedItem.weekday }} · 第{{ focusedItem.slotNo }}节</strong></div>
+          <div><span>班级</span><strong>{{ className || focusedItem.className || '班级待确认' }}</strong></div>
+          <div><span>教师</span><strong>{{ focusedItem.teacherName || '教师待确认' }}</strong></div>
+          <div><span>上课时段</span><strong>{{ weekdayLabel(focusedItem.weekday) }} · 第{{ focusedItem.slotNo }}节</strong></div>
           <div><span>周次 / 教室</span><strong>{{ focusedItem.startWeek }}-{{ focusedItem.endWeek }}周 · {{ focusedItem.classroom || '教室待确认' }}</strong></div>
         </div>
-        <p class="mp-note">当前只展示服务端按批次、班级、任务和课位 ID 共同确认的原课位；任一 ID 不一致都不会用名称近似匹配。</p>
+        <details><summary>实施人员使用</summary><p>课表项编号：{{ focusedItem.itemId }}；批次编号：{{ focusedItem.batchId }}；班级编号：{{ focusedItem.classId }}；教学任务编号：{{ focusedItem.taskId }}</p></details>
       </section>
 
       <LoadingState v-if="loading" />
-      <AppSectionCard v-else :title="classId ? ('班级 ' + (className || '已选择班级') + ' 课表') : preferredTask ? (preferredTask.teachingClassName + ' · ' + preferredTask.courseName) : '请先载入班级课表'">
+      <AppSectionCard v-else :title="classId ? '班级课表' : preferredTask ? '教学任务课表' : '请先载入班级课表'">
         <AaScheduleGrid
           :items="items"
           :slots="slots"
@@ -98,7 +99,7 @@
 
     <AppConfirmDialog
       v-model:visible="add.visible"
-      :title="`排课 · 周${add.weekday} 第${add.slotNo}节`"
+      :title="`排课 · ${weekdayLabel(add.weekday)} 第${add.slotNo}节`"
       type="primary"
       size="wide"
       confirm-text="确认排课"
@@ -120,7 +121,7 @@
 
         <div class="aa-task-echo aa-assign-form__wide" :class="{ 'is-empty': !selectedTask }">
           <div><span>课程</span><strong>{{ selectedTask?.courseName || '选择教学任务后自动带出' }}</strong><small>{{ selectedTask?.courseCode || '—' }}</small></div>
-          <div><span>授课教师</span><strong>{{ selectedTask?.teacherName || '—' }}</strong><small>{{ selectedTask?.teacherKey || '—' }}</small></div>
+          <div><span>授课教师</span><strong>{{ selectedTask?.teacherName || '—' }}</strong></div>
           <div><span>教学班</span><strong>{{ selectedTask?.teachingClassName || '—' }}</strong><small>{{ className ? `行政班：${className}` : '由教学任务自动带出' }}</small></div>
         </div>
 
@@ -140,21 +141,20 @@
         </label>
         <label>结束周
           <input v-model.number="add.endWeek" type="number" :min="selectedTask?.startWeek || 1" :max="selectedTask?.endWeek || undefined" class="aa-input" />
-          <small class="mp-note">不再使用固定 18 周</small>
         </label>
 
         <section class="aa-preflight aa-assign-form__wide" :class="preflightClass">
           <div class="aa-preflight__head">
-            <strong>排课前置校验</strong>
-            <span v-if="preflight.loading">正在校验候选课位…</span>
+            <strong>排课检查</strong>
+            <span v-if="preflight.loading">正在检查课程安排…</span>
             <span v-else-if="preflight.result?.allowed">可以排入</span>
-            <span v-else-if="preflight.result">存在硬冲突，最终提交已锁定</span>
+            <span v-else-if="preflight.result">暂不能排入，请查看原因</span>
             <span v-else>选择教学任务后自动校验</span>
           </div>
           <template v-if="preflight.result && !preflight.result.allowed">
             <p class="aa-preflight__detail">{{ preflightMessage }}</p>
             <div v-if="preflight.result.alternatives?.length" class="aa-preflight__alternatives">
-              <span>可选无硬冲突时段</span>
+              <span>可选调整时段</span>
               <button
                 v-for="slot in preflight.result.alternatives"
                 :key="`${slot.weekday}-${slot.slotNo}`"
@@ -164,7 +164,7 @@
             </div>
           </template>
           <p v-else-if="preflight.result?.allowed" class="aa-preflight__detail">
-            教师、班级、教室三类硬冲突均已通过；正式提交时服务端仍会再次校验。
+            教师、班级和教室的冲突检查通过，提交时将再次检查。
           </p>
         </section>
       </div>
@@ -201,6 +201,7 @@ import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
 import { scheduleTruthPresentation } from '../components/parallel-a/scheduleTruthPresentation'
 import { readAllPages } from '../components/parallel-a/pagedRead'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
+import { formatDateTime } from '@/utils/dateUtils.js'
 
 export default {
   name: 'AaScheduleMaintainView',
@@ -243,24 +244,23 @@ export default {
     batchStatusLabel() { return SCHEDULE_BATCH_STATUS[this.scheduleBatch?.status] || (this.scheduleBatch?.status ? '状态待确认' : '') },
     formalScopeText() {
       const truth = this.scheduleBatch?.activeTruth || {}
-      if (!truth.scopeType && !truth.scopeId) return '待服务端确认'
-      return `${({ SCHOOL: '全校', COLLEGE: '学院' })[truth.scopeType] || '范围待确认'}${truth.scopeId ? ` · ${truth.scopeId}` : ''}`
+      return ({ SCHOOL: '全校', COLLEGE: '指定学院' })[truth.scopeType] || '范围待核对'
     },
     activeBatchText() {
       const truth = this.scheduleBatch?.activeTruth
-      if (truth?.truthStatus === 'VERIFIED') return truth.activeBatchId || '待服务端确认'
-      if (truth?.truthStatus === 'NOT_PUBLISHED') return '尚无正式头'
-      return '待服务端确认'
+      if (truth?.truthStatus === 'VERIFIED' && truth.activeBatchId) return String(truth.activeBatchId) === String(this.scheduleBatch?.batchId) ? '本批次' : '其他已发布批次'
+      if (truth?.truthStatus === 'NOT_PUBLISHED' && !truth.activeBatchId) return '尚未发布'
+      return '待核对'
     },
     headVersionText() {
       const truth = this.scheduleBatch?.activeTruth
       if (truth?.truthStatus === 'NOT_PUBLISHED') return '—'
-      return truth?.truthStatus === 'VERIFIED' && truth.headVersion != null ? truth.headVersion : '待服务端确认'
+      return truth?.truthStatus === 'VERIFIED' && truth.headVersion != null ? `第${truth.headVersion}版` : '待核对'
     },
     headPublishedAtText() {
       const truth = this.scheduleBatch?.activeTruth
       if (truth?.truthStatus === 'NOT_PUBLISHED') return '—'
-      return truth?.truthStatus === 'VERIFIED' ? (truth.publishedAt || '—') : '待服务端确认'
+      return truth?.truthStatus === 'VERIFIED' ? formatDateTime(truth.publishedAt, '时间待核对') : '待核对'
     },
     batchHead() { return scheduleTruthPresentation(this.scheduleBatch) },
     selectedTask() {
@@ -278,14 +278,14 @@ export default {
         }))
     },
     taskWeekText() {
-      if (!this.selectedTask) return '选择任务后显示正式周次'
+      if (!this.selectedTask) return '选择任务后显示周次'
       const start = this.selectedTask.startWeek ?? '—'
       const end = this.selectedTask.endWeek ?? '—'
       return `${start}-${end} 周`
     },
     preflightMessage() {
       const result = this.preflight.result
-      return result?.conflict?.detail || result?.blockers?.[0] || '当前候选课位不可提交'
+      return result?.conflict?.detail || result?.blockers?.[0] || '当前课程安排未通过检查'
     },
     preflightClass() {
       if (this.preflight.loading) return 'is-loading'
@@ -301,7 +301,7 @@ export default {
       ]
     },
     weekdayOptions() {
-      return [1, 2, 3, 4, 5, 6, 7].map((value) => ({ value, label: `周${value}` }))
+      return [1, 2, 3, 4, 5, 6, 7].map((value) => ({ value, label: this.weekdayLabel(value) }))
     },
     slotOptions() {
       return this.slots.map((slot) => ({
@@ -334,6 +334,7 @@ export default {
     this.taskGate.invalidate(); this.invalidateClass()
   },
   methods: {
+    weekdayLabel(value) { return ['周一', '周二', '周三', '周四', '周五', '周六', '周日'][Number(value) - 1] || '星期待确认' },
     contextKey() {
       return JSON.stringify([
         this.identityKey,
@@ -349,7 +350,7 @@ export default {
     },
     async requestResult(request) {
       try { return await request() }
-      catch (error) { return { code: 'REQUEST_ERROR', status: error?.response?.status, message: error?.message || '网络连接中断，请只读核对结果' } }
+      catch (error) { return { code: 'REQUEST_ERROR', status: error?.response?.status, message: error?.message || '网络连接中断，结果尚待确认' } }
     },
     invalidateClass() {
       this.classGate.invalidate(); this.moveGate.invalidate()
@@ -386,14 +387,14 @@ export default {
       this.className = ''
       this.focusedItem = null
       this.focusItemError = this.focusItemId && (!this.classId || !this.focusTaskId)
-        ? `课位 #${this.focusItemId} 缺少正式班级 ID 或任务 ID，无法定位原课位。`
+        ? '课程定位信息不完整，请从来源页重新进入。'
         : ''
       const context = this.contextKey()
       await this.$nextTick()
       this.routeSyncing = false
       if (this.disposed || context !== this.contextKey()) return
       if (state.error || invalidItemId || invalidDate || invalidReturnToken) {
-        this.taskLoadError = state.error || (invalidItemId ? '课位 ID 参数无效，请从资源占用或冲突台账重新进入。' : invalidDate
+        this.taskLoadError = state.error || (invalidItemId ? '入口信息无效，请从资源占用或冲突记录重新进入。' : invalidDate
           ? '来源日期参数无效，请从资源占用或冲突台账重新进入。' : '返回位置参数无效，请从原业务入口重新进入。')
         return
       }
@@ -416,8 +417,8 @@ export default {
         if (isDeniedResult(batches)) return this.clearSensitive(batches.message)
         if (batches.code !== 0) throw new Error(batches.message || '课表批次读取失败')
         const scheduleBatch = batches.data
-        if (String(scheduleBatch?.batchId || '') !== String(batchId)) throw new Error('服务端返回了不同的课表批次，已拒绝更新当前页面。')
-        if (!scheduleBatch.termId) throw new Error('当前课表批次未绑定正式学期')
+        if (String(scheduleBatch?.batchId || '') !== String(batchId)) throw new Error('读取的批次与当前选择不一致，请重新进入。')
+        if (!scheduleBatch.termId) throw new Error('当前课表批次缺少学期信息，请联系教务处核对')
         this.scheduleBatch = scheduleBatch
 
         if (scheduleBatch.status !== 'DRAFT') {
@@ -448,7 +449,7 @@ export default {
           )
           if (!current()) return
           if (isDeniedResult(tasks)) return this.clearSensitive(tasks.message)
-          if (tasks.code !== 0) throw new Error(tasks.message || `教学任务批次 ${taskBatchId} 读取失败`)
+          if (tasks.code !== 0) throw new Error(tasks.message || '教学任务批次读取失败，请重试')
           readyTasks.push(...(tasks.data?.list || []))
         }
         this.readyTasks = readyTasks
@@ -520,20 +521,20 @@ export default {
       this.focusedItem = null
       if (!this.focusItemId) { this.focusItemError = ''; return }
       if (!this.classId || !this.focusTaskId) {
-        this.focusItemError = `课位 #${this.focusItemId} 缺少正式班级 ID 或任务 ID，无法定位原课位。`
+        this.focusItemError = '课程定位信息不完整，请从来源页重新进入。'
         return
       }
       const matches = this.items.filter((item) => String(item.itemId || '') === String(this.focusItemId))
       if (matches.length !== 1) {
         this.focusItemError = matches.length
-          ? `班级 #${this.classId} 的课表返回了重复的课位 #${this.focusItemId}，已拒绝近似定位。`
-          : `班级 #${this.classId} 的当前批次未找到课位 #${this.focusItemId}；课表事实可能已变化，请返回来源页重新查询。`
+          ? '课表中有重复的定位信息，请联系教务处核对。'
+          : '当前批次未找到该课程安排，请返回来源页重新查询。'
         return
       }
       const item = matches[0]
       if ((this.focusTermId && String(this.scheduleBatch?.termId || '') !== String(this.focusTermId)) ||
         String(item.batchId || '') !== String(this.batchId) || String(item.classId || '') !== String(this.classId) || String(item.taskId || '') !== String(this.focusTaskId)) {
-        this.focusItemError = `课位 #${this.focusItemId} 与入口携带的学期、批次、班级或任务 ID 不一致，已拒绝用课程名或班级名替代定位。`
+        this.focusItemError = '学期、批次、班级或教学任务信息不一致，请返回来源页重新查询。'
         return
       }
       this.focusedItem = item
@@ -547,13 +548,13 @@ export default {
           && String(item.taskId) === String(frozen.taskId) && Number(item.weekday) === frozen.weekday && Number(item.slotNo) === frozen.slotNo)
         : null
       this.receipt = formal ? {
-        title: '排课草稿已更新并核对', object: frozen.courseName,
-        status: '周' + formal.weekday + '第' + formal.slotNo + '节', time: formal.updatedAt || formal.createdAt || '',
-        next: '继续补齐剩余课位；正式发布前还需通过冲突与漏排门禁。', pending: false
+        title: '排课草稿已更新', object: frozen.courseName,
+        status: this.weekdayLabel(formal.weekday) + '第' + formal.slotNo + '节', time: formal.updatedAt || formal.createdAt || '',
+        next: '请补齐剩余课程，发布前须通过冲突和漏排检查。', pending: false
       } : {
         title: '排课结果待确认', object: frozen.courseName,
-        status: frozen.acknowledged ? '命令已受理，尚未读到匹配课位' : '尚未取得可归属本次请求的回执', time: '',
-        next: '仅刷新原批次和班级课表核对，不会自动重复排课。', pending: true
+        status: frozen.acknowledged ? '已收到排课回应，课程安排尚待核对' : '尚未收到本次排课的确认结果', time: '',
+        next: '请刷新原批次和班级课表，确认前不要重复排课。', pending: true
       }
       if (formal) this.pendingWrite = null
       return formal
@@ -592,7 +593,7 @@ export default {
       if (checked.code !== 0 || !checked.data?.allowed) {
         this.moving = false
         this.conflictCell = { weekday, slotNo }
-        this.lastConflict = checked.data?.conflict?.detail || checked.data?.blockers?.[0] || checked.message || '目标课位存在硬冲突'
+        this.lastConflict = checked.data?.conflict?.detail || checked.data?.blockers?.[0] || checked.message || '所选时段未通过排课检查，请重新检查或改选时段。'
         this.moveConflict = { item, alternatives: checked.data?.alternatives || [] }
         toast.error(this.lastConflict)
         return
@@ -610,7 +611,7 @@ export default {
       if (isConflictResult(res)) this.pendingWrite = null
       if (!current()) return
       this.moving = false
-      if (isConflictResult(res)) { this.lastConflict = res.message || '课位已变化，请重新预检'; return }
+      if (isConflictResult(res)) { this.lastConflict = res.message || '课程安排已变化，请重新检查'; return }
       await this.loadClass()
       if (!this.disposed && context === this.contextKey()) this.reconcilePendingWrite()
     },
@@ -629,7 +630,7 @@ export default {
         return
       }
       if (this.preflight.loading || !this.preflight.result?.allowed) {
-        toast.error(this.preflightMessage || '请先通过排课前置校验')
+        toast.error(this.preflightMessage || '请先通过排课检查')
         return
       }
       this.add.submitting = true
@@ -658,7 +659,7 @@ export default {
       this.add.submitting = false
       if (isConflictResult(res)) {
         this.conflictCell = { weekday: this.add.weekday, slotNo: this.add.slotNo }
-        this.lastConflict = res.message || '排课事实已变化，请保留当前输入并重新预检。'
+        this.lastConflict = res.message || '课程安排已变化，请保留当前输入并重新检查。'
         this.preflight.result = null
         return
       }
@@ -699,7 +700,7 @@ export default {
       this.preflight.loading = false
       this.preflight.result = response.code === 0
         ? response.data
-        : { allowed: false, blockers: [response.message || '排课前置校验失败'], alternatives: [] }
+        : { allowed: false, blockers: [response.message || '排课检查失败，请重试'], alternatives: [] }
       if (!this.preflight.result.allowed) {
         this.conflictCell = { weekday: this.add.weekday, slotNo: this.add.slotNo }
       } else {

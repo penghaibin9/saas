@@ -2,9 +2,8 @@
   <div class="reset-mask" @click.self="$emit('close')">
     <section class="reset-dialog" role="dialog" aria-modal="true" aria-labelledby="teacher-reset-title">
       <button class="close" type="button" aria-label="关闭" @click="$emit('close')">×</button>
-      <p class="eyebrow">SELF-SERVICE RESET</p>
       <h2 id="teacher-reset-title">教师自助重置密码</h2>
-      <p class="intro">仅支持本人已验证的独立登录手机号。联系方式、家长号码和 Excel 登记号码不能直接找回密码；不符合条件请联系学校独立核验。</p>
+      <p class="intro">仅支持本人已验证的登录手机号，其他号码请联系学校核验。</p>
       <ol class="steps"><li :class="{ on: step >= 1 }">验证账号</li><li :class="{ on: step >= 2 }">短信验证</li><li :class="{ on: step >= 3 }">设置新密码</li></ol>
 
       <form v-if="step === 1" @submit.prevent="requestCode">
@@ -22,7 +21,7 @@
       <form v-else-if="step === 2" @submit.prevent="verifyCode">
         <label for="teacher-sms-code">短信验证码</label>
         <input id="teacher-sms-code" v-model.trim="form.smsCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="6 位数字验证码">
-        <p class="note">请求只会投递到本人已验证的登录手机号；是否符合条件不会在此页面公开，也不承诺即时送达。</p>
+        <p class="note">符合条件时，验证码将发往本人已验证的登录手机号，请稍候查收。</p>
         <p v-if="error" class="error" role="alert">{{ error }}</p>
         <button class="primary" :disabled="loading" type="submit">{{ loading ? '验证中…' : '验证并继续' }}</button>
         <button class="secondary" :disabled="countdown > 0 || loading" type="button" @click="restart">{{ countdown > 0 ? `${countdown} 秒后可重新发送` : '重新获取验证码' }}</button>
@@ -39,7 +38,7 @@
       </form>
       <div v-else>
         <p class="note">{{ note }}</p><p v-if="error" class="error" role="alert">{{ error }}</p>
-        <button v-if="step === 4" class="primary" :disabled="loading" @click="checkResult">查询原重置结果</button>
+        <button v-if="step === 4" class="primary" :disabled="loading" @click="checkResult">查看上次重置结果</button>
         <button v-else class="primary" @click="$emit('done', form.loginName, form.identifierType)">返回登录</button>
       </div>
     </section>

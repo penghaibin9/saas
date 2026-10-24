@@ -12,18 +12,18 @@
 
     <div class="mp-stack">
       <AaScheduleObjectBar
-        name="课表调整与发布操作链"
-        :identity="`当前筛选 ${activeFilterLabel} · 共 ${total} 条服务端记录`"
-        source="来源：课表条目与批次操作审计；调停课审批在独立业务台账"
-        status="只读审计事实"
+        name="查询范围"
+        :identity="activeFilterLabel"
+        source="调停课申请及审批结果请到调停课台账查看。"
+        status="仅供查看"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
         next-owner="返回对应批次或调停课台账"
       />
 
       <div class="aa-adjust-metrics" aria-label="调整记录概览">
-        <article><span>服务端记录</span><strong>{{ total }}</strong><small>按当前筛选分页统计</small></article>
-        <article><span>当前页条目变更</span><strong>{{ pageTypeCount('AA_SCHEDULE') }}</strong><small>手工排课、导入与改排</small></article>
-        <article><span>当前页批次变更</span><strong>{{ pageTypeCount('AA_SCHEDULE_BATCH') }}</strong><small>预发布、发布与归档</small></article>
+        <article><span>符合条件的记录</span><strong>{{ loading || error ? '—' : total }}</strong></article>
+        <article><span>本页课程安排变更</span><strong>{{ loading || error ? '—' : pageTypeCount('AA_SCHEDULE') }}</strong></article>
+        <article><span>本页批次变更</span><strong>{{ loading || error ? '—' : pageTypeCount('AA_SCHEDULE_BATCH') }}</strong></article>
       </div>
 
       <AppSectionCard compact title="调整记录">
@@ -40,25 +40,26 @@
         </div>
         <ErrorState v-if="error" :description="error" @retry="reload" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="暂无匹配记录" description="课表批次发生手工排课/导入/改排/发布/作废重发等操作后会在此留痕" />
+        <EmptyState v-else-if="!rows.length" title="暂无匹配记录" description="可调整记录类型或操作筛选" />
         <DataTable v-else :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
           <template #cell-bizType="{ row }">
             <AppStatusTag :type="row.bizType === 'AA_SCHEDULE' ? 'info' : 'default'" dot>
-              {{ row.bizType === 'AA_SCHEDULE' ? '条目' : '批次' }}
+              {{ typeLabel(row.bizType) }}
             </AppStatusTag>
           </template>
           <template #cell-action="{ row }">{{ actionLabel(row.action) }}</template>
+          <template #cell-occurredAt="{ row }">{{ formatDateTime(row.occurredAt) }}</template>
+          <template #cell-roleName="{ row }">{{ roleLabel(row.roleName) }}</template>
           <template #cell-bizId="{ row }">
-            <div class="mp-cell-main">{{ row.bizType === 'AA_SCHEDULE' ? '课位' : '批次' }} #{{ row.bizId }}</div>
-            <div class="mp-cell-sub">审计 #{{ row.id }}</div>
+            <details class="aa-detail"><summary>实施人员使用</summary>
+              <p>关联编号：{{ row.bizId || '—' }}；记录编号：{{ row.id }}</p>
+              <p v-if="technicalDetail(row)">{{ row.detail }}</p>
+            </details>
           </template>
           <template #cell-detail="{ row }">
-            <span class="aa-detail">{{ row.detail || '服务端未返回补充说明' }}</span>
+            <span class="aa-detail">{{ businessDetail(row) || '—' }}</span>
           </template>
         </DataTable>
-        <p class="mp-note">
-          本页记录排课与发布操作。「调课、停课、补课」的申请和审批结果请在「调停课」台账查看。
-        </p>
       </AppSectionCard>
     </div>
   </ModulePageShell>
@@ -78,11 +79,14 @@ import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppStatusTag, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import AaScheduleObjectBar from '@/modules/academicAffairs/components/AaScheduleObjectBar.vue'
+import { ROLE_LABELS } from '@/modules/workflow/constants/workflow.constants.js'
+import { safeLocalizedText } from '@/utils/presentationSafety.js'
+import { formatDateTime } from '@/utils/dateUtils.js'
 
 const ACTION_LABELS = {
   CREATE: '新建批次', ADD_ITEM: '手工排课', IMPORT: '导入课表', ADJUST_ITEM: '改排条目',
   TEACHER_OBJECT: '教师提出异议', PRE_PUBLISH: '预发布', PUBLISH: '发布', VOID_REISSUE: '作废重发',
-  ARCHIVE: '归档'
+  ARCHIVE: '归档', OPEN_CORRECTION_DRAFT: '发起课表纠错', START_CORRECTION_DRAFT: '创建纠错草稿', MOVE_ITEM: '移动课程安排'
 }
 const ITEM_ACTIONS = ['ADD_ITEM', 'ADJUST_ITEM', 'TEACHER_OBJECT']
 const BATCH_ACTIONS = ['CREATE', 'IMPORT', 'PRE_PUBLISH', 'PUBLISH', 'VOID_REISSUE', 'ARCHIVE']
@@ -98,7 +102,7 @@ export default {
         { key: 'occurredAt', title: '时间' },
         { key: 'bizType', title: '类型' },
         { key: 'action', title: '动作' },
-        { key: 'bizId', title: '对象ID' },
+        { key: 'bizId', title: '实施信息' },
         { key: 'operator', title: '操作人' },
         { key: 'roleName', title: '角色' },
         { key: 'detail', title: '详情' }
@@ -109,9 +113,9 @@ export default {
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
     bizTypeOptions() {
       return [
-        { value: '', label: '全部（条目 + 批次）' },
-        { value: 'AA_SCHEDULE', label: '条目变更（手工排课/导入/改排/教师异议）' },
-        { value: 'AA_SCHEDULE_BATCH', label: '批次变更（新建/整批导入/预发布/发布/作废重发/归档）' }
+        { value: '', label: '全部类型' },
+        { value: 'AA_SCHEDULE', label: '课程安排变更' },
+        { value: 'AA_SCHEDULE_BATCH', label: '批次变更' }
       ]
     },
     actionOptions() {
@@ -130,7 +134,20 @@ export default {
   },
   created() { this.load() },
   methods: {
-    actionLabel(a) { return ACTION_LABELS[a] || a || '—' },
+    actionLabel(a) { return ACTION_LABELS[a] || (a ? '其他操作' : '—') },
+    typeLabel(value) { return { AA_SCHEDULE: '课程安排', AA_SCHEDULE_BATCH: '批次' }[value] || '其他事项' },
+    roleLabel(value) { return safeLocalizedText({ value, dictionary: { ...ROLE_LABELS, TEACHER: '教师', ACADEMIC_TEACHER: '任课教师' }, unknownLabel: value ? '其他业务角色' : '—' }) },
+    formatDateTime,
+    technicalDetail(row) {
+      if (['TEACHER_OBJECT', 'VOID_REISSUE'].includes(row.action)) return false
+      return /(?:^|[;,])\s*[A-Za-z][A-Za-z0-9_]*=/.test(row.detail || '')
+    },
+    businessDetail(row) {
+      if (!this.technicalDetail(row)) return row.detail || ''
+      if (row.action === 'OPEN_CORRECTION_DRAFT') return String(row.detail).match(/^draftBatchId=\d+;reason=([\s\S]*)$/)?.[1] || ''
+      if (row.action === 'START_CORRECTION_DRAFT') return String(row.detail).match(/^sourceBatchId=\d+;clonedItems=\d+;reason=([\s\S]*)$/)?.[1] || ''
+      return String(row.detail).match(/(?:^|;)(周\d+第\d+节)(?:;|$)/)?.[1] || ''
+    },
     pageTypeCount(type) { return this.rows.filter((row) => row.bizType === type).length },
     reload() { this.page = 1; this.load() },
     onPageChange(p) { this.page = p; this.load() },
@@ -171,5 +188,6 @@ export default {
 .aa-adjust-metrics span { color: var(--text-500, #68788c); font-size: 12px; }
 .aa-adjust-metrics strong { color: var(--text-900, #193252); font-size: 24px; }
 .aa-adjust-metrics small, .aa-detail { color: var(--text-500, #68788c); font-size: 11px; line-height: 1.55; }
+.aa-detail { white-space: normal; overflow-wrap: anywhere; }
 @media (max-width: 760px) { .aa-adjust-metrics { grid-template-columns: 1fr; } }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="task ? task.title : '审批详情'"
-    :subtitle="task ? task.taskId + ' · ' + task.bizTypeLabel + ' · 当前节点：' + task.currentNode : ''"
+    :subtitle="task ? task.bizTypeLabel + ' · 当前环节：' + task.currentNode : ''"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -37,9 +37,9 @@
             </div>
             <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ task.submitTime || '—' }}</span></div>
             <div v-if="task.deadline" class="mp-kv"><span class="mp-kv__k">办理期限</span><span class="mp-kv__v">{{ task.deadline }}</span></div>
-            <div v-for="(f, i) in detail.fields" :key="i" class="mp-kv">
-              <span class="mp-kv__k">{{ f.label }}</span>
-              <span class="mp-kv__v" :class="{ 'is-masked': f.masked }">{{ f.value || '—' }}</span>
+            <div v-for="(f, i) in detail.fields.filter(field => !['业务记录', '处分单ID', '学生ID'].includes(field.label))" :key="i" class="mp-kv">
+              <span class="mp-kv__k">{{ f.label === '资格校验快照' ? '资格检查结果' : f.label }}</span>
+              <span class="mp-kv__v" :class="{ 'is-masked': f.masked }">{{ f.displayValue ?? (f.value === '' || f.value == null ? '—' : f.value) }}</span>
             </div>
           </div>
           <!-- TP-A06：业务上下文不完整时必须说清楚是"没接入/查不到/读失败"，
@@ -86,7 +86,7 @@
                 :show-file-switcher="false"
                 @download="downloadAttachment(activeAttachment)"
               />
-              <p class="mp-note dv-reader-hint">附件阅读器以当前审批任务为授权边界；预览凭证短时有效，下载凭证单次使用，页面不接触公共存储地址。</p>
+              <p class="mp-note dv-reader-hint">附件访问短时有效，预览或下载失效后请重新打开附件。</p>
             </template>
           </div>
         </section>
@@ -112,7 +112,7 @@
           <div class="mp-card__body">
             <template v-if="canHandle">
               <label class="mp-note dv-label">审批意见（选填）</label>
-              <textarea v-model="comment" class="mp-textarea" placeholder="审批意见会写入真实流转记录"></textarea>
+              <textarea v-model="comment" class="mp-textarea" placeholder="填写审核结论或需补充的内容"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div class="dv-actions">
                 <AppButton variant="primary" :loading="submitting" :disabled="!canAction('approveTask', 'APPROVE')" @click="submitApprove">✓ 审批通过</AppButton>
@@ -155,7 +155,7 @@
     />
 
     <AppDrawer v-model:visible="transferDrawer" title="转办任务">
-      <p class="mp-note">原任务保留 TRANSFERRED 留痕；仅展示同时满足当前节点责任角色与数据范围的目标办理人。</p>
+      <p class="mp-note">请选择有权办理此任务的人员，转办记录将保留。</p>
       <p v-if="transferTargetsLoading" class="mp-note">正在核验当前任务的可转办人员…</p>
       <template v-else>
         <div v-for="t in transferTargets" :key="t.userId" class="mp-radio" :class="{ 'is-active': transferForm.targetUserId === t.userId }" @click="transferForm.targetUserId = t.userId">
@@ -203,10 +203,10 @@ export default {
       const ctx = this.businessContext
       if (!ctx) return ''
       const map = {
-        UNSUPPORTED: ctx.note || '该业务类型尚未接入审批业务上下文，本页无法展示原始业务事实。',
+        UNSUPPORTED: ctx.note || '此类申请暂不支持在本页查看业务详情。',
         ERROR: ctx.note || '业务信息读取失败，请稍后重试。',
         MISSING: '关联的业务记录已不存在或已被删除，请核实后再处理。',
-        PARTIAL: '业务信息不完整，关键字段缺失，请谨慎判断或要求补充材料。'
+        PARTIAL: '申请缺少必要信息，请核实或要求补充材料后再处理。'
       }
       return map[ctx.completeness] || ''
     },
@@ -217,7 +217,7 @@ export default {
       if (this.isTerminalReturn) {
         return '就业去向登记退回后，本次提交终止；学生需重新发起一条新登记，不会生成原流程重提待办。驳回同样终止原流程。'
       }
-      return '退回修改会生成申请人重提待办；驳回终止结束原流程，两者不会互换。'
+      return '退回修改会给申请人新增重提待办；驳回终止会结束本次流程。'
     },
     returnDialogMessage() {
       if (!this.task) return ''
@@ -248,7 +248,7 @@ export default {
       }
       if (this.task.status === 'RETURNED') return '流程仍在运行，申请人可按退回要求修改并重新提交。'
       if (this.task.status === 'REJECTED') return '原流程已经终止；如需再次申请，应重新发起新流程。'
-      return '本页仅展示服务端已持久化的处理结果与流转记录。'
+      return '可查看已保存的处理结果与流转记录。'
     }
   },
   created() { this.load() },
@@ -311,7 +311,7 @@ export default {
     },
     async actionFailed(res, field = 'form') {
       const conflict = String(res.bizCode || '').includes('CONFLICT') || /已被处理|发生变化|刷新后重试|版本/.test(res.message || '')
-      if (conflict) { toast.info('该审批事实已经变化，已为你刷新最新状态'); await this.load(); return }
+      if (conflict) { toast.info('审批记录已变化，正在刷新最新状态'); await this.load(); return }
       if (field === 'transfer') this.transferError = res.message; else this.formError = res.message
     },
     async goNext() {
@@ -345,7 +345,7 @@ export default {
       this.formError = ''; this.submitting = true
       const res = await approvalApi.approveTask(this.task.taskId, { comment: this.comment, version: this.task.version })
       this.submitting = false
-      if (await this.finishAction(res, '审批通过：服务端已持久化，正在进入下一条待办')) this.comment = ''
+      if (await this.finishAction(res, '审批已通过')) this.comment = ''
     },
     async submitReturn({ reason }) {
       this.submitting = true
@@ -379,7 +379,7 @@ export default {
     },
     async submitTransfer() {
       this.transferError = ''
-      if (!this.transferForm.targetUserId) { this.transferError = '请选择转办对象'; return }
+      if (!this.transferForm.targetUserId) { this.transferError = '请选择接收任务的人员'; return }
       if (!this.transferTargets.some((x) => String(x.userId) === String(this.transferForm.targetUserId))) {
         this.transferError = '该人员已不在当前任务可转办范围，请重新打开转办列表'
         return

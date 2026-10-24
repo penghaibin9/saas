@@ -2,16 +2,16 @@
   <main class="force-page">
     <section class="force-card" aria-labelledby="force-password-title">
       <div class="security-mark" aria-hidden="true">盾</div>
-      <p class="eyebrow">ACCOUNT SECURITY</p>
+      <p class="eyebrow">账号安全</p>
       <h1 id="force-password-title">首次登录，请先修改初始密码</h1>
-      <p class="intro">在完成改密前，系统不会开放教务、学工、实习、毕设等业务操作。此限制由服务端强制执行，关闭页面或直接输入业务地址也不能绕过。</p>
+      <p class="intro">修改初始密码并重新登录后，即可办理业务。</p>
 
       <form @submit.prevent="submit">
         <label for="old-password">当前密码</label>
         <input id="old-password" v-model="form.oldPassword" type="password" autocomplete="current-password" placeholder="请输入当前初始密码">
 
         <label for="new-password">新密码</label>
-        <input id="new-password" v-model="form.newPassword" type="password" autocomplete="new-password" placeholder="至少 8 位，避免与当前密码相同">
+        <input id="new-password" v-model="form.newPassword" type="password" autocomplete="new-password" placeholder="请输入新密码">
 
         <label for="confirm-password">确认新密码</label>
         <input id="confirm-password" v-model="form.confirmPassword" type="password" autocomplete="new-password" placeholder="再次输入新密码">
@@ -27,7 +27,7 @@
         <button class="secondary" type="button" :disabled="loading" @click="leave">退出当前账号</button>
       </form>
 
-      <p class="footnote">如果你不知道当前初始密码，请联系账号所属学校或平台管理员重置；不要把密码发送给技术支持人员。</p>
+      <p class="footnote">忘记初始密码请联系所属学校或平台管理员重置，勿向他人提供密码。</p>
     </section>
   </main>
 </template>

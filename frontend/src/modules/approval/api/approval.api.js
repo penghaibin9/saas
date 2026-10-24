@@ -3,6 +3,65 @@
  * 只消费真实后端事实；禁止 mock fallback、浏览器内存写入和前端合成终态。
  */
 import { request } from '@/services/http/client'
+import { safeLocalizedText } from '@/utils/presentationSafety'
+import { formatDateTime } from '@/utils/dateUtils.js'
+import { NODE_LABEL, STATUS_LABEL as STATUS_CHANGE_LABELS } from '@/modules/academicAffairs/constants/status-change'
+import { ACADEMIC_STUDENT_STATUS_LABELS, ACADEMIC_STATUS_CHANGE_LABELS } from '@/modules/academicAffairs/config/academicStudentLabels'
+import { CHANGE_TYPES, CHANGE_STATUS } from '@/modules/academicAffairs/api/academic-schedule-change.api.js'
+import { MESSAGE_CAMPAIGN_STATUS_LABELS, MESSAGE_CATEGORY_LABELS } from '@/modules/messageCenter/constants/message-center.constants.js'
+import leaveLabels from '../../../../../shared/contracts/leave-presentation.json' with { type: 'json' }
+
+const APPROVAL_NODE_LABELS = Object.assign(Object.create(null), NODE_LABEL, { ACADEMIC_REVIEW: '教务审核', SCHOOL_FINAL: '学工终审' })
+
+const CONTEXT_STATUS_LABELS = {
+  DRAFT: '草稿', SUBMITTED: '已提交', IN_REVIEW: '审核中', PENDING_REVIEW: '待审核',
+  APPROVED: '已通过', REJECTED: '已驳回', RETURNED: '已退回', CANCELLED: '已取消',
+  VERIFIED: '已核验', UNVERIFIED: '待核验', PENDING_VERIFICATION: '待核验'
+}
+const CONTEXT_STATUS_BY_TYPE = {
+  LEAVE: leaveLabels.statuses,
+  AA_STATUS_CHANGE: STATUS_CHANGE_LABELS,
+  AA_SCHEDULE_CHANGE: Object.fromEntries(CHANGE_STATUS.map(item => [item.value, item.label])),
+  AA_GRADE_TASK: { NOT_STARTED: '未开始', INPUTTING: '录入中', SUBMITTED: '已提交', COLLEGE_REVIEW: '学院审核中', ACADEMIC_REVIEW: '教务终审中', PUBLISHED: '已发布', RETURNED: '已退回', ARCHIVED: '已归档' },
+  MESSAGE_CAMPAIGN: MESSAGE_CAMPAIGN_STATUS_LABELS
+}
+const DISCIPLINE_TYPE_LABELS = { WARNING: '警告', SERIOUS_WARNING: '严重警告', DEMERIT: '记过', PROBATION: '留校察看', EXPEL: '开除学籍' }
+const AID_LEVEL_LABELS = { SPECIAL: '特别困难', DIFFICULT: '困难', GENERAL: '一般困难' }
+const CONTEXT_FIELD_LABELS = {
+  请假类型: leaveLabels.types,
+  异动类型: ACADEMIC_STATUS_CHANGE_LABELS,
+  原学籍状态: ACADEMIC_STUDENT_STATUS_LABELS,
+  目标学籍状态: ACADEMIC_STUDENT_STATUS_LABELS,
+  变更类型: Object.fromEntries(CHANGE_TYPES.map(item => [item.value, item.label])),
+  申请等级: AID_LEVEL_LABELS,
+  辅导员建议等级: AID_LEVEL_LABELS,
+  处分类型: DISCIPLINE_TYPE_LABELS,
+  原处分类型: DISCIPLINE_TYPE_LABELS,
+  当前节点: APPROVAL_NODE_LABELS,
+  拟改及格状态: { PASSED: '及格', FAILED: '不及格', FAIL: '不及格' },
+  分类: MESSAGE_CATEGORY_LABELS,
+  优先级: { NORMAL: '普通', IMPORTANT: '重要', HIGH: '重要', URGENT: '紧急' },
+  发布模式: { IMMEDIATE: '立即发布', SCHEDULED: '定时发布' },
+  资助类型: { SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款', TUITION_REDUCTION: '学费减免', TEMPORARY_AID: '临时补助' },
+  申请来源: {},
+  去向类型: {}
+}
+
+function contextField(field, bizType) {
+  if (field.masked || field.value === '' || field.value == null) return field
+  if (['开始时间', '结束时间', '定时发布时间', '过期时间'].includes(field.label)) {
+    return { ...field, displayValue: formatDateTime(field.value, '时间待核验') }
+  }
+  const dictionary = field.label === '当前状态'
+    ? { ...CONTEXT_STATUS_LABELS, ...CONTEXT_STATUS_BY_TYPE[bizType] }
+    : Object.hasOwn(CONTEXT_FIELD_LABELS, field.label) ? CONTEXT_FIELD_LABELS[field.label] : null
+  if (!dictionary) return field
+  const value = String(field.value)
+  const displayValue = Object.hasOwn(dictionary, value) ? dictionary[value]
+    : /[\u3400-\u9fff]/.test(value) && !/[A-Za-z]/.test(value) ? value
+      : /状态/.test(field.label) ? '其他状态' : '其他事项'
+  return { ...field, displayValue }
+}
 
 // TP-A10：业务类型字典由服务端 GET /approvals/biz-types 权威下发（见
 // approval_runtime_service.biz_type_options()），前端不再自己拷贝一份完整枚举——
@@ -157,7 +216,7 @@ function mapStatus(status) {
     REJECTED: ['REJECTED', '已驳回终止'],
     TRANSFERRED: ['TRANSFERRED', '已转办']
   }
-  return table[raw] || [raw || 'UNKNOWN', raw || '未知']
+  return table[raw] || [raw || 'UNKNOWN', '其他状态']
 }
 
 function taskRow(t = {}) {
@@ -184,10 +243,10 @@ function taskRow(t = {}) {
       NEAR_DEADLINE: '临期',
       URGENT: '临期',
       NORMAL: '正常'
-    }[urgency] || urgency,
+    }[urgency] || '其他状态',
     status,
     statusLabel,
-    currentNode: t.nodeName || t.nodeCode || '',
+    currentNode: safeLocalizedText({ value: t.nodeName || t.nodeCode, dictionary: APPROVAL_NODE_LABELS, unknownLabel: '其他环节' }),
     transferred: String(t.status || '').toUpperCase() === 'TRANSFERRED',
     version: Number(t.version ?? 0),
     allowedActions: Array.isArray(t.allowedActions) ? t.allowedActions : [],
@@ -208,8 +267,8 @@ function timelineRow(h = {}) {
     TRANSFERRED: '转办'
   }
   return {
-    who: h.assigneeName || (h.assigneeId ? `办理人 ${h.assigneeId}` : '系统'),
-    action: labels[status] || status,
+    who: h.assigneeName || (h.assigneeId ? '办理人姓名未提供' : '系统'),
+    action: labels[status] || '其他操作',
     comment: h.comment || '',
     time: fmtTime(h.actedAt || h.createdAt),
     tone: status === 'APPROVED' ? 'success' : status === 'REJECTED' ? 'danger' : status === 'RETURNED' ? 'warning' : 'default'
@@ -243,7 +302,7 @@ function returnedRow(t = {}) {
       PENDING_RESUBMIT: '待整改重报',
       RESUBMITTED: '已重新提交',
       CLOSED: '已关闭'
-    }[rs] || rs
+    }[rs] || '其他状态'
   }
 }
 
@@ -256,14 +315,14 @@ function templateRow(t = {}) {
     version: `v${t.definitionVersion || 1}`,
     rowVersion: Number(t.rowVersion ?? 0),
     status: t.status || 'ENABLED',
-    statusLabel: t.status === 'VOIDED' ? '已作废' : t.status === 'ENABLED' ? '启用' : t.status,
+    statusLabel: t.status === 'VOIDED' ? '已作废' : t.status === 'ENABLED' ? '启用' : t.status === 'DISABLED' ? '停用' : '其他状态',
     updatedBy: t.updatedBy || '系统',
     updatedAt: fmtTime(t.updatedAt),
     voidReason: t.voidReason || '',
     nodes: (t.nodes || []).map((n) => ({
       name: n.name,
       role: n.role,
-      roleLabel: ROLE_LABEL[n.role] || n.role,
+      roleLabel: ROLE_LABEL[n.role] || '其他业务角色',
       sla: n.sla,
       nodeCode: n.nodeCode
     }))
@@ -446,7 +505,7 @@ export const approvalApi = {
     // FULL/PARTIAL/MISSING/UNSUPPORTED/ERROR，而不是把"没接入"显示成"没内容"。
     const ctx = d.businessContext || null
     const contextFields = ctx
-      ? (ctx.sections || []).flatMap((s) => (s.fields || []).map((f) => ({ ...f, section: s.title })))
+      ? (ctx.sections || []).flatMap((s) => (s.fields || []).map((f) => ({ ...contextField(f, d.sourceBizType), section: s.title })))
       : []
     return {
       task,

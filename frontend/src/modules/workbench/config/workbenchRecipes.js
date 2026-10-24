@@ -556,6 +556,10 @@ const RECIPE_ALIASES = {
   GD_MAJOR_ADMIN: 'GRADUATION_ADMIN'
 }
 
+export const TODO_TYPE_LABELS = Object.fromEntries(
+  Object.values(RECIPES).flatMap(recipe => (recipe.typeCues || []).map(cue => [cue.key, cue.title]))
+)
+
 /** 以后端 /todos/summary.role 为准；未登记角色一律 DEFAULT。 */
 export function resolveRecipe(roleCode) {
   const code = String(roleCode || '').toUpperCase()

@@ -60,19 +60,19 @@ test('AA056/057/058 render their design columns and keep unavailable fields sepa
   for (const [type, headings] of [['ENROLL', ['招生年级', '学期', '候选学生']], ['ANNUAL', ['学年', '学生范围', '已注册人数']], ['SEMESTER', ['学期', '学生范围', '已注册人数']]]) {
     const html = await render(type, [row({ registerType: type, year: '2099学年', registeredCount: 987654, studentScope: '虚构全校范围' })])
     for (const title of ['批次名称', ...headings, '状态', '办理入口']) assert.ok(html.includes(`<th>${title}</th>`), title)
-    assert.ok(html.includes(id)); assert.ok(html.includes('本学年原始批次')); assert.ok(html.includes('开放中'))
-    assert.equal((html.match(/批次列表未提供<\/span>/g) || []).length, 3)
+    assert.ok(!html.includes(id)); assert.ok(html.includes('本学年原始批次')); assert.ok(html.includes('开放中'))
+    assert.equal((html.match(/待核对<\/span>/g) || []).length, 3)
     assert.doesNotMatch(html, /2099学年|987654|虚构全校范围/)
-    assert.match(html, /人数未提供不表示 0 人/)
+    assert.match(html, /尚待核对，请进入注册名单查看/)
   }
 })
 
 test('five workflow stages are reference navigation and never report all batches as completed', async () => {
   const { state } = page()
-  assert.deepEqual(Array.from(state.registrationSteps, step => step.title), ['创建批次', '圈定候选', '资格核验', '正式注册', '关闭归档'])
+  assert.deepEqual(Array.from(state.registrationSteps, step => step.title), ['创建批次', '选择学生', '资格核验', '办理注册', '关闭归档'])
   assert.ok(state.registrationSteps.every(step => step.status === 'wait'))
   const html = await render('ANNUAL', [row()])
-  assert.match(html, /办理顺序参考/); assert.match(html, /当前状态以列表中的正式记录为准/)
+  assert.match(html, /各批次单独办理/); assert.match(source, /:current="-1"/)
 })
 
 test('local name and exact large-ID search never invents a server keyword query or alters the real total', () => {
@@ -87,7 +87,7 @@ test('local name and exact large-ID search never invents a server keyword query 
 
 test('zero local matches disclose the page boundary without claiming that the database has no batches', async () => {
   const html = await render('ANNUAL', [row()], { appliedKeyword: '本页找不到' })
-  assert.match(html, /其他页尚未搜索/); assert.match(html, /名称 \/ ID 仅检索本页 1 条记录/)
+  assert.match(html, /其他页尚未搜索/); assert.match(html, /仅搜索本页 1 条记录/)
   assert.doesNotMatch(html, /当前页暂无注册批次/)
 })
 
@@ -128,7 +128,7 @@ test('formal states stay distinct and archive wording does not promise that all 
   const { state } = page()
   assert.deepEqual(['DRAFT', 'OPEN', 'CLOSED', 'ARCHIVED', 'UNKNOWN'].map(value => state.statusLabel(value)), ['草稿', '开放中', '已关闭', '已归档', '状态待确认'])
   state.askArchive(row({ status: 'CLOSED' }))
-  assert.match(state.confirm.message, /暂缓与异常记录尚未统一封存/)
+  assert.match(state.confirm.message, /暂缓与异常记录仍按各自状态办理/)
   assert.doesNotMatch(state.confirm.message, /归档后台账只读/)
 })
 
@@ -136,5 +136,17 @@ test('failed and malformed list receipts clear old records and show failure inst
   for (const reply of [async () => ({ code: 403001, message: '当前无权查看' }), async () => ({ code: 0, data: { list: null, total: 0 } }), async () => { throw new Error('timeout') }]) {
     const { state } = page({ getRegistrationBatches: reply }); state.rows = [row()]
     await state.load(); assert.equal(state.rows.length, 0); assert.ok(state.error); assert.equal(state.loading, false)
+  }
+})
+
+test('unknown creation is stated once and remains visible when a prior-context error is hidden', async () => {
+  const { state } = page()
+  for (const context of [state.contextKey, 'prior-context']) {
+    const html = await render('ANNUAL', [], { createWrite: {
+      target: { identity: state.batchActionIdentity(), context }, pending: {}, receipt: null,
+      error: '创建结果尚未确认，已暂停重复创建，请联系管理员核实。'
+    } })
+    assert.equal((html.match(/结果尚未确认/g) || []).length, 1)
+    assert.doesNotMatch(html, /已创建「/)
   }
 })

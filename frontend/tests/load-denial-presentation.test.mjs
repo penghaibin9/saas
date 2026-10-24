@@ -18,6 +18,21 @@ function component(path, imports = {}) {
 const GlobalState = component('../src/components/common/AppGlobalState.vue', { normalizeUiError })
 const ErrorState = component('../src/components/business/ErrorState.vue', { AppGlobalState: GlobalState, normalizeUiError })
 
+test('PC failure uses existing safe wording and folds technical codes without hiding valid limits', async () => {
+  const html = await renderToString(Vue.createSSRApp({ render: () => Vue.h(GlobalState, {
+    state: 'error', description: 'expectedVersion INVALID_STATE', errorCode: 'INTERNAL_FAILURE'
+  }) }))
+  const visible = html.replace(/<details\b[^>]*>[\s\S]*?<\/details>/g, '')
+  assert.match(visible, /加载失败/)
+  assert.doesNotMatch(visible, /expectedVersion|INVALID_STATE|INTERNAL_FAILURE/)
+  assert.match(html, /<summary>实施人员使用<\/summary>/)
+  assert.doesNotMatch(html, /<details[^>]*\bopen\b/)
+  const business = await renderToString(Vue.createSSRApp({ render: () => Vue.h(GlobalState, {
+    state: 'error', description: '申请已截止，请联系负责老师。'
+  }) }))
+  assert.match(business, /申请已截止，请联系负责老师。/)
+})
+
 for (const [error, state, title] of [
   [{ code: 403001, message: '权限不足', bizCode: 'NO_PERMISSION' }, 'forbidden', '暂无访问权限'],
   [{ httpStatus: 403, message: '禁止访问' }, 'forbidden', '暂无访问权限'],

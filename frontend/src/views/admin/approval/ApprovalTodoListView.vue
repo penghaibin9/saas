@@ -43,7 +43,7 @@
         </template>
         <template #cell-task="{ row }">
           <div class="mp-cell-main">{{ row.title }}</div>
-          <div class="mp-cell-sub">{{ row.taskId }} · {{ row.bizTypeLabel }}</div>
+          <div class="mp-cell-sub">{{ row.bizTypeLabel }}</div>
         </template>
         <template #cell-applicant="{ row }">
           <div class="mp-cell-main">{{ row.applicant.name }}</div>
@@ -60,13 +60,12 @@
 
       <section class="mp-card">
         <div class="mp-card__head">
-          <span class="mp-card__title">最近审计留痕</span>
-          <span class="mp-note">审批、退回、转交与导出动作全部留痕</span>
+          <span class="mp-card__title">最近操作记录</span>
         </div>
         <div class="mp-card__body">
           <table class="mp-audit">
             <thead>
-              <tr><th>操作人</th><th>时间</th><th>动作</th><th>对象</th><th>说明</th></tr>
+              <tr><th>操作人</th><th>时间</th><th>动作</th><th>事项</th><th>说明</th></tr>
             </thead>
             <tbody>
               <tr v-for="a in audits" :key="a.id">
@@ -77,7 +76,7 @@
                 <td>{{ a.detail }}</td>
               </tr>
               <tr v-if="!audits.length">
-                <td colspan="5" class="mp-note">暂无审计记录</td>
+                <td colspan="5" class="mp-note">暂无操作记录</td>
               </tr>
             </tbody>
           </table>
@@ -109,7 +108,7 @@
     <AppConfirmDialog
       v-model:visible="exportDialog"
       title="导出待办清单"
-      message="导出文件默认脱敏敏感字段并添加页面水印，导出动作将写入审计日志。"
+      message="导出文件将隐藏敏感信息并添加水印，系统会保留导出记录。"
       type="primary"
       confirm-text="确认导出"
       :submitting="submitting"
@@ -118,7 +117,7 @@
 
     <AppDrawer v-model:visible="transferDrawer" title="批量转交待办">
       <p class="mp-note" style="margin: 0 0 var(--space-3)">
-        已选 {{ selected.length }} 条待办仅展示对全部任务都满足“当前节点角色 + 数据范围”的可转办人员。
+        已选 {{ selected.length }} 条待办，仅可转交给有权办理全部所选任务的人员。
       </p>
       <p v-if="transferTargetsLoading" class="mp-note">正在核验所选任务的可转办人员…</p>
       <template v-else>
@@ -366,7 +365,7 @@ export default {
         return code.includes('VERSION') || code.includes('CONTEXT') || code.includes('CONFLICT')
       }).length
       const counts = `成功 ${succeeded} 条${failed ? `，失败 ${failed} 条` : ''}${skipped ? `，跳过 ${skipped} 条` : ''}`
-      const staleHint = stale ? `；其中 ${stale} 条审批事实已变化或缺少版本快照，请刷新列表/详情后重试` : ''
+      const staleHint = stale ? `；其中 ${stale} 条记录已变化或无法确认是否最新，请刷新后重试` : ''
       return `${actionLabel}：${counts}${successSuffix}${staleHint}`
     },
     handleBatchResponse(res, actionLabel, successSuffix = '') {
@@ -400,7 +399,7 @@ export default {
     async doBatchTransfer() {
       this.transferError = ''
       if (!this.transferForm.targetUserId) {
-        this.transferError = '请选择转交对象'
+        this.transferError = '请选择接收任务的人员'
         return
       }
       if (!this.transferTargets.some((x) => String(x.userId) === String(this.transferForm.targetUserId))) {

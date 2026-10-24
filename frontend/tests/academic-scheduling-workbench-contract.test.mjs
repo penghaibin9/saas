@@ -13,7 +13,7 @@ test('scheduling opens on one end-to-end workbench instead of isolated feature t
 
   assert.match(source, /tab: 'workbench'/)
   assert.match(source, /<AaScheduleStageRail mode="scheduling" :active-index="pageMeta\.stage"/)
-  for (const label of ['就绪任务', '约束条件', '试排编排', '冲突处理', '正式发布']) {
+  for (const label of ['准备教学任务', '排课要求', '试排课程', '处理冲突', '发布课表']) {
     assert.ok(stageRail.includes(label), `missing workflow stage: ${label}`)
   }
   assert.ok(source.includes('当前阻断原因'))
@@ -27,7 +27,7 @@ test('task queue routes with internal context and never asks the registrar for I
   assert.match(consoleSource, /query: \{ classId: row\.classId, className: row\.className \|\| '', taskId: row\.taskId, \.\.\.this\.returnQuery\(\) \}/)
   assert.match(maintainSource, /this\.preferredTaskId = state\.taskId/)
   assert.match(maintainSource, /this\.classId = state\.classId/)
-  assert.ok(maintainSource.includes('已从排课工作台定位任务'))
+  assert.ok(maintainSource.includes('当前教学任务'))
   assert.doesNotMatch(consoleSource, /请输入.*(?:班级|教学任务).*ID/)
 })
 
@@ -55,9 +55,9 @@ test('pre-publish and publish actions are gated by the canonical completeness ch
 
   assert.match(source, /检查并预发布/)
   assert.match(source, /检查并正式发布/)
-  assert.match(source, /复核发布门禁/)
+  assert.match(source, /复核发布条件/)
   assert.match(source, /academicAffairsApi\.getScheduleSummary\(row\.batchId\)/)
-  for (const label of ['教学任务可排', '教学任务计划完整', '课位关联有效', '硬冲突清零']) {
+  for (const label of ['教学任务可排', '教学任务排齐', '课程安排信息有效', '冲突检查']) {
     assert.ok(source.includes(label), `missing publish gate: ${label}`)
   }
   assert.match(source, /if \(this\.writeBusy \|\| !this\.gate\.summary\?\.complete \|\| !this\.gate\.batch \|\| this\.gate\.intent === 'view'\) return/)

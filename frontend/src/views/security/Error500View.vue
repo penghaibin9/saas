@@ -2,7 +2,7 @@
   <SecurityErrorShell
     code="500"
     title="服务暂时不可用"
-    description="系统开小差了，请稍后重试；若持续出现，请携带下方请求编号联系管理员。"
+    description="请稍后重试；仍无法使用时，请联系管理员。"
   />
 </template>
 

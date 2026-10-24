@@ -14,24 +14,24 @@
     <div class="mp-stack">
       <section class="aa-batch-flow" aria-label="注册办理顺序">
         <AppStepBar :steps="registrationSteps" :current="-1" />
-        <p class="aa-batch-flow__note">办理顺序参考；不同批次分别推进，当前状态以列表中的正式记录为准。</p>
+        <p class="aa-batch-flow__note">各批次单独办理。</p>
       </section>
       <section v-if="!loading && !error" class="aa-batch-metrics" aria-label="当前页注册批次概况">
         <article v-for="item in summaryCards" :key="item.label" :class="['aa-batch-metric', `is-${item.tone}`]">
-          <span>{{ item.label }}</span><strong>{{ item.value }}</strong><small>{{ item.note }}</small>
+          <span>{{ item.label }}</span><strong>{{ item.value }}</strong><small v-if="item.note">{{ item.note }}</small>
         </article>
       </section>
-      <AppInlineAlert v-if="createWrite.pending && !creating" type="warning">新建注册批次的结果尚未确认，已暂停重复创建。现有接口没有按本次命令查询结果的能力，不能根据同名或相似名称认定已经创建或未创建。</AppInlineAlert>
+      <AppInlineAlert v-if="createWrite.pending && !creating && !(createWriteVisible && createWrite.error)" type="warning">创建结果尚未确认，已暂停重复创建，请联系管理员核实。</AppInlineAlert>
       <AppInlineAlert v-if="createWriteVisible && createWrite.error" type="danger">{{ createWrite.error }}</AppInlineAlert>
-      <AppInlineAlert v-if="createWriteVisible && createWrite.receipt" type="success">已创建批次 {{ createWrite.receipt.batchId }}「{{ createWrite.receipt.batchName }}」：{{ typeLabelOf(createWrite.receipt.registerType) }}，本次回执状态为{{ statusLabel(createWrite.receipt.status) }}。注册窗口起止未在正式回执中返回，本页未核对其落库值。</AppInlineAlert>
-      <AppInlineAlert v-if="batchWrite.pending && !busyId" type="warning">有关闭/归档请求尚未取得可核对的正式回执，已暂停重复提交。请在原身份和原批次核对当前正式状态；当前状态不能证明本次命令是否成功。</AppInlineAlert>
+      <AppInlineAlert v-if="createWriteVisible && createWrite.receipt" type="success">已创建「{{ createWrite.receipt.batchName }}」：{{ typeLabelOf(createWrite.receipt.registerType) }}，{{ statusLabel(createWrite.receipt.status) }}。<p>注册起止时间尚待核验。</p></AppInlineAlert>
+      <AppInlineAlert v-if="batchWrite.pending && !busyId && !(batchWriteVisible && batchWrite.error)" type="warning">有批次操作结果尚未确认，已暂停重复提交，请查看批次状态。</AppInlineAlert>
       <AppInlineAlert v-if="batchWriteVisible && batchWrite.error" type="danger">{{ batchWrite.error }}</AppInlineAlert>
-      <AppInlineAlert v-if="batchWriteVisible && batchWrite.receipt" type="success">批次 {{ batchWrite.receipt.batchId }}：本次正式回执为{{ statusLabel(batchWrite.receipt.status) }}，后续状态以重新读取的批次记录为准。</AppInlineAlert>
-      <AppSectionCard v-if="batchWriteVisible && batchWrite.pending" title="核对原批次正式状态">
-        <p>批次 ID：{{ batchWrite.target.row.batchId }} · 本次操作：{{ batchWrite.target.kind === 'close' ? '关闭' : '归档' }}</p>
-        <AppButton :disabled="!!busyId || batchWrite.checking || !canReadBatchOutcome" @click="readBatchOutcome">{{ batchWrite.checking ? '正在读取…' : '只读核对原批次' }}</AppButton>
-        <p v-if="!canReadBatchOutcome" class="mp-note">当前身份缺少注册批次查看权限，无法读取正式批次状态。</p>
-        <p v-if="batchWrite.readRow" class="mp-note">当前正式状态：{{ statusLabel(batchWrite.readRow.status) }}。这是当前记录状态，本次命令结果仍未知，重复关闭/归档继续暂停。</p>
+      <AppInlineAlert v-if="batchWriteVisible && batchWrite.receipt" type="success">本次办理结果：{{ statusLabel(batchWrite.receipt.status) }}。</AppInlineAlert>
+      <AppSectionCard v-if="batchWriteVisible && batchWrite.pending" title="查看批次状态">
+        <p>批次：{{ batchWrite.target.row.batchName || '所选批次' }} · 本次操作：{{ batchWrite.target.kind === 'close' ? '关闭' : '归档' }}</p>
+        <AppButton :disabled="!!busyId || batchWrite.checking || !canReadBatchOutcome" @click="readBatchOutcome">{{ batchWrite.checking ? '正在查询…' : '查看批次状态' }}</AppButton>
+        <p v-if="!canReadBatchOutcome" class="mp-note">当前身份无权查看此批次的状态。</p>
+        <p v-if="batchWrite.readRow" class="mp-note">当前状态：{{ statusLabel(batchWrite.readRow.status) }}；上次结果仍未确认，已暂停重复操作。</p>
         <AppInlineAlert v-if="batchWrite.readError" type="warning">{{ batchWrite.readError }}</AppInlineAlert>
       </AppSectionCard>
       <AppSectionCard v-if="showCreate && canManage" :title="'新建' + (typeLabel || '注册批次')">
@@ -42,7 +42,7 @@
           </label>
           <div class="aa-cal-form__item">
             <span>所属学期（必选）</span>
-            <AppTermEntityPicker v-model="draft.termId" placeholder="选择正式学期" :disabled="createBlocked" />
+            <AppTermEntityPicker v-model="draft.termId" placeholder="选择学期" :disabled="createBlocked" />
           </div>
           <label class="aa-cal-form__item">
             类型
@@ -61,21 +61,21 @@
         </div>
       </AppSectionCard>
 
-      <AppSectionCard :title="`${typeLabel || '注册'}批次 · 批次列表`" class="aa-batch-list" no-padding>
+      <AppSectionCard title="批次列表" class="aa-batch-list" no-padding>
         <form class="aa-batch-filters" @submit.prevent="applyFilters">
           <label class="aa-batch-filters__search">
-            <span class="aa-batch-label">批次名称 / ID</span>
-            <input v-model="filters.keyword" class="aa-input" type="search" maxlength="200" :disabled="creating || !!busyId" placeholder="搜索本页批次名称或 ID" @keydown.enter.prevent="applyFilters" />
+            <span class="aa-batch-label">批次名称</span>
+            <input v-model="filters.keyword" class="aa-input" type="search" maxlength="200" :disabled="creating || !!busyId" placeholder="搜索本页批次名称" @keydown.enter.prevent="applyFilters" />
           </label>
           <label class="aa-batch-filters__status">
-            <span class="aa-batch-label">正式状态</span>
+            <span class="aa-batch-label">状态</span>
             <AppSelect v-model="filters.status" :options="statusOptions" :disabled="creating || !!busyId" />
           </label>
           <AppButton :disabled="creating || !!busyId" @click="applyFilters">查询</AppButton>
           <AppButton variant="ghost" :disabled="creating || !!busyId" @click="clearFilters">清空</AppButton>
-          <p v-if="!loading && !error" class="aa-batch-filters__count">共 {{ pagination.total }} 个批次 · 第 {{ pagination.page }} 页<br />名称 / ID 仅检索本页 {{ rows.length }} 条记录</p>
+          <p v-if="!loading && !error" class="aa-batch-filters__count">仅搜索本页 {{ rows.length }} 条记录</p>
         </form>
-        <p class="aa-batch-data-note">{{ missingFieldsNote }}请进入原批次核对具体学生；人数未提供不表示 0 人。</p>
+        <p class="aa-batch-data-note">{{ missingFieldsNote }}</p>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
         <template v-else-if="!rows.length">
@@ -87,12 +87,10 @@
           <DataTable :columns="columns" :rows="visibleRows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
             <template #cell-batchName="{ row }">
               <button class="mp-link aa-batch-name" :disabled="creating || !!busyId" @click="goDetail(row)">{{ row.batchName || '批次名称未提供' }}</button>
-              <span class="aa-batch-id">ID {{ row.batchId }} · {{ typeLabelOf(row.registerType) }}</span>
             </template>
             <template #cell-type="{ row }">{{ typeLabelOf(row.registerType) }}</template>
             <template v-for="column in unavailableColumns" :key="column.key" #[`cell-${column.key}`]>
               <span class="aa-batch-unavailable">待核对</span>
-              <span class="aa-batch-id">批次列表未提供</span>
             </template>
             <template #cell-status="{ row }">
               <AppStatusTag :status="row.status" dot>{{ statusLabel(row.status) }}</AppStatusTag>
@@ -159,11 +157,11 @@ export default {
   computed: {
     registrationSteps() {
       return [
-        { title: '创建批次', description: '注册管理岗建立来源' },
-        { title: '圈定候选', description: '进入原批次核对学生' },
-        { title: '资格核验', description: '按学生逐项核验证据' },
-        { title: '正式注册', description: '以正式命令回执为准' },
-        { title: '关闭归档', description: '核对批次关闭与归档状态' }
+        { title: '创建批次', description: '填写批次信息' },
+        { title: '选择学生', description: '核对本批次学生名单' },
+        { title: '资格核验', description: '逐项核验注册条件' },
+        { title: '办理注册', description: '确认符合条件后办理' },
+        { title: '关闭归档', description: '结束本批次办理并归档' }
       ].map(step => ({ ...step, status: 'wait' }))
     },
     unavailableColumns() {
@@ -177,7 +175,7 @@ export default {
         ...(!this.fixedType ? [{ key: 'type', title: '类型' }] : []), ...this.unavailableColumns,
         { key: 'status', title: '状态', width: '160px' }, { key: 'actions', title: '办理入口', width: '150px' }]
     },
-    missingFieldsNote() { return `当前批次列表未提供${this.unavailableColumns.map(column => column.title).join('、')}。` },
+    missingFieldsNote() { return `${this.unavailableColumns.map(column => column.title).join('、')}尚待核对，请进入注册名单查看。` },
     statusOptions() { return [{ value: '', label: '全部状态' }, ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))] },
     visibleRows() {
       const keyword = this.appliedKeyword.toLocaleLowerCase()
@@ -210,18 +208,18 @@ export default {
       return this.typeLabel || '注册批次'
     },
     pageSubtitle() {
-      if (this.fixedType === 'ENROLL') return '新生入学注册批次：核身份/专业/班级，报到缴费材料齐全后完成注册'
-      if (this.fixedType === 'ANNUAL') return '在籍学生学年注册批次：核对上学年状态/缴费后完成续注册'
-      if (this.fixedType === 'SEMESTER') return '在籍学生按学期开的续注册批次：核对本学期在籍/缴费状态后完成注册'
-      return '按入学 / 学年 / 学期建立注册批次；批次开放后逐个学生注册（经学籍单一入口写主档）'
+      if (this.fixedType === 'ENROLL') return '核对新生身份、专业、班级及报到缴费材料后办理注册。'
+      if (this.fixedType === 'ANNUAL') return '核对在籍学生上学年状态和缴费情况后办理学年注册。'
+      if (this.fixedType === 'SEMESTER') return '核对学生本学期在籍与缴费情况后办理学期注册。'
+      return '按入学、学年或学期建立批次，开放后为学生办理注册。'
     },
     summaryCards() {
       const count = (...states) => this.rows.filter(row => states.includes(row.status)).length
       return [
-        { label: '本页批次', value: this.rows.length, note: `正式总数 ${this.pagination.total}`, tone: 'primary' },
-        { label: '待启动', value: count('DRAFT'), note: '等待开放候选范围', tone: 'neutral' },
-        { label: '进行中', value: count('OPEN'), note: '资格核验与正式注册', tone: 'primary' },
-        { label: '已关闭 / 归档', value: count('CLOSED', 'ARCHIVED'), note: '可回查正式回执', tone: 'success' }
+        { label: '本页批次', value: this.rows.length, note: '', tone: 'primary' },
+        { label: '待启动', value: count('DRAFT'), note: '开放批次后可办理', tone: 'neutral' },
+        { label: '进行中', value: count('OPEN'), note: '核验资格并办理注册', tone: 'primary' },
+        { label: '已关闭 / 归档', value: count('CLOSED', 'ARCHIVED'), note: '查看办理记录', tone: 'success' }
       ]
     },
     /** AppDateRangePicker（mode=form）v-model 代理：对内仍是 draft.windowStart/windowEnd 两个字段，创建提交逻辑不用改。 */
@@ -314,8 +312,8 @@ export default {
     },
     askArchive(row) {
       if (!this.canArchive || this.batchActionsBlocked || row.status !== 'CLOSED') return
-      this.confirm = { visible: true, title: '归档注册批次',
-        message: `确认归档「${row.batchName}」？批次将进入「注册归档」供查阅与导出。暂缓与异常记录尚未统一封存，此操作不代表关联台账全部只读。`, type: 'primary' }
+      this.confirm = { visible: true, title: `归档「${row.batchName}」`,
+        message: '批次归档后可查阅和导出，暂缓与异常记录仍按各自状态办理。', type: 'primary' }
       this.pendingAction = { kind: 'archive', row: { ...row, batchId: String(row.batchId) }, context: this.contextKey, identity: this.batchActionIdentity() }
     },
     batchActionIdentity() { return this.academicFlow?.identity?.() || JSON.stringify(this.ctx) },
@@ -361,7 +359,7 @@ export default {
           else if (conflict) this.load()
         }
       } else if (current) {
-        this.batchWrite.error = '未取得对象和状态一致的正式回执，本次结果未知；请先只读核对原批次，暂停重复提交。'
+        this.batchWrite.error = '操作结果尚未确认，请查看批次状态，暂勿重复提交。'
       }
     },
     async readBatchOutcome() {
@@ -377,7 +375,7 @@ export default {
           if (String(res?.code).startsWith('403') || ['NO_PERMISSION', 'NO_DATA_SCOPE'].includes(res?.bizCode)) {
             this.clearDeniedBatchData(target, res?.message); this.batchWrite.readError = res?.message || '无法读取原批次'; return
           }
-          if (res?.code !== 0 || !Array.isArray(res.data?.list) || !Number.isSafeInteger(res.data?.total) || res.data.total < 0) throw new Error(res?.message || '批次列表回执不完整')
+          if (res?.code !== 0 || !Array.isArray(res.data?.list) || !Number.isSafeInteger(res.data?.total) || res.data.total < 0) throw new Error(res?.message || '批次信息不完整，请重试')
           const row = res.data.list.find(item => String(item.batchId) === target.row.batchId)
           if (row) {
             if (!Object.hasOwn(STATUS_LABEL, row.status) || (target.row.registerType && row.registerType !== target.row.registerType)) throw new Error('原批次类型或状态无法核对')
@@ -385,9 +383,9 @@ export default {
           }
           if (page * 100 >= res.data.total) break
         }
-        if (current()) this.batchWrite.readError = '在本次最多 500 条批次记录中未定位原 ID，不能据此认定操作未执行；本次写结果仍未知。'
+        if (current()) this.batchWrite.readError = '本次最多查询500条记录，未找到该批次，操作结果仍未确认。'
       } catch (error) {
-        if (current()) this.batchWrite.readError = error?.message || '正式批次状态读取失败，本次写结果仍未知'
+        if (current()) this.batchWrite.readError = error?.message || '批次状态读取失败，上次操作结果仍未确认'
       } finally { this.batchWrite.checking = false }
     },
     toggleCreate() {
@@ -441,7 +439,7 @@ export default {
           }
         }
       } else if (this.createTargetCurrent(target)) {
-        this.createWrite.error = '未取得对象、名称、类型和状态一致的创建回执，本次结果未知，已暂停重复创建。'
+        this.createWrite.error = '创建结果尚未确认，已暂停重复创建，请联系管理员核实。'
       }
     },
     async load() {

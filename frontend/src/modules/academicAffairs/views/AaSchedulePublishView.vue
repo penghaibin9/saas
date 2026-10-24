@@ -8,7 +8,7 @@
   >
     <template #actions>
       <AppButton @click="returnToQueue">返回原队列</AppButton>
-      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次 / 排课</AppButton>
+      <AppButton @click="$router.push('/admin/academic-affairs/schedule')">课表批次</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -16,30 +16,31 @@
       <AaOperationReceipt :receipt="receipt" />
       <AppInlineAlert v-if="commandError" type="danger" :description="commandError" />
       <div v-if="pendingWrite" class="aa-pending-read">
-        <span>系统只会重新读取指定批次与当前正式头，不会再次提交发布或作废请求。</span>
-        <AppButton @click="retryPendingRead">只读核对结果</AppButton>
+        <span v-if="!receipt?.pending">操作结果尚待确认，请查询上次办理结果。</span>
+        <AppButton @click="retryPendingRead">查看办理结果</AppButton>
       </div>
-      <AppSectionCard v-if="focusBatchId || focusError" compact title="指定批次与当前正式版本">
+      <AppSectionCard v-if="focusBatchId || focusError" compact title="批次与生效版本">
         <LoadingState v-if="focusLoading" />
         <ErrorState v-else-if="focusError" :description="focusError" @retry="loadFocusBatch" />
         <div v-else-if="focusBatch" class="aa-truth-card">
           <div class="aa-truth-card__head">
             <div>
-              <strong>{{ focusBatch.batchName || `课表批次 ${focusBatch.batchId}` }}</strong>
-              <p>批次 ID {{ focusBatch.batchId }} · {{ statusLabel(focusBatch.status) }}</p>
+              <strong>{{ focusBatch.batchName || '课表批次' }}</strong>
+              <p>{{ statusLabel(focusBatch.status) }}</p>
             </div>
             <AppStatusTag :type="formalHead.type" dot>{{ formalHead.label }}</AppStatusTag>
           </div>
           <div class="aa-truth-card__grid">
-            <div><span>正式范围</span><strong>{{ formalScopeText(focusBatch) }}</strong></div>
-            <div><span>当前正式批次</span><strong>{{ activeBatchText(focusBatch) }}</strong></div>
-            <div><span>正式头版本</span><strong>{{ headVersionText(focusBatch) }}</strong></div>
-            <div><span>正式头发布时间</span><strong>{{ headPublishedAtText(focusBatch) }}</strong></div>
+            <div><span>适用范围</span><strong>{{ formalScopeText(focusBatch) }}</strong></div>
+            <div><span>生效课表</span><strong>{{ activeBatchText(focusBatch) }}</strong></div>
+            <div><span>生效版本</span><strong>{{ headVersionText(focusBatch) }}</strong></div>
+            <div><span>发布时间</span><strong>{{ headPublishedAtText(focusBatch) }}</strong></div>
           </div>
           <p class="mp-note">{{ formalHead.detail }}</p>
+          <details><summary>实施人员使用</summary><p>本批次编号：{{ focusBatch.batchId }}；生效批次编号：{{ focusBatch.activeTruth?.activeBatchId || '—' }}；范围编号：{{ focusBatch.activeTruth?.scopeId ?? '—' }}</p></details>
         </div>
       </AppSectionCard>
-      <AppSectionCard compact v-if="gate.visible" title="发布门禁检查">
+      <AppSectionCard compact v-if="gate.visible" title="发布条件检查">
         <LoadingState v-if="gate.loading" />
         <template v-else-if="gate.summary">
           <div class="aa-gate-head">
@@ -65,7 +66,7 @@
               <strong>全校正式发布核验</strong>
               <AppStatusTag :type="schoolGateReady ? 'success' : 'warning'" dot>{{ schoolGateReady ? '全校核验通过' : '暂不可正式发布' }}</AppStatusTag>
             </div>
-            <p v-if="schoolGateReady" class="mp-note">服务端已确认全校必需批次就绪，正式发布前仍会再次核验。</p>
+            <p v-if="schoolGateReady" class="mp-note">全校所需批次已就绪，发布时将再次检查。</p>
             <ul v-else class="aa-school-gate__reasons"><li v-for="(message, index) in schoolGateBlockers" :key="index">{{ message }}</li></ul>
             <AppButton :disabled="writeBusy" @click="openGate(gate.batch, gate.intent)">重新检查发布条件</AppButton>
           </div>
@@ -94,11 +95,12 @@
           <template #cell-status="{ row }">
             <AppStatusTag :type="scheduleBatchColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
           </template>
+          <template #cell-publishAt="{ row }">{{ row.publishAt ? displayTime(row.publishAt) : '—' }}</template>
           <template #cell-actions="{ row }">
             <div class="aa-actions">
               <button v-if="row.status === 'DRAFT'" class="mp-link" :disabled="writeBusy || isPending(row, 'pre')" @click="openGate(row, 'pre')">{{ isPending(row, 'pre') ? '结果待确认' : '检查并预发布' }}</button>
               <button v-if="row.status === 'PRE_PUBLISHED'" class="mp-link" :disabled="writeBusy || isPending(row, 'pub')" @click="openGate(row, 'pub')">{{ isPending(row, 'pub') ? '结果待确认' : '检查并正式发布' }}</button>
-              <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openGate(row, 'view')">复核发布门禁</button>
+              <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openGate(row, 'view')">复核发布条件</button>
               <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openPublished(row)">查看已发布课表</button>
               <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openChangeLedger(row)">调停课台账</button>
               <button v-if="row.status === 'PUBLISHED'" class="mp-link aa-danger" :disabled="writeBusy || isPending(row, 'void')" @click="openVoid(row)">{{ isPending(row, 'void') ? '结果待确认' : '作废重发（重大纠错）' }}</button>
@@ -106,19 +108,21 @@
             </div>
           </template>
         </DataTable>
-        <p class="mp-note">发布后课表不可直接修改。日常单课位调课、停课、补课走「调停课」审批；只有整批课表存在重大错误、必须整体重排时，才使用危险操作「作废重发」。</p>
+        <p class="mp-note">发布后不可直接修改，日常调课、停课、补课走“调停课”审批。</p>
+        <p class="mp-note">整批课表有重大错误、须整体重排时，才使用“作废重发”。</p>
       </AppSectionCard>
 
-      <AppSectionCard compact title="发布记录（发布/作废历史留痕）">
+      <AppSectionCard compact title="发布与作废记录">
         <ErrorState v-if="recError" :description="recError" @retry="loadRecords" />
         <LoadingState v-else-if="recLoading" />
         <EmptyState v-else-if="!records.length" title="暂无发布记录" />
         <DataTable v-else :columns="recColumns" :rows="records" row-key="recordId">
           <template #cell-action="{ row }">
-            <AppStatusTag :type="row.action === 'PUBLISH' ? 'success' : 'danger'" dot>
-              {{ row.action === 'PUBLISH' ? '发布' : '作废重发' }}
+            <AppStatusTag :type="row.action === 'PUBLISH' ? 'success' : row.action === 'VOID_REISSUE' ? 'danger' : 'default'" dot>
+              {{ recordActionLabel(row.action) }}
             </AppStatusTag>
           </template>
+          <template #cell-createdAt="{ row }">{{ displayTime(row.createdAt) }}</template>
         </DataTable>
       </AppSectionCard>
     </div>
@@ -149,6 +153,7 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { SCHEDULE_BATCH_STATUS, scheduleBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
 import { scheduleTruthPresentation } from '../components/parallel-a/scheduleTruthPresentation'
+import { formatDateTime } from '@/utils/dateUtils.js'
 import { isConflictResult, isDeniedResult } from '../components/parallel-a/resultState'
 import { readAllPages } from '../components/parallel-a/pagedRead'
 import { academicRouteState, createAcademicRequestGate } from '../academicFlowContext'
@@ -201,11 +206,11 @@ export default {
       return [
         { label: '教学任务可排', ok: row.totalTasks > 0 && !row.invalidTaskCount, detail: `任务 ${row.totalTasks || 0} 个 · 配置异常 ${row.invalidTaskCount || 0} 个` },
         { label: '开课来源无重复', ok: !(row.duplicateTaskGroupCount > 0), detail: `同课程同班任务重复 ${row.duplicateTaskGroupCount ?? '待核对'} 组；重复时先核对开课来源` },
-        { label: '教学任务计划完整', ok: !row.missingTaskCount && !row.overScheduledTaskCount, detail: `漏排 ${row.missingTaskCount || 0} 个任务 · 超排 ${row.overScheduledTaskCount || 0} 个任务；课位按周次展开核对` },
-        { label: '计划总学时完整', ok: hours.known && hours.expected === hours.scheduled && hours.missing === 0 && hours.excess === 0, detail: hours.known ? `计划 ${hours.expected} 学时 · 已排 ${hours.scheduled} 学时 · 缺 ${hours.missing} 学时 · 超 ${hours.excess} 学时` : '计划学时及周次覆盖待核对' },
-        { label: '每周学时未超量', ok: hours.known && hours.overload === 0, detail: hours.known ? `周超量 ${hours.overload} 项；总学时达到仍须核对每周上限` : '每周学时上限待核对' },
-        { label: '课位关联有效', ok: !row.orphanItemCount && !row.invalidCoordinateItemCount, detail: `孤立课位 ${row.orphanItemCount || 0} · 周次坐标异常 ${row.invalidCoordinateItemCount || 0}` },
-        { label: '硬冲突清零', ok: !row.hardConflicts, detail: `硬冲突 ${row.hardConflicts || 0} · 软冲突 ${row.softConflicts || 0}` }
+        { label: '教学任务排齐', ok: !row.missingTaskCount && !row.overScheduledTaskCount, detail: `漏排 ${row.missingTaskCount || 0} 个任务 · 超排 ${row.overScheduledTaskCount || 0} 个任务` },
+        { label: '总学时符合计划', ok: hours.known && hours.expected === hours.scheduled && hours.missing === 0 && hours.excess === 0, detail: hours.known ? `计划 ${hours.expected} 学时 · 已排 ${hours.scheduled} 学时 · 缺 ${hours.missing} 学时 · 超 ${hours.excess} 学时` : '计划学时及周次覆盖待核对' },
+        { label: '每周学时未超量', ok: hours.known && hours.overload === 0, detail: hours.known ? `周超量 ${hours.overload} 项；每周须符合课时上限` : '每周学时上限待核对' },
+        { label: '课程安排信息有效', ok: !row.orphanItemCount && !row.invalidCoordinateItemCount, detail: `未关联任务 ${row.orphanItemCount || 0} 项 · 周次或时段异常 ${row.invalidCoordinateItemCount || 0} 项` },
+        { label: '冲突检查', ok: !row.hardConflicts, detail: `必须解决 ${row.hardConflicts || 0} 项 · 需关注 ${row.softConflicts || 0} 项` }
       ]
     }
   },
@@ -223,6 +228,8 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.listSeq += 1; this.recSeq += 1; this.gateSeq += 1; this.focusGate.invalidate() },
   methods: {
+    displayTime(value) { return formatDateTime(value, '时间待核对') },
+    recordActionLabel(value) { return value === 'PUBLISH' ? '发布' : value === 'VOID_REISSUE' ? '作废重发' : '其他操作' },
     contactMetrics(row = {}) {
       row = row || {}
       const keys = ['expectedContactHours', 'scheduledContactHours', 'missingContactHours', 'excessContactHours', 'weeklyOverloadCount']
@@ -255,7 +262,7 @@ export default {
       const response = await this.requestResult(() => academicAffairsApi.getScheduleBatch(batchId))
       if (response.code !== 0) return response
       if (String(response.data?.batchId || '') !== String(batchId)) {
-        return { code: 'OBJECT_MISMATCH', message: '服务端返回了不同的课表批次，已拒绝更新当前页面' }
+        return { code: 'OBJECT_MISMATCH', message: '读取的批次与当前选择不一致，请重新进入' }
       }
       return response
     },
@@ -292,24 +299,23 @@ export default {
     },
     formalScopeText(batch) {
       const truth = batch?.activeTruth || {}
-      if (!truth.scopeType && !truth.scopeId) return '待服务端确认'
-      return `${({ SCHOOL: '全校', COLLEGE: '学院' })[truth.scopeType] || '范围待确认'}${truth.scopeId ? ` · ${truth.scopeId}` : ''}`
+      return ({ SCHOOL: '全校', COLLEGE: '指定学院' })[truth.scopeType] || '范围待核对'
     },
     activeBatchText(batch) {
       const truth = batch?.activeTruth
-      if (truth?.truthStatus === 'VERIFIED') return truth.activeBatchId || '待服务端确认'
-      if (truth?.truthStatus === 'NOT_PUBLISHED') return '尚无正式头'
-      return '待服务端确认'
+      if (truth?.truthStatus === 'VERIFIED' && truth.activeBatchId) return String(truth.activeBatchId) === String(batch?.batchId) ? '本批次' : '其他已发布批次'
+      if (truth?.truthStatus === 'NOT_PUBLISHED' && !truth.activeBatchId) return '尚未发布'
+      return '待核对'
     },
     headVersionText(batch) {
       const truth = batch?.activeTruth
       if (truth?.truthStatus === 'NOT_PUBLISHED') return '—'
-      return truth?.truthStatus === 'VERIFIED' && truth.headVersion != null ? truth.headVersion : '待服务端确认'
+      return truth?.truthStatus === 'VERIFIED' && truth.headVersion != null ? `第${truth.headVersion}版` : '待核对'
     },
     headPublishedAtText(batch) {
       const truth = batch?.activeTruth
       if (truth?.truthStatus === 'NOT_PUBLISHED') return '—'
-      return truth?.truthStatus === 'VERIFIED' ? (truth.publishedAt || '—') : '待服务端确认'
+      return truth?.truthStatus === 'VERIFIED' ? formatDateTime(truth.publishedAt, '时间待核对') : '待核对'
     },
     hasCurrentFormalHead(batch) {
       const truth = batch?.activeTruth
@@ -328,25 +334,25 @@ export default {
       if (!pending.acknowledged || !headConfirmed) {
         this.receipt = {
           pending: true,
-          title: '发布结果待确认',
-          object: `${formal.data.batchName}（${formal.data.batchId}）`,
-          status: headConfirmed ? `已读取到${this.statusLabel(formal.data.status)}，但无法归属到本次请求` : `${this.statusLabel(formal.data.status)}，尚未取得当前正式头`,
+          title: pending.kind === 'void' ? '作废结果待确认' : pending.kind === 'pre' ? '预发布结果待确认' : '发布结果待确认',
+          object: formal.data.batchName || '课表批次',
+          status: headConfirmed ? `当前状态：${this.statusLabel(formal.data.status)}` : `当前状态：${this.statusLabel(formal.data.status)}，生效版本待核对`,
           time: pending.kind === 'pub' && this.hasCurrentFormalHead(formal.data) ? (formal.data.activeTruth?.publishedAt || formal.data.publishAt || '') : '',
-          next: '请继续只读核对指定批次和当前正式头；确认前不要重复提交。'
+          next: '请查询上次办理结果，确认前不要重复提交。'
         }
         return formal
       }
       this.pendingWrite = null; this.commandError = ''
       this.receipt = {
-        title: pending.kind === 'pre' ? '课表已进入预发布并核对' : pending.kind === 'void' ? '课表批次已作废并完成正式核对' : '课表已正式发布并核对',
-        object: `${formal.data.batchName}（${formal.data.batchId}）`,
+        title: pending.kind === 'pre' ? '课表已预发布' : pending.kind === 'void' ? '课表批次已作废' : '课表已发布',
+        object: formal.data.batchName || '课表批次',
         status: this.statusLabel(formal.data.status),
         time: pending.kind === 'pub' ? (formal.data.activeTruth?.publishedAt || formal.data.publishAt || '') : '',
         next: pending.kind === 'pub'
-          ? '下一步：师生四端继续读取当前正式课表；后续单课位变更走调停课。'
+          ? '通知情况请查发布记录，后续调整须走调停课审批。'
           : pending.kind === 'void'
-            ? '下一步：回到排课工作台创建或维护纠错批次，完成后重新发布。'
-            : '下一步：复核门禁后执行正式发布。'
+            ? '请回排课工作台处理纠错批次，完成后重新发布。'
+            : '复核发布条件后，可继续发布课表。'
       }
       if (String(this.focusBatchId) === String(formal.data.batchId)) this.focusBatch = formal.data
       return formal
@@ -381,7 +387,7 @@ export default {
       else {
         this.gate.visible = false
         if (isDeniedResult(response)) this.clearSensitive(response.message)
-        else this.commandError = response.message || '发布门禁检查失败，请重试'
+        else this.commandError = response.message || '发布条件检查失败，请重试'
       }
     },
     async confirmGateAction() {
@@ -425,7 +431,7 @@ export default {
       if (this.disposed || operationContext !== this.focusContextKey()) return
       if (isDeniedResult(before)) return this.clearSensitive(before.message)
       if (gate.code !== 0 || gate.data?.complete !== true || this.gateFailureReason(gate.data, kind) || (kind === 'pub' && gate.data?.schoolGate?.ready !== true) || before.code !== 0 || before.data.status !== expectedBefore) {
-        this.commandError = gate.message || (gate.code === 0 && this.gateFailureReason(gate.data, kind)) || '发布门禁或批次状态已变化，请重新核对'
+        this.commandError = gate.message || (gate.code === 0 && this.gateFailureReason(gate.data, kind)) || '发布条件或批次状态已变化，请重新核对'
         this.gate.summary = gate.code === 0 ? gate.data : null
         await this.load()
         return
@@ -440,7 +446,7 @@ export default {
       if (isConflictResult(res)) this.pendingWrite = null
       if (operationContext !== this.focusContextKey()) return
       if (isConflictResult(res)) {
-        this.commandError = res.message || '批次事实已变化，本次发布被拒绝，请重新核对'
+        this.commandError = res.message || '批次状态已变化，本次发布被拒绝，请重新核对'
         this.gate.summary = null
         await this.load()
         return
@@ -452,8 +458,8 @@ export default {
         await this.load(); await this.loadRecords()
         return
       }
-      this.commandError = isConflictResult(res) ? `${res.message || '批次事实已变化'}；请重新核对，系统不会自动重放发布请求。` : (formal?.message || res.message || '发布结果待确认，请刷新核对')
-      if (!this.receipt?.pending) this.receipt = { pending: true, title: '发布结果待确认', object: `${row.batchName}（${row.batchId}）`, status: '尚未读取到匹配的正式批次状态与正式头', time: '', next: '请继续只读核对指定批次；确认前不要重复发布。' }
+      this.commandError = isConflictResult(res) ? `${res.message || '批次状态已变化'}；请重新核对。` : (formal?.message || res.message || '发布结果待确认，请刷新核对')
+      if (!this.receipt?.pending) this.receipt = { pending: true, title: '发布结果待确认', object: row.batchName || '课表批次', status: '批次状态及生效版本尚待核对', time: '', next: '请查询上次办理结果，确认前不要重复发布。' }
     },
     openVoid(row) { if (!this.writeBusy) this.voidDlg = { visible: true, submitting: false, batchId: row.batchId } },
     async doVoid(payload) {
@@ -484,7 +490,7 @@ export default {
       if (isConflictResult(res)) this.pendingWrite = null
       if (operationContext !== this.focusContextKey()) return
       if (isConflictResult(res)) {
-        this.commandError = res.message || '批次事实已变化，本次作废被拒绝，原因已保留'
+        this.commandError = res.message || '批次状态已变化，本次作废被拒绝，原因已保留'
         await this.load()
         return
       }
@@ -496,9 +502,9 @@ export default {
         return
       }
       this.commandError = isConflictResult(res)
-        ? `${res.message || '批次事实已变化'}；作废原因已保留，请重新核对，系统不会自动重放作废请求。`
+        ? `${res.message || '批次状态已变化'}；作废原因已保留，请重新核对。`
         : (formal?.message || res.message || '作废结果待确认，请刷新核对')
-      if (!this.receipt?.pending) this.receipt = { pending: true, title: '作废结果待确认', object: `${row.batchName}（${row.batchId}）`, status: '尚未读取到已归档的指定批次状态', time: '', next: '请继续只读核对指定批次；确认前不要重复作废。' }
+      if (!this.receipt?.pending) this.receipt = { pending: true, title: '作废结果待确认', object: row.batchName || '课表批次', status: '批次状态尚待核对', time: '', next: '请查询上次办理结果，确认前不要重复作废。' }
     },
     async load() {
       const seq = ++this.listSeq, identity = this.identityKey

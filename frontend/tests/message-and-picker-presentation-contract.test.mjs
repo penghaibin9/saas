@@ -15,7 +15,7 @@ test('通知发布使用业务字段生成参数且不显示 actionKey fallback'
   assert.doesNotMatch(source, /a\.label \|\| a\.actionKey/)
   assert.doesNotMatch(source, /深链参数（JSON/)
   assert.match(source, /form\.actionParams\[param\]/)
-  assert.match(source, /仅可选择当前账号负责范围内的接收对象/)
+  assert.match(source, /仅可选择当前账号负责范围内的接收人/)
 })
 
 test('学工 picker 缺标签时禁用且不拼接数据库 ID', () => {

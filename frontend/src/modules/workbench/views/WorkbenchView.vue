@@ -20,7 +20,7 @@
     </header>
 
     <section v-if="showStudentAffairs && (todoTotal || error)" class="wb-tasks wb-panel" aria-label="学工业务待办">
-      <header class="wb-section-head"><h2>待我办理 <small>{{ loading ? '—' : todoTotal }}</small></h2><button class="wb-link" type="button" @click="showBusinessQueue">办理队列</button></header>
+      <header class="wb-section-head"><h2>待我办理 <small>{{ loading || error ? '—' : todoTotal }}</small></h2><button class="wb-link" type="button" @click="showBusinessQueue">办理队列</button></header>
       <p v-if="error" class="wb-error" role="alert">{{ error }}</p>
       <ul v-else class="wb-task-list">
         <li v-for="todo in todos.slice(0, 5)" :key="todo.todoId"><div class="wb-task-title"><strong>{{ todo.title }}</strong><small>{{ todoMeta(todo) }}</small></div><span class="wb-deadline">{{ todo.dueAt ? dueLabel(todo) : '未设时限' }}</span><button type="button" class="wb-handle" :disabled="!todo.typedRouteTarget" @click="openTodo(todo)">去办理</button></li>
@@ -29,7 +29,7 @@
 
     <section v-if="showGraduation" class="wb-tasks wb-panel" aria-label="毕业设计待办">
       <header class="wb-section-head"><h2>毕业设计</h2><button class="wb-link" type="button" @click="go('/admin/graduation/my-work')">进入我的毕设工作</button></header>
-      <p class="wb-hint">指导学生、评阅论文、答辩评分、答辩确认等毕业设计待办都在「毕业设计中心 → 我的毕设工作」里，不在下面的审批待办中。</p>
+      <p class="wb-hint">指导、评阅与答辩事项，请进入「我的毕设工作」办理。</p>
     </section>
 
     <StudentAffairsPriorityPanel
@@ -39,7 +39,7 @@
       :pending="loading || error ? null : summary.pending"
     />
     <details :open="!showStudentAffairs" class="wb-personal-details">
-      <summary v-if="showStudentAffairs">我的待办与个人设置</summary>
+      <summary>我的待办与个人设置</summary>
       <div v-if="error" class="wb-error" role="alert">
         <strong>待办加载失败</strong><span>{{ error }}</span>
         <button type="button" :disabled="loading" @click="load">重试</button>
@@ -69,7 +69,7 @@
                 aria-controls="workbench-task-panel"
                 @click="taskSource = 'approval'"
               >
-                待我审批 <b>{{ loading ? '—' : summary.pending }}</b>
+                待我审批 <b v-if="!visibleSummaryCues.some(c => c.source === 'summary.pending')">{{ loading ? '—' : summary.pending }}</b>
               </button>
               <button
                 id="business-tab"
@@ -158,8 +158,8 @@
           </div>
         </section>
 
-        <div v-if="riskItems.length" class="wb-alerts" aria-label="需要关注">
-          <button v-for="item in riskItems" :key="item.key" type="button" @click="go(item.path)">
+        <div v-if="visibleRiskItems.length" class="wb-alerts" aria-label="需要关注">
+          <button v-for="item in visibleRiskItems" :key="item.key" type="button" @click="go(item.path)">
             {{ item.text }}<span>查看</span>
           </button>
         </div>
@@ -286,7 +286,8 @@ import {
   savePref,
   tilesPrefKey
 } from '../api/workbenchPrefs'
-import { resolveRecipe, TODO_TYPE_ROUTES } from '../config/workbenchRecipes'
+import { resolveRecipe, TODO_TYPE_ROUTES, TODO_TYPE_LABELS } from '../config/workbenchRecipes'
+import { safeLocalizedText, isTechnicalUiMessage } from '@/utils/presentationSafety'
 import { currentUserFromToken } from '@/services/http/client'
 
 const EMPTY_SUMMARY = Object.freeze({
@@ -428,6 +429,9 @@ export default {
         title: t.title,
         meta: this.todoMeta(t)
       }))
+    },
+    visibleRiskItems() {
+      return this.riskItems.filter(item => item.key !== 'overdue' || !this.visibleSummaryCues.some(cue => cue.source === 'summary.overdue'))
     },
     // V3 施工手册 TP-W10：逾期待办与学业预警是两类不同风险，此前用 `||` 只取其一，
     // 同时存在时会丢掉一类真实风险数字。拆成两个独立条目，都展示、各自可下钻。
@@ -760,11 +764,16 @@ export default {
       return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
     },
     todoMeta(t) {
-      if (['WORK_STUDY_REVIEW', 'WORK_STUDY_ONBOARD'].includes(t.todoType)) return `勤工助学 · 记录 ${t.recordId || t.bizId || '待核对'}`
-      if (['STUDENT_LOAN_REVIEW', 'STUDENT_LOAN_CONFIRM'].includes(t.todoType)) return `助学贷款 · 记录 ${t.recordId || t.bizId || '待核对'}`
-      if (['FEE_REDUCTION_REVIEW', 'FEE_REDUCTION_FULFILL'].includes(t.todoType)) return `减免临补 · 申请 ${t.recordId || t.bizId || '待核对'}`
+      if (['WORK_STUDY_REVIEW', 'WORK_STUDY_ONBOARD'].includes(t.todoType)) return '勤工助学'
+      if (['STUDENT_LOAN_REVIEW', 'STUDENT_LOAN_CONFIRM'].includes(t.todoType)) return '助学贷款'
+      if (['FEE_REDUCTION_REVIEW', 'FEE_REDUCTION_FULFILL'].includes(t.todoType)) return '减免临补'
+      const roleTypeName = this.recipe?.typeCues?.find(cue => cue.key === t.todoType)?.title
+      const typeName = [t.moduleName, t.bizTypeLabel, t.todoTypeName, t.todoType]
+        .filter(Boolean)
+        .map(value => safeLocalizedText({ value, dictionary: TODO_TYPE_LABELS, unknownLabel: '' }))
+        .find(value => typeof value === 'string' && value && !isTechnicalUiMessage(value))
       return [
-        t.moduleName || t.bizTypeLabel || t.todoTypeName || t.todoType || '业务待办',
+        roleTypeName || typeName || '其他事项',
         t.assigneeName || t.sourceName || ''
       ]
         .filter(Boolean)

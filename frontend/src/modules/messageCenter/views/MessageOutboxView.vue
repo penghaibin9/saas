@@ -10,7 +10,7 @@
     <EmptyState
       v-else-if="!rows.length"
       title="暂无发布记录"
-      description="暂无发布记录。完成通知发布后，可在这里查看发布状态与送达情况。"
+      description="发布通知后，可在这里查看送达和确认情况。"
     />
     <table v-else class="mc-table">
       <thead>
@@ -46,20 +46,9 @@
 import { ModulePageShell, LoadingState, EmptyState, ErrorState } from '@/components/business'
 import { fetchCampaigns } from '@/modules/messageCenter/api/message-campaign.api'
 import { safeEnumLabel } from '@/utils/presentationSafety'
+import { messageCampaignStatusLabel, messageCategoryLabel } from '@/modules/messageCenter/constants/message-center.constants'
 
-const STATUS_LABEL = {
-  DRAFT: '草稿',
-  PENDING_REVIEW: '待审核',
-  APPROVED: '已通过',
-  RETURNED: '已退回',
-  SCHEDULED: '已预约',
-  PUBLISHING: '投递中',
-  PUBLISHED: '已发布',
-  WITHDRAWN: '已撤回',
-  FAILED: '失败'
-}
-const CATEGORY_LABEL = { ANNOUNCEMENT: '公告', BUSINESS: '业务通知', REMINDER: '提醒', EMERGENCY: '紧急消息' }
-const PRIORITY_LABEL = { LOW: '普通', NORMAL: '普通', MEDIUM: '重要', HIGH: '紧急', URGENT: '紧急' }
+const PRIORITY_LABEL = { LOW: '普通', NORMAL: '普通', MEDIUM: '重要', IMPORTANT: '重要', HIGH: '紧急', URGENT: '紧急', EMERGENCY: '紧急' }
 
 export default {
   name: 'MessageOutboxView',
@@ -99,13 +88,8 @@ export default {
         this.loading = false
       }
     },
-    statusLabel(status) {
-      const key = String(status || '').toUpperCase()
-      return safeEnumLabel({ value: key, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' })
-    },
-    categoryLabel(value) {
-      return safeEnumLabel({ value, dictionary: CATEGORY_LABEL, unknownLabel: '消息类型待确认' })
-    },
+    statusLabel: messageCampaignStatusLabel,
+    categoryLabel: messageCategoryLabel,
     priorityLabel(value) {
       return safeEnumLabel({ value, dictionary: PRIORITY_LABEL, unknownLabel: '优先级待确认' })
     },

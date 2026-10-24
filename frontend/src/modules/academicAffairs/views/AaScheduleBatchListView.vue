@@ -2,7 +2,7 @@
   <ModulePageShell
     class="aa-schedule-workspace"
     :title="onlyArchived ? '排课归档' : '课表批次'"
-    :subtitle="onlyArchived ? '查看已经封存的正式课表版本与原始发布事实。' : '从正式教学任务编排，区分草稿、候选版本与当前正式课表。'"
+    :subtitle="onlyArchived ? '查看已归档的课表和发布记录。' : '选择批次继续排课或查看已发布课表。'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -21,15 +21,15 @@
       <AppInlineAlert
         v-if="onlyArchived"
         type="info"
-        title="已归档事实只读"
-        description="归档后保留原批次、学期、发布时间和正式版本；更正必须另建受控版本，不能改写封存记录。"
+        title="归档后仅供查看"
+        description="原批次和发布记录保留，更正须另建版本。"
       />
 
       <div v-else class="aa-batch-metrics" aria-label="课表批次状态概览">
-        <article><span>当前范围批次</span><strong>{{ pagination.total }}</strong><small>服务端分页总数</small></article>
-        <article><span>本页待启动</span><strong>{{ statusCount('DRAFT') }}</strong><small>可继续安排课位</small></article>
-        <article><span>本页待正式发布</span><strong>{{ statusCount('PRE_PUBLISHED') }}</strong><small>已经通过预发布</small></article>
-        <article><span>本页正式 / 已归档</span><strong>{{ statusCount('PUBLISHED') + statusCount('ARCHIVED') }}</strong><small>师生读取或历史封存</small></article>
+        <article><span>符合条件的批次</span><strong>{{ loading || error ? '—' : pagination.total }}</strong></article>
+        <article><span>本页编制中</span><strong>{{ loading || error ? '—' : statusCount('DRAFT') }}</strong></article>
+        <article><span>本页已预发布</span><strong>{{ loading || error ? '—' : statusCount('PRE_PUBLISHED') }}</strong></article>
+        <article><span>本页已发布或归档</span><strong>{{ loading || error ? '—' : statusCount('PUBLISHED') + statusCount('ARCHIVED') }}</strong></article>
       </div>
 
       <AppSectionCard compact v-if="showCreate" title="新建课表批次">
@@ -52,23 +52,23 @@
           </label>
           <AppButton variant="primary" :disabled="!draft.termId || (draft.scopeType === 'COLLEGE' && !draft.collegeId)" :loading="creating" @click="createBatch">创建</AppButton>
         </div>
-        <p class="mp-note">本批次须排齐所选范围的正式任务。已有正式课表时，请从该批次的“核对进度与补排”创建保留原课位的纠错草稿；新建空批次不会自动复制旧课位。</p>
+        <p class="mp-note">须排齐所选范围的教学任务；新建批次不复制原有课程安排。</p>
+        <p class="mp-note">调整已发布课表时，从“核对进度与补排”创建保留原安排的纠错草稿。</p>
       </AppSectionCard>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="还没有课表批次" :description="onlyArchived ? '暂无已归档批次' : '新建一个课表批次开始排课'" />
-      <AppSectionCard v-else-if="rows.length" compact :title="onlyArchived ? '排课归档投影 · 原记录与正式凭证' : '课表批次 · 批次列表'">
+      <EmptyState v-else-if="!rows.length" :title="onlyArchived ? '暂无已归档批次' : '还没有课表批次'" :description="onlyArchived ? '学期结束后可将已发布课表归档。' : '新建一个课表批次开始排课'" />
+      <AppSectionCard v-else-if="rows.length" compact :title="onlyArchived ? '归档批次' : '批次列表'">
       <DataTable :columns="columns" :rows="rows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-batchName="{ row }">
           <div class="mp-cell-main">{{ row.batchName }}</div>
-          <div class="mp-cell-sub">批次 #{{ row.batchId }}</div>
         </template>
         <template #cell-termId="{ row }">{{ row.termLabel || '学期待核对' }}</template>
         <template #cell-scope="{ row }">
-          {{ Object.prototype.hasOwnProperty.call(row, 'collegeId') ? (row.collegeId ? `学院 #${row.collegeId}` : '全校范围') : '范围随批次详情确认' }}
+          {{ Object.prototype.hasOwnProperty.call(row, 'collegeId') ? (row.collegeId ? row.collegeName || '指定学院' : '全校范围') : '范围待核对' }}
         </template>
-        <template #cell-version="{ row }">{{ row.activeTruth?.headVersion != null ? `V${row.activeTruth.headVersion}` : '随正式头确认' }}</template>
+        <template #cell-version="{ row }">{{ row.activeTruth?.headVersion != null ? `第${row.activeTruth.headVersion}版` : '版本待核对' }}</template>
         <template #cell-status="{ row }">
           <AppStatusTag :type="scheduleBatchColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
@@ -86,7 +86,10 @@
         </template>
       </DataTable>
       </AppSectionCard>
-      <p class="mp-note">发布后课表不可直接修改。日常单课位调课、停课、补课走「调停课」审批；只有整批重大错误才作废重发。学期正常结束请走「归档」，归档后数据只读。</p>
+      <template v-if="!onlyArchived">
+        <p class="mp-note">发布后不可直接修改，日常调课、停课、补课走“调停课”审批。</p>
+        <p class="mp-note">整批重大错误才作废重发；学期结束后归档，归档后仅供查看。</p>
+      </template>
     </div>
 
     <AppConfirmDialog
@@ -105,7 +108,7 @@
       title="归档课表批次"
       type="warning"
       confirm-text="确认归档"
-      message="归档为不可逆操作：归档后课表只读，无法再调整。确认该批次已到学期结束、可正式归档？"
+      message="请确认学期已结束；归档不可撤销，归档后课表仅供查看，无法调整。"
       :submitting="archiveDlg.submitting"
       @confirm="doArchive"
     />
@@ -198,14 +201,14 @@ export default {
         const fn = kind === 'pre' ? academicAffairsApi.prePublishSchedule : academicAffairsApi.publishSchedule
         const res = await fn(id)
         if (!current()) return
-        if (res.code !== 0) { toast.error(res.message || '操作失败，请回读批次核对'); return }
+        if (res.code !== 0) { toast.error(res.message || '操作失败，请刷新批次核对'); return }
         const fresh = await academicAffairsApi.getScheduleBatch(id)
         if (!current()) return
         const expected = kind === 'pre' ? 'PRE_PUBLISHED' : 'PUBLISHED'
         if (fresh.code !== 0 || String(fresh.data?.batchId) !== id || fresh.data?.status !== expected) {
-          toast.error('操作已受理，但正式状态未核实；请刷新批次核对'); return
+          toast.error('操作结果尚未核实，请刷新批次确认'); return
         }
-        toast.success(kind === 'pre' ? '已核对预发布状态，可继续正式发布' : '已核对正式课表；请在发布记录中核对通知情况')
+        toast.success(kind === 'pre' ? '当前批次已预发布，可继续发布' : '当前课表已发布，通知情况请查看发布记录')
         await this.load()
       } catch (error) { if (current()) toast.error(error?.message || '操作结果待核实，请刷新后核对') }
       finally { this.writingId = '' }

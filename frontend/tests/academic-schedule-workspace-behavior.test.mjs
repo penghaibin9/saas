@@ -7,6 +7,9 @@ import { compile } from '@vue/compiler-dom'
 import * as Vue from 'vue'
 import { renderToString } from 'vue/server-renderer'
 import * as teaching from '../src/modules/academicAffairs/constants/teaching.js'
+import { safeLocalizedText } from '../src/utils/presentationSafety.js'
+import { ROLE_LABELS } from '../src/modules/workflow/constants/workflow.constants.js'
+import { formatDateTime } from '../src/utils/dateUtils.js'
 
 // Execute the page's actual Options API methods with controlled transport responses.
 function page(name, dependencies = {}, globals = {}) {
@@ -18,6 +21,161 @@ function page(name, dependencies = {}, globals = {}) {
   vm.runInNewContext(script, context)
   return context.component
 }
+
+test('排课检查失败不把网络错误说明为已发现冲突', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleMaintainView.vue', import.meta.url), 'utf8')
+  const snippet = source.match(/<div class="aa-preflight__head">[\s\S]*?<\/div>/)[0]
+  const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const html = await renderToString(Vue.createSSRApp({ render, data: () => ({ preflight: { loading: false, result: { allowed: false, blockers: ['网络连接中断'] } } }) }))
+  assert.match(html, /暂不能排入，请查看原因/)
+  assert.doesNotMatch(html, /存在硬冲突|可以排入/)
+})
+
+test('原课程定位仍严格核对关联，错误说明不暴露内部编号', () => {
+  const { methods } = page('AaScheduleMaintainView')
+  const item = { itemId: 'internal-item-123', batchId: 'internal-batch-456', classId: 'internal-class-789', taskId: 'wrong-task' }
+  const state = { focusItemId: item.itemId, batchId: item.batchId, classId: item.classId, focusTaskId: 'correct-task', focusTermId: '', items: [item] }
+  methods.locateFocusedItem.call(state)
+  assert.equal(state.focusedItem, null)
+  assert.match(state.focusItemError, /信息不一致/)
+  assert.doesNotMatch(state.focusItemError, /internal-|wrong-task|correct-task/)
+  item.taskId = 'correct-task'
+  methods.locateFocusedItem.call(state)
+  assert.equal(state.focusedItem, item)
+  assert.equal(state.focusItemError, '')
+  state.items = [item, item]
+  methods.locateFocusedItem.call(state)
+  assert.equal(state.focusedItem, null)
+  assert.match(state.focusItemError, /重复的定位信息/)
+})
+
+test('原课程编号仅在默认关闭的实施信息内，教师和上课时段仍可见', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleMaintainView.vue', import.meta.url), 'utf8')
+  const snippet = source.match(/<section v-else-if="focusedItem"[\s\S]*?<\/section>/)[0].replace('v-else-if', 'v-if')
+  const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const { methods } = page('AaScheduleMaintainView')
+  const html = await renderToString(Vue.createSSRApp({ render, data: () => ({ className: '软件班', focusedItem: { courseName: '数学', teacherName: '李老师', weekday: 2, slotNo: 3, startWeek: 1, endWeek: 16, classroom: '教学楼101', itemId: 'internal-item', batchId: 'internal-batch', classId: 'internal-class', taskId: 'internal-task' } }), methods: { weekdayLabel: methods.weekdayLabel },
+    components: { AppStatusTag: { render() { return Vue.h('span', this.$slots.default()) } } }
+  }))
+  assert.match(html, /软件班[\s\S]*李老师[\s\S]*周二/)
+  assert.match(html, /<details><summary>实施人员使用/)
+  assert.doesNotMatch(html, /<details[^>]*\bopen\b/)
+  assert.doesNotMatch(html.replace(/<details>[\s\S]*?<\/details>/, ''), /internal-/)
+  assert.match(html, /internal-item[\s\S]*internal-task/)
+})
+
+test('发布记录未知操作不误标为作废，原已知操作分别显示', () => {
+  const { methods } = page('AaSchedulePublishView')
+  assert.equal(methods.recordActionLabel('PUBLISH'), '发布')
+  assert.equal(methods.recordActionLabel('VOID_REISSUE'), '作废重发')
+  for (const value of ['NEW_OPERATION', 'constructor', '']) assert.equal(methods.recordActionLabel(value), '其他操作')
+})
+
+test('读取到目标状态但未确认本次请求时，发布与作废仍为待确认且不清除待办', async () => {
+  const component = page('AaSchedulePublishView', { ...teaching, isDeniedResult: () => false })
+  for (const [kind, expectedStatus, title] of [['pub', 'PUBLISHED', '发布结果待确认'], ['pre', 'PRE_PUBLISHED', '预发布结果待确认'], ['void', 'ARCHIVED', '作废结果待确认']]) {
+    const pending = { identity: 'same', kind, batchId: '987654321012345678', expectedStatus, acknowledged: false }
+    const data = { batchId: pending.batchId, batchName: '测试课表', status: expectedStatus, activeTruth: { truthStatus: 'VERIFIED', isCurrent: true, activeBatchId: pending.batchId } }
+    const state = { ...component.methods, identityKey: 'same', pendingWrite: pending,
+      focusContextKey: () => 'same-context', readFormalBatch: async () => ({ code: 0, data }), disposed: false }
+    await state.reconcilePendingExact()
+    assert.equal(state.pendingWrite, pending)
+    assert.equal(state.receipt.pending, true)
+    assert.equal(state.receipt.title, title)
+    assert.equal(state.receipt.object, '测试课表')
+    assert.match(state.receipt.next, /确认前不要重复提交/)
+    assert.doesNotMatch(JSON.stringify(state.receipt), /987654321012345678|正式头|回读/)
+  }
+})
+
+test('维护和发布页的版本摘要不泄露编号，矛盾数据不能显示尚未发布', () => {
+  for (const name of ['AaScheduleMaintainView', 'AaSchedulePublishView']) {
+    const component = page(name, { formatDateTime })
+    const read = (key, batch) => component.computed?.[key]
+      ? component.computed[key].call({ scheduleBatch: batch }) : component.methods[key](batch)
+    const batch = { batchId: '991', activeTruth: { truthStatus: 'VERIFIED', activeBatchId: '992', scopeType: 'COLLEGE', scopeId: '987654321012345678', headVersion: 2 } }
+    assert.equal(read('formalScopeText', batch), '指定学院')
+    assert.equal(read('activeBatchText', batch), '其他已发布批次')
+    assert.equal(read('headVersionText', batch), '第2版')
+    assert.equal(read('headPublishedAtText', batch), '时间待核对')
+    assert.equal(read('activeBatchText', { activeTruth: { truthStatus: 'NOT_PUBLISHED', activeBatchId: '992' } }), '待核对')
+    assert.equal(read('activeBatchText', { activeTruth: { truthStatus: 'NOT_PUBLISHED' } }), '尚未发布')
+  }
+})
+
+test('调整记录汉化角色和操作，未知代码不冒充已知状态', () => {
+  const component = page('AaScheduleAdjustmentLogView', { safeLocalizedText, ROLE_LABELS })
+  const methods = component.methods
+  assert.equal(methods.actionLabel('OPEN_CORRECTION_DRAFT'), '发起课表纠错')
+  assert.equal(methods.actionLabel('NEW_INTERNAL_ACTION'), '其他操作')
+  assert.equal(methods.typeLabel('NEW_INTERNAL_TYPE'), '其他事项')
+  assert.equal(methods.roleLabel('COLLEGE_ADMIN'), '二级学院管理员')
+  assert.equal(methods.roleLabel('NEW_INTERNAL_ROLE'), '其他业务角色')
+  assert.equal(methods.roleLabel('本校排课负责人'), '本校排课负责人')
+})
+
+test('调整记录将技术参数折叠，但完整保留纠错原因和自由填写文字', () => {
+  const { methods } = page('AaScheduleAdjustmentLogView')
+  const correction = { action: 'OPEN_CORRECTION_DRAFT', detail: 'draftBatchId=123;reason=补排课程；保留原意见;code=用户填写内容' }
+  assert.equal(methods.businessDetail.call(methods, correction), '补排课程；保留原意见;code=用户填写内容')
+  assert.equal(methods.technicalDetail(correction), true)
+  const placement = { action: 'ADD_ITEM', detail: 'taskId=987;周4第2节;prePublishReset=False' }
+  assert.equal(methods.businessDetail.call(methods, placement), '周4第2节')
+  assert.equal(methods.businessDetail.call(methods, { action: 'TEACHER_OBJECT', detail: 'reason=本人填写意见' }), 'reason=本人填写意见')
+  assert.equal(correction.detail, 'draftBatchId=123;reason=补排课程；保留原意见;code=用户填写内容')
+})
+
+test('调整记录加载失败和加载中不显示零条或旧计数', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleAdjustmentLogView.vue', import.meta.url), 'utf8')
+  const snippet = source.match(/<div class="aa-adjust-metrics"[\s\S]*?<\/div>/)[0]
+  const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  for (const [loading, error] of [[true, ''], [false, '读取失败'], [false, '']]) {
+    const html = await renderToString(Vue.createSSRApp({ render, data: () => ({ loading, error, total: 25 }), methods: { pageTypeCount: () => 10 } }))
+    if (loading || error) { assert.doesNotMatch(html, /<strong>25|<strong>10/); assert.equal((html.match(/<strong>—/g) || []).length, 3) }
+    else assert.match(html, /<strong>25/)
+  }
+})
+
+test('导出名称显示不改查询标识，网络中断不推断文件未生成', async () => {
+  const component = page('AaScheduleExportView', { academicAffairsApi: { exportScheduleXlsx: async () => { throw new Error() } } })
+  const state = Object.assign(component.data(), component.methods, { identifier: '987654321012345678', purpose: '教务存档使用', canExport: true })
+  state.onSelectionChange(state.identifier, [{ label: '软件技术班' }])
+  assert.equal(state.identifier, '987654321012345678')
+  assert.equal(state.selectedName, '软件技术班')
+  await state.doExport()
+  assert.equal(state.receipt.title, '未能获取课表文件')
+  assert.match(state.receipt.description, /未收到文件/)
+  assert.doesNotMatch(state.receipt.description, /未生成文件|导出成功/)
+  assert.equal(state.exporting, false)
+  assert.equal(component.computed.canExport.call({ identifier: state.identifier, purpose: '短', weekStart: 1, weekEnd: 2 }), false)
+  assert.equal(component.computed.canExport.call({ identifier: state.identifier, purpose: state.purpose, weekStart: 3, weekEnd: 2 }), false)
+})
+
+test('学期课表选择教师时显示姓名并保留原查询，缺少姓名不泄露账号', () => {
+  const component = page('AaSemesterScheduleView')
+  let loads = 0
+  const state = { dim: 'teacher', teacherKey: 'internal-teacher-key', selfKey: 'self-key', teacherName: '', load: () => { loads += 1 } }
+  component.methods.onTeacherChange.call(state, state.teacherKey, [{ label: '显示标签', raw: { realName: '李老师' } }])
+  assert.equal(component.computed.scheduleObjectName.call(state), '李老师')
+  assert.equal(state.teacherKey, 'internal-teacher-key')
+  assert.equal(loads, 1)
+  component.methods.onTeacherChange.call(state, '', [])
+  assert.equal(component.computed.scheduleObjectName.call(state), '课表查询范围')
+  assert.equal(loads, 2)
+  state.teacherKey = 'self-key'
+  assert.equal(component.computed.scheduleObjectName.call(state), '本人')
+})
+
+test('今日无课提供有效查看指引，避免触发公共空态的创建数据提示', () => {
+  const component = page('AaTeacherScheduleView')
+  const state = { todayItems: [], calendarSource: '' }
+  assert.equal(component.computed.todayNote.call(state), '可在下方查看其他周次的课程安排。')
+  for (const calendarSource of ['HOLIDAY', 'SWAP_SOURCE', 'OUT_OF_TERM']) {
+    const message = component.computed.todayNote.call({ ...state, calendarSource })
+    assert.ok(message)
+    assert.doesNotMatch(message, /投影|创建新数据|已核对/)
+  }
+})
 
 test('排课学时缺额按权威结果显示，旧课位缺排与超排不能互相抵消', () => {
   const component = page('AaSchedulingConsoleView')
@@ -39,12 +197,12 @@ test('发布清单按总计划学时及逐周超量显示，未知学时不能�
   const component = page('AaSchedulePublishView')
   const state = { ...component.methods, gate: { summary: { complete: true, expectedContactHours: 36, scheduledContactHours: 36, missingContactHours: 0, excessContactHours: 0, weeklyOverloadCount: 1 } } }
   let checks = component.computed.gateChecklist.call(state)
-  assert.equal(checks.find(row => row.label === '计划总学时完整').ok, true)
+  assert.equal(checks.find(row => row.label === '总学时符合计划').ok, true)
   assert.equal(checks.find(row => row.label === '每周学时未超量').ok, false)
   state.gate.summary = { complete: true }
   checks = component.computed.gateChecklist.call(state)
-  assert.equal(checks.find(row => row.label === '计划总学时完整').ok, false)
-  assert.match(checks.find(row => row.label === '计划总学时完整').detail, /待核对/)
+  assert.equal(checks.find(row => row.label === '总学时符合计划').ok, false)
+  assert.match(checks.find(row => row.label === '总学时符合计划').detail, /待核对/)
 })
 
 test('纠错回执区分课位条数和展开学时，未知回执不伪造学时', async () => {
@@ -318,15 +476,15 @@ test('teacher lesson guidance distinguishes no week, selected week, and manageme
     return renderToString(Vue.createSSRApp({ render, setup: () => ({ isSelfView, selectedOccurrenceWeek }) }))
   }
   const noWeek = await guidanceFor('teacher-1', null)
-  assert.match(noWeek, /必须先在上方“周次”选择具体教学周/)
-  assert.doesNotMatch(noWeek, /当前为管理查询视图/)
+  assert.match(noWeek, /停课或补课须先选周次/)
+  assert.doesNotMatch(noWeek, /仅任课教师本人可申请/)
   const selectedWeek = await guidanceFor('teacher-1', 6)
-  assert.match(selectedWeek, /已选择第6教学周/)
-  assert.match(selectedWeek, /交学院审核，审批前不改动正式课表/)
-  assert.doesNotMatch(selectedWeek, /当前为管理查询视图/)
+  assert.match(selectedWeek, /第6教学周的申请/)
+  assert.match(selectedWeek, /先交学院审核，教务处终审通过后更新课表/)
+  assert.doesNotMatch(selectedWeek, /仅任课教师本人可申请/)
   const management = await guidanceFor('other-teacher', 6)
-  assert.match(management, /当前为管理查询视图/)
-  assert.doesNotMatch(management, /已选择第6教学周/)
+  assert.match(management, /仅任课教师本人可申请/)
+  assert.doesNotMatch(management, /第6教学周的申请/)
 })
 
 test('teacher week and semester views reload when switching back to self', () => {

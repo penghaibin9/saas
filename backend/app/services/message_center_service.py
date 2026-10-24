@@ -9,6 +9,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta
+import re
 from typing import Optional
 
 from sqlalchemy import and_, case, func, or_, select
@@ -110,10 +111,25 @@ def _display_title(row) -> str:
     return row.rendered_title or row.title
 
 
+def risk_notice_text(content: str, title: str) -> str:
+    if title not in {"风险升级", "风险处置超时升级", "风险待处置"}:
+        return content
+    levels = {"LOW": "低风险", "MEDIUM": "中风险", "HIGH": "高风险", "CRITICAL": "危急风险"}
+    upgraded = re.fullmatch(r"风险#\d+ (处置超时已自动升级至|已升级至) ([A-Z][A-Z0-9_]*)(：.*)?", content, re.S)
+    if upgraded:
+        prefix = "处置超时，风险已自动升级至" if upgraded[1].startswith("处置超时") else "风险已升级至"
+        return prefix + levels.get(upgraded[2], "其他风险等级") + (upgraded[3] or "")
+    assigned = re.fullmatch(r"有一条([A-Z][A-Z0-9_]*)风险待你处置", content)
+    if assigned:
+        return f"有一条{levels.get(assigned[1], '风险等级待确认的')}预警待你处理"
+    if re.fullmatch(r"风险#\d+ 已超时自动分派给你", content):
+        return "一条超时风险已分派给你，请及时处理"
+    return content
+
+
 def _display_content(row) -> str:
-    if row.rendered_content_plain:
-        return row.rendered_content_plain
-    return row.content or ""
+    content = row.rendered_content_plain or row.content or ""
+    return risk_notice_text(content, _display_title(row)) if getattr(row, "message_type", "") == "RISK_ALERT" else content
 
 
 def _msg_dict(row, *, detail: bool = False) -> dict:

@@ -414,7 +414,7 @@ export default {
       const spec = this.actionKeyMap[this.detail.actionKey]
       const path = spec && spec.routes && spec.routes.pc
       if (!path) {
-        this.fatalError = '当前端暂无对应办理页，请前往学生端或教师小程序办理'
+        this.fatalError = '请前往学生服务门户或教师小程序办理'
         return
       }
       const params = this.detail.actionParams || {}

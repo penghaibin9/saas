@@ -948,11 +948,11 @@ def export_schedule(user, scope, identifier, term_id=None, week_start=None, week
     """课表导出 xlsx（班级/教师/教室三选一；水印+审计，对齐 quality_svc.export_report 同款约定）。"""
     scope = (scope or "").upper()
     if scope not in ("CLASS", "TEACHER", "ROOM"):
-        raise AppException("VALIDATION_ERROR", "导出范围仅支持 CLASS/TEACHER/ROOM")
+        raise AppException("VALIDATION_ERROR", "请选择班级、教师或教室课表")
     if not identifier:
-        raise AppException("VALIDATION_ERROR", "导出对象必填")
+        raise AppException("VALIDATION_ERROR", "请选择要导出的班级、教师或教室")
     if not (purpose or "").strip() or len((purpose or "").strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "导出用途必填（≥5 字）")
+        raise AppException("VALIDATION_ERROR", "请填写至少5字的导出用途")
     if scope == "CLASS":
         data = class_schedule(user, identifier, term_id, None)
         sheet_title = f"班级课表-{data.get('className') or identifier}"
@@ -1005,7 +1005,7 @@ def list_schedule_adjustments(user, biz_type=None, action=None, page=1, page_siz
         if biz_type:
             bt = biz_type.strip().upper()
             if bt not in _ADJUST_BIZ_TYPES:
-                raise AppException("VALIDATION_ERROR", "bizType 仅支持 AA_SCHEDULE / AA_SCHEDULE_BATCH")
+                raise AppException("VALIDATION_ERROR", "请选择课程安排或批次变更记录")
             conds.append(AffairsAuditTrail.biz_type == bt)
         else:
             conds.append(AffairsAuditTrail.biz_type.in_(list(_ADJUST_BIZ_TYPES)))

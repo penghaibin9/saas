@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="消息设置"
-    subtitle="仅控制外部打扰渠道；站内正式消息不会因关闭推送而消失"
+    subtitle="设置分类提醒，查看渠道与静默时段"
   >
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
@@ -40,17 +40,16 @@
       <section class="mc-panel">
         <h3>静默时段</h3>
         <p class="ch-hint">
-          {{ (data.quietHours && data.quietHours.hint) || '紧急消息可绕过静默时段' }}
+          {{ (data.quietHours && data.quietHours.hint) || '紧急提醒不受静默时段限制' }}
           （{{ data.quietHours && data.quietHours.start }} – {{ data.quietHours && data.quietHours.end }}）
-          <template v-if="data.quietHours && data.quietHours.inQuietNow"> · 当前处于静默窗</template>
+          <template v-if="data.quietHours && data.quietHours.inQuietNow"> · 当前为静默时段</template>
         </p>
       </section>
 
       <section class="mc-panel">
-        <h3>发布频控</h3>
+        <h3>发布次数限制</h3>
         <p class="ch-hint">
-          {{ (data.rateLimit && data.rateLimit.hint) || '同发布人滚动窗口内限制发布次数' }}
-          （上限 {{ (data.rateLimit && data.rateLimit.maxPerHour) || 20 }} 次/小时）
+          {{ (data.rateLimit && data.rateLimit.hint) || '发布次数限制暂未获取' }}
         </p>
       </section>
     </div>

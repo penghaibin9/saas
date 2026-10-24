@@ -2,7 +2,7 @@
   <ModulePageShell
     class="aa-schedule-workspace"
 :title="isAcademicTeacher ? '我的学期课表' : '学期课表'"
-    :subtitle="isAcademicTeacher ? '默认查看本人整学期正式课程；可切换本人授课班级、教学班和教室' : '查看整学期课程安排，保留各门课程的起止周与单双周。'"
+    :subtitle="isAcademicTeacher ? '默认显示本人整学期课程，可切换授课班级、教学班或教室。' : '查看整学期课程安排及各门课程的起止周、单双周。'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -13,11 +13,11 @@
     <div class="mp-stack">
       <AaScheduleObjectBar
         :name="scheduleObjectName"
-        :identity="`${termId ? `学期 #${termId}` : '学期待选择'} · ${currentDim.label}视角 · 保留起止周与单双周`"
-        source="来源：当前学期正式范围头；跨范围结果由服务端合并"
-        :status="hasSelection ? '只读正式学期课表' : '对象待选择'"
+        :identity="termId ? '按所选学期查询' : '未选择学期'"
+        source="请按各门课程的起止周和单双周上课。"
+        :status="hasSelection ? '仅供查看' : '待选择'"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="师生按正式版本读取"
+        next-owner="师生按课表上课"
       />
       <div class="aa-filter">
         <label class="aa-filter__item aa-filter__item--grow">
@@ -41,14 +41,13 @@
         </div>
       </div>
       <!-- 教师 -->
-      <div v-else-if="dim === 'teacher'" class="aa-dim-body">
+      <div v-else-if="dim === 'teacher' && !isAcademicTeacher" class="aa-dim-body">
         <div class="aa-filter">
           <label v-if="!isAcademicTeacher" class="aa-filter__item">
             教师
-            <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="load" />
+            <AppTeacherPicker v-model="teacherKey" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onTeacherChange" />
           </label>
-          <span v-if="isAcademicTeacher" class="mp-note">当前对象：本人正式任课关系</span>
-          <AppButton v-if="!isAcademicTeacher && selfKey" @click="teacherKey = selfKey; load()">查看本人课表</AppButton>
+          <AppButton v-if="!isAcademicTeacher && selfKey" @click="teacherKey = selfKey; teacherName = '本人'; load()">查看本人课表</AppButton>
           <AppButton v-if="!isAcademicTeacher" variant="primary" :disabled="!teacherKey" @click="load">查询</AppButton>
         </div>
       </div>
@@ -76,7 +75,7 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!hasSelection" title="请先选择查询对象" :description="dimHint" />
+      <EmptyState v-else-if="!hasSelection" :title="`请先选择${currentDim.label}`" :description="dimHint" />
       <template v-else>
         <p v-if="note" class="mp-note">{{ note }}</p>
         <AppSectionCard compact :title="resultTitle">
@@ -84,7 +83,7 @@
             <table class="aa-semester-table">
               <thead>
                 <tr>
-                  <th scope="col">课程与教学对象</th>
+                  <th scope="col">课程与班级</th>
                   <th scope="col">授课教师</th>
                   <th v-for="bucket in weekBuckets" :key="bucket.key" scope="col">{{ bucket.label }}</th>
                 </tr>
@@ -93,9 +92,9 @@
                 <tr v-for="row in semesterRows" :key="row.key">
                   <th scope="row">
                     <strong>{{ row.courseName || '未命名课程' }}</strong>
-                    <small>{{ row.className || row.teachingClassName || '教学对象随正式课位' }}</small>
+                    <small>{{ row.className || row.teachingClassName || '班级待确认' }}</small>
                   </th>
-                  <td>{{ row.teacherName || '待正式课位确认' }}</td>
+                  <td>{{ row.teacherName || '教师待确认' }}</td>
                   <td v-for="bucket in weekBuckets" :key="bucket.key">
                     <button
                       v-for="entry in row.entriesByBucket[bucket.key]"
@@ -154,7 +153,7 @@ export default {
       termId: '', batchId: '', batchIds: [],
       slots: [], items: [], note: '', loading: false, error: '',
       classId: '', className: '',
-      teacherKey: '', teacherKeyQuery: { valueField: 'loginName' }, selfKey: String(u.loginName || u.userId || ''),
+      teacherKey: '', teacherName: '', teacherKeyQuery: { valueField: 'loginName' }, selfKey: String(u.loginName || u.userId || ''),
       classroomId: '', classroomText: '',
       studentId: '', studentName: '',
       teachingClassCode: '', teachingClassName: ''
@@ -171,7 +170,7 @@ export default {
     },
     currentDim() { return this.DIMS.find((item) => item.key === this.dim) || this.DIMS[0] },
     scheduleObjectName() {
-      return ({ class: this.className, teacher: this.teacherKey ? `教师 ${this.teacherKey}` : '', room: this.classroomText, student: this.studentName, teachingClass: this.teachingClassName })[this.dim] || '学期课表'
+      return ({ class: this.className, teacher: this.teacherKey === this.selfKey && this.teacherKey ? '本人' : this.teacherName, room: this.classroomText, student: this.studentName, teachingClass: this.teachingClassName })[this.dim] || '课表查询范围'
     },
     hasSelection() {
       if (this.dim === 'class') return !!this.classId
@@ -181,14 +180,12 @@ export default {
       return !!this.teachingClassCode
     },
     dimHint() {
-      const m = { class: '搜索并选择班级', teacher: '输入教师工号或点击「查看本人课表」', room: '搜索并选择教室',
-                 student: '检索并选择学生', teachingClass: '从下方列表选择教学班' }
+      const m = { class: '可按班级名称搜索', teacher: '可按姓名或工号搜索', room: '可按楼栋或教室编号搜索',
+                 student: '可按姓名或学号搜索', teachingClass: '可按教学班或课程名称搜索' }
       return m[this.dim]
     },
     resultTitle() {
-      const name = { class: this.className, teacher: `教师 ${this.teacherKey}`, room: this.classroomText,
-                    student: this.studentName, teachingClass: this.teachingClassName }[this.dim]
-      return (name ? `${name} · ` : '') + '本学期课表'
+      return '学期课程安排'
     },
     weekBuckets() {
       const finalWeek = Math.max(18, ...this.items.map((item) => Number(item.endWeek) || 0))
@@ -239,6 +236,11 @@ export default {
     this.initializeCurrentTerm()
   },
   methods: {
+    onTeacherChange(_value, items) {
+      const item = items?.[0]
+      this.teacherName = item?.raw?.realName || item?.raw?.teacherName || item?.label || ''
+      this.load()
+    },
     weekdayLabel(value) {
       return ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'][Number(value)] || `周${value || '待定'}`
     },

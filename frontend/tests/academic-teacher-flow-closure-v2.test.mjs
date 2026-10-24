@@ -119,7 +119,7 @@ test('teacher V3 P0 keeps schedule changes occurrence-first', () => {
 test('teacher V3 P0 grade entry is formal-roster first', () => {
   const grade = src('modules/academicAffairs/views/AaGradeEntryView.vue')
   assert.match(grade, /v-if="!isAcademicTeacher" v-model="candidateStudentId"/)
-  assert.match(grade, /任课教师只按正式教学班名单录入/)
+  assert.match(grade, /仅可为教学班名单内的学生录入成绩/)
   assert.match(grade, /await this\.loadRoster\(\{ quiet: true \}\)/)
 })
 
@@ -217,7 +217,7 @@ test('teacher V3 grade setup enters the real recording workspace immediately aft
   const source = src('modules/academicAffairs/views/AaGradeEntryView.vue')
   assert.match(source, /const gradeTaskId = String\(res\.data\?\.gradeTaskId \|\| ''\)/)
   assert.match(source, /await this\.openTask\(\{ gradeTaskId \}\)/)
-  assert.match(source, /正在载入正式名单/)
+  assert.match(source, /请核对学生名单后录入成绩/)
   assert.doesNotMatch(source, /this\.task = res\.data; this\.prepareDeadlineForm\(\); toast\.success\('任务已创建，开始录入'\)/)
 })
 
@@ -301,8 +301,8 @@ test('teacher V3 grade setup locks the Today-selected task and hides internal id
   assert.match(source, /setupTeachingTaskLabel/)
   assert.match(source, /aria-label="已锁定教学任务"/)
   assert.match(source, /termId: !isAdminRole \? \(currentTermId \|\| undefined\) : undefined/)
-  assert.match(source, /v-if="isAdminRole && t\.courseId"/)
-  assert.match(source, /本人正式教学任务/)
+  assert.doesNotMatch(source, /课程ID\s*\{\{\s*t\.courseId/)
+  assert.match(source, /本人教学任务/)
 })
 
 

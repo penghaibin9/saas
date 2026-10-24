@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="学生课表"
-    subtitle="按学生查看当前已发布课表（按行政班推导 + 本人已锁定选课并入），越范围数据拒绝访问"
+    subtitle="选择学生查看已发布的课程安排。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,12 +11,12 @@
 
     <div class="mp-stack">
       <AaScheduleObjectBar
-        :name="studentName || '学生课表'"
-        :identity="studentId ? `${studentNo || `学生 #${studentId}`} · ${termId ? `学期 #${termId}` : '当前正式学期'}` : '选择学生后读取行政班课程与已锁定选课结果'"
-        source="来源：正式学籍名单、行政班课表与已确认选课"
-        :status="studentId ? '只读正式课表' : '对象待选择'"
+        :name="studentName || '课表查询范围'"
+        :identity="[studentNo ? `学号 ${studentNo}` : '', termId ? '按所选学期查询' : '使用默认学期'].filter(Boolean).join(' · ')"
+        source="包括行政班课程和本人已确认的选课。"
+        :status="studentId ? '仅供查看' : '未选择学生'"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="学生本人按正式版本读取"
+        next-owner="学生按课表上课"
       />
       <div class="aa-reg-search">
         <AppStudentPicker v-model="studentId" class="aa-input--grow" placeholder="按姓名/学号检索学生" @change="onStudentChange" />
@@ -26,7 +26,7 @@
         <div class="aa-filter">
           <label class="aa-filter__item">
             学期
-            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" @change="load" />
+            <AppTermEntityPicker v-model="termId" placeholder="默认学期" @change="load" />
           </label>
           <label class="aa-filter__item">
             周次
@@ -39,12 +39,12 @@
         <LoadingState v-else-if="loading" />
         <template v-else>
           <p v-if="note" class="mp-note">{{ note }}</p>
-          <AppSectionCard :title="studentName ? `${studentName}（${studentNo}）· 课表` : '学生课表'">
+          <AppSectionCard title="课程安排">
             <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
           </AppSectionCard>
         </template>
       </template>
-      <EmptyState v-else title="选择学生查看课表" description="用上方选择器搜索学生" />
+      <EmptyState v-else title="请先选择学生" description="可按姓名或学号搜索" />
     </div>
   </ModulePageShell>
 </template>

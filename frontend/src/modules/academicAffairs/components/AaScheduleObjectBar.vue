@@ -1,14 +1,14 @@
 <template>
-  <section class="aa-schedule-object" aria-label="当前排课业务对象">
+  <section class="aa-schedule-object" aria-label="当前排课事项">
     <div class="aa-schedule-object__identity">
-      <strong>{{ name || '当前对象待选择' }}</strong>
-      <p>{{ identity || '请从当前页面选择正式业务对象' }}</p>
-      <small>{{ source || '来源：正式课表与排课服务' }}</small>
+      <strong>{{ name || '请选择排课事项' }}</strong>
+      <p v-if="identity">{{ identity }}</p>
+      <small v-if="source">{{ source }}</small>
     </div>
     <dl>
       <div><dt>当前状态</dt><dd>{{ status || '状态待核对' }}</dd></div>
-      <div><dt>当前责任</dt><dd>{{ owner || '教务排课岗' }}</dd></div>
-      <div><dt>下一责任</dt><dd>{{ nextOwner || '按正式状态流转' }}</dd></div>
+      <div><dt>办理人员</dt><dd>{{ owner || '教务排课岗' }}</dd></div>
+      <div><dt>后续办理</dt><dd>{{ nextOwner || '待确认' }}</dd></div>
     </dl>
   </section>
 </template>

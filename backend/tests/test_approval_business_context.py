@@ -7,14 +7,19 @@
 from __future__ import annotations
 
 from datetime import datetime
+import secrets
 
 TID = 1000000000000000001
 
 
-def _hdr(client, login_name="counselor01"):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
-    return {"Authorization": f"Bearer {data['accessToken']}"}
+def _hdr(client, password, login_name="counselor01"):
+    response = client.post("/api/v1/auth/login", json={
+        "tenantCode": "demo", "loginName": login_name, "password": password, "clientType": "PC",
+    })
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["code"] == 0, body
+    return {"Authorization": f"Bearer {body['data']['accessToken']}"}
 
 
 def _mk_instance(db, *, biz_type: str, biz_id: int, applicant_id: int = 1):
@@ -184,7 +189,8 @@ def test_unknown_biz_type_is_explicit_not_silent(db_mode):
         _set_tenant()
         ctx = svc.resolve_context(db, _mk_instance(db, biz_type="COMPANY_CHANGE", biz_id=1))
         assert ctx["completeness"] == svc.UNSUPPORTED
-        assert "COMPANY_CHANGE" in ctx["note"] and "尚未接入" in ctx["note"]
+        assert ctx["sourceBizType"] == "COMPANY_CHANGE"
+        assert "暂不支持" in ctx["note"] and "COMPANY_CHANGE" not in ctx["note"]
         assert ctx["sections"] == [] and ctx["attachments"] == []
     finally:
         db.rollback(); db.close()
@@ -206,7 +212,8 @@ def test_error_isolated_from_unsupported_and_missing(db_mode, monkeypatch):
         monkeypatch.setitem(svc._ADAPTERS, "LEAVE", _boom)
         ctx = svc.resolve_context(db, inst)
         assert ctx["completeness"] == svc.ERROR
-        assert "RuntimeError" in ctx["note"]
+        assert ctx["note"] == "业务信息读取失败，请稍后重试"
+        assert "RuntimeError" not in ctx["note"]
     finally:
         db.rollback(); db.close()
 
@@ -240,11 +247,17 @@ def test_supported_biz_types_lists_all_real_adapters():
 
 
 def test_get_task_wires_business_context_into_response(db_mode, client):
+    from app.core.security import hash_password
     from app.db.session import get_sessionmaker
-    from app.models import AffairsAttachment, CsLeave, User, WorkflowInstance, WorkflowTask
+    from app.models import AffairsAttachment, CsLeave, Role, Tenant, User, UserRole, WorkflowInstance, WorkflowTask
+    from app.services.school_iam_authority_service import converge_school_iam_authority
 
+    converge_school_iam_authority(source="PYTEST_APPROVAL_CONTEXT", source_commit_sha="ui-language-test", actor_user_id=None)
+    password = secrets.token_urlsafe(24)
     db = get_sessionmaker()()
     try:
+        if db.get(Tenant, TID) is None:
+            db.add(Tenant(id=TID, tenant_code="demo", school_name="审批测试学校", status="ACTIVE"))
         user = db.query(User).filter_by(tenant_id=TID, login_name="counselor01").first()
         if user is None:
             user = User(tenant_id=TID, login_name="counselor01", real_name="审批员",
@@ -252,6 +265,14 @@ def test_get_task_wires_business_context_into_response(db_mode, client):
             db.add(user); db.flush()
         else:
             user.status = "ACTIVE"; user.is_deleted = False
+        user.password_hash = hash_password(password)
+        user.must_change_password = False
+        role = db.query(Role).filter_by(tenant_id=TID, role_code="COUNSELOR", is_deleted=False).first()
+        if role is None:
+            role = Role(tenant_id=TID, role_code="COUNSELOR", role_name="辅导员", role_type="SYSTEM", status="ACTIVE")
+            db.add(role); db.flush()
+        if db.query(UserRole).filter_by(tenant_id=TID, user_id=user.id, role_id=role.id, is_deleted=False).first() is None:
+            db.add(UserRole(tenant_id=TID, user_id=user.id, role_id=role.id, status="ACTIVE"))
         row = CsLeave(
             tenant_id=TID, leave_type="SICK", reason="生病请假",
             start_time=datetime(2026, 8, 5), end_time=datetime(2026, 8, 6),
@@ -272,7 +293,7 @@ def test_get_task_wires_business_context_into_response(db_mode, client):
     finally:
         db.close()
 
-    resp = client.get(f"/api/v1/approvals/tasks/{task_id}", headers=_hdr(client))
+    resp = client.get(f"/api/v1/approvals/tasks/{task_id}", headers=_hdr(client, password))
     assert resp.status_code == 200, resp.text
     body = resp.json()["data"]
     assert body["businessContext"]["completeness"] == "FULL"

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="教室课表"
-    subtitle="按教室字典选择教室，查看当前已发布课表占用情况（教务处/学院教务只读）"
+    subtitle="选择教室查看已发布的课程安排。"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -11,10 +11,10 @@
 
     <div class="mp-stack">
       <AaScheduleObjectBar
-        :name="classroomText || '教室课表'"
-        :identity="classroomId ? `教室 #${classroomId} · ${termId ? `学期 #${termId}` : '当前正式学期'}` : '选择教室后读取课程占用与停用提示'"
-        source="来源：正式课表；维修与预约须在教学资源占用页交叉核对"
-        :status="classroomId ? '只读正式占用' : '对象待选择'"
+        :name="classroomText || '课表查询范围'"
+        :identity="termId ? '按所选学期查询' : '使用默认学期'"
+        source="维修和预约情况请到教学资源占用页核对。"
+        :status="classroomId ? '仅供查看' : '未选择教室'"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
         next-owner="排课岗核对资源后继续编排"
       />
@@ -25,7 +25,7 @@
         </label>
         <label class="aa-filter__item">
           学期
-          <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
+          <AppTermEntityPicker v-model="termId" placeholder="默认学期" />
         </label>
         <label class="aa-filter__item">
           周次
@@ -36,11 +36,11 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!classroomId" title="请先选择教室" description="搜索并选择教室后自动加载课表" />
+      <EmptyState v-else-if="!classroomId" title="请先选择教室" description="可按楼栋或教室编号搜索" />
       <template v-else>
         <p v-if="note" class="mp-note">{{ note }}</p>
-        <p class="mp-note">按教室字典拼装文本精确匹配课表教室快照；手工排课时若教室文本与字典不一致可能查不全（与教室预约模块同口径）。</p>
-        <AppSectionCard :title="classroomText ? `${classroomText} · 周课表` : '教室课表'">
+        <p class="mp-note">课表中的教室名称须与教室资料一致，否则可能漏查。</p>
+        <AppSectionCard title="课程安排">
           <AaScheduleGrid :items="items" :slots="slots" :editable="false" @item-click="onItemClick" />
         </AppSectionCard>
       </template>

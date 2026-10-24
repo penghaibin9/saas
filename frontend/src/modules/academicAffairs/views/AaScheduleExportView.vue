@@ -13,12 +13,12 @@
     <div class="mp-stack">
       <AaScheduleStageRail :active-index="4" />
       <AaScheduleObjectBar
-        :name="identifier ? `${scopeLabel} · ${identifier}` : '导出对象待选择'"
-        :identity="`${termId ? `学期 #${termId}` : '当前已发布学期'} · ${weekRangeLabel}`"
-        source="来源：当前正式范围头；文件内容由服务端完整查询生成"
-        :status="identifier ? '等待提交导出用途' : '对象待选择'"
+        :name="identifier ? selectedName || scopeLabel : '请选择导出范围'"
+        :identity="`${termId ? '所选学期' : '默认学期'} · ${weekRangeLabel}`"
+        source="仅导出已发布的课表。"
+        :status="identifier ? '待填写导出条件' : '待选择'"
         :owner="ctx.currentRole.roleName || '教务排课岗'"
-        next-owner="文件使用人按用途受控流转"
+        next-owner="使用人按填写的用途使用"
       />
 
       <AppInlineAlert
@@ -33,25 +33,25 @@
           <div class="aa-form">
           <label class="aa-form__item">
             导出范围
-            <AppSelect v-model="scope" :options="scopeOptions" placeholder="" @change="identifier = ''" />
+            <AppSelect v-model="scope" :options="scopeOptions" placeholder="" @change="identifier = ''; selectedName = ''" />
           </label>
 
           <label v-if="scope === 'CLASS'" class="aa-form__item aa-form__item--grow">
             班级
-            <AppClassPicker v-model="identifier" placeholder="搜索班级名称" />
+            <AppClassPicker v-model="identifier" placeholder="搜索班级名称" @change="onSelectionChange" />
           </label>
           <label v-else-if="scope === 'TEACHER'" class="aa-form__item">
             教师
-            <AppTeacherPicker v-model="identifier" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" />
+            <AppTeacherPicker v-model="identifier" :query="teacherKeyQuery" placeholder="搜索教师姓名/工号" @change="onSelectionChange" />
           </label>
           <label v-else class="aa-form__item aa-form__item--grow">
             教室
-            <AppClassroomPicker v-model="identifier" placeholder="搜索楼栋/教室编号" />
+            <AppClassroomPicker v-model="identifier" placeholder="搜索楼栋/教室编号" @change="onSelectionChange" />
           </label>
 
           <label class="aa-form__item">
             学期（可选）
-            <AppTermEntityPicker v-model="termId" placeholder="当前已发布批次" />
+            <AppTermEntityPicker v-model="termId" placeholder="默认学期" />
           </label>
           <label class="aa-form__item">
             起始周（可选）
@@ -63,23 +63,22 @@
           </label>
 
           <label class="aa-form__item aa-form__item--full">
-            导出用途（必填，≥5字，写审计）
+            导出用途（必填，至少5字）
             <input v-model.trim="purpose" class="aa-input" placeholder="如：教务处存档 / 班级课表打印分发" maxlength="200" />
           </label>
 
           <AppButton variant="primary" :disabled="!canExport" :loading="exporting" @click="doExport">
-            导出 Excel
+            导出表格
           </AppButton>
           </div>
-          <p class="mp-note">导出文件首行含导出人、时间与用途水印；单次导出写入操作审计，请勿随意外发。</p>
         </AppSectionCard>
 
-        <aside class="aa-export-guide" aria-label="课表导出边界">
-          <h3>导出边界</h3>
+        <aside class="aa-export-guide" aria-label="课表文件使用说明">
+          <h3>文件使用说明</h3>
           <dl>
-            <div><dt>数据范围</dt><dd>服务端按正式课表范围头完整查询，不受页面分页影响。</dd></div>
-            <div><dt>对象口径</dt><dd>班级、教师、教室三类对象分别使用正式标识。</dd></div>
-            <div><dt>审计凭证</dt><dd>导出用途与操作人一并写入操作审计。</dd></div>
+            <div><dt>内容范围</dt><dd>包含所选范围的全部课程，不限于列表当前页。</dd></div>
+            <div><dt>文件水印</dt><dd>首行注明导出人、时间和用途。</dd></div>
+            <div><dt>使用要求</dt><dd>导出操作会留存记录，请按填写的用途使用，勿随意外发。</dd></div>
           </dl>
         </aside>
       </div>
@@ -97,7 +96,6 @@ import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
 import { AppSectionCard, AppClassPicker, AppTeacherPicker, AppClassroomPicker, AppTermEntityPicker, AppSelect, AppInlineAlert } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
-import { toast } from '@/utils/toast'
 import AaScheduleObjectBar from '@/modules/academicAffairs/components/AaScheduleObjectBar.vue'
 import AaScheduleStageRail from '@/modules/academicAffairs/components/AaScheduleStageRail.vue'
 
@@ -107,7 +105,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      scope: 'CLASS', identifier: '', teacherKeyQuery: { valueField: 'loginName' }, termId: '', weekStart: null, weekEnd: null, purpose: '',
+      scope: 'CLASS', identifier: '', selectedName: '', teacherKeyQuery: { valueField: 'loginName' }, termId: '', weekStart: null, weekEnd: null, purpose: '',
       exporting: false, receipt: null
     }
   },
@@ -132,13 +130,13 @@ export default {
     }
   },
   methods: {
+    onSelectionChange(_value, items) { this.selectedName = items?.[0]?.label || '' },
     async doExport() {
       if (!this.canExport) {
         const message = this.weekStart && this.weekEnd && Number(this.weekStart) > Number(this.weekEnd)
           ? '起始周不能晚于结束周'
-          : '请选择导出对象并填写用途（≥5字）'
-        this.receipt = { type: 'warning', title: '导出条件未通过', description: message }
-        toast.error(message)
+          : '请选择班级、教师或教室，并填写至少5字的用途'
+        this.receipt = { type: 'warning', title: '请完善导出条件', description: message }
         return
       }
       this.exporting = true
@@ -159,18 +157,15 @@ export default {
           this.receipt = {
             type: 'success',
             title: '课表文件已生成',
-            description: `${this.scopeLabel} ${this.identifier} · ${this.weekRangeLabel}；服务端已记录导出人和用途。`
+            description: `${this.selectedName || this.scopeLabel} · ${this.weekRangeLabel}`
           }
-          toast.success('导出成功，已写入审计')
         } else {
-          const message = res.message || '导出失败'
-          this.receipt = { type: 'danger', title: '课表导出失败', description: message }
-          toast.error(message)
+          const message = res.message || '未能获取课表文件，请稍后重试'
+          this.receipt = { type: 'danger', title: '未能获取课表文件', description: message }
         }
       } catch (error) {
-        const message = error?.message || '网络连接中断，未生成文件'
-        this.receipt = { type: 'danger', title: '课表导出失败', description: message }
-        toast.error(message)
+        const message = error?.message || '网络连接中断，未收到文件，请稍后重试'
+        this.receipt = { type: 'danger', title: '未能获取课表文件', description: message }
       } finally { this.exporting = false }
     }
   }

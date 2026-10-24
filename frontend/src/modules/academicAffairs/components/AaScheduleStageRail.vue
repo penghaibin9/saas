@@ -7,14 +7,14 @@
       :aria-current="index === activeIndex ? 'step' : undefined"
     >
       <span>{{ index + 1 }}</span>
-      <div><strong>{{ step }}</strong><small>{{ note(index) }}</small></div>
+      <div><strong>{{ step }}</strong><small v-if="index === activeIndex">当前环节</small></div>
     </li>
   </ol>
 </template>
 
 <script>
-const SCHEDULE_STEPS = ['创建批次', '安排课位', '冲突核验', '正式发布', '课表读取']
-const SCHEDULING_STEPS = ['就绪任务', '约束条件', '试排编排', '冲突处理', '正式发布']
+const SCHEDULE_STEPS = ['创建批次', '安排课程', '检查冲突', '发布课表', '查看课表']
+const SCHEDULING_STEPS = ['准备教学任务', '排课要求', '试排课程', '处理冲突', '发布课表']
 
 export default {
   name: 'AaScheduleStageRail',
@@ -25,13 +25,6 @@ export default {
   computed: {
     steps() { return this.mode === 'scheduling' ? SCHEDULING_STEPS : SCHEDULE_STEPS },
     ariaLabel() { return this.mode === 'scheduling' ? '排课办理阶段' : '课表办理阶段' }
-  },
-  methods: {
-    note(index) {
-      if (index < this.activeIndex) return '上游事实可回查'
-      if (index === this.activeIndex) return '当前办理环节'
-      return '按真实状态解锁'
-    }
   }
 }
 </script>

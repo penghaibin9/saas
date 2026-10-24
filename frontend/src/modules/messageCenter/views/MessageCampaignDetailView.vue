@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell title="发布详情" :subtitle="camp ? statusLabel : ''">
+  <ModulePageShell title="发布详情">
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="camp" class="mc-detail">
@@ -82,7 +82,7 @@
           <tbody>
             <tr v-for="r in recipients" :key="r.messageId">
               <td>{{ r.realName || '-' }}</td>
-              <td>{{ r.loginName || r.userId }}</td>
+              <td>{{ r.loginName || '未提供账号' }}</td>
               <td>{{ messageDeliveryStatusLabel(r.status) }}</td>
               <td>{{ r.ackAt || (r.requireAck ? '未确认' : '-') }}</td>
             </tr>
@@ -178,7 +178,7 @@ export default {
           filter: this.recipientTitle.includes('确认') ? 'UNACKED' : 'UNREAD',
           purpose: purpose.trim()
         })
-        await systemAlert({ title:'导出已生成', message:'请在接口返回文件中查看导出结果。', confirmText:'知道了' })
+        await systemAlert({ title:'导出已生成', message:'名单已生成，但当前页面暂无法下载。', confirmText:'知道了' })
       } catch (e) {
         this.error = (e && e.message) || '导出失败'
       } finally {

@@ -32,7 +32,7 @@ test('teacher PC keeps arbitrary teacher lookup separate from self-only Today pr
 
 test('published schedule UI separates daily changes from dangerous batch reissue', () => {
   for (const source of [publishPage, batchPage]) {
-    assert.match(source, /日常单课位调课、停课、补课走「调停课」审批/)
+    assert.match(source, /日常(?:单课位)?调课、停课、补课走[「“]调停课[」”]审批/)
     assert.match(source, /作废重发（重大纠错）/)
     assert.match(source, /调停课台账/)
   }

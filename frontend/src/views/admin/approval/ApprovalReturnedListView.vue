@@ -17,7 +17,7 @@
       <EmptyState
         v-else-if="!rows.length"
         title="当前没有退回记录"
-        description="说明近期经手的申请材料质量良好；发生退回后会在此跟踪整改进度"
+        description="申请退回后，可在这里查看修改和重新提交进度。"
       />
       <DataTable
         v-else
@@ -29,7 +29,7 @@
       >
         <template #cell-task="{ row }">
           <div class="mp-cell-main">{{ row.title }}</div>
-          <div class="mp-cell-sub">{{ row.taskId }} · {{ row.bizTypeLabel }}</div>
+          <div class="mp-cell-sub">{{ row.bizTypeLabel }}</div>
         </template>
         <template #cell-applicant="{ row }">
           <div class="mp-cell-main">{{ row.applicantName }}</div>
@@ -55,9 +55,9 @@
           <span class="mp-card__title">整改状态说明</span>
         </div>
         <div class="mp-card__body">
-          <p class="mp-note" style="margin: 0">
-            待整改重报：申请人尚未重新提交；已重新提交：新版本已进入待办队列；已关闭：本次申请终止，可重新发起。
-          </p>
+          <p class="mp-note" style="margin: 0">待整改重报：等待申请人修改并重新提交。</p>
+          <p class="mp-note">已重新提交：新版申请已进入待办。</p>
+          <p class="mp-note">已关闭：本次申请终止，可重新发起。</p>
         </div>
       </section>
     </div>
@@ -65,7 +65,7 @@
     <AppConfirmDialog
       v-model:visible="exportDialog"
       title="导出退回记录"
-      message="导出文件默认脱敏敏感字段并添加页面水印，导出动作将写入审计日志。"
+      message="导出文件将隐藏敏感信息并添加水印，系统会保留导出记录。"
       type="primary"
       confirm-text="确认导出"
       :submitting="submitting"
@@ -173,7 +173,7 @@ export default {
       this.submitting = false
       this.exportDialog = false
       if (res.code === 0) {
-        toast.success('导出任务已创建（' + res.data.auditId + '）：字段已脱敏、文件含水印，已写入审计日志')
+        toast.success('导出任务已创建，文件将隐藏敏感信息并添加水印')
       } else {
         toast.error(res.message)
       }

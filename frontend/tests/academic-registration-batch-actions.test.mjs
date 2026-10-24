@@ -42,7 +42,7 @@ test('close and archive require their exact returned batch ID and terminal statu
       const { state, notices } = page({ [kind === 'close' ? 'closeRegistrationBatch' : 'archiveRegistrationBatch']: async () => ({ code: 0, data }) })
       await dispatch(state, kind)
       assert.equal(state.batchWrite.pending.row.batchId, batchId); assert.equal(state.batchWrite.receipt, null)
-      assert.match(state.batchWrite.error, /结果未知/); assert.deepEqual(notices, [])
+      assert.match(state.batchWrite.error, /结果尚未确认/); assert.deepEqual(notices, [])
     }
   }
 })
@@ -139,7 +139,7 @@ test('formal lookup is capped at five pages and absence cannot prove a command w
   let reads = 0
   const { state } = page({ closeRegistrationBatch: async () => ({ code: 503001 }), getRegistrationBatches: async () => { reads++; return list([batch({ batchId: 'other' })], 1000000) } })
   await dispatch(state); await state.readBatchOutcome()
-  assert.equal(reads, 5); assert.match(state.batchWrite.readError, /不能据此认定操作未执行/); assert.equal(state.batchWrite.pending.row.batchId, batchId)
+  assert.equal(reads, 5); assert.match(state.batchWrite.readError, /操作结果仍未确认/); assert.equal(state.batchWrite.pending.row.batchId, batchId)
 })
 test('denied, malformed or failed formal reads clear any old read result while keeping the original write unknown', async () => {
   for (const response of [async () => ({ code: 403001, message: '只读范围已变' }), async () => ({ code: 0, data: {} }),

@@ -1,12 +1,12 @@
 <template>
   <ModulePageShell
     title="审批模板"
-    subtitle="按业务类型配置节点流转与办理时限，作废为逻辑作废并留痕"
+    subtitle="设置各类申请的审批步骤与办理时限"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <ModuleToolbar v-if="canView" :actions="toolbarActions" hint="模板变更全部留痕" @action="onToolbar" />
+      <ModuleToolbar v-if="canView" :actions="toolbarActions" @action="onToolbar" />
     </template>
 
     <AppGlobalState
@@ -37,9 +37,8 @@
       >
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.name }}</div>
-          <div class="mp-cell-sub">{{ row.id }}</div>
         </template>
-        <template #cell-nodes="{ row }">{{ row.nodes.length }} 个节点</template>
+        <template #cell-nodes="{ row }">{{ row.nodes.length }} 个环节</template>
         <template #cell-status="{ row }">
           <StatusTag
             :type="row.status === 'ENABLED' ? 'success' : 'default'"
@@ -85,13 +84,12 @@
 
       <section class="mp-card">
         <div class="mp-card__head">
-          <span class="mp-card__title">最近审计留痕</span>
-          <span class="mp-note">模板新增、更新、作废与导出全部留痕</span>
+          <span class="mp-card__title">最近操作记录</span>
         </div>
         <div class="mp-card__body">
           <table class="mp-audit">
             <thead>
-              <tr><th>操作人</th><th>时间</th><th>动作</th><th>对象</th><th>说明</th></tr>
+              <tr><th>操作人</th><th>时间</th><th>动作</th><th>模板</th><th>说明</th></tr>
             </thead>
             <tbody>
               <tr v-for="a in audits" :key="a.id">
@@ -102,7 +100,7 @@
                 <td>{{ a.detail }}</td>
               </tr>
               <tr v-if="!audits.length">
-                <td colspan="5" class="mp-note">暂无审计记录</td>
+                <td colspan="5" class="mp-note">暂无操作记录</td>
               </tr>
             </tbody>
           </table>
@@ -123,7 +121,7 @@
           作废原因：{{ viewTarget.voidReason }}
         </p>
         <div class="mp-card__head" style="padding: var(--space-4) 0 var(--space-2); border-bottom: none">
-          <span class="mp-card__title">节点流转</span>
+          <span class="mp-card__title">审批顺序</span>
         </div>
         <ul class="mp-timeline">
           <li
@@ -152,23 +150,23 @@
       </select>
 
       <div style="display: flex; align-items: center; justify-content: space-between; margin: var(--space-4) 0 var(--space-2)">
-        <span class="mp-card__title">审批节点（按顺序流转）*</span>
-        <button class="mp-link" @click="addNode">＋ 添加节点</button>
+        <span class="mp-card__title">审批环节（依次办理）*</span>
+        <button class="mp-link" @click="addNode">＋ 添加环节</button>
       </div>
       <div v-for="(n, i) in form.nodes" :key="i" class="tp-node">
         <span class="tp-node__index">{{ i + 1 }}</span>
-        <input v-model="n.name" type="text" class="tp-input tp-node__name" placeholder="节点名称" />
+        <input v-model="n.name" type="text" class="tp-input tp-node__name" placeholder="环节名称" />
         <select v-model="n.role" class="tp-input tp-node__role">
           <option value="">办理角色</option>
           <option v-for="r in ctx.filterOptions.templateNodeRoles" :key="r.value" :value="r.value">
             {{ r.label }}
           </option>
         </select>
-        <input v-model="n.sla" type="number" min="1" class="tp-input tp-node__sla" placeholder="时限(h)" />
+        <input v-model="n.sla" type="number" min="1" class="tp-input tp-node__sla" placeholder="时限（小时）" />
         <button
           class="mp-link"
           :class="{ 'is-disabled': form.nodes.length <= 1 }"
-          title="至少保留 1 个节点"
+          title="至少保留 1 个审批环节"
           @click="removeNode(i)"
         >
           删除
@@ -176,7 +174,7 @@
       </div>
       <p v-if="formError" class="mp-form-err">{{ formError }}</p>
       <p class="mp-note" style="margin-top: var(--space-3)">
-        保存后版本号自动递增，历史在办单据仍按原版本流转，模板变更写入审计留痕。
+        保存后新申请使用新版模板，在办申请仍按原流程办理，修改记录会保留。
       </p>
       <template #footer>
         <AppButton variant="ghost" @click="formDrawer = false">取消</AppButton>
@@ -194,14 +192,14 @@
       confirm-text="确认作废"
       require-reason
       reason-label="作废原因"
-      reason-placeholder="请写明作废原因（不少于 5 个字），将写入审计留痕"
+      reason-placeholder="请写明作废原因（不少于 5 个字）"
       :submitting="submitting"
       @confirm="doVoid"
     />
     <AppConfirmDialog
       v-model:visible="exportDialog"
       title="导出审批模板"
-      :message="(exportTarget ? '将导出「' + exportTarget.name + '」的节点配置，' : '') + '文件默认加水印，导出动作写入审计日志。'"
+      :message="(exportTarget ? '将导出「' + exportTarget.name + '」的审批设置，' : '') + '文件添加水印并保留导出记录。'"
       type="primary"
       confirm-text="确认导出"
       :submitting="submitting"
@@ -274,7 +272,7 @@ export default {
       columns: [
         { key: 'name', title: '模板名称' },
         { key: 'bizTypeLabel', title: '适用业务' },
-        { key: 'nodes', title: '节点数' },
+        { key: 'nodes', title: '审批环节' },
         { key: 'version', title: '版本' },
         { key: 'status', title: '状态' },
         { key: 'updated', title: '更新人 / 时间' },
@@ -399,8 +397,8 @@ export default {
         this.formDrawer = false
         toast.success(
           this.formMode === 'create'
-            ? '模板已新增（' + res.data.version + '）并写入审计留痕'
-            : '模板已保存，版本升级至 ' + res.data.version + '，已写入审计留痕'
+            ? '模板已新增（' + res.data.version + '）'
+            : '模板已保存，当前版本为 ' + res.data.version
         )
         this.load()
         this.loadAudits()
@@ -414,7 +412,7 @@ export default {
       this.submitting = false
       this.voidDialog = false
       if (res.code === 0) {
-        toast.success('模板已作废：历史单据保留可追溯，作废原因已写入审计留痕')
+        toast.success('模板已作废，历史单据和作废原因已保留')
         this.load()
         this.loadAudits()
       } else {

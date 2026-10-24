@@ -1,7 +1,7 @@
 <template>
   <section class="phone-self" aria-label="本人手机号登录凭据">
     <h3>本人手机号登录</h3>
-    <p>原账号和密码始终保留。联系方式、导入号码未经过本人验证，不能用于登录。</p>
+    <p>手机号需经本人验证后才能登录，原账号和密码仍可使用。</p>
     <p v-if="state.binding">当前：{{ state.binding.state === 'VERIFIED' ? '已验证 ' + state.binding.phoneMasked : state.binding.state === 'REVOKED' ? '已撤销，原账号可用' : '未绑定' }}<br>待核验号码：{{ state.binding.candidatePhoneMasked || '未登记' }}</p>
     <p v-if="state.error" role="alert" class="phone-self-error">{{ state.error }}</p>
     <p v-if="state.note" role="status">{{ state.note }}</p>
@@ -21,11 +21,11 @@
       <p>本次填写：{{ state.phone || '撤销当前已验证号码' }} · 验证流程剩余 {{ seconds }} 秒</p>
       <button v-if="state.step === 'REAUTHENTICATED'" type="button" :disabled="state.busy || !seconds" @click="flow.send()">请求短信验证码</button>
       <template v-if="state.step === 'CODE_SENT'"><label>短信验证码<input v-model.trim="state.code" inputmode="numeric" autocomplete="one-time-code" maxlength="6" :disabled="state.busy"></label><button type="button" :disabled="state.busy || !seconds" @click="flow.verify()">验证本次号码</button></template>
-      <template v-if="state.step === 'VERIFIED'"><p>确认后旧手机号不能再登录或找回，当前及其他设备需重新登录；原账号和密码不变。</p><label v-if="state.purpose === 'REVOKE_PHONE'">解绑原因<input v-model.trim="state.reason" maxlength="300" :disabled="state.busy"></label><button type="button" :disabled="state.busy || !seconds" @click="flow.confirm()">确认生效并退出旧会话</button></template>
+      <template v-if="state.step === 'VERIFIED'"><p>确认后旧号码不能登录或找回密码，所有设备需重新登录，原账号密码不变。</p><label v-if="state.purpose === 'REVOKE_PHONE'">解绑原因<input v-model.trim="state.reason" maxlength="300" :disabled="state.busy"></label><button type="button" :disabled="state.busy || !seconds" @click="flow.confirm()">确认并重新登录</button></template>
     </template>
-    <button v-if="state.step === 'UNCERTAIN'" type="button" :disabled="state.busy" @click="flow.checkResult()">查询原办理结果</button>
-    <template v-if="state.step === 'COMMITTED'"><p v-if="state.result.cacheRecoveryRequired || state.result.refreshCleanupRequired">安全变更已提交，部分缓存清理待恢复；不要再次变更号码。</p><button type="button" @click="$emit('changed')">返回登录</button></template>
-    <button v-else-if="!['UNCERTAIN', 'SUBMITTING', 'SESSION_CHANGED'].includes(state.step)" type="button" :disabled="state.busy" @click="flow.load()">{{ state.step === 'READY' ? '重新读取状态' : '取消本次证明并重新读取' }}</button>
+    <button v-if="state.step === 'UNCERTAIN'" type="button" :disabled="state.busy" @click="flow.checkResult()">查看上次办理结果</button>
+    <template v-if="state.step === 'COMMITTED'"><p v-if="state.result.cacheRecoveryRequired || state.result.refreshCleanupRequired">安全变更已提交，登录状态仍待更新，请勿再次变更号码。</p><button type="button" @click="$emit('changed')">返回登录</button></template>
+    <button v-else-if="!['UNCERTAIN', 'SUBMITTING', 'SESSION_CHANGED'].includes(state.step)" type="button" :disabled="state.busy" @click="flow.load()">{{ state.step === 'READY' ? '刷新状态' : '放弃本次验证并刷新' }}</button>
   </section>
 </template>
 

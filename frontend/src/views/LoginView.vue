@@ -6,10 +6,7 @@
       <div class="brand-copy">
         <p class="eyebrow">教师 · 管理人员工作入口</p>
         <h1 id="login-title">把每天要办的事，<br>放在一个工作台里。</h1>
-        <p class="lead">统一进入教务、学工、岗位实习与毕业设计。登录后按岗位和数据范围自动呈现待办、预警与业务入口。</p>
-        <div class="capabilities" aria-label="工作台能力">
-          <span>按岗位匹配权限</span><span>跨业务统一待办</span><span>PC 与小程序协同</span>
-        </div>
+        <p class="lead">登录后查看待办与预警，进入教务、学工、实习或毕设办理。</p>
       </div>
       <div class="workspace-art" aria-hidden="true">
         <i class="art-card art-card--one" /><i class="art-card art-card--two" /><i class="art-card art-card--three" />
@@ -19,7 +16,6 @@
 
     <section class="form-panel">
       <div class="login-card">
-        <p class="card-eyebrow">STAFF SIGN IN</p>
         <h2>教师 / 管理人员登录</h2>
         <p class="card-intro">{{ form.identifierType === 'PHONE' ? '使用本人已验证的手机号与原密码登录。' : '使用学校开通的工号或统一账号。' }}</p>
 
@@ -193,7 +189,6 @@ export default {
 .eyebrow,.card-eyebrow { margin: 0 0 18px; font-size: 12px; font-weight: 750; letter-spacing: .14em; }
 .eyebrow { color: #dce9ff; }.brand-copy h1 { margin: 0; font-size: clamp(38px, 4.5vw, 62px); line-height: 1.18; letter-spacing: -.04em; }
 .lead { max-width: 600px; margin: 24px 0 0; color: rgba(255,255,255,.82); font-size: 16px; line-height: 1.9; }
-.capabilities { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 34px; }.capabilities span { padding: 9px 14px; border: 1px solid rgba(255,255,255,.24); border-radius: 999px; background: rgba(255,255,255,.1); font-size: 12px; }
 .workspace-art { position: absolute; right: 4%; bottom: 3%; width: 390px; height: 210px; opacity: .7; }.art-card { position: absolute; width: 150px; height: 88px; border: 1px solid rgba(255,255,255,.36); border-radius: 16px; background: linear-gradient(145deg, rgba(255,255,255,.22), rgba(255,255,255,.05)); box-shadow: 0 22px 50px rgba(15,47,112,.25); transform: skewY(-8deg); }.art-card--one { left: 8px; top: 74px; }.art-card--two { left: 122px; top: 30px; }.art-card--three { right: 0; top: 92px; }.art-line { position: absolute; left: 18px; right: 0; bottom: 28px; height: 1px; background: rgba(255,255,255,.45); transform: rotate(-7deg); }
 .form-panel { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; padding: 30px; background: radial-gradient(circle at 50% 0, #eef5ff, transparent 42%), #f4f7fb; }
 .login-card { width: min(430px, 100%); padding: 34px 38px 30px; border: 1px solid #e2e8f0; border-radius: 20px; background: #fff; box-shadow: 0 24px 70px -38px rgba(16,35,63,.35); }

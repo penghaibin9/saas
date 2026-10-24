@@ -31,8 +31,8 @@
     <div v-else-if="state !== 'ready'" class="ags-panel" :class="`ags-${resolvedState}`" role="status">
       <div class="ags-icon" :class="`ags-icon--${resolvedState}`">{{ meta.icon }}</div>
       <div class="ags-title">{{ accessBlocked || resolvedState !== state ? meta.title : (title || meta.title) }}</div>
-      <div class="ags-desc">{{ accessBlocked ? meta.description : (resolvedState !== state ? safeError.userMessage : (description || meta.description)) }}</div>
-      <div v-if="errorCode && resolvedState === 'error'" class="ags-code">错误码：{{ errorCode }}</div>
+      <div class="ags-desc">{{ accessBlocked ? meta.description : (state === 'error' && description ? safeError.userMessage : (description || meta.description)) }}</div>
+      <details v-if="errorCode && resolvedState === 'error'" class="ags-code"><summary>实施人员使用</summary>错误码：{{ errorCode }}</details>
       <div class="ags-actions">
         <template v-if="accessBlocked">
           <button v-if="resolvedState === 'unauthorized'" type="button" class="ags-btn ags-btn--primary" @click="login">重新登录</button>
