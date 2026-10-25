@@ -34,12 +34,12 @@ test('生效课表显示保留异常、未发布、待核对、当前和被替�
 
 test('课表批次加载中和失败不显示零值，成功后保留原统计', async () => {
   const batch = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleBatchListView.vue', import.meta.url), 'utf8')
-  const snippet = batch.match(/<div v-else class="aa-batch-metrics"[\s\S]*?<\/div>/)[0].replace(' v-else', '')
+  const snippet = `<div>${batch.match(/<ul v-if="!onlyArchived && !loading && !error" class="aa-stat-strip"[\s\S]*?<\/ul>/)[0]}</div>`
   const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
   for (const [loading, error] of [[true, ''], [false, '读取失败'], [false, '']]) {
-    const html = await renderToString(Vue.createSSRApp({ render, data: () => ({ loading, error, pagination: { total: 7 } }), methods: { statusCount: () => 1 } }))
-    if (loading || error) { assert.equal((html.match(/<strong>—/g) || []).length, 4); assert.doesNotMatch(html, /<strong>[0-9]/) }
-    else { assert.match(html, /<strong>7/); assert.match(html, /<strong>2/) }
+    const html = await renderToString(Vue.createSSRApp({ render, data: () => ({ loading, error, onlyArchived: false, pagination: { total: 7 } }), methods: { statusCount: () => 1 } }))
+    if (loading || error) assert.doesNotMatch(html, /<b>[0-9]/)
+    else { assert.match(html, /<b>7/); assert.match(html, /<b>2/) }
   }
 })
 

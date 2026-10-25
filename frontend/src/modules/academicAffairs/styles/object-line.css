@@ -1,0 +1,9 @@
+/* 当前对象摘要：一行显示对象名、状态、当前负责和下一步 */
+.aa-object-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 16px; padding: 12px 16px; border: 1px solid var(--border-200, #dbe3ed); border-left: 3px solid var(--primary-600, #2d5cad); border-radius: 10px; background: var(--bg-white, #fff); color: var(--text-900, #1f2d3d); }
+.aa-object-line__name { font-size: 15px; font-weight: 600; overflow-wrap: anywhere; }
+.aa-object-line__sub { color: var(--text-500, #68788c); font-size: 12px; }
+.aa-object-line__status { padding: 2px 8px; border-radius: 999px; background: var(--primary-50, #eef4ff); color: var(--primary-700, #244f9a); font-size: 12px; white-space: nowrap; }
+.aa-object-line__meta { color: var(--text-600, #4e5d70); font-size: 12px; }
+.aa-object-line__meta em { margin-right: 4px; color: var(--text-400, #8896a8); font-style: normal; }
+.aa-object-line__meta.is-risk { color: #b45309; }
+.aa-object-line__spacer { flex: 1 1 auto; }

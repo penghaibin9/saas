@@ -24,16 +24,13 @@
         </header>
         <ol v-if="focusedProcessRow" class="aamk-process__stages" aria-label="业务办理阶段">
           <li v-for="(step,index) in modeSpec.steps" :key="step" :class="{ done: index < processStage, current: index === processStage }">
-            <span>{{ index < processStage ? '✓' : index + 1 }}</span><div><strong>{{ step }}</strong><small>{{ index === processStage ? '当前阶段' : index < processStage ? '已完成' : '等待前序完成' }}</small></div>
+            <span>{{ index < processStage ? '✓' : index + 1 }}</span><div><strong>{{ step }}</strong><small v-if="index === processStage">当前阶段</small></div>
           </li>
         </ol>
         <dl class="aamk-process__facts">
-          <div><dt>对象来源</dt><dd>{{ modeSpec.source }}</dd></div>
           <div><dt>当前责任</dt><dd>{{ modeSpec.owner }}</dd></div>
-          <div><dt>为什么轮到我</dt><dd>{{ modeSpec.whyMe }}</dd></div>
-          <div><dt>当前阻断</dt><dd>{{ processBlocker }}</dd></div>
+          <div v-if="processBlocker && processBlocker !== '无已知阻断'"><dt>当前阻断</dt><dd>{{ processBlocker }}</dd></div>
           <div><dt>下一责任岗位</dt><dd>{{ processNextOwner }}</dd></div>
-          <div><dt>返回位置</dt><dd>当前{{ modeSpec.title }}队列 · 第 {{ pagination.page }} 页</dd></div>
         </dl>
       </section>
 
@@ -61,35 +58,39 @@
           <button v-for="row in rows" :key="row.applyId || row.exemptionId" :class="['aamk-object',{selected:String(activeApplication?.applyId || activeApplication?.exemptionId)===String(row.applyId || row.exemptionId)}]" :disabled="saving || !!pendingWrite" @click="selectApplication(row)">
             <strong>{{ row.studentName }}</strong>
             <span>{{ row.courseName }} · {{ row.termCode || '学期待核对' }}</span>
-            <small>#{{ row.applyId || row.exemptionId }} · {{ revisionText(row) }}</small>
             <StatusTag :type="rtType(row.status)" :label="applicationStatus(row)" />
           </button>
           <div class="aamk-paging"><AppButton :disabled="pagination.page <= 1 || saving || !!pendingWrite" @click="changePage(pagination.page-1)">上一页</AppButton><span>第{{ pagination.page }}页</span><AppButton :disabled="pagination.page * pagination.pageSize >= pagination.total || saving || !!pendingWrite" @click="changePage(pagination.page+1)">下一页</AppButton></div>
         </aside>
         <section class="aamk-evidence">
           <EmptyState v-if="!activeApplication" title="选择一份申请" description="先核对学生、课程、申请理由和当前节点" />
-          <template v-else><header class="aamk-evidence__head"><div><h3>{{ activeApplication.studentName }} · {{ activeApplication.courseName }}</h3><p>{{ objectTitle(activeApplication) }} · {{ activeApplication.termCode || '学期待核对' }} · {{ revisionText(activeApplication) }}</p></div><StatusTag :type="rtType(activeApplication.status)" :label="applicationStatus(activeApplication)" /></header>
-            <ol class="aamk-stage" aria-label="办理进度">
-              <li v-for="(step,index) in applicationSteps" :key="step" :class="{done:index < applicationStage,current:index === applicationStage}"><span>{{ index < applicationStage ? '✓' : index + 1 }}</span><div><strong>{{ step }}</strong><small>{{ index === applicationStage ? '当前环节' : index < applicationStage ? '已完成或已越过' : '等待前序完成' }}</small></div></li>
-            </ol>
-            <AppInlineAlert v-if="!hasEvidenceContract(activeApplication)" type="warning" title="正式来源合同未返回" description="本页不会按学生姓名、课程名称或历史总评分数推断来源。共享服务返回精确成绩与证据版本后才能办理。" />
-            <div class="aamk-facts">
-              <article><div class="aamk-fact-title"><strong>来源对象与身份</strong><StatusTag type="success" label="精确申请" /></div><p>{{ objectTitle(activeApplication) }}</p><p>{{ courseIdentity(activeApplication) }}</p><p>提交：{{ formatMoment(activeApplication.appliedAt) }}</p><p class="aamk-muted">{{ activeApplication.reason || '未填写申请理由' }}</p></article>
-              <article v-if="tab === 'retake'"><div class="aamk-fact-title"><strong>原正式成绩</strong><StatusTag :type="stateMeta(activeApplication.sourceGradeState).type" :label="stateMeta(activeApplication.sourceGradeState).label" /></div><p>{{ gradeIdentity(activeApplication.originGrade) }}</p><p>{{ gradeResult(activeApplication.originGrade) }}</p><p class="aamk-muted">{{ gradeSource(activeApplication.originGrade) }}</p><p class="aamk-muted">来源证据 {{ shortHash(activeApplication.sourceEvidenceHash) }}</p></article>
-              <article v-if="tab === 'retake'"><div class="aamk-fact-title"><strong>当前成绩情况</strong><StatusTag :type="stateMeta(activeApplication.sourceGradeState).type" :label="activeApplication.currentGrade?.gradeId ? '当前版本已定位' : '当前版本待核对'" /></div><p>{{ gradeIdentity(activeApplication.currentGrade) }}</p><p>{{ gradeResult(activeApplication.currentGrade) }}</p><p class="aamk-muted">{{ gradeSource(activeApplication.currentGrade) }}</p></article>
-              <article v-else><div class="aamk-fact-title"><strong>课程与认定依据</strong><StatusTag :type="stateMeta(activeApplication.evidenceState,'evidence').type" :label="stateMeta(activeApplication.evidenceState,'evidence').label" /></div><p>{{ courseIdentity(activeApplication) }}</p><p>证据 {{ activeApplication.evidenceCount == null ? '数量待核对' : `${activeApplication.evidenceCount} 份` }} · 清单 {{ shortHash(activeApplication.evidenceManifestHash) }}</p><p v-if="evidenceProblems(activeApplication).length" class="aamk-danger">{{ evidenceProblems(activeApplication).join('；') }}</p><p v-else class="aamk-muted">证据有效不等于当前文件访问已授权，打开前仍由文件中心复核。</p></article>
-              <article v-if="tab === 'exemption'"><div class="aamk-fact-title"><strong>终审成绩结果</strong><StatusTag :type="stateMeta(activeApplication.resultGradeState).type" :label="stateMeta(activeApplication.resultGradeState).label" /></div><p>{{ gradeIdentity(activeApplication.resultGrade) }}</p><p>{{ gradeResult(activeApplication.resultGrade) }}</p><p class="aamk-muted">{{ gradeSource(activeApplication.resultGrade) }}</p><p class="aamk-muted">当前有效：{{ gradeIdentity(activeApplication.currentGrade) }} · {{ gradeResult(activeApplication.currentGrade) }}</p></article>
-              <article><div class="aamk-fact-title"><strong>当前节点与可办动作</strong><StatusTag :type="rtType(activeApplication.status)" :label="applicationStatus(activeApplication)" /></div><p>{{ tab === 'retake' ? '补重修责任岗' : nodeLabel(activeApplication.currentNode) }}</p><p>{{ actionText(activeApplication) }}</p><p v-if="blockers(activeApplication).length" class="aamk-danger">{{ blockers(activeApplication).join('；') }}</p><p v-else class="aamk-muted">{{ activeApplication.returnReason || activeApplication.reviewReason || '暂无办理意见' }}</p></article>
-              <article><div class="aamk-fact-title"><strong>{{ tab === 'retake' ? '新修读安排' : '证据文件版本' }}</strong><StatusTag :type="tab === 'retake' && activeApplication.enrollment?.rosterCoverage === 'FROZEN_AT_ENROLLMENT' ? 'success' : 'default'" :label="tab === 'retake' ? enrollmentLabel(activeApplication) : `${formalEvidenceFiles(activeApplication).length}份已登记`" /></div>
-                <template v-if="tab === 'retake'"><p>教学任务：{{ activeApplication.enrollment?.teachingTaskId || activeApplication.teachingTaskId || '尚未编入' }}</p><p>教学班：{{ activeApplication.enrollment?.teachingClassId || '待核对' }}</p><p class="aamk-muted">{{ rosterIdentity(activeApplication) }}</p></template>
-                <ul v-else-if="formalEvidenceFiles(activeApplication).length" class="aamk-evidence-list"><li v-for="file in formalEvidenceFiles(activeApplication)" :key="file.frozenBindingId || file.fileId"><strong>{{ file.fileName || `文件编号 ${file.fileId}` }}</strong><span>{{ evidenceVersion(file) }}</span><small>SHA-256 {{ shortHash(file.sha256) }} · {{ file.bindingStatus || '绑定状态待核对' }}</small></li></ul>
-                <p v-else class="aamk-muted">未返回冻结证据文件；不使用旧附件名称替代正式清单。</p>
-              </article>
-            </div>
+          <template v-else><header class="aamk-evidence__head"><div><h3>{{ activeApplication.studentName }} · {{ activeApplication.courseName }}</h3><p>{{ activeApplication.termCode || '学期待核对' }} · 提交于 {{ formatMoment(activeApplication.appliedAt) }}</p></div><StatusTag :type="rtType(activeApplication.status)" :label="applicationStatus(activeApplication)" /></header>
+            <details class="aa-flow-fold aamk-fold">
+              <summary>办理进度：{{ applicationSteps[applicationStage] || '已完成' }}（第 {{ Math.min(applicationStage + 1, applicationSteps.length) }} 步 / 共 {{ applicationSteps.length }} 步）</summary>
+              <ol class="aamk-stage" aria-label="办理进度">
+                <li v-for="(step,index) in applicationSteps" :key="step" :class="{done:index < applicationStage,current:index === applicationStage}"><span>{{ index < applicationStage ? '✓' : index + 1 }}</span><div><strong>{{ step }}</strong></div></li>
+              </ol>
+            </details>
+            <AppInlineAlert v-if="!hasEvidenceContract(activeApplication)" type="warning" title="成绩来源信息不全" description="系统还没返回这份申请对应的成绩和证据版本，暂时不能办理。" />
+            <dl class="aa-facts-table aamk-facts-table">
+              <div class="is-wide"><dt>申请理由</dt><dd>{{ activeApplication.reason || '未填写' }}</dd></div>
+              <template v-if="tab === 'retake'">
+                <div><dt>原成绩</dt><dd>{{ gradeResult(activeApplication.originGrade) }}<small>{{ stateMeta(activeApplication.sourceGradeState).label }}</small></dd></div>
+                <div><dt>当前成绩</dt><dd>{{ gradeResult(activeApplication.currentGrade) }}</dd></div>
+                <div><dt>新修读</dt><dd>{{ enrollmentLabel(activeApplication) }}<small v-if="activeApplication.enrollment?.teachingTaskId || activeApplication.teachingTaskId">已编入教学任务</small></dd></div>
+              </template>
+              <template v-else>
+                <div><dt>证据</dt><dd :class="{ 'is-danger': evidenceProblems(activeApplication).length }">{{ activeApplication.evidenceCount == null ? '数量待核对' : `${activeApplication.evidenceCount} 份` }} · {{ stateMeta(activeApplication.evidenceState,'evidence').label }}<small v-if="evidenceProblems(activeApplication).length">{{ evidenceProblems(activeApplication).join('；') }}</small><small v-for="file in formalEvidenceFiles(activeApplication)" :key="file.frozenBindingId || file.fileId">{{ file.fileName || '证据文件' }}</small></dd></div>
+                <div><dt>认定成绩</dt><dd>{{ gradeResult(activeApplication.resultGrade) }}<small>{{ stateMeta(activeApplication.resultGradeState).label }}</small></dd></div>
+              </template>
+              <div><dt>当前节点</dt><dd>{{ tab === 'retake' ? '补重修责任岗' : nodeLabel(activeApplication.currentNode) }}<small>{{ actionText(activeApplication) }}</small></dd></div>
+              <div v-if="blockers(activeApplication).length" class="is-wide"><dt>阻断</dt><dd class="is-danger">{{ blockers(activeApplication).join('；') }}</dd></div>
+              <div v-else-if="activeApplication.returnReason || activeApplication.reviewReason" class="is-wide"><dt>办理意见</dt><dd>{{ activeApplication.returnReason || activeApplication.reviewReason }}</dd></div>
+            </dl>
             <footer class="aamk-bar">
               <template v-if="tab === 'retake' && canReviewRetake"><button v-if="applicationCan(activeApplication,'APPROVE')" class="mp-link" @click="review('retakeReview',activeApplication.applyId,'APPROVE')">确认审核重修申请</button><button v-if="applicationCan(activeApplication,'REJECT')" class="mp-link is-danger" @click="reject('retakeReview',activeApplication.applyId)">驳回</button><button v-if="applicationCan(activeApplication,'ENROLL')" class="mp-link" @click="enrollRetake(activeApplication.applyId)">选择教学任务并编班</button></template>
               <template v-if="tab === 'exemption' && canReviewExemption"><button v-if="applicationCan(activeApplication,'APPROVE')" class="mp-link" @click="review('exemptionReview',activeApplication.exemptionId,'APPROVE')">确认本节点审核</button><button v-if="applicationCan(activeApplication,'RETURN')" class="mp-link" @click="returnEx(activeApplication.exemptionId)">退回补充材料</button><button v-if="applicationCan(activeApplication,'REJECT')" class="mp-link is-danger" @click="reject('exemptionReview',activeApplication.exemptionId)">驳回</button></template>
-              <span v-if="!formalActions(activeApplication).length" class="aamk-muted">当前操作未获授权，仅可核对。</span>
+              <span v-if="!formalActions(activeApplication).length" class="aamk-muted">当前岗位只能查看。</span>
             </footer>
           </template>
         </section>
@@ -845,4 +846,7 @@ export default {
 .aamk-form { display: flex; flex-direction: column; gap: 12px; }
 .aamk-score-input { width: 82px; padding: 4px 8px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 6px; font-size: 13px; }
 .aamk-sub { margin: 16px 0 8px; font-size: 14px; font-weight: 600; color: var(--text-primary, #1f2937); }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

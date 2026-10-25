@@ -141,7 +141,7 @@
           </section>
           <ol class="aa-publish-stages" aria-label="校历办理阶段">
             <li v-for="(stage, index) in ['学期定义', '编制校历', '校验发布', '教学任务']" :key="stage" :aria-current="index === 2 ? 'step' : undefined">
-              <span>{{ index + 1 }}</span><div><strong>{{ stage }}</strong><small>{{ index === 2 ? '当前办理环节' : index === 3 ? '发布后进入责任工作区' : '查看正式来源' }}</small></div>
+              <span>{{ index + 1 }}</span><div><strong>{{ stage }}</strong><small>{{ index === 2 ? '当前办理环节' : index === 3 ? '' : '' }}</small></div>
             </li>
           </ol>
           <div class="aa-publish-layout">
@@ -162,7 +162,7 @@
                   <section v-for="check in publishChecks" :key="check.title" :class="{ 'is-blocked': !check.ready && !check.readOnly }">
                     <div><strong>{{ check.title }}</strong><StatusTag :type="check.readOnly ? 'default' : check.ready ? 'success' : 'warning'" :label="check.readOnly ? '只读状态' : check.ready ? '已读取 · 符合条件' : '待处理'" /></div>
                     <p>{{ check.description }}</p><small>读取于 {{ publishEvidence?.readAt || '尚未读取' }}</small>
-                    <button v-if="check.path && hasPermission(check.permission)" class="mp-link" :disabled="busy" @click="openPublishSource(check.path, check.tab)">查看正式来源</button>
+                    <button v-if="check.path && hasPermission(check.permission)" class="mp-link" :disabled="busy" @click="openPublishSource(check.path, check.tab)">查看</button>
                   </section>
                 </div>
               </AppSectionCard>

@@ -1,15 +1,20 @@
 <template>
-  <ol class="aa-schedule-stage" :aria-label="ariaLabel">
-    <li
-      v-for="(step, index) in steps"
-      :key="step"
-      :class="{ 'is-done': index < activeIndex, 'is-current': index === activeIndex }"
-      :aria-current="index === activeIndex ? 'step' : undefined"
-    >
-      <span>{{ index + 1 }}</span>
-      <div><strong>{{ step }}</strong><small v-if="index === activeIndex">当前环节</small></div>
-    </li>
-  </ol>
+  <div class="aa-stage-fold">
+    <button type="button" class="aa-stage-fold__toggle" :aria-expanded="String(stageOpen)" @click="stageOpen = !stageOpen">
+      <span class="aa-stage-fold__arrow">▸</span>办理进度：<b>{{ steps[activeIndex] }}</b>（第 {{ activeIndex + 1 }} 步 / 共 {{ steps.length }} 步）
+    </button>
+    <ol v-show="stageOpen" class="aa-schedule-stage" :aria-label="ariaLabel">
+      <li
+        v-for="(step, index) in steps"
+        :key="step"
+        :class="{ 'is-done': index < activeIndex, 'is-current': index === activeIndex }"
+        :aria-current="index === activeIndex ? 'step' : undefined"
+      >
+        <span>{{ index + 1 }}</span>
+        <div><strong>{{ step }}</strong><small v-if="index === activeIndex">当前环节</small></div>
+      </li>
+    </ol>
+  </div>
 </template>
 
 <script>
@@ -18,6 +23,7 @@ const SCHEDULING_STEPS = ['准备教学任务', '排课要求', '试排课程', 
 
 export default {
   name: 'AaScheduleStageRail',
+  data() { return { stageOpen: false } },
   props: {
     mode: { type: String, default: 'schedule' },
     activeIndex: { type: Number, default: 0 }
@@ -30,6 +36,7 @@ export default {
 </script>
 
 <style scoped>
+@import '../styles/stage-fold.css';
 .aa-schedule-stage { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 18px; margin: 0; padding: 14px 18px; list-style: none; border: 1px solid var(--border-200, #dbe3ed); border-radius: 12px; background: var(--bg-white, #fff); }
 .aa-schedule-stage li { position: relative; display: flex; align-items: flex-start; gap: 9px; min-width: 0; color: var(--text-400, #8a94a6); }
 .aa-schedule-stage li:not(:last-child)::after { content: ''; position: absolute; top: 13px; right: 0; width: calc(100% - 116px); height: 1px; background: var(--border-200, #dbe3ed); }

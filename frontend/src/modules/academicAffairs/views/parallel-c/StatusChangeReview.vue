@@ -1,14 +1,15 @@
 <template>
   <section v-if="change" class="sc-review">
     <header><strong>{{ change.realName }} · {{ typeLabel(change.changeType) }}</strong><span>{{ statusLabel(change.status) }}</span></header>
-    <div class="sc-evidence">
-      <article><h3>来源对象与身份</h3><p>{{ change.realName || '姓名待核对' }}</p><p>{{ studentStatus(change.fromStatus) }} → {{ studentStatus(change.toStatus) }}</p></article>
-      <article><h3>当前决定版本</h3><p>{{ version === null ? '版本尚未返回，请重新读取' : `决定版本 ${version}` }}</p><p>提交时核对本次确认的版本与当前任务。</p></article>
-      <article><h3>申请与材料依据</h3><p>{{ change.reason || '申请原因未返回' }}</p><slot name="materials"><p>进入详情读取正式绑定材料。</p></slot></article>
-      <article><h3>{{ canReview ? '当前审批节点' : '审批路径节点' }}</h3><p>{{ nodeLabel(change.currentNode) }}</p><p>{{ canReview ? '当前岗位可发起办理，具体对象范围由服务器核验。' : '当前岗位无可用审核动作。' }}</p></article>
-      <article><h3>计划生效与正式结果</h3><p>{{ change.effectiveDate || '未设置计划日期' }}</p><p>{{ effectText }}</p></article>
-      <article><h3>证据核对</h3><p>办理前重新读取同一申请；材料清单按详情中最新绑定核对。</p><p>{{ evidenceText }}</p></article>
-    </div>
+    <dl class="sc-facts">
+      <div><dt>学籍变化</dt><dd>{{ studentStatus(change.fromStatus) }} → {{ studentStatus(change.toStatus) }}</dd></div>
+      <div><dt>{{ canReview ? '当前审批节点' : '审批路径节点' }}</dt><dd>{{ nodeLabel(change.currentNode) }}</dd></div>
+      <div class="is-wide"><dt>申请原因</dt><dd>{{ change.reason || '申请原因未返回' }}</dd></div>
+      <div><dt>计划生效</dt><dd>{{ change.effectiveDate ? String(change.effectiveDate).slice(0, 10) : '未设置' }}</dd></div>
+      <div><dt>材料</dt><dd><slot name="materials">在申请详情中查看</slot></dd></div>
+    </dl>
+    <p v-if="['APPROVED_PENDING_EFFECTIVE', 'EFFECTIVE'].includes(change.status)" class="sc-note">{{ effectText }}</p>
+    <p v-if="version === null" class="sc-error">申请版本未返回，请刷新后再办理。</p>
     <p v-if="error" role="alert" class="sc-error">{{ error }}</p>
     <div v-if="receipt" class="sc-receipt" role="status">
       <b>{{ receipt.verified ? '已核对正式办理结果' : '结果待核实' }}</b>
@@ -17,7 +18,7 @@
     </div>
     <div v-if="canReview && !pending" class="sc-actions">
       <label>审批意见（退回、驳回至少 5 字）<textarea v-model="reason" :disabled="saving" rows="3" maxlength="2000" /></label>
-      <div><button :disabled="saving" @click="ask('APPROVE')">通过本节点</button><button :disabled="saving" @click="ask('RETURN')">退回补充</button><button :disabled="saving" @click="ask('REJECT')">驳回申请</button></div>
+      <div><button class="is-primary" :disabled="saving" @click="ask('APPROVE')">通过本节点</button><button :disabled="saving" @click="ask('RETURN')">退回补充</button><button :disabled="saving" @click="ask('REJECT')">驳回申请</button></div>
     </div>
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" :confirm-text="confirmTitle" :submitting="saving" @confirm="submit" @cancel="cancelConfirm">
       <p v-if="command?.evidence">正式材料回读：{{ materialReceipt(command.evidence) }}。</p>
@@ -138,5 +139,5 @@ export default {
 </script>
 
 <style scoped>
-.sc-review{display:grid;gap:16px}.sc-review header{display:flex;justify-content:space-between;gap:16px;padding:18px;background:var(--bg-white,#fff);border:1px solid var(--border-200,#e1e7ef);border-left:4px solid var(--primary-500,#3564b4);border-radius:10px}.sc-evidence{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.sc-evidence article{padding:16px;border:1px solid var(--border-200,#e1e7ef);border-radius:8px;background:var(--bg-white,#fff)}h3{font-size:14px;margin:0 0 12px}p{font-size:13px;line-height:1.7;margin:6px 0;overflow-wrap:anywhere}.sc-actions{display:grid;gap:12px}.sc-actions label{display:grid;gap:8px;font-size:13px}textarea{padding:10px;border:1px solid var(--border-200,#e1e7ef);border-radius:8px;font:inherit;background:var(--bg-white,#fff);color:inherit}.sc-actions>div{display:flex;gap:12px}button{padding:8px 14px;border:1px solid var(--border-200,#ccd7e7);background:var(--bg-white,#fff);color:var(--primary-600,#285aab);border-radius:7px;cursor:pointer}button:disabled{opacity:.5;cursor:default}.sc-error{color:var(--danger-600,#b42318)}.sc-receipt{padding:14px;background:var(--primary-50,#edf4ff);border-radius:8px}@media(max-width:900px){.sc-evidence{grid-template-columns:1fr}}
+.sc-review{display:grid;gap:16px}.sc-review header{display:flex;justify-content:space-between;gap:16px;padding:18px;background:var(--bg-white,#fff);border:1px solid var(--border-200,#e1e7ef);border-left:4px solid var(--primary-500,#3564b4);border-radius:10px}.sc-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:0 24px;margin:0;padding:6px 18px;border:1px solid var(--border-200,#e1e7ef);border-radius:10px;background:var(--bg-white,#fff)}.sc-facts>div{display:grid;grid-template-columns:96px minmax(0,1fr);gap:12px;padding:10px 0;border-bottom:1px dashed var(--border-200,#e8edf4)}.sc-facts>div.is-wide{grid-column:1/-1}.sc-facts>div:last-child,.sc-facts>div:nth-last-child(2):not(.is-wide){border-bottom:0}.sc-facts dt{color:var(--text-500,#68788c);font-size:13px}.sc-facts dd{margin:0;font-size:13px;line-height:1.7;overflow-wrap:anywhere}.sc-note{color:var(--text-500,#68788c)}button.is-primary{background:var(--primary-600,#285aab);border-color:var(--primary-600,#285aab);color:#fff}h3{font-size:14px;margin:0 0 12px}p{font-size:13px;line-height:1.7;margin:6px 0;overflow-wrap:anywhere}.sc-actions{display:grid;gap:12px}.sc-actions label{display:grid;gap:8px;font-size:13px}textarea{padding:10px;border:1px solid var(--border-200,#e1e7ef);border-radius:8px;font:inherit;background:var(--bg-white,#fff);color:inherit}.sc-actions>div{display:flex;gap:12px}button{padding:8px 14px;border:1px solid var(--border-200,#ccd7e7);background:var(--bg-white,#fff);color:var(--primary-600,#285aab);border-radius:7px;cursor:pointer}button:disabled{opacity:.5;cursor:default}.sc-error{color:var(--danger-600,#b42318)}.sc-receipt{padding:14px;background:var(--primary-50,#edf4ff);border-radius:8px}@media(max-width:900px){.sc-facts{grid-template-columns:1fr}}
 </style>

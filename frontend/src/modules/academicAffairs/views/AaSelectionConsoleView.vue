@@ -12,61 +12,36 @@
     </template>
 
     <div class="aa-selection-layout">
-      <aside v-if="pagination.total > 1" class="aa-selection-list-card">
-        <div class="aa-selection-list-head">
-          <div>
-            <span class="aa-selection-eyebrow">批次导航</span>
-            <h2>选课批次</h2>
-          </div>
-          <span class="aa-selection-list-count">{{ pagination.total }}</span>
-        </div>
-
-        <ErrorState v-if="error" :description="error" @retry="load" />
-        <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="暂无选课批次" description="点击右上角「新建批次」创建" />
-        <ul v-else class="aa-selection-batches">
-          <li
-            v-for="b in rows"
-            :key="b.batchId"
-            :class="['aa-selection-batch', { 'is-active': current && current.batchId === b.batchId }]"
-            tabindex="0"
-            @click="select(b)"
-            @keyup.enter="select(b)"
-          >
-            <div class="aa-selection-batch-top">
-              <strong>{{ b.batchName }}</strong>
-              <StatusTag :type="b.windowNotice ? 'warning' : statusType(b.status)" :label="batchStatusLabel(b)" dot />
-            </div>
-            <p>{{ batchWindowText(b, true) }}</p>
-            <div class="aa-selection-batch-next">
-              <span>下一动作</span>
-              <b>{{ nextActionFor(b.status) }}</b>
-            </div>
-          </li>
-        </ul>
-        <AppPagination v-if="pagination.total" :total="pagination.total" :page="pagination.page" :page-size="pagination.pageSize" :show-size-changer="false" @change="onBatchPage" />
-      </aside>
+      <div v-if="pagination.total > 1 && !error && rows.length" class="aa-selection-switch">
+        <label class="aa-selection-switch__pick">
+          <span>选课批次</span>
+          <select class="aa-select" :value="current ? String(current.batchId) : ''" :disabled="saving" aria-label="切换选课批次" @change="pickBatch($event.target.value)">
+            <option value="" disabled>请选择批次</option>
+            <option v-for="b in rows" :key="b.batchId" :value="String(b.batchId)">{{ b.batchName }}（{{ batchStatusLabel(b) }}）</option>
+          </select>
+        </label>
+        <span class="aa-selection-switch__count">共 {{ pagination.total }} 个批次</span>
+        <AppPagination v-if="pagination.total > pagination.pageSize" :total="pagination.total" :page="pagination.page" :page-size="pagination.pageSize" :show-size-changer="false" @change="onBatchPage" />
+      </div>
 
       <main class="aa-selection-detail">
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
         <section v-else-if="!current" class="aa-selection-placeholder">
           <div class="aa-selection-placeholder-icon" aria-hidden="true">选</div>
-          <strong>选择一个选课批次</strong>
-          <span>从左侧进入批次后，可查看当前阶段、真实时间窗、容量、轮次、低人数风险与名单。</span>
+          <strong>{{ rows.length ? '选择一个选课批次' : '暂无选课批次' }}</strong>
+          <span>{{ rows.length ? '在上方选择批次后查看时间窗、容量、轮次和名单。' : '有权限时可点右上角「新建批次」。' }}</span>
         </section>
 
         <template v-else>
-          <section class="aa-selection-hero" :class="`is-${String(current.status || '').toLowerCase()}`">
+          <section class="aa-selection-hero" aria-label="当前批次运行态" :class="`is-${String(current.status || '').toLowerCase()}`">
             <div class="aa-selection-hero-main">
               <div class="aa-selection-hero-topline">
-                <span class="aa-selection-eyebrow">当前批次运行态 · 当前办理对象</span>
+                <h2>{{ current.batchName }}</h2>
                 <StatusTag :type="current.windowNotice ? 'warning' : statusType(current.status)" :label="batchStatusLabel(current)" dot />
               </div>
-              <h2>{{ current.batchName }}</h2>
-              <p>选课批次 · {{ current.batchCode || `SEL-${current.batchId}` }} · {{ current.termName || '当前学期' }}</p>
-              <p class="aa-selection-source">来源：从选课批次正式记录进入；当前页面只处理所选批次，不跨对象执行。</p>
               <div class="aa-selection-hero-meta">
+                <span v-if="current.termName"><b>学期</b>{{ current.termName }}</span>
                 <span><b>选课窗口</b>{{ batchWindowText(current) }}</span>
                 <span><b>轮次策略</b>{{ roundSummary }}</span>
                 <span v-if="current.remark"><b>备注</b>{{ current.remark }}</span>
@@ -74,8 +49,8 @@
             </div>
 
             <aside class="aa-selection-owner-card">
-              <p v-if="!detailLoading && !detailError && current.status === 'ARCHIVED'" role="status">本批次已归档，无待办理责任。课程、名单和统计保留供查阅。</p>
-              <AcademicObjectResponsibility v-else-if="!detailLoading && !detailError" :object-id="current.batchId" :responsibility="current.responsibility" :next-step="current.nextStep" />
+              <p v-if="!detailLoading && !detailError && current.status === 'ARCHIVED'" role="status">已归档，只读查阅。</p>
+              <AcademicObjectResponsibility v-else-if="!detailLoading && !detailError" compact :object-id="current.batchId" :responsibility="current.responsibility" :next-step="current.nextStep" />
               <span v-else>{{ detailLoading ? '正在读取当前批次责任' : '当前批次责任待重新核对' }}</span>
             </aside>
 
@@ -88,12 +63,15 @@
             </div>
           </section>
 
-          <section class="aa-selection-steps" aria-label="选课批次办理阶段">
-            <article v-for="(step, index) in lifecycleSteps" :key="step.key" :class="stepClass(index)">
-              <i>{{ index < currentStep ? '✓' : index + 1 }}</i>
-              <div><strong>{{ step.label }}</strong><small>{{ step.note }}</small></div>
-            </article>
-          </section>
+          <details class="aa-flow-fold aa-selection-fold">
+            <summary>办理进度：{{ lifecycleSteps[currentStep] ? lifecycleSteps[currentStep].label : '已完成' }}（第 {{ Math.min(currentStep + 1, lifecycleSteps.length) }} 步 / 共 {{ lifecycleSteps.length }} 步）</summary>
+            <section class="aa-selection-steps" aria-label="选课批次办理阶段">
+              <article v-for="(step, index) in lifecycleSteps" :key="step.key" :class="stepClass(index)">
+                <i>{{ index < currentStep ? '✓' : index + 1 }}</i>
+                <div><strong>{{ step.label }}</strong></div>
+              </article>
+            </section>
+          </details>
           <AppInlineAlert v-if="current.windowNotice" type="warning" :description="current.windowNotice" />
           <AppInlineAlert v-if="tickReceipt" :type="tickReceipt.partial ? 'warning' : 'success'" :description="tickReceipt.message" />
 
@@ -376,9 +354,9 @@ export default {
       return [
         { key: 'create', label: '创建批次', note: '来源数据可追溯' },
         { key: 'rules', label: '课程与规则', note: '来源数据可追溯' },
-        { key: 'open', label: '开放选课', note: '按真实状态解锁' },
-        { key: 'reselect', label: '补选关口', note: '按真实状态解锁' },
-        { key: 'lock', label: '锁定名单', note: '按真实状态解锁' }
+        { key: 'open', label: '开放选课', note: '' },
+        { key: 'reselect', label: '补选关口', note: '' },
+        { key: 'lock', label: '锁定名单', note: '' }
       ]
     },
     currentStep() { return ({ DRAFT: 1, PUBLISHED: 2, OPEN: 2, CLOSED: 3, LOCKED: 4, ARCHIVED: 5 })[this.current?.status] ?? 0 },
@@ -630,6 +608,7 @@ export default {
       }
       if (latest()) this.loading = false
     },
+    pickBatch(id) { const batch = this.rows.find(row => String(row.batchId) === String(id)); if (batch) this.select(batch) },
     onBatchPage({ page }) { this.pagination.page = page; this.current = null; this.load() },
     async select(b) {
       this.invalidateSelection()
@@ -911,7 +890,12 @@ export default {
 </script>
 
 <style scoped>
-.aa-selection-layout { display: grid; gap: 14px; }
+.aa-selection-layout { display: grid; gap: 12px; }
+.aa-selection-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; border: 1px solid #dce6f3; border-radius: 10px; background: #fff; }
+.aa-selection-switch__pick { display: flex; align-items: center; gap: 10px; color: #4e6075; font-size: 13px; font-weight: 600; }
+.aa-selection-switch__pick .aa-select { min-width: min(360px, 100%); max-width: 100%; height: 34px; }
+.aa-selection-switch__count { color: #65778b; font-size: 12px; }
+.aa-selection-switch :deep(.app-pagination) { margin-left: auto; }
 .aa-selection-list-card,
 .aa-selection-section,
 .aa-selection-placeholder { border: 1px solid #dfe7f1; border-radius: 12px; background: var(--bg-card); }
@@ -944,7 +928,7 @@ export default {
 .aa-selection-hero.is-closed { border-left-color: #d48716; }
 .aa-selection-hero.is-locked,.aa-selection-hero.is-archived { border-left-color: #718096; }
 .aa-selection-hero-topline { display: flex; align-items: center; gap: 10px; }
-.aa-selection-hero h2 { margin: 7px 0 3px; color: #132038; font-size: 16px; letter-spacing: 0; }
+.aa-selection-hero h2 { margin: 0; color: #132038; font-size: 16px; letter-spacing: 0; }
 .aa-selection-hero-main > p { max-width: 780px; margin: 0; color: #64748b; font-size: 12px; line-height: 1.65; }
 .aa-selection-hero-main > p.aa-selection-source { margin-top: 2px; color: #758398; }
 .aa-selection-hero-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 6px; }
@@ -1009,4 +993,7 @@ export default {
   .aa-selection-steps article::after { display:none; }
   .aa-selection-summary dl { display:grid; grid-template-columns:repeat(2,1fr); width:100%; }
 }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

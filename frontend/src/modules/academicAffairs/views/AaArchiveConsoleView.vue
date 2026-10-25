@@ -41,9 +41,8 @@
         <template v-else>
           <section class="aaar-object-card">
             <div class="aaar-object-main">
-              <small>当前业务对象 · 学期归档批次编号 {{ current.batchId }}</small>
               <div class="aaar-title">{{ current.batchName }}</div>
-              <p>{{ isCollegeScope ? '来源：学校归档批次正式进度；本院实时缺项以预检结果为准' : '来源：学期正式记录与十三个数据域的汇总检查；责任以当前批次最新结果为准' }}</p>
+              <p v-if="isCollegeScope">本院缺项以实时检查结果为准</p>
             </div>
             <dl>
               <div><dt>当前状态</dt><dd><StatusTag :type="sType(current.status)" :label="sLabel(current.status)" dot /></dd></div>
@@ -65,7 +64,7 @@
             <li :class="{ 'is-done': current.status === 'ARCHIVED' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '5' }}</b><span><strong>受控纠错</strong><small>{{ current.status === 'ARCHIVED' ? '普通解冻关闭' : '封存后启用' }}</small></span></li>
           </ol>
           <div v-if="canManageArchive" class="aaar-head">
-            <div><strong>当前主动作</strong><small>先检查完整性；只有十三个数据域都没有已阻断或待处理事项，才可确认归档</small></div>
+            <div><strong>当前主动作</strong><small>{{ archiveActionHint }}</small></div>
             <div class="aaar-actions">
               <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" :disabled="!!pendingCommand" :loading="actionBusy" @click="doCheck">完整性检查</AppButton>
               <AppButton v-if="current.status === 'READY'" size="small" variant="primary" :disabled="actionBusy || !!pendingCommand || !canConfirmArchive" @click="doConfirm">确认归档</AppButton>
@@ -165,6 +164,8 @@ export default {
     }
   },
   computed:{
+    // 说明随归档批次的真实状态变化，不再固定写“先检查”
+    archiveActionHint(){const status=this.current?.status;if(status==='READY')return '检查已通过，可以确认归档';if(status==='ARCHIVED')return '已归档，可查阅历史；如需更正请走纠错流程';if(status==='CANCELLED')return '已取消，仅可查看历史';return '先做完整性检查，处理完缺项后再确认归档'},
     identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,u.permissionVersion,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionVersion,this.ctx.permissionPatterns])},
     pageTitle(){return this.$route.query?.entry==='batch'?'批量归档':'归档与封存'},
     pageSubtitle(){return this.isCollegeScope?'查看学校归档进度，按本院实时预检处理本院缺项':!this.canManageArchive?'查阅学校归档进度；建立批次、处理缺项和正式封存由校教务负责':this.$route.query?.entry==='batch'?'复用正式学期归档批次；不另建旁路归档引擎':'十三个教务数据域先检查、处理缺失，再形成不可普通回退的学期归档'},

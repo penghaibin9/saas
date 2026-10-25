@@ -11,7 +11,7 @@
         <p v-else-if="!currentContext" class="mp-note">当前学期结论待核对。</p>
         <div v-else class="aa-state-facts">
           <span>当前学期<strong>{{ currentContext.termId ? `${currentContext.yearCode} 第 ${currentContext.termNo} 学期` : '尚未设置' }}</strong></span>
-          <span>权威来源<strong>{{ currentContext.currentAuthority === 'CALENDAR_GOVERNANCE' ? '全校学期治理' : currentContext.canDirectSwitch === true ? '教务学期管理' : '待核对' }}</strong></span>
+          <span>办理入口<strong>{{ currentContext.currentAuthority === 'CALENDAR_GOVERNANCE' ? '全校学期治理' : currentContext.canDirectSwitch === true ? '教务学期管理' : '待核对' }}</strong></span>
           <span>教务侧直接切换<strong>{{ currentContext.currentAuthority === 'CALENDAR_GOVERNANCE' ? '不允许，由治理岗位统一激活' : currentContext.canDirectSwitch === true ? '按当前学期页面权限办理' : '当前结论不可直接切换' }}</strong></span>
           <span>学期定义状态<strong>{{ statusLabel(currentContext.status) || '待核对' }} · 定义与激活分开</strong></span>
         </div>

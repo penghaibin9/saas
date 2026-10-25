@@ -1,11 +1,11 @@
 <template>
   <section class="aa-source-review" aria-label="重复开课来源核对">
-    <header><div><h3>重复开课来源核对</h3><p>对照两条教学任务的正式来源与执行条件；核对通过后，由校教务责任人正式确认来源承接，保留原教学执行和全部历史。</p></div><button type="button" :disabled="saving" @click="$emit('close')">关闭核对</button></header>
+    <header><div><h3>重复开课来源核对</h3><p>对照两条教学任务的来源与执行条件；核对通过后，由校教务责任人正式确认来源承接，保留原教学执行和全部历史。</p></div><button type="button" :disabled="saving" @click="$emit('close')">关闭核对</button></header>
     <label v-if="otherTasks.length > 1" class="aa-source-review__choice">选择另一条比较任务
       <select v-model="selectedOtherTaskId" :disabled="saving" aria-label="选择另一条比较任务"><option value="">请选择比较任务</option><option v-for="task in otherTasks" :key="task.taskId" :value="String(task.taskId)">{{ task.label }}</option></select>
     </label>
     <p v-if="state === 'select'" role="status">请明确选择另一条任务后核对，系统不会替你选择执行任务。</p>
-    <p v-else-if="state === 'loading'" role="status">正在读取两条任务的正式来源与执行条件…</p>
+    <p v-else-if="state === 'loading'" role="status">正在读取两条任务…</p>
     <div v-else-if="state === 'error'" role="alert"><p>{{ error }}</p><button type="button" @click="load">重新读取</button></div>
     <div v-else-if="result" class="aa-source-review__result">
       <p :class="result.status === 'BLOCKED' ? 'aa-source-review__blocked' : ''"><strong>{{ result.status === 'BLOCKED' ? '核对存在阻断' : '本次核对完成' }}</strong> · {{ result.summary }}</p>

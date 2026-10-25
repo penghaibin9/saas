@@ -33,8 +33,8 @@
         <ol class="aa-stage-rail" aria-label="学籍信息更正办理阶段">
           <li class="is-complete"><span>✓</span><div><strong>权威学生主档</strong><small>来源数据可追溯</small></div></li>
           <li class="is-complete"><span>✓</span><div><strong>注册与异动</strong><small>历史记录可回查</small></div></li>
-          <li class="is-current"><span>3</span><div><strong>正式身份</strong><small>当前设计视角</small></div></li>
-          <li><span>4</span><div><strong>历史档案</strong><small>按真实状态解锁</small></div></li>
+          <li class="is-current"><span>3</span><div><strong>正式身份</strong><small>当前环节</small></div></li>
+          <li><span>4</span><div><strong>历史档案</strong></div></li>
         </ol>
 
         <AppInlineAlert type="info" description="申请只记录拟更正的内容，不先改正式记录；按当前审核环节处理，已归档的情况进入受控纠错。" />

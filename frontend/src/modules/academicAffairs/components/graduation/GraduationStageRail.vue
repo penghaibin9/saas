@@ -1,14 +1,19 @@
 <template>
-  <ol class="grad-rail" aria-label="毕业资格办理阶段">
-    <li
-      v-for="(stage, index) in stages"
-      :key="stage"
-      :class="{ 'is-done': index < active, 'is-active': index === active }"
-    >
-      <span>{{ index < active ? '✓' : index + 1 }}</span>
-      <b>{{ stage }}</b>
-    </li>
-  </ol>
+  <div class="aa-stage-fold">
+    <button type="button" class="aa-stage-fold__toggle" :aria-expanded="String(stageOpen)" @click="stageOpen = !stageOpen">
+      <span class="aa-stage-fold__arrow">▸</span>办理进度：<b>{{ stages[active] }}</b>（第 {{ active + 1 }} 步 / 共 {{ stages.length }} 步）
+    </button>
+    <ol v-show="stageOpen" class="grad-rail" aria-label="毕业资格办理阶段">
+      <li
+        v-for="(stage, index) in stages"
+        :key="stage"
+        :class="{ 'is-done': index < active, 'is-active': index === active }"
+      >
+        <span>{{ index < active ? '✓' : index + 1 }}</span>
+        <b>{{ stage }}</b>
+      </li>
+    </ol>
+  </div>
 </template>
 
 <script>
@@ -18,12 +23,13 @@ export default {
     active: { type: Number, default: 0 }
   },
   data() {
-    return { stages: ['审核批次', '毕业学生', '十一项证据', '学院审核', '教务终审', '证书归档'] }
+    return { stageOpen: false, stages: ['审核批次', '毕业学生', '十一项证据', '学院审核', '教务终审', '证书归档'] }
   }
 }
 </script>
 
 <style scoped>
+@import '../../styles/stage-fold.css';
 .grad-rail { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); margin: 0; padding: 14px 18px; border: 1px solid #dce6f3; border-radius: 12px; background: #fff; list-style: none; }
 .grad-rail li { position: relative; display: grid; justify-items: center; gap: 7px; min-width: 0; color: #8190a5; font-size: 12px; text-align: center; }
 .grad-rail li::after { position: absolute; top: 12px; left: calc(50% + 16px); right: calc(-50% + 16px); height: 1px; background: #dce6f3; content: ''; }

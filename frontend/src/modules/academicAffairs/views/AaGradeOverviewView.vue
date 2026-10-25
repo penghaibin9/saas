@@ -1,13 +1,12 @@
 <template>
   <ModulePageShell
     title="成绩总览"
-    subtitle="先看当前责任和未完成课程"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/grade-fail')">挂科清单</AppButton>
-      <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/grade-entry')">成绩录入</AppButton>
+      <AppButton variant="secondary" @click="$router.push('/admin/academic-affairs/grade-fail')">挂科清单</AppButton>
+      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/grade-entry')">成绩录入</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -16,29 +15,28 @@
         <label class="aa-filter-field"><span>任务状态</span><AppSelect v-model="taskStatus" :options="taskStatusOptions" placeholder="全部任务" /></label>
         <label class="aa-filter-field"><span>课程名称</span><AppTextInput v-model="taskKeyword" placeholder="输入课程名称" /></label>
         <AppButton variant="primary" @click="searchTasks">查询任务</AppButton>
-        <AppButton variant="ghost" @click="clearTaskFilters">清除筛选</AppButton>
+        <AppButton variant="ghost" @click="clearTaskFilters">清空</AppButton>
       </form>
-      <section class="aa-overview-summary" aria-label="当前成绩任务范围">
-        <article><small>当前查询</small><strong>{{ tasksLoading || taskError ? '—' : taskTotal }}</strong><span>系统分页统计的任务总数</span></article>
-        <article><small>本页已发布 / 归档</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.finished }}</strong><span>以正式任务状态为准</span></article>
-        <article><small>本页可办理</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.actionable }}</strong><span>按当前身份允许动作</span></article>
-        <article><small>本页来源待核对</small><strong>{{ tasksLoading || taskError ? '—' : taskSummary.unresolved }}</strong><span>课程或任课关系未就绪</span></article>
-      </section>
-      <AppSectionCard title="办理队列">
-        <template #header-extra><AppButton variant="ghost" @click="loadTasks">刷新任务</AppButton></template>
+      <AppSectionCard title="成绩任务">
+        <template #header>
+          <span v-if="!tasksLoading && !taskError" class="aa-task-count">共 <strong>{{ taskTotal }}</strong> 门</span>
+        </template>
+        <template #header-extra><AppButton variant="ghost" @click="loadTasks">刷新</AppButton></template>
         <ErrorState v-if="taskError" :description="taskError" @retry="loadTasks" />
         <LoadingState v-else-if="tasksLoading" />
-        <EmptyState v-else-if="!tasks.length" title="当前查询条件下没有成绩任务" description="可清除筛选查看当前身份能够访问的其他任务；这里不代表全校没有成绩任务。" />
+        <EmptyState v-else-if="!tasks.length" title="当前查询条件下没有成绩任务" description="可清空筛选后再查" />
         <DataTable v-else :columns="taskColumns" :rows="tasks" row-key="gradeTaskId">
-          <template #cell-teachingClassName="{ row }">{{ row.teachingClassName || '正式教学班待核对' }}</template>
-          <template #cell-teacher="{ row }">{{ row.teacherAuthorityReady && row.teacherNames?.length ? row.teacherNames.join('、') : '正式任课人待核对' }}</template>
-          <template #cell-status="{ row }">{{ gradeStatusLabel(row.status) }}</template>
-          <template #cell-responsibility="{ row }"><AcademicObjectResponsibility :object-id="row.gradeTaskId" :responsibility="row.responsibility" :next-step="row.nextStep" /></template>
+          <template #cell-courseName="{ row }">
+            <div class="mp-cell-main">{{ row.courseName }}</div>
+            <div class="mp-cell-sub">{{ row.teachingClassName || '教学班待核对' }}</div>
+          </template>
+          <template #cell-teacher="{ row }">{{ row.teacherAuthorityReady && row.teacherNames?.length ? row.teacherNames.map(teacherText).join('、') : '任课教师待核对' }}</template>
+          <template #cell-status="{ row }"><AppStatusTag :type="gradeStatusType(row.status)" dot>{{ gradeStatusLabel(row.status) }}</AppStatusTag></template>
+          <template #cell-responsibility="{ row }"><AcademicObjectResponsibility compact :object-id="row.gradeTaskId" :responsibility="row.responsibility" :next-step="row.nextStep" /></template>
           <template #cell-deadline="{ row }">{{ row.deadline || '尚未设置' }}</template>
           <template #cell-actions="{ row }"><button class="mp-link" @click="openTask(row)">{{ gradeTaskDestination(row).label }}</button></template>
         </DataTable>
-        <div class="aa-task-pages"><AppButton variant="ghost" :disabled="taskPage <= 1" @click="changeTaskPage(taskPage - 1)">上一页</AppButton><span>第 {{ taskPage }} 页 · 共 {{ taskTotal }} 项</span><AppButton variant="ghost" :disabled="taskPage * 20 >= taskTotal" @click="changeTaskPage(taskPage + 1)">下一页</AppButton></div>
-        <p class="mp-note">状态来自正式任务；名单完成率与审核证据请进入具体任务核对。</p>
+        <div v-if="taskTotal > 20" class="aa-task-pages"><AppButton variant="ghost" :disabled="taskPage <= 1" @click="changeTaskPage(taskPage - 1)">上一页</AppButton><span>第 {{ taskPage }} / {{ Math.max(1, Math.ceil(taskTotal / 20)) }} 页</span><AppButton variant="ghost" :disabled="taskPage * 20 >= taskTotal" @click="changeTaskPage(taskPage + 1)">下一页</AppButton></div>
       </AppSectionCard>
       <AppButton variant="ghost" @click="toggleAnalysis">{{ showAnalysis ? '收起成绩分析' : '查看已发布成绩分析' }}</AppButton>
       <section v-if="showAnalysis" class="mp-stack" aria-label="已发布成绩分析">
@@ -99,7 +97,7 @@ import AcademicObjectResponsibility from '../components/AcademicObjectResponsibi
 /** 成绩分析（/admin/academic-affairs/grade-overview）：GET /grade-views/analysis（可按课程/班级分组）+ 导出 xlsx。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker } from '@/components/common'
+import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
@@ -109,7 +107,7 @@ export default {
   name: 'AaGradeOverviewView',
   components: {
     AcademicObjectResponsibility, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-      AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker
+      AppButton, AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker, AppStatusTag
   },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
@@ -117,7 +115,7 @@ export default {
     return {
       alive: true, readSeq: 0, taskSeq: 0, exportSeq: 0, showAnalysis: false, tasks: [], tasksLoading: false, taskError: '', taskPage: 1, taskTotal: 0, taskStatus: '', taskTerm: '', taskKeyword: '',
       taskStatusOptions: [{ value: '', label: '全部任务' }, ...['NOT_STARTED', 'INPUTTING', 'RETURNED', 'SUBMITTED', 'ACADEMIC_REVIEW', 'PUBLISHED', 'ARCHIVED'].map(value => ({ value, label: gradeStatusLabel(value) }))],
-      taskColumns: [{ key: 'courseName', title: '课程' }, { key: 'termCode', title: '学期' }, { key: 'teachingClassName', title: '正式教学班' }, { key: 'teacher', title: '正式任课教师' }, { key: 'status', title: '录入 / 审核状态' }, { key: 'responsibility', title: '责任接力' }, { key: 'deadline', title: '提交截止' }, { key: 'actions', title: '下一步' }],
+      taskColumns: [{ key: 'courseName', title: '课程 / 教学班' }, { key: 'termCode', title: '学期' }, { key: 'teacher', title: '任课教师' }, { key: 'status', title: '状态' }, { key: 'responsibility', title: '当前负责' }, { key: 'deadline', title: '提交截止' }, { key: 'actions', title: '操作' }],
       loading: false, error: '', term: '', dimension: '',
       data: { total: null, passRate: null, excellentRate: null, avgScore: null, maxScore: null, minScore: null, distribution: [], rows: [] },
       exportPurpose: '', downloading: false,
@@ -127,13 +125,6 @@ export default {
     }
   },
   computed: {
-    taskSummary() {
-      return {
-        finished: this.tasks.filter(row => ['PUBLISHED', 'ARCHIVED'].includes(row.status)).length,
-        actionable: this.tasks.filter(row => row.allowedActions?.some(action => ['INPUT', 'SUBMIT', 'COLLEGE_REVIEW', 'PUBLISH', 'RETURN', 'ARCHIVE'].includes(action))).length,
-        unresolved: this.tasks.filter(row => !row.courseId || row.teacherAuthorityReady === false).length
-      }
-    },
     identityKey() { const u = currentUserFromToken() || {}; return JSON.stringify([u.tenantId, u.userId, u.activeContextId, u.currentRoleCode, this.ctx.currentRole, this.ctx.dataScope]) },
     maxCount() { return Math.max(1, ...(this.data.distribution || []).map((d) => d.count)) },
     distSpec() {
@@ -160,6 +151,8 @@ export default {
   methods: {
     gradeStatusLabel,
     gradeTaskDestination,
+    gradeStatusType(status) { return ({ PUBLISHED: 'success', ARCHIVED: 'info', RETURNED: 'danger', SUBMITTED: 'warning', COLLEGE_REVIEW: 'warning', ACADEMIC_REVIEW: 'warning', INPUTTING: 'primary' })[status] || 'default' },
+    teacherText(name) { return String(name || '').replace(/\s*[（(][A-Za-z0-9_.@-]+[)）]\s*$/, '') },
     taskStage(status) { return ({ NOT_STARTED: 1, INPUTTING: 2, RETURNED: 2, SUBMITTED: 3, COLLEGE_REVIEW: 3, ACADEMIC_REVIEW: 4, PUBLISHED: 5, ARCHIVED: 5 })[status] || 0 },
     clearAnalysis() { this.readSeq++; this.exportSeq++; this.loading = false; this.downloading = false; this.error = ''; this.data = { distribution: [], rows: [] } },
     invalidate() { this.readSeq++; this.taskSeq++; this.exportSeq++; this.tasks = []; this.taskTotal = 0; this.taskPage = 1; this.data = { distribution: [], rows: [] }; this.showAnalysis = false; this.exportPurpose = ''; this.downloading = false; this.loading = false; this.tasksLoading = false; this.error = ''; this.taskError = '' },
@@ -263,6 +256,8 @@ export default {
 .aa-task-stage__track i { height: 9px; border-radius: 4px; background: var(--pri-bg); }
 .aa-task-stage__track i.complete { background: var(--pri); }
 @media(max-width: 800px) { .aa-overview-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }.aa-task-progress-row { grid-template-columns: minmax(0,1fr) auto; }.aa-task-stage { grid-column: 1 / -1; grid-row: 2; } }
+.aa-task-count { margin-left: 10px; color: var(--text-secondary); font-size: 13px; }
+.aa-task-count strong { color: var(--pri); font-size: 16px; }
 .aa-task-pages { display: flex; justify-content: center; gap: 14px; align-items: center; margin-top: 16px; }
 .aa-filter { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .aa-filter__label { font-size: 13px; color: var(--text-700, #4e5969); }

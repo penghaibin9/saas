@@ -14,7 +14,7 @@
       <GraduationStageRail v-if="batch" :active="batch.status === 'ARCHIVED' ? 5 : (batch.status === 'PRECHECKED' ? 2 : 1)" />
 
       <section v-if="batch" class="grad-object" aria-label="当前毕业审核对象">
-        <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>{{ batchTermLabel(batch) }}</small><small>来源：毕业审核批次编号 {{ batch.batchId }}</small></div>
+        <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>{{ batchTermLabel(batch) }}</small></div>
         <div><span>当前状态</span><strong>{{ academicStatusLabel(batch.status) }}</strong><small>应审 {{ batch.total || 0 }} 人 · 系统异常 {{ batch.abnormal || 0 }} 人</small></div>
         <div><span>当前责任</span><strong>{{ Number(batch.abnormal || 0) ? '证据责任岗' : '学院审核岗' }}</strong><small>{{ Number(batch.abnormal || 0) ? '先治理阻断项并重新预审' : '核对十一项正式证据' }}</small></div>
         <div><span>下一岗位</span><strong>{{ Number(batch.abnormal || 0) ? '学院审核岗' : '教务终审岗' }}</strong><small>完成当前阶段后自动进入下一队列</small></div>
@@ -48,12 +48,14 @@
         </AppSectionCard>
       </template>
 
-      <section v-if="isBatchList" class="grad-metrics" aria-label="批次真实概览">
-        <article><span>当前页批次</span><strong>{{ batches.length }}</strong><small>总计 {{ batchPagination.total }} 个正式批次</small></article>
-        <article><span>当前页应审</span><strong>{{ pageTotals.total }}</strong><small>已圈定审核范围</small></article>
-        <article><span>系统异常</span><strong>{{ pageTotals.abnormal }}</strong><small>需返回责任模块治理</small></article>
-        <article><span>已终审</span><strong>{{ pageTotals.concluded }}</strong><small>可进入证书与归档</small></article>
-      </section>
+      <div v-if="isBatchList" class="aa-pagebar">
+        <ul class="aa-stat-strip" aria-label="批次概览">
+          <li><span>批次</span><b>{{ batchPagination.total }}</b></li>
+          <li><span>应审学生</span><b>{{ pageTotals.total }}</b></li>
+          <li :class="{ 'is-danger': pageTotals.abnormal > 0 }" title="需回到对应业务模块处理"><span>系统异常</span><b>{{ pageTotals.abnormal }}</b></li>
+          <li class="is-success"><span>已终审</span><b>{{ pageTotals.concluded }}</b></li>
+        </ul>
+      </div>
 
       <AppSectionCard :title="isBatchList ? '审核批次队列' : '毕业预审批次'">
         <ErrorState v-if="listError" :description="listError" @retry="loadBatches" />
@@ -270,4 +272,7 @@ export default {
 .grad-metrics strong { color: #18365f; font-size: 25px; font-variant-numeric: tabular-nums; }
 @media (max-width: 900px) { .grad-object, .grad-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } .grad-object > div:nth-child(2) { border-right: 0; } }
 @media (max-width: 560px) { .grad-object, .grad-metrics { grid-template-columns: 1fr; } .grad-object > div { border-right: 0; border-bottom: 1px solid #e8eef6; } }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

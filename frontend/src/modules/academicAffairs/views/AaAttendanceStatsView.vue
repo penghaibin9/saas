@@ -5,24 +5,38 @@
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
-    <template #actions><AppButton variant="primary" @click="togglePanel">{{ panel === 'sessions' ? '查看学生汇总' : '查看考勤场次' }}</AppButton></template>
+    <template #actions><AppButton v-if="canScan && sessionType !== 'ADMIN_SPECIAL'" variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton></template>
     <div class="mp-stack">
       <div class="aa-filter">
-        <label class="aa-filter-field"><span>视图</span><AppSelect v-model="panel" :options="panelOptions" @change="onPanelChange" /></label>
-        <label class="aa-filter-field"><span>行政班</span><AppClassPicker v-model="classId" placeholder="全部班级" /></label>
-        <label class="aa-filter-field"><span>学期</span><AppTermCodePicker v-model="termCode" placeholder="全部学期" /></label>
-        <label class="aa-filter-field"><span>点名类别</span><AppSelect v-model="sessionType" :options="typeOptions" /></label>
-        <AppButton variant="ghost" @click="search">查询</AppButton>
-        <AppButton v-if="canScan && sessionType !== 'ADMIN_SPECIAL'" variant="secondary" :loading="scanning" @click="scanAbsent">旷课预警扫描</AppButton>
+        <div class="aa-view-switch" role="tablist" aria-label="视图">
+          <button v-for="option in panelOptions" :key="option.value" type="button" role="tab" :aria-selected="panel === option.value" :class="{ 'is-active': panel === option.value }" @click="panel !== option.value && togglePanel()">{{ option.label }}</button>
+        </div>
+        <label class="aa-filter-field" aria-label="行政班"><AppClassPicker v-model="classId" placeholder="全部班级" /></label>
+        <label class="aa-filter-field" aria-label="学期"><AppTermCodePicker v-model="termCode" placeholder="全部学期" /></label>
+        <label class="aa-filter-field" aria-label="点名类别"><AppSelect v-model="sessionType" :options="typeOptions" /></label>
+        <AppButton @click="search">查询</AppButton>
+        <ul v-if="panel === 'stats' && !loading && !error" class="aa-stat-strip aa-filter__stats" aria-label="考勤概况">
+          <li><span>{{ data.sourceScopeLabel || '正式课堂' }}场次</span><b>{{ data.sessionCount }}</b><small>次</small></li>
+          <li><span>涉及学生</span><b>{{ studentTotal }}</b><small>人</small></li>
+          <li :class="{ 'is-danger': absentStudentCount > 0 }"><span>有旷课</span><b>{{ absentStudentCount }}</b><small>人</small></li>
+        </ul>
+        <details class="aa-tip aa-filter__tip">
+          <summary>口径说明</summary>
+          <p v-if="panel === 'sessions'">电脑端和手机端读同一批考勤场次，任课教师可在电脑上逐个点名并提交。</p>
+          <template v-else>
+            <p>当前口径：{{ data.sourceScopeLabel || (sessionType === 'ADMIN_SPECIAL' ? '管理员特殊补录' : '正式课堂') }}。</p>
+            <p v-if="sessionType === 'ADMIN_SPECIAL'">特殊补录仅用于审计核对，不进入标准课堂旷课预警。</p>
+            <p v-else>特殊补录单独统计，不混入课堂指标；正式课堂提交后自动进入统计和旷课预警。</p>
+          </template>
+        </details>
       </div>
-      <AppInlineAlert type="info" :title="panel === 'sessions' ? 'PC 与移动端共用正式考勤场次' : '点名必须属于正式课次和当前授课关系'" :description="panel === 'sessions' ? '普通任课教师可在电脑端继续逐个学生点名并提交；所有写入仍使用与手机端相同的正式名单、任课关系和提交检查。' : '特殊补录与正式课堂分口径统计；正式课堂提交后自动进入统计和授权预警。'" />
 
       <AppSectionCard v-if="selectedSessionId" title="课次名单与考勤记录">
         <AppButton variant="ghost" @click="closeSession">返回场次列表</AppButton>
         <LoadingState v-if="detailLoading" />
         <ErrorState v-else-if="detailError" :description="detailError" @retry="loadSession" />
         <template v-else-if="sessionDetail">
-          <p class="aa-object">{{ sessionDetail.courseName || '课程未提供' }} · {{ sessionDetail.sessionDate }} · 第 {{ sessionDetail.slotNo ?? '—' }} 节<br>场次 {{ sessionDetail.sessionId }} · {{ sessionStatus(sessionDetail.status) }} · {{ sessionDetail.sourceLabel || '来源待确认' }}</p>
+          <p class="aa-object">{{ sessionDetail.courseName || '课程未提供' }} · {{ sessionDetail.sessionDate }} · 第 {{ sessionDetail.slotNo ?? '—' }} 节 · {{ sessionStatus(sessionDetail.status) }}<template v-if="sessionDetail.sourceLabel"> · {{ sessionDetail.sourceLabel }}</template></p>
           <EmptyState v-if="!sessionDetail.items?.length" title="本场次未提供名单" />
           <DataTable v-else :columns="rosterColumns" :rows="visibleRoster" row-key="studentId" :pagination="{ page: rosterPage, pageSize: 20, total: sessionDetail.items.length }" @page-change="rosterPage = $event">
             <template #cell-status="{ row }">
@@ -44,11 +58,6 @@
         </template>
       </AppSectionCard>
 
-      <div v-if="panel === 'stats'" class="aa-scope-note">
-        当前汇总口径：<strong>{{ data.sourceScopeLabel || (sessionType === 'ADMIN_SPECIAL' ? '管理员特殊补录' : '正式课堂') }}</strong>。
-        <span v-if="sessionType === 'ADMIN_SPECIAL'">特殊补录仅用于审计核对，不进入标准课堂旷课预警。</span>
-        <template v-else>特殊补录不会混入默认课堂指标。</template>
-      </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -57,17 +66,13 @@
           <AppSectionCard title="考勤场次台账">
             <EmptyState v-if="!sessions.length" title="暂无考勤场次" description="请从“今日教学”选择正式课次开始点名；PC 与移动端会读取同一场次" />
             <DataTable v-else :columns="sessionColumns" :rows="sessions" row-key="sessionId" :pagination="{ page, pageSize, total: sessionTotal }" @page-change="turnPage">
+              <template #cell-className="{ row }">{{ row.className || row.teachingClassName || '—' }}</template>
               <template #cell-status="{ row }">{{ sessionStatus(row.status) }}</template>
-              <template #cell-actions="{ row }"><button class="mp-link" @click="openSession(row)">查看课次名单</button></template>
+              <template #cell-actions="{ row }"><button class="mp-link" @click="openSession(row)">查看名单</button></template>
             </DataTable>
           </AppSectionCard>
         </template>
         <template v-else>
-          <div class="aa-metric-grid">
-            <AppMetricCard :title="`${data.sourceScopeLabel || '正式课堂'}场次`" :value="data.sessionCount" unit="次" />
-            <AppMetricCard title="涉及学生" :value="studentTotal" unit="人" />
-            <AppMetricCard title="有旷课学生" :value="absentStudentCount" unit="人" />
-          </div>
 
           <AppSectionCard :title="`${data.sourceScopeLabel || '正式课堂'}学生考勤汇总（按旷课次数降序）`">
             <EmptyState v-if="!data.students.length" title="暂无考勤统计" description="教师在 PC 或移动端提交正式课堂点名后，这里出现跨堂次汇总" />
@@ -86,7 +91,7 @@
 /** 课堂考勤统计（/admin/academic-affairs/attendance-stats）：汇总 + 场次查询 + 旷课预警扫描。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppMetricCard, AppSectionCard, AppSelect, AppClassPicker, AppTermCodePicker, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppSelect, AppClassPicker, AppTermCodePicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsWarningApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
@@ -96,7 +101,7 @@ export default {
   name: 'AaAttendanceStatsView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppButton, AppMetricCard, AppSectionCard, AppSelect, AppClassPicker, AppTermCodePicker, AppInlineAlert
+    AppButton, AppSectionCard, AppSelect, AppClassPicker, AppTermCodePicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -130,8 +135,7 @@ export default {
         { key: 'leave', title: '请假', align: 'center' }, { key: 'absentRate', title: '缺勤率', align: 'center' }
       ],
       sessionColumns: [
-        { key: 'sessionId', title: '场次ID' }, { key: 'classId', title: '班级ID' },
-        { key: 'courseName', title: '课程' }, { key: 'sessionDate', title: '日期' },
+        { key: 'courseName', title: '课程' }, { key: 'className', title: '班级' }, { key: 'sessionDate', title: '日期' },
         { key: 'sessionTypeLabel', title: '类别' }, { key: 'sourceLabel', title: '来源' },
         { key: 'status', title: '状态' }, { key: 'absentCount', title: '旷课人数', align: 'center' },
         { key: 'actions', title: '操作' }
@@ -140,7 +144,7 @@ export default {
   },
   computed: {
     pageTitle() { return '课堂考勤' },
-    pageSubtitle() { return this.panel === 'sessions' ? '场次回到对应正式课次，核对课程、教师、应到人数与提交状态' : '从正式课次与授课关系核对考勤；提交后进入正式统计和授权预警' },
+    pageSubtitle() { return this.panel === 'sessions' ? '按场次查看点名名单和提交状态' : '' },
     identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     filterKey() { return JSON.stringify([this.classId, this.termCode, this.sessionType]) },
     isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || '').toUpperCase() === 'ACADEMIC_TEACHER' },
@@ -357,8 +361,13 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.aa-filter { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.aa-filter-field { display: grid; gap: 6px; min-width: 160px; font-size: 13px; }
+.aa-filter { display: flex; gap: 8px 10px; align-items: center; flex-wrap: wrap; padding: 10px 14px; border: 1px solid var(--card-b, #dce5ef); border-radius: 10px; background: var(--bg-card, #fff); }
+.aa-filter-field { display: block; flex: 0 1 170px; min-width: 130px; font-size: 13px; }
+.aa-view-switch { display: inline-flex; padding: 2px; border-radius: 8px; background: var(--fill-2, #f2f5f9); }
+.aa-view-switch button { padding: 6px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--text-700, #4e5969); font-size: 13px; cursor: pointer; }
+.aa-view-switch button.is-active { background: #fff; color: var(--primary-color, #2b5bb4); font-weight: 600; box-shadow: 0 1px 2px rgba(15, 23, 42, .08); }
+.aa-filter__stats { margin-left: auto; }
+.aa-filter__tip { flex-basis: auto; }
 .aa-object { padding: 14px 16px; border-left: 3px solid var(--primary-color, #2b5bb4); background: var(--fill-2, #f7f8fa); line-height: 1.8; }
 .aa-filter__label { font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-scope-note { padding: 10px 12px; border-radius: 8px; background: var(--fill-2, #f7f8fa); color: var(--text-700, #4e5969); font-size: 13px; line-height: 1.6; }
@@ -371,4 +380,7 @@ export default {
 .aa-submit-receipt strong,.aa-submit-receipt span { display:block; }
 .aa-submit-receipt span { margin-top:3px; color:var(--text-600,#64748b); font-size:12px; }
 :deep(.aa-row-danger) { background: var(--danger-50, #fff1f0); }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

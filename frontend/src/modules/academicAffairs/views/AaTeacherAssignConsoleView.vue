@@ -1,28 +1,16 @@
 <template>
   <ModulePageShell
     title="任课教师分配"
-    subtitle="从真实教师目录分配并交教师确认"
+    subtitle="分配后由任课教师本人确认"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
   >
-    <template #actions>
-      <AppButton v-if="primaryRow?.batchId" @click="openBatch(primaryRow)">来源批次</AppButton>
-      <AppButton variant="primary" :disabled="!primaryRow || !canAssign(primaryRow)" @click="openAssign(primaryRow)">分配当前任务</AppButton>
+    <template v-if="batchId" #actions>
+      <AppButton @click="openBatch({ batchId })">返回批次</AppButton>
     </template>
     <div class="mp-stack">
       <AaOperationReceipt :receipt="receipt" />
-      <AaObjectContext v-if="batchId" name="教学任务批次" :identity="`批次编号 ${batchId}`" source="从来源批次进入的派师队列" />
-      <AaTeachingTaskObjectBar
-        v-if="primaryRow"
-        :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班待生成'}`"
-        :identity="`教学任务编号 ${primaryRow.taskId} · 批次编号 ${primaryRow.batchId}`"
-        source="来源：已发布培养方案生成的正式教学任务；教师姓名仅用于展示，权限按稳定工号绑定。"
-        :status="statusLabel(primaryRow.status)"
-        owner="学院教务 / 任课教师"
-        next-owner="任课教师确认岗 → 学院核对岗 → 排课岗"
-      />
-      <AaTeachingTaskStageRail :current="2" current-note="当前派师工作区" />
       <div class="aa-filter">
         <label class="aa-filter__item">状态
           <AppSelect v-model="filterStatus" :options="statusOptions" placeholder="" class="aa-select" @change="changeFilter" />
@@ -32,26 +20,30 @@
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" title="暂无待处理的教学任务"
-                 description="请先在「教学任务生成」按学期生成应开课程" />
+      <EmptyState v-else-if="!rows.length" :title="filterStatus ? '当前筛选下没有教学任务' : '暂无教学任务'"
+                 :description="filterStatus ? '可切换状态筛选查看其他任务' : '请先在「教学任务生成」按学期生成应开课程'" />
       <DataTable v-else :columns="columns" :rows="rows" row-key="taskId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-course="{ row }">
           <div class="mp-cell-main">{{ row.courseName }}</div>
           <div class="mp-cell-sub">{{ row.teachingClassName || row.courseCode }}{{ row.isMerged ? ' · 合班' : '' }}</div>
         </template>
-        <template #cell-batch="{ row }"><button class="mp-link" @click="openBatch(row)">批次编号 {{ row.batchId }}</button></template>
+        <template #cell-batch="{ row }">
+          <div class="mp-cell-main">{{ row.termName || row.termCode || '学期待核对' }}</div>
+          <button class="mp-link mp-cell-sub" @click="openBatch(row)">查看批次</button>
+        </template>
         <template #cell-teacher="{ row }">
-          <span v-if="row.teacherName">{{ row.teacherName }}</span>
+          <span v-if="row.teacherName">{{ teacherText(row.teacherName) }}</span>
           <span v-else class="mp-cell-sub">未分配</span>
         </template>
-        <template #cell-hours="{ row }">周 {{ row.weeklyHours ?? '—' }} · 计 {{ row.expectedStudents ?? '—' }} 人</template>
+        <template #cell-hours="{ row }">{{ row.weeklyHours ?? '—' }} 学时 · {{ row.expectedStudents ?? '—' }} 人</template>
         <template #cell-status="{ row }">
           <AppStatusTag :type="taskColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
           <div v-if="row.rejectReason" class="mp-cell-sub is-danger">退回：{{ row.rejectReason }}</div>
         </template>
         <template #cell-actions="{ row }">
           <button v-if="canAssign(row)" class="mp-link" :disabled="assign.submitting" @click="openAssign(row)">{{ row.teacherKey ? '改派' : '分配' }}</button>
-          <span v-else class="mp-cell-sub">{{ row.status === 'TEACHER_CONFIRMED' || row.status === 'READY' ? '已确认，需走任务调整' : '当前只读' }}</span>
+          <button v-else-if="canAdjust && (row.status === 'TEACHER_CONFIRMED' || row.status === 'READY')" class="mp-link" title="教师已确认，换人需走任务调整" @click="openAdjust">调整</button>
+          <span v-else class="mp-cell-sub">—</span>
         </template>
       </DataTable>
     </div>
@@ -64,13 +56,13 @@
       :submitting="assign.submitting"
       @confirm="doAssign"
     >
-      <AaObjectContext :name="assign.courseName" :identity="`任务编号 ${assign.taskId} · 批次编号 ${assign.batchId}`" :source="assign.teachingClassName" />
+      <AaObjectContext :name="assign.courseName" :source="assign.teachingClassName" />
       <div class="aa-assign-form">
         <label>任课教师<AppTeacherPicker v-model="assign.teacherKey" :query="teacherKeyQuery" placeholder="选择任课教师" @change="onTeacherPicked" /></label>
         <label>周学时<input v-model.number="assign.weeklyHours" type="number" min="0" class="aa-input" /></label>
         <label>预计人数<input v-model.number="assign.expectedStudents" type="number" min="0" class="aa-input" /></label>
       </div>
-      <p class="mp-cell-sub">以正式教师工号绑定授课关系；提交前重新核对批次，分配后等待教师本人确认。</p>
+      <p class="mp-cell-sub">分配后等待教师本人确认。</p>
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
@@ -89,21 +81,19 @@ import { toast } from '@/utils/toast'
 import { matchPermission } from '@/config/navPlan'
 import { teachingTaskWorkbenchApi } from '../api/teaching-task-workbench.api'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
-import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
-import AaTeachingTaskObjectBar from '../components/teaching-tasks/AaTeachingTaskObjectBar.vue'
 import AaObjectContext from '../components/parallel-a/AaObjectContext.vue'
 import { readTaskPages } from '../components/parallel-a/taskFacts'
 import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 
 export default {
   name: 'AaTeacherAssignConsoleView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppSelect, AppTeacherPicker, AaOperationReceipt, AaObjectContext, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppSelect, AppTeacherPicker, AaOperationReceipt, AaObjectContext },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', rows: [], filterStatus: '', teacherKeyQuery: { valueField: 'loginName' }, revision: 0, receipt: null,
       statusOptions: [
-        { value: '', label: '全部（默认按未完成分配优先）' },
+        { value: '', label: '全部（未分配的排在前面）' },
         { value: 'PENDING_ASSIGN', label: '待分配' },
         { value: 'REJECTED_BY_TEACHER', label: '教师退回' },
         { value: 'ASSIGNED', label: '已分配（待教师确认）' },
@@ -113,18 +103,18 @@ export default {
       assign: { visible: false, submitting: false, taskId: '', teacherName: '', teacherKey: '', weeklyHours: null, expectedStudents: null },
       columns: [
         { key: 'course', title: '课程 / 教学班' },
-        { key: 'batch', title: '批次' },
-        { key: 'teacher', title: '授课教师' },
-        { key: 'hours', title: '学时 / 人数' },
+        { key: 'batch', title: '学期 / 批次' },
+        { key: 'teacher', title: '任课教师' },
+        { key: 'hours', title: '周学时 / 人数' },
         { key: 'status', title: '状态' },
         { key: 'actions', title: '操作', width: '110px' }
       ]
     }
   },
   computed: {
-    primaryRow() { return this.rows[0] || null },
     batchId() { return String(this.$route.query.batchId || '') },
-    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.manage') }
+    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.manage') },
+    canAdjust() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.adjust') }
   },
   watch: {
     batchId() { this.assign.visible = false; this.receipt = null; this.pagination.page = 1; this.load() },
@@ -135,6 +125,9 @@ export default {
   methods: {
     canAssign(row) { return this.canManage && ['PENDING_ASSIGN', 'ASSIGNED', 'REJECTED_BY_TEACHER'].includes(row.status) },
     changeFilter() { this.pagination.page = 1; this.load() },
+    // 教师姓名里带的登录账号（如“张三（zhangsan）”）不展示
+    teacherText(name) { return String(name || '').replace(/\s*[（(][A-Za-z0-9_.@-]+[)）]\s*$/, '') },
+    openAdjust() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks/adjust', query: { returnTo: this.$route.fullPath } }) },
     openBatch(row) { this.$router.push({ path: `/admin/academic-affairs/teaching-tasks/${row.batchId}`, query: { returnTo: this.$route.fullPath } }) },
     onTeacherPicked(value, items) {
       this.assign.teacherKey = value || ''
@@ -172,7 +165,7 @@ export default {
         this.error = `${message}；已清除先前内容。`
       } else {
         this.error = message
-        if (isConflictResult(result)) this.receipt = { title: '重新核对派师', object: `任务编号 ${this.assign.taskId}`, status: '数据已变化，保留输入', pending: true, next: '请刷新来源批次后重新核对，不会自动重提。' }
+        if (isConflictResult(result)) this.receipt = { title: '重新核对派师', object: this.assign.courseName || '教学任务', status: '数据已变化，保留输入', pending: true, next: '请刷新来源批次后重新核对，不会自动重提。' }
       }
     },
     async doAssign() {
@@ -184,7 +177,7 @@ export default {
       form.submitting = true
       const context = this.ctx
       const current = () => !this.disposed && scope === this.batchId && this.assign === form && context === this.ctx
-      const object = `${form.courseName || '教学任务'} · #${form.taskId}`
+      const object = [form.courseName || '教学任务', form.teachingClassName].filter(Boolean).join(' · ')
       try {
         const batch = await teachingTaskWorkbenchApi.getBatch(form.batchId)
         if (!current()) return

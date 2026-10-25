@@ -1,13 +1,13 @@
 <template>
-  <ModulePageShell title="异动审批" subtitle="本节点审核不代替终审生效；先核对来源、材料与当前节点" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName" show-subtitle-in-concise>
+  <ModulePageShell title="异动审批" subtitle="" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName" show-subtitle-in-concise>
     <div class="sc-stack">
       <fieldset :disabled="busy"><label>状态<select v-model="status" @change="search"><option value="SUBMITTED">已提交</option><option value="IN_REVIEW">审批中</option></select></label><label>异动类型<select v-model="changeType" @change="search"><option value="">全部类型</option><option v-for="(label,value) in types" :key="value" :value="value">{{ label }}</option></select></label><button @click="load">刷新队列</button></fieldset>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-if="loading" />
-      <EmptyState v-else-if="!rows.length && !error" title="当前筛选下暂无申请" description="列表按当前数据范围查询，具体节点动作在选中申请后核对。" />
+      <EmptyState v-else-if="!rows.length && !error" title="当前筛选下暂无申请" description="换个状态或异动类型试试。" />
       <div v-else class="sc-workbench">
         <aside><h3>申请队列 <small>{{ total }} 条</small></h3><button v-for="row in rows" :key="row.changeId" :disabled="busy" :class="{selected:String(active?.changeId)===String(row.changeId)}" @click="select(row)"><b>{{ row.realName }}</b><span>{{ types[row.changeType] || '异动类型待核对' }} · {{ nodeLabel(row.currentNode) }}</span><span>{{ statusLabel(row.status) }}</span></button><div class="sc-pages"><button :disabled="busy || page<=1" @click="turnPage(page-1)">上一页</button><span>{{ page }}</span><button :disabled="busy || page*pageSize>=total" @click="turnPage(page+1)">下一页</button></div></aside>
-        <main><StatusChangeReview v-if="active" :key="active.changeId" :change="active" :ctx="ctx" @updated="updateFormal" @denied="denied" @busy="busy=$event" /><button v-if="active" class="sc-detail" :disabled="busy" @click="goDetail(active)">查看正式材料与申请详情</button></main>
+        <main><StatusChangeReview v-if="active" :key="active.changeId" :change="active" :ctx="ctx" @updated="updateFormal" @denied="denied" @busy="busy=$event" /><button v-if="active" class="sc-detail" :disabled="busy" @click="goDetail(active)">查看申请详情和材料</button></main>
       </div>
     </div>
   </ModulePageShell>

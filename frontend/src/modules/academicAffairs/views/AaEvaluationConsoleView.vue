@@ -62,15 +62,13 @@
             <template v-else>
               <ObjectCard
                 :title="current.batchName"
-                :meta="`评价批次编号 ${current.batchId} · 学期 ${current.termId || '未绑定'} · ${current.anonymous ? '学生匿名' : '非匿名配置'}`"
+                :meta="current.anonymous ? '学生匿名评价' : '实名评价'"
                 :status="bLabel(current.status)"
                 :status-type="bType(current.status)"
                 :current-role="currentResponsibility"
                 :next-role="nextResponsibility"
               />
               <div class="aaev-context-grid">
-                <InfoCell label="对象来源" :value="`正式教学任务 / 批次编号 ${current.batchId}`" />
-                <InfoCell label="为什么轮到我" :value="whyMine" />
                 <InfoCell label="当前阻断" :value="currentBlocker" />
                 <InfoCell label="已评回执" :value="`${submittedTaskCount} 次提交 / ${tasks.length} 个任务槽`" />
               </div>
@@ -164,7 +162,7 @@
           <section class="aaev-detail">
             <EmptyState v-if="!current" title="选择评教批次" description="查看学生匿名评教任务与实际提交数量" />
             <template v-else>
-              <ObjectCard :title="current.batchName + ' · 学生评教'" :meta="`批次编号 ${current.batchId} · 匿名身份不在本页展示`" :status="bLabel(current.status)" :status-type="bType(current.status)" current-role="学生本人" next-role="评价核算岗" />
+              <ObjectCard :title="current.batchName + ' · 学生评教'" :meta="'匿名评价，不显示评价人'" :status="bLabel(current.status)" :status-type="bType(current.status)" current-role="学生本人" next-role="评价核算岗" />
               <section class="aaev-card">
                 <div class="aaev-card-title"><span>匿名任务完成情况</span><small>{{ submittedTaskCount }} 次正式提交</small></div>
                 <EmptyState v-if="!tasks.length" title="暂无学生评教任务" description="请在评价批次草稿阶段从正式教学任务生成" />
@@ -196,7 +194,7 @@
                 @keydown.enter.prevent="selectRoleTask(task)"
                 @keydown.space.prevent="selectRoleTask(task)"
               >
-                <span><strong>{{ task.courseName || '课程未命名' }}</strong><small>任务编号 {{ task.taskId }} · {{ task.teacherName || '授课教师未返回' }}</small></span>
+                <span><strong>{{ task.courseName || '课程未命名' }}</strong><small>{{ task.teacherName || '授课教师未返回' }}</small></span>
                 <StatusTag :type="task.status === 'SUBMITTED' ? 'success' : 'primary'" :label="academicStatusLabel(task.status)" dot />
               </li>
             </ul>
@@ -206,7 +204,7 @@
             <template v-else>
               <ObjectCard
                 :title="selectedTask.courseName + ' · ' + typeViewLabel"
-                :meta="`任务编号 ${selectedTask.taskId} · 批次编号 ${selectedTask.batchId} · 被评教师 ${selectedTask.teacherName || '—'}`"
+                :meta="`被评教师 ${selectedTask.teacherName || '—'}`"
                 :status="selectedTask.status === 'SUBMITTED' ? '已提交' : bLabel(selectedTask.batchStatus)"
                 :status-type="selectedTask.status === 'SUBMITTED' ? 'success' : bType(selectedTask.batchStatus)"
                 :current-role="ctx.currentRole.roleName || '任务指定评价人'"
@@ -250,7 +248,7 @@
           <section class="aaev-detail">
             <EmptyState v-if="!current" title="选择统计批次" description="查看等级分布、参评率和同口径结果明细" />
             <template v-else-if="stats">
-              <ObjectCard :title="current.batchName + ' · 评价统计'" :meta="`批次编号 ${current.batchId} · 当前授权范围`" :status="bLabel(current.status)" :status-type="bType(current.status)" current-role="评价统计岗" next-role="结果发布 / 质量整改" />
+              <ObjectCard :title="current.batchName + ' · 评价统计'" :meta="'当前授权范围'" :status="bLabel(current.status)" :status-type="bType(current.status)" current-role="评价统计岗" next-role="结果发布 / 质量整改" />
               <div class="aaev-metrics is-three">
                 <Metric label="范围内结果" :value="stats.resultCount ?? 0" hint="与下钻结果同一范围" />
                 <Metric label="学生均分均值" :value="stats.overallAvg ?? '—'" hint="无可见结果时不显示伪百分比" />
@@ -287,8 +285,8 @@
           <section class="aaev-detail">
             <EmptyState v-if="!current" title="选择评价档案" description="查看批次原记录、正式结果和发布时间" />
             <template v-else>
-              <ObjectCard :title="current.batchName" :meta="`档案批次编号 ${current.batchId} · 学期 ${current.termId || '未绑定'}`" status="已归档" status-type="default" current-role="档案查阅岗" :next-role="'结果发布时间：' + formatDateTime(current.resultPublishedAt)" />
-              <div class="aaev-notice"><strong>只读封存</strong><span>当前未返回独立的清单版本号；本页使用批次编号与结果编号标识正式对象，任何纠错必须另走受控流程。</span></div>
+              <ObjectCard :title="current.batchName" :meta="'已归档，只读'" status="已归档" status-type="default" current-role="档案查阅岗" :next-role="'结果发布时间：' + formatDateTime(current.resultPublishedAt)" />
+              <div class="aaev-notice"><strong>只读封存</strong><span>已封存，只读；如需纠错请走纠错流程。</span></div>
               <ResultTable :rows="results" :columns="archiveResultColumns" :pagination="resultPagination" title="评价档案 · 原记录与正式凭证" empty-title="无可见归档结果" archive @page-change="onResultPageChange" />
             </template>
           </section>
@@ -380,7 +378,7 @@ const BatchItem = {
       role: 'button', tabindex: 0, 'aria-current': this.active ? 'true' : undefined,
       onClick: this.activate, onKeydown: (event) => { if (['Enter', ' '].includes(event.key)) { event.preventDefault(); this.activate() } }
     }, [
-      h('span', [h('strong', this.batch.batchName), h('small', `批次编号 ${this.batch.batchId} · 学期 ${this.batch.termId || '未绑定'}`)]),
+      h('span', [h('strong', this.batch.batchName), h('small', this.batch.anonymous ? '学生匿名评价' : '实名评价')]),
       h(StatusTag, {
         type: this.archive || ['ARCHIVED', 'CLOSED'].includes(this.batch.status)
           ? 'default'
@@ -869,7 +867,7 @@ export default {
       this.confirmReasonLabel = ''
       this.confirmTitle = `提交${this.typeViewLabel}`
       this.confirmText = `确认提交${this.typeViewLabel}`
-      this.confirmMessage = `确认提交任务编号 ${taskId}「${taskName}」？提交后不可重复提交，下一步由评价核算岗处理。`
+      this.confirmMessage = `确认提交「${taskName}」？提交后不可重复提交，下一步由评价核算岗处理。`
       this.pendingAction = async () => {
         const response = await api.submit(payload)
         if (response.code !== 0) { toast.error(response.message || `${this.typeViewLabel}提交失败`); return false }
@@ -951,7 +949,7 @@ export default {
       this.confirmReasonLabel = ''
       this.confirmTitle = label
       this.confirmText = `确认${label}`
-      this.confirmMessage = `确认对批次编号 ${batchId}「${batchName}」执行“${label}”？当前状态 ${this.bLabel(expectedStatus)}，系统将重新校验对象状态与权限。`
+      this.confirmMessage = `确认对「${batchName}」执行“${label}”？当前状态 ${this.bLabel(expectedStatus)}，系统将重新校验对象状态与权限。`
       this.pendingAction = async () => {
         const response = await api[fn](batchId)
         if (response.code !== 0) { toast.error(response.message || `${label}失败`); return false }

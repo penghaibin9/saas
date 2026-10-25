@@ -110,7 +110,7 @@
           <section class="aa-side-card">
             <h3>前后业务</h3>
             <ul class="aa-business-chain">
-              <li><strong>课程草稿</strong><span>从正式来源开始</span></li>
+              <li><strong>课程草稿</strong></li>
               <li><strong>课程审核</strong><span>继续使用既有状态机与权限</span></li>
               <li><strong>版本启用</strong><span>审核通过后才能被方案引用</span></li>
               <li><strong>方案引用</strong><span>按课程身份与具体版本追溯</span></li>
@@ -185,7 +185,7 @@ export default {
     },
     readinessItems() {
       return [
-        { label: '正式来源对象已选定', value: this.isEdit ? '已确认' : '保存时生成', tone: this.isEdit ? 'pass' : 'pending' },
+        { label: '来源对象已选定', value: this.isEdit ? '已确认' : '保存时生成', tone: this.isEdit ? 'pass' : 'pending' },
         { label: '当前身份和范围有明确依据', value: this.canManage ? '已确认' : '无权限', tone: this.canManage ? 'pass' : 'blocked' },
         { label: '版本、状态和材料已经系统复核', value: this.isEdit ? this.statusLabel(this.loadedCourseStatus) : '提交时复验', tone: 'pending' }
       ]

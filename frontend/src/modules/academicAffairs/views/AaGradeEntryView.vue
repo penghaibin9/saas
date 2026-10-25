@@ -35,14 +35,21 @@
         </div>
         <div class="aa-my-tasks">
           <ul>
-            <li v-for="t in myTasks" :key="t.gradeTaskId" class="aa-my-task-item">
-              <span>
-                {{ t.courseName }}
-                <small v-if="t.deadline"> · 截止 {{ formatDeadline(t.deadline) }}<strong v-if="t.isOverdue" class="aa-overdue-text"> · 已逾期</strong></small>
-              </span>
+            <li v-for="t in myTasks" :key="t.gradeTaskId" :class="['aa-my-task-item', { 'is-overdue': t.isOverdue }]">
+              <div class="aa-my-task-main">
+                <strong>{{ t.courseName }}</strong>
+                <small>
+                  <template v-if="t.teachingClassName">{{ t.teachingClassName }}</template>
+                  <template v-if="t.teacherName"> · {{ t.teacherName }}</template>
+                  <template v-if="t.deadline"> · 截止 {{ formatDeadline(t.deadline) }}</template>
+                  <b v-if="t.isOverdue" class="aa-overdue-text"> · 已逾期</b>
+                </small>
+              </div>
               <AppStatusTag :type="statusColor(t.status)" dot>{{ statusLabel(t.status) }}</AppStatusTag>
-              <AppButton size="small" variant="ghost" :disabled="writeBusy" @click="openTask(t)">进入</AppButton>
-              <AppButton v-if="canRemind(t)" size="small" variant="ghost" class="aa-remind-link" @click.stop="openReminder(t)">催录</AppButton>
+              <div class="aa-my-task-ops">
+                <AppButton v-if="canRemind(t)" size="small" variant="ghost" class="aa-remind-link" @click.stop="openReminder(t)">催录</AppButton>
+                <AppButton size="small" :variant="['PUBLISHED','ARCHIVED'].includes(t.status) ? 'ghost' : 'secondary'" :disabled="writeBusy" @click="openTask(t)">{{ ['PUBLISHED','ARCHIVED'].includes(t.status) ? '查看' : '进入录入' }}</AppButton>
+              </div>
             </li>
           </ul>
         </div>
@@ -1157,7 +1164,8 @@ export default {
 .aa-scheme-list { display: flex; flex-direction: column; gap: 8px; }.aa-scheme-row { display: flex; align-items: center; gap: 10px; }.aa-code { width: 150px; }.aa-name { flex: 1; }.aa-weight { width: 110px; }.aa-required { display: flex; align-items: center; gap: 5px; font-size: 13px; white-space: nowrap; }.is-danger { color: var(--danger-600, #dc2626); }
 .aa-code input { width: 100%; margin-top: 6px; }
 .aa-my-tasks { margin: 0; padding: 0; }.aa-my-tasks h4 { margin: 0 0 10px; font-size: 14px; }
-.aa-my-tasks ul { list-style: none; margin: 0; padding: 0; }.aa-my-task-item { display: flex; align-items: center; gap: 12px; padding: 8px 0; border-bottom: 1px solid var(--border-100, #f0f1f2); font-size: 14px; }.aa-my-task-item small { color: var(--text-500, #64748b); }
+.aa-my-tasks ul { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }.aa-my-task-item { display: grid; grid-template-columns: minmax(0, 1fr) 110px auto; align-items: center; gap: 16px; padding: 12px 16px; border: 1px solid var(--border-200, #e3e9f1); border-radius: 10px; background: var(--bg-white, #fff); font-size: 14px; transition: border-color .15s, box-shadow .15s; }.aa-my-task-item:hover { border-color: var(--primary-200, #bcd0f0); box-shadow: 0 4px 14px -10px rgba(37, 99, 235, .45); }.aa-my-task-item.is-overdue { border-left: 3px solid #d97706; }.aa-my-task-main { display: grid; gap: 3px; min-width: 0; }.aa-my-task-main strong { color: var(--text-900, #18304f); font-weight: 600; overflow-wrap: anywhere; }.aa-my-task-main small { color: var(--text-500, #64748b); font-size: 12px; }.aa-my-task-ops { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 640px) { .aa-my-task-item { grid-template-columns: minmax(0, 1fr) auto; } .aa-my-task-ops { grid-column: 1 / -1; justify-content: flex-start; } }
 .aa-remind-link { color: var(--warning-700, #b45309); }.aa-overdue-text { color: var(--danger-600, #dc2626); font-weight: 600; }
 .aa-action-receipt { display: grid; grid-template-columns: minmax(0,1fr) auto auto auto; align-items: center; gap: 18px; padding: 13px 15px; border: 1px solid #a7d7b4; border-radius: 11px; background: var(--bg-card); }
 .aa-action-receipt strong, .aa-action-receipt span, .aa-action-receipt small, .aa-action-receipt b { display: block; }

@@ -21,19 +21,6 @@
           <AppButton variant="ghost" @click="downloadProgramTemplate">下载六工作表模板</AppButton>
         </div>
       </AppSectionCard>
-      <div v-if="summary && !isAcademicTeacher" class="aa-summary-grid">
-        <div class="aa-summary-card"><span>本次范围</span><strong>{{ stageSummary.total }}</strong><small>专业年级方案</small></div>
-        <div class="aa-summary-card"><span>编制中</span><strong>{{ stageSummary.authoring }}</strong><small>可继续完善</small></div>
-        <div class="aa-summary-card is-warning"><span>待审核</span><strong>{{ stageSummary.review }}</strong><small>不提前生成正式任务</small></div>
-        <div class="aa-summary-card is-ok"><span>已发布</span><strong>{{ stageSummary.published }}</strong><small>修改须建立新版本</small></div>
-      </div>
-
-      <AppInlineAlert
-        v-if="!isAcademicTeacher && summary?.blockedPrograms"
-        type="warning"
-        title="先处理方案阻断，再生成教学任务"
-        :description="`当前有 ${summary.blockedPrograms} 个方案不能提交审核。进入方案详情可查看具体规则、定位字段和处理建议。`"
-      />
 
       <AppSectionCard v-if="showCreate" title="新建培养方案">
         <div class="aa-cal-form">
@@ -49,10 +36,16 @@
 
       <div class="aa-list-card">
         <div class="aa-list-card__head">
-          <strong>方案与适用年级</strong>
-          <span>共 {{ pagination.total }} 份正式来源记录</span>
+          <form class="aa-actions aa-list-card__filters" role="search" @submit.prevent="pagination.page = 1; applyPage()"><input v-model="keyword" class="aa-input" aria-label="搜索人才培养方案" placeholder="搜索人才培养方案" /><AppButton type="submit">查询</AppButton><AppButton variant="ghost" @click="keyword = ''; pagination.page = 1; applyPage()">清空</AppButton></form>
+          <ul v-if="summary && !isAcademicTeacher" class="aa-stat-strip" aria-label="方案概况">
+            <li><span>共</span><b>{{ stageSummary.total }}</b></li>
+            <li><span>编制中</span><b>{{ stageSummary.authoring }}</b></li>
+            <li class="is-warning"><span>待审核</span><b>{{ stageSummary.review }}</b></li>
+            <li class="is-success"><span>已发布</span><b>{{ stageSummary.published }}</b></li>
+            <li v-if="summary.blockedPrograms" class="is-danger" title="有阻断的方案不能提交审核，进入方案详情查看原因"><span>有阻断</span><b>{{ summary.blockedPrograms }}</b></li>
+          </ul>
+          <span v-else>共 {{ pagination.total }} 份方案</span>
         </div>
-        <form class="aa-actions aa-list-card__filters" role="search" @submit.prevent="pagination.page = 1; applyPage()"><input v-model="keyword" class="aa-input" aria-label="搜索人才培养方案" placeholder="搜索人才培养方案" /><AppButton type="submit">查询</AppButton><AppButton variant="ghost" @click="keyword = ''; pagination.page = 1; applyPage()">清空</AppButton></form>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" :title="isAcademicTeacher ? '暂无正式培养方案' : '还没有培养方案'" :description="isAcademicTeacher ? '当前没有已正式发布或生效的培养方案，请联系教务管理人员。' : '点击「新建方案」开始编制课程、学分结构、毕业要求和实践环节'" />
@@ -242,11 +235,14 @@ export default {
 .aa-input { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
 .aa-input--sm { width: 120px; }
 .aa-list-card { overflow: hidden; border: 1px solid var(--border-200, #e5e7eb); border-radius: 10px; background: var(--bg-white, #fff); }
-.aa-list-card__head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 15px 16px; border-bottom: 1px solid var(--border-200, #e5e7eb); }
+.aa-list-card__head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 16px; border-bottom: 1px solid var(--border-200, #e5e7eb); }
 .aa-list-card__head strong { color: var(--text-900, #1f2937); }
 .aa-list-card__head span { font-size: 12px; color: var(--text-500, #64748b); }
-.aa-list-card__filters { margin: 0; padding: 12px 16px; }
+.aa-list-card__filters { margin: 0; padding: 0; }
 .aa-list-card :deep(.data-table) { border: 0; border-radius: 0; }
 .is-danger-text { color: var(--danger-600, #dc2626); }
 @media (max-width: 900px) { .aa-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

@@ -17,10 +17,7 @@
       </section>
       <section class="agc-context" aria-label="毕业审核批次健康概览">
         <div class="agc-context__object">
-          <span class="agc-eyebrow">当前毕业审核批次</span>
-          <strong>{{ currentBatch ? currentBatch.batchName : '选择一个审核批次' }}</strong>
-          <small>{{ currentBatch ? `来源：毕业审核批次编号 ${currentBatch.batchId} · 年级 ${currentBatch.gradeYear || '未指定'}` : '请先选择正式审核批次' }}</small>
-          <small v-if="currentBatch">所属学期：{{ currentBatchTermLabel }}</small>
+          <small>{{ currentBatch ? `${currentBatch.gradeYear ? currentBatch.gradeYear + '级' : '年级未指定'}` : '请先选择审核批次' }}<template v-if="currentBatch"> · 所属学期：{{ currentBatchTermLabel }}</template></small>
           <AppGraduationBatchPicker
             v-model="batchId"
             :options="batchOptions"
@@ -32,7 +29,7 @@
         <div><span>当前结论</span><strong>{{ batchHealthLabel || '等待选择' }}</strong><small>{{ currentBatch ? `系统通过 ${batchPassed} · 异常 ${batchAbnormal} · 已形成正式终审结论 ${batchConcluded}` : '选择批次后读取正式状态' }}</small></div>
         <div><span>当前责任</span><strong>{{ currentOwner }}</strong><small>{{ responsibilityReason }}</small></div>
         <div><span>当前阻断</span><strong :class="{ 'is-risk-text': batchAbnormal > 0 }">{{ currentBlocker }}</strong><small>建议下一动作：{{ batchNextAction }}</small></div>
-        <div><span>下一岗位</span><strong>{{ nextOwner }}</strong><small>完成当前主动作后回到本批次原队列</small></div>
+        <div><span>下一岗位</span><strong>{{ nextOwner }}</strong></div>
       </section>
 
       <GraduationStageRail :active="stageIndex" />
@@ -59,7 +56,7 @@
         </aside>
         <article v-if="focusedRow" class="agc-focus">
           <header>
-            <div><span class="agc-eyebrow">当前学生对象</span><h2>{{ focusedRow.realName || focusedRow.studentName || `学生 ${focusedRow.studentId}` }}</h2><small>正式审核结果编号 {{ focusedRow.resultId }} · 来源批次编号 {{ focusedRow.batchId }}</small></div>
+            <div><span class="agc-eyebrow">当前学生对象</span><h2>{{ focusedRow.realName || focusedRow.studentName || '姓名未提供' }}</h2><small>{{ focusedRow.studentNo ? `${focusedRow.studentNo} · ` : '' }}来源批次：{{ currentBatch?.batchName || '待核对' }}</small></div>
             <AppStatusTag :type="overallColor(focusedRow.overall)" dot>{{ overallLabel(focusedRow.overall) }}</AppStatusTag>
           </header>
           <div class="agc-focus__items">
@@ -957,7 +954,7 @@ export default {
 @import '@/styles/module-page.css';
 
 .agc-context { display: grid; grid-template-columns: minmax(280px, 1.5fr) repeat(4, minmax(150px, 1fr)); overflow: hidden; border: 1px solid #dbe5f2; border-radius: 12px; background: #fff; }
-.agc-context > div { display: grid; align-content: center; gap: 5px; min-width: 0; padding: 14px 16px; border-right: 1px solid #e8eef6; }
+.agc-context > div { display: grid; align-content: center; gap: 2px; min-width: 0; padding: 10px 14px; border-right: 1px solid #e8eef6; }
 .agc-context > div:last-child { border-right: 0; }
 .agc-context span, .agc-context small { color: #728198; font-size: 12px; line-height: 1.45; }
 .agc-context strong { overflow: hidden; color: #18365f; font-size: 14px; text-overflow: ellipsis; white-space: nowrap; }

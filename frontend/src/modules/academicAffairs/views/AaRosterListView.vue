@@ -7,9 +7,6 @@
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
   >
-    <template #actions>
-      <AppButton variant="primary" :disabled="loading || !rows.length" @click="goDetail(rows[0])">打开学生档案</AppButton>
-    </template>
     <div class="mp-stack">
       <section class="aa-roster-card">
         <header class="aa-roster-card__head">
@@ -65,7 +62,6 @@
 <script>
 /** 名册和分类深链共用正式 roster 查询，档案读取独立详情端点。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AdvancedFilter } from '@/components/business'
-import { AppButton } from '@/components/ui'
 import { AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { matchPermission } from '@/config/navPlan'
@@ -75,7 +71,7 @@ const CATEGORY_TITLE = { SUSPENDED: '休学学生', WITHDRAWN: '退学学生', P
 
 export default {
   name: 'AaRosterListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AdvancedFilter, AppButton },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AdvancedFilter },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

@@ -43,7 +43,7 @@
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <template v-else>
-      <EmptyState v-if="!displayRows.length" title="暂无数据" description="课程库为空，先在「新建课程」录入课程" />
+      <EmptyState v-if="!displayRows.length" v-bind="emptyStateCopy" />
       <DataTable v-else :columns="columns" :rows="displayRows" row-key="courseId">
         <template #cell-course="{ row }">
           <div class="mp-cell-main">{{ row.courseName }}</div>
@@ -331,6 +331,12 @@ export default {
         list = this.statusFilter ? this.rows.filter((r) => r.status === this.statusFilter) : this.togglableRows
       }
       return list
+    },
+    emptyStateCopy() {
+      // 区分课程库确实为空、当前页签或筛选下无匹配，避免有课程时仍提示去新建
+      if (!this.rows.length) return { title: '课程库还没有课程', description: '先在「新增课程」录入课程' }
+      if (this.tab === 'archive') return { title: '暂无停用或旧版本课程', description: '课程停用或发布新版本后，原版本会显示在这里' }
+      return { title: '当前筛选下没有课程', description: '可调整筛选条件后再查看' }
     },
     totalPages() { return Math.max(1, Math.ceil(this.filteredRows.length / this.viewPageSize)) },
     displayRows() {

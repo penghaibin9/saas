@@ -274,6 +274,10 @@ const STATUS_NAMES = {
   LOW: '低风险', UNKNOWN: '未分类'
 }
 
+function strictNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  return typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim()) ? Number(value.trim()) : null
+}
 function finite(value, fallback = 0) {
   const result = Number(value)
   return Number.isFinite(result) ? result : fallback
@@ -550,9 +554,7 @@ export default {
         ]
       }
       if (compositions[this.tab]) return compositions[this.tab]
-      const cards = this.analyticsCards.slice(1).map(card => ({ name: card.label, value: Number.parseFloat(String(card.value)) }))
-        .filter(row => Number.isFinite(row.value))
-      return cards
+      return this.analyticsMetricSeries
     },
     analyticsHasServerGroups() {
       return [this.sSummary.byType, this.sSummary.byCategory, this.sSummary.byCollege, this.sSummary.byBatchStatus,
@@ -560,8 +562,10 @@ export default {
         this.sSummary.byRoomType].some(rows => Array.isArray(rows) && rows.length)
     },
     analyticsMetricSeries() {
-      return this.analyticsCards.slice(1).map(card => ({ name: card.label, value: Number.parseFloat(String(card.value)) }))
-        .filter(row => Number.isFinite(row.value))
+      // 只用本身就是数字的指标画图；“20:30”“85%”这类文字不转成数字，避免时间变成 20、百分比丢单位
+      return this.analyticsCards.slice(1)
+        .filter(card => strictNumber(card.value) !== null)
+        .map(card => ({ name: card.label, value: strictNumber(card.value) }))
     },
     analyticsDistributionSpec() {
       return { type: 'interval', data: this.analyticsDistribution, encode: { x: 'name', y: 'value' }, coordinate: { transform: [{ type: 'transpose' }] }, axis: { x: { title: null }, y: { title: null } }, style: { radiusTopRight: 4, radiusBottomRight: 4 } }
@@ -573,7 +577,8 @@ export default {
       return [{ key: 'metric', title: '统计项' }, { key: 'value', title: '本学期值' }, { key: 'scope', title: '统计范围' }, { key: 'time', title: '更新时间' }, { key: 'action', title: '办理入口' }]
     },
     analyticsLedgerRows() {
-      const rows = this.analyticsDistribution.length ? this.analyticsDistribution : this.analyticsMetricSeries
+      // 明细保留原值和单位，不复用图表里的数字
+      const rows = this.analyticsDistribution.length ? this.analyticsDistribution : this.analyticsCards.slice(1).map(card => ({ name: card.label, value: card.value }))
       return rows.map((row, index) => ({
         rowKey: `${this.tab}-${index}-${row.name}`,
         metric: row.name,

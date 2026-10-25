@@ -12,15 +12,16 @@
     </template>
 
     <div class="mp-stack">
-      <section class="aa-batch-flow" aria-label="注册办理顺序">
-        <AppStepBar :steps="registrationSteps" :current="-1" />
-        <p class="aa-batch-flow__note">各批次单独办理。</p>
-      </section>
-      <section v-if="!loading && !error" class="aa-batch-metrics" aria-label="当前页注册批次概况">
-        <article v-for="item in summaryCards" :key="item.label" :class="['aa-batch-metric', `is-${item.tone}`]">
-          <span>{{ item.label }}</span><strong>{{ item.value }}</strong><small v-if="item.note">{{ item.note }}</small>
-        </article>
-      </section>
+      <div class="aa-pagebar">
+        <ul v-if="!loading && !error" class="aa-stat-strip" aria-label="当前页注册批次概况">
+          <li v-for="item in summaryCards" :key="item.label" :class="`is-${item.tone}`"><span>{{ item.label }}</span><b>{{ item.value }}</b></li>
+        </ul>
+        <details class="aa-flow-fold aa-batch-flow" aria-label="注册办理顺序">
+          <summary>办理顺序（5 步）</summary>
+          <AppStepBar :steps="registrationSteps" :current="-1" />
+          <p class="aa-batch-flow__note">各批次单独办理。</p>
+        </details>
+      </div>
       <AppInlineAlert v-if="createWrite.pending && !creating && !(createWriteVisible && createWrite.error)" type="warning">创建结果尚未确认，已暂停重复创建，请联系管理员核实。</AppInlineAlert>
       <AppInlineAlert v-if="createWriteVisible && createWrite.error" type="danger">{{ createWrite.error }}</AppInlineAlert>
       <AppInlineAlert v-if="createWriteVisible && createWrite.receipt" type="success">已创建「{{ createWrite.receipt.batchName }}」：{{ typeLabelOf(createWrite.receipt.registerType) }}，{{ statusLabel(createWrite.receipt.status) }}。<p>注册起止时间尚待核验。</p></AppInlineAlert>
@@ -216,10 +217,10 @@ export default {
     summaryCards() {
       const count = (...states) => this.rows.filter(row => states.includes(row.status)).length
       return [
-        { label: '本页批次', value: this.rows.length, note: '', tone: 'primary' },
+        { label: '本页', value: this.rows.length, note: '', tone: 'primary' },
         { label: '待启动', value: count('DRAFT'), note: '开放批次后可办理', tone: 'neutral' },
         { label: '进行中', value: count('OPEN'), note: '核验资格并办理注册', tone: 'primary' },
-        { label: '已关闭 / 归档', value: count('CLOSED', 'ARCHIVED'), note: '查看办理记录', tone: 'success' }
+        { label: '已关闭/归档', value: count('CLOSED', 'ARCHIVED'), note: '查看办理记录', tone: 'neutral' }
       ]
     },
     /** AppDateRangePicker（mode=form）v-model 代理：对内仍是 draft.windowStart/windowEnd 两个字段，创建提交逻辑不用改。 */
@@ -473,7 +474,7 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .aa-registration-batches { min-width: 0; }
-.aa-batch-flow { padding: 17px 18px 12px; border: 1px solid var(--card-b, #dce5ef); border-radius: 12px; background: var(--bg-card, #fff); overflow-x: auto; }
+.aa-batch-flow[open] { overflow-x: auto; }
 .aa-batch-flow :deep(.app-step-bar) { min-width: 650px; gap: 12px; }
 .aa-batch-flow :deep(.app-step-bar__title) { font-size: 13px; font-weight: 600; }
 .aa-batch-flow :deep(.app-step-bar__desc) { font-size: 11px; line-height: 1.6; }
@@ -516,4 +517,7 @@ export default {
   .aa-batch-filters__search { flex-grow: 1; }
   .aa-batch-filters__count { width: 100%; margin-left: 0; text-align: left; }
 }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

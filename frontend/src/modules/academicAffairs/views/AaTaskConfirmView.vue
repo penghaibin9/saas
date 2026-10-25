@@ -10,7 +10,7 @@
         <h3>责任队列</h3>
         <button v-for="row in rows" :key="row.batchId" type="button" :class="{ active: selectedBatchId === String(row.batchId) }" @click="selectBatch(row)">
           <strong>{{ row.batchName }}</strong>
-          <span>{{ row.termLabel || '学期名称未提供' }} · 批次编号 {{ row.batchId }}</span>
+          <span>{{ row.termLabel || '学期待核对' }}</span>
           <AppStatusTag :type="taskBatchColor(row.status)" :label="statusLabel(row.status)" />
           <small>{{ row.nextAction?.label || '打开核对正式状态与阻断' }}</small>
         </button>

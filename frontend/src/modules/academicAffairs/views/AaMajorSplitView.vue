@@ -10,17 +10,22 @@
       <AppButton v-if="canManage" variant="primary" :disabled="saving || !!pending" @click="openCreate">创建分流批次</AppButton>
     </template>
 
-    <ol class="aams-progress" aria-label="专业分流办理顺序">
-      <li v-for="(step,index) in splitSteps" :key="step" :class="{ 'is-current': index === currentStage, 'is-complete': index < currentStage }">
-        <span>{{ index < currentStage ? '✓' : index + 1 }}</span><div><strong>{{ step }}</strong><small>{{ splitStepNotes[index] }}</small></div>
-      </li>
-    </ol>
-    <section v-if="!current && !loading && !error" class="aams-metrics" aria-label="当前页分流批次概况">
-      <article><span>本页批次</span><strong>{{ rows.length }}</strong><small>正式总数 {{ batchTotal }}</small></article>
-      <article><span>待启动</span><strong>{{ batchCount('DRAFT') }}</strong><small>需要配置专业与容量</small></article>
-      <article><span>填报 / 分配中</span><strong>{{ batchCount('OPEN','CLOSED','ALLOCATED') }}</strong><small>按批次独立推进</small></article>
-      <article><span>已确认</span><strong>{{ batchCount('CONFIRMED') }}</strong><small>可核对学籍回写</small></article>
-    </section>
+    <details v-if="current" class="aa-flow-fold aams-fold">
+      <summary>办理进度：{{ splitSteps[currentStage] }}（第 {{ currentStage + 1 }} 步 / 共 {{ splitSteps.length }} 步）</summary>
+      <ol class="aams-progress" aria-label="专业分流办理顺序">
+        <li v-for="(step,index) in splitSteps" :key="step" :class="{ 'is-current': index === currentStage, 'is-complete': index < currentStage }">
+          <span>{{ index < currentStage ? '✓' : index + 1 }}</span><div><strong>{{ step }}</strong></div>
+        </li>
+      </ol>
+    </details>
+    <div v-if="!current && !loading && !error" class="aa-pagebar">
+      <ul class="aa-stat-strip" aria-label="分流批次概况">
+        <li><span>共</span><b>{{ batchTotal }}</b></li>
+        <li><span>待启动</span><b>{{ batchCount('DRAFT') }}</b></li>
+        <li><span>填报/分配中</span><b>{{ batchCount('OPEN','CLOSED','ALLOCATED') }}</b></li>
+        <li class="is-success"><span>已确认</span><b>{{ batchCount('CONFIRMED') }}</b></li>
+      </ul>
+    </div>
     <div :class="['aams-layout', { 'is-list': !current }]">
       <div v-if="!current" class="aams-list"><ErrorState v-if="error" :description="error" @retry="load" /><LoadingState v-else-if="loading" /><EmptyState v-else-if="!rows.length" title="暂无分流批次" description="有权限的岗位可新建批次" /><DataTable v-else :columns="batchColumns" :rows="rows" row-key="batchId" :pagination="{page:batchPage,pageSize:20,total:batchTotal}" @page-change="turnBatch"><template #cell-status="{row}"><StatusTag :label="stLabel(row.status)" :type="stType(row.status)" /></template><template #cell-action="{row}"><button class="mp-link" :disabled="saving || !!pending" @click="select(row)">进入批次</button></template></DataTable></div>
       <div v-if="current" class="aams-detail"><AppButton :disabled="saving || !!pending" @click="backToList">返回批次列表</AppButton><AppButton :disabled="saving || !!pending" @click="refresh">刷新当前批次明细</AppButton><p v-if="error" class="aams-warn" role="alert">{{ error }}</p>
@@ -41,7 +46,7 @@
             </div>
           </div>
 
-          <div class="aams-context"><p>{{ current.grade }} 级 · 最多 {{ current.maxChoices }} 个志愿</p><p>填报开始：{{ current.volunteerStart || '未返回' }} · 截止：{{ current.volunteerEnd || '未返回' }}</p><p>容量与试分仅供核对。正式分配、调剂及确认均由服务器重新校验；确认分流后可到学生学籍档案核对回写。</p></div><LoadingState v-if="detailLoading" />
+          <div class="aams-context"><p>{{ current.grade }} 级 · 最多 {{ current.maxChoices }} 个志愿</p><p>填报开始：{{ current.volunteerStart || '未返回' }} · 截止：{{ current.volunteerEnd || '未返回' }}</p><p>确认分流后会写回学生学籍专业。</p></div><LoadingState v-if="detailLoading" />
           <template v-if="detailReady"><div class="aams-section-title">可选专业与容量</div>
           <EmptyState v-if="!options.length" title="未配置可选专业" description="草稿阶段添加专业与容量" />
           <DataTable v-else :columns="optionColumns" :rows="options.slice(0,optionLimit)" row-key="optionId">
@@ -137,7 +142,6 @@ export default {
   identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])},
   canManage(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.majorSplit.manage')},
   splitSteps(){return ['创建批次','填报志愿','分配调剂','确认结果','学籍回写']},
-  splitStepNotes(){return ['来源数据可追溯','学生志愿可回查','当前设计视角','正式状态解锁','核对学生主档']},
   currentStage(){const map={DRAFT:0,OPEN:1,CLOSED:2,ALLOCATED:3,CONFIRMED:4};return this.current?map[this.current.status]??0:0}
  },
  watch:{identity(){this.invalidate();this.restoreRoute()},'$route.query'(){const q=this.$route?.query||{};if(String(q.batchId||'')===String(this.current?.batchId||'')&&this.pageNumber(q.page)===this.batchPage&&this.pageNumber(q.volPage)===this.volPage)return;this.restoreRoute()}},created(){this.restoreRoute()},beforeUnmount(){this.alive=false;this.invalidate()},
@@ -219,4 +223,7 @@ export default {
 .aams-warn { color: var(--danger-color, #dc2626); font-weight: 600; }
 .aams-form { display: flex; flex-direction: column; gap: 12px; }
 @media(max-width:900px){.aams-progress{grid-template-columns:1fr}.aams-metrics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

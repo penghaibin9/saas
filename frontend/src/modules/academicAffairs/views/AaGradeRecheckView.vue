@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell title="成绩复查" subtitle="核对复查申请与原成绩，按当前权限办理复审" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
     <div class="mp-stack">
-      <div class="aa-filter"><label class="aa-filter-field"><span>状态</span><AppSelect v-model="status" :options="statusOptions" :disabled="busy || !!pending" @change="search" /></label><AppButton variant="ghost" :disabled="busy || !!pending" @click="search">查询</AppButton></div>
+      <div class="aa-filter aa-filter--bar"><label class="aa-filter-field"><span>状态</span><AppSelect v-model="status" :options="statusOptions" :disabled="busy || !!pending" @change="search" /></label><AppButton variant="ghost" :disabled="busy || !!pending" @click="search">查询</AppButton></div>
       <section v-if="receipt" class="aa-recheck-receipt" role="status"><strong>{{ receipt.verified ? '原复查命令已由已保存的回执确认' : '结果待核实' }}</strong><p>{{ receipt.studentName || active?.studentName || '原申请' }} · {{ receipt.courseName || active?.courseName || '课程待重新读取' }}</p><p v-if="receipt.commandStatus">上次提交的结果：{{ statusLabel(receipt.commandStatus) }}</p><p v-if="receipt.status">当前正式记录：{{ statusLabel(receipt.status) }}<template v-if="receipt.commandStatus && receipt.commandStatus !== receipt.status">（已发生后续变化）</template></p><AppButton v-if="pending" :loading="checking" @click="verifyReceipt">刷新查看已保存的回执</AppButton><p v-else>原操作成功与当前状态分别显示；当前记录后续的变化不会否认原操作成功。</p></section>
       <ErrorState v-if="error" :description="error" @retry="pending ? verifyReceipt() : restoreRoute()" />
       <AppButton v-if="pending?.postFailure?.bizCode === 'TERM_ARCHIVED'" variant="ghost" :disabled="checking" @click="clearRejectedCommand(pending, pending.postFailure)">本次因学期封存未受理，保留意见返回办理</AppButton>
@@ -14,8 +14,18 @@
         </AppSectionCard>
         <div v-if="active" class="mp-stack">
           <AppSectionCard :title="`${active.studentName} · ${active.courseName}`">
-            <dl class="aa-facts"><div><dt>学号 / 学期</dt><dd>{{ active.studentNo }} / {{ active.term || '待核对' }}</dd></div><div><dt>原正式成绩</dt><dd>{{ active.originalScore ?? '待核对' }}</dd></div><div><dt>复查理由</dt><dd>{{ active.reason || '待核对' }}</dd></div><div><dt>正式受理状态</dt><dd>{{ statusLabel(active.status) }}</dd></div><div><dt>复审意见</dt><dd>{{ active.reviewNote || '暂无' }}</dd></div><div><dt>复审后成绩</dt><dd>{{ active.newScore ?? '暂无调整记录' }}</dd></div></dl>
-            <p class="mp-note">名单版本、策略版本与源成绩时效，当前读取中未提供，页面不将其标为已核验。</p>
+            <div class="aa-recheck-score">
+              <div><span>原成绩</span><b>{{ active.originalScore ?? '待核对' }}</b></div>
+              <i aria-hidden="true">→</i>
+              <div :class="{ 'is-changed': active.newScore != null && String(active.newScore) !== String(active.originalScore) }"><span>复查结果</span><b>{{ active.newScore ?? (active.status === 'SUBMITTED' ? '待复审' : statusLabel(active.status)) }}</b></div>
+              <AppStatusTag :type="statusColor(active.status)">{{ statusLabel(active.status) }}</AppStatusTag>
+            </div>
+            <dl class="aa-facts-table">
+              <div><dt>学号</dt><dd>{{ active.studentNo }}</dd></div>
+              <div><dt>学期</dt><dd>{{ active.term || '待核对' }}</dd></div>
+              <div class="is-wide"><dt>复查理由</dt><dd>{{ active.reason || '待核对' }}</dd></div>
+              <div v-if="active.reviewNote" class="is-wide"><dt>复审意见</dt><dd>{{ active.reviewNote }}</dd></div>
+            </dl>
           </AppSectionCard>
           <AppSectionCard v-if="active.status === 'SUBMITTED'" title="本岗位办理">
             <p v-if="!canReview" class="mp-note">当前身份可查看申请，没有成绩复审办理权限。</p>
@@ -23,10 +33,10 @@
               <AppFormItem label="复审结论"><AppSelect v-model="form.action" :options="actionOptions" :disabled="busy || !!pending" /></AppFormItem>
               <AppFormItem v-if="form.action === 'ADJUST'" label="调整后成绩" required><AppTextInput v-model="form.newScore" type="number" :disabled="busy || !!pending" size="compact" /></AppFormItem>
               <AppFormItem :label="form.action === 'REJECT' ? '不予受理原因' : '复审意见'" :required="form.action !== 'UPHOLD'"><AppTextarea v-model="form.note" :rows="3" :disabled="busy || !!pending" placeholder="填写核验依据；调整成绩或不予受理至少5字" /></AppFormItem>
-              <div class="aa-actions"><AppButton variant="primary" :disabled="!!pending" :loading="busy" @click="openConfirm">确认复审结果</AppButton><AppButton variant="ghost" :disabled="busy || !!pending" @click="closeReview">返回原列表位置</AppButton></div>
+              <div class="aa-actions"><AppButton variant="primary" :disabled="!!pending" :loading="busy" @click="openConfirm">确认复审结果</AppButton><AppButton variant="ghost" :disabled="busy || !!pending" @click="closeReview">返回列表</AppButton></div>
             </template>
           </AppSectionCard>
-          <div v-else class="aa-actions"><AppButton variant="ghost" :disabled="busy || !!pending" @click="closeReview">返回原列表位置</AppButton></div>
+          <div v-else class="aa-actions"><AppButton variant="ghost" :disabled="busy || !!pending" @click="closeReview">返回列表</AppButton></div>
         </div>
         <EmptyState v-else title="选择一条复查申请" description="先核对学生、课程、原成绩与申请理由" />
       </div>
@@ -229,4 +239,9 @@ export default {
 .aa-recheck-queue{list-style:none;padding:0;margin:0}.aa-recheck-item{display:flex;flex-direction:column;align-items:flex-start;gap:8px;width:100%;text-align:left;border:0;border-bottom:1px solid var(--border-200);padding:16px;background:var(--bg-white);color:var(--text-900);cursor:pointer}.aa-recheck-item.is-active{background:var(--primary-50);border-left:3px solid var(--primary-600)}.aa-recheck-item span{font-size:12px;color:var(--text-500)}
 .aa-facts{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px}.aa-facts dt{font-size:12px;color:var(--text-500)}.aa-facts dd{margin:6px 0 0;overflow-wrap:anywhere}.aa-recheck-receipt{padding:16px;border:1px solid var(--border-200);border-radius:10px;background:var(--bg-white)}
 @media(max-width:900px){.aa-recheck-workspace{grid-template-columns:1fr}}
+.aa-filter--bar{padding:8px 12px;border:1px solid var(--border-200,#e1e7ef);border-radius:10px;background:var(--bg-white,#fff)}.aa-filter--bar .aa-filter-field{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--text-500,#68788c)}.aa-filter--bar :deep(.app-select){width:160px}
+.aa-recheck-score{display:flex;align-items:center;gap:22px;margin-bottom:6px;padding:14px 18px;border-radius:10px;background:var(--primary-50,#f3f7ff)}.aa-recheck-score div{display:grid;gap:2px}.aa-recheck-score span{color:var(--text-500,#68788c);font-size:12px}.aa-recheck-score b{color:var(--text-900,#18304f);font-size:26px;line-height:1.1}.aa-recheck-score div.is-changed b{color:#c2410c}.aa-recheck-score i{color:#94a3b8;font-style:normal;font-size:20px}.aa-recheck-score>:last-child{margin-left:auto}
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

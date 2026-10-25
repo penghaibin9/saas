@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="调停课台账"
-    subtitle="一条申请追踪审批、生效和通知；原课位改写后仍保留历史"
+    subtitle="每条申请的审批、生效和通知在一行查看"
     :role-name="roleName"
     :data-scope-name="scopeName"
   >
@@ -16,10 +16,12 @@
     <ErrorState v-if="routeError || detailError" :description="routeError || detailError" @retry="syncRoute" />
     <ScheduleChangeEvidence v-else-if="selectedId" :key="detailKey" :change-id="selectedId" :ctx="ctx" @loaded="checkDetailTerm" @close="closeDetail" @notice="goNotice" />
     <div v-else class="mp-stack">
-      <section class="sc-ledger-head"><div><h2>调停课申请 · 台账</h2><p>申请课程、原课位、目标课位、影响周次和办理状态保持同一行核对。</p></div><span>共 {{ loading || error ? '待核对' : total }} 条</span></section>
-      <div v-if="isAcademicTeacher && !showHistory" class="sc-term-current">当前学期：<strong>{{ currentTermName || currentTermId || '待确认' }}</strong></div>
-      <label v-else class="sc-term">学期<AppTermEntityPicker :model-value="filters.termId" placeholder="全部学期" @update:model-value="selectTerm" /></label>
-      <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+      <section class="sc-filterbar" aria-label="调停课台账筛选">
+        <div v-if="isAcademicTeacher && !showHistory" class="sc-term-current">当前学期：<strong>{{ currentTermName || currentTermId || '待确认' }}</strong></div>
+        <label v-else class="sc-term"><span>学期</span><AppTermEntityPicker :model-value="filters.termId" placeholder="全部学期" @update:model-value="selectTerm" /></label>
+        <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
+        <span v-if="!loading && !error" class="sc-count">共 {{ total }} 条</span>
+      </section>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState v-else-if="!rows.length" title="暂无调停课单" :description="canApply ? '点右上「＋ 发起调停课」创建' : '当前范围暂无调停课申请，可稍后刷新查看。'" />
@@ -229,7 +231,13 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 .sc-actions { display: flex; gap: var(--space-2); }
-.sc-term { display: grid; gap: 6px; width: 240px; max-width: 100%; font-size: 13px; }
+.sc-term { display: grid; gap: 4px; width: 220px; max-width: 100%; color: var(--t3, #65778b); font-size: 12px; }
+.sc-filterbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 14px; padding: 10px 14px; border: 1px solid var(--line, #e2e8f0); border-radius: 10px; background: var(--bg-card, #fff); }
+.sc-filterbar :deep(.af) { flex: 1 1 auto; padding: 0; border: 0; box-shadow: none; background: transparent; justify-content: flex-start; }
+.sc-filterbar :deep(.af__fields) { flex: 0 1 auto; }
+.sc-filterbar :deep(.af__field) { flex: 0 0 160px; min-width: 0; }
+.sc-filterbar :deep(.af__control) { width: 100%; height: 34px; }
+.sc-count { margin-left: auto; padding-bottom: 8px; color: var(--t3, #65778b); font-size: 12px; white-space: nowrap; }
 .sc-term-current { width:max-content; max-width:100%; padding:8px 12px; border-radius:8px; background:var(--pri-bg,#eef5ff); color:var(--t2,#52647a); font-size:12px; }
 .sc-ledger-head { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 18px; border: 1px solid var(--line, #e2e8f0); border-radius: 12px; background: var(--bg-card, #fff); }.sc-ledger-head h2 { margin: 0; font-size: 16px; }.sc-ledger-head p { margin: 5px 0 0; color: var(--t2, #52647a); font-size: 12px; }.sc-ledger-head > span { color: var(--t2, #52647a); font-size: 12px; white-space: nowrap; }
 .sc-slot { font-size: 12px; color: var(--t2, #475569); }

@@ -532,7 +532,7 @@ export default {
     contextObject() {
       if (this.workbench) return {
         name: this.workbench.batchName || '当前课表批次',
-        identity: `批次编号 ${this.workbench.batchId} · 学期编号 ${this.workbench.termId}`,
+        identity: '',
         source: '来源：正式教学任务、排课规则、教师时间与资源可用性',
         status: this.batchStatusLabel(this.workbench.batchStatus)
       }

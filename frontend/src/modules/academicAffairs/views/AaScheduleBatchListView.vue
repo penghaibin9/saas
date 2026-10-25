@@ -13,23 +13,16 @@
     </template>
 
     <div class="mp-stack">
-      <div class="aa-cal-form" aria-label="课表批次查询">
-        <label class="aa-cal-form__item">学期<AppTermEntityPicker v-model="termId" clearable placeholder="全部学期" @change="searchBatches" /></label>
-        <AppButton :disabled="loading" @click="load">刷新批次</AppButton>
-      </div>
-
-      <AppInlineAlert
-        v-if="onlyArchived"
-        type="info"
-        title="归档后仅供查看"
-        description="原批次和发布记录保留，更正须另建版本。"
-      />
-
-      <div v-else class="aa-batch-metrics" aria-label="课表批次状态概览">
-        <article><span>符合条件的批次</span><strong>{{ loading || error ? '—' : pagination.total }}</strong></article>
-        <article><span>本页编制中</span><strong>{{ loading || error ? '—' : statusCount('DRAFT') }}</strong></article>
-        <article><span>本页已预发布</span><strong>{{ loading || error ? '—' : statusCount('PRE_PUBLISHED') }}</strong></article>
-        <article><span>本页已发布或归档</span><strong>{{ loading || error ? '—' : statusCount('PUBLISHED') + statusCount('ARCHIVED') }}</strong></article>
+      <div class="aa-pagebar" aria-label="课表批次查询">
+        <div class="aa-schedule-term"><AppTermEntityPicker v-model="termId" clearable placeholder="全部学期" aria-label="学期" @change="searchBatches" /></div>
+        <AppButton variant="ghost" :disabled="loading" @click="load">刷新</AppButton>
+        <ul v-if="!onlyArchived && !loading && !error" class="aa-stat-strip" aria-label="课表批次状态概览">
+          <li><span>共</span><b>{{ pagination.total }}</b></li>
+          <li><span>编制中</span><b>{{ statusCount('DRAFT') }}</b></li>
+          <li class="is-warning"><span>已预发布</span><b>{{ statusCount('PRE_PUBLISHED') }}</b></li>
+          <li class="is-success"><span>已发布/归档</span><b>{{ statusCount('PUBLISHED') + statusCount('ARCHIVED') }}</b></li>
+        </ul>
+        <span v-if="onlyArchived" class="aa-schedule-note">归档后只读，更正须另建版本。</span>
       </div>
 
       <AppSectionCard compact v-if="showCreate" title="新建课表批次">
@@ -119,14 +112,14 @@
 /** 课表批次列表（/admin/academic-affairs/schedule）：GET/POST /academic-affairs/schedule-batches + 发布/作废。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppCollegePicker, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppCollegePicker } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { SCHEDULE_BATCH_STATUS, scheduleBatchColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaScheduleBatchListView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppCollegePicker, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppCollegePicker },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   data() {
@@ -269,4 +262,10 @@ export default {
 .aa-batch-metrics strong { color: var(--text-900, #193252); font-size: 26px; line-height: 1; }
 .aa-batch-metrics small { color: var(--text-400, #8794aa); font-size: 11px; }
 @media (max-width: 900px) { .aa-batch-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.aa-schedule-term { width: 220px; }
+.aa-schedule-note { color: var(--t3, #65778b); font-size: 12px; }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

@@ -339,7 +339,7 @@ export default {
     flowNote(index) {
       if (index < this.flowIndex) return '已核对'
       if (index > this.flowIndex) return '等待前序完成'
-      return ['请从本人课表选择', '当前设计与填写', '按真实课位校验', '等待当前岗位审核', '按真实状态解锁'][index - 1]
+      return ['从本人课表选择', '填写调课内容', '系统校验课位', '等待审核', ''][index - 1]
     },
     openMySchedule() { this.$router.push('/admin/academic-affairs/schedule/teacher') },
     async loadOrigin() {

@@ -55,7 +55,7 @@
       <template v-else>
         <section class="task-workbench__hero">
           <div>
-            <div class="task-workbench__eyebrow">批次编号 {{ workbench.batchId }}</div>
+            <div class="task-workbench__eyebrow">{{ workbench.termLabel || '教学任务批次' }}</div>
             <div class="task-workbench__headline">
               <AppStatusTag :status="workbench.status" dot />
               <strong>{{ workbench.nextAction?.label || '请核对当前任务状态' }}</strong>
@@ -103,7 +103,7 @@
         </section>
 
         <section class="task-workbench__filters">
-          <span v-if="$route.query.teachingTaskId">形成时来源任务编号 {{ $route.query.teachingTaskId }}</span>
+          <span v-if="$route.query.teachingTaskId">正在查看指定任务</span>
           <button v-if="$route.query.teachingTaskId" class="mp-link" @click="showWholeBatch">查看整个批次</button>
           <input v-model.trim="keyword" class="mp-input" aria-label="教学任务搜索" placeholder="搜索课程、教学班、教师或工号" @keyup.enter="searchTasks" />
           <select v-model="statusFilter" class="mp-input task-workbench__select" aria-label="教学任务状态" @change="searchTasks">
@@ -130,7 +130,6 @@
           </template>
           <template #cell-teacher="{ row }">
             <div class="mp-cell-main">{{ row.teacherName || '待分配' }}</div>
-            <div class="mp-cell-sub">{{ row.teacherKey || '尚未绑定稳定工号' }}</div>
           </template>
           <template #cell-hours="{ row }">
             <div>{{ row.weeklyHours ?? '—' }} 学时/周</div>
@@ -389,7 +388,7 @@ export default {
     async doAssign() {
       if (!this.canManage || !this.workbench.actions?.canAssign || this.assign.submitting || this.acting) return
       if (!this.assign.teacherKey || !this.assign.teacherName) {
-        toast.error('请选择带稳定工号的任课教师')
+        toast.error('请选择任课教师')
         return
       }
       this.assign.submitting = true
@@ -433,7 +432,7 @@ export default {
         this.error = message
         if (isConflictResult(result)) {
           this.assign.invalid = true; this.review.invalid = true
-          this.receipt = { object: `批次编号 ${this.batchId}`, status: '数据已变化，保留输入', pending: true, next: '请重新读取批次及阻断证据后，重新打开办理确认；不会自动重提。' }
+          this.receipt = { object: this.workbench?.termLabel || '教学任务批次', status: '数据已变化，保留输入', pending: true, next: '请重新读取批次及阻断证据后，重新打开办理确认；不会自动重提。' }
         }
       }
     },

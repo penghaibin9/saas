@@ -60,7 +60,6 @@
               <article v-for="item in evidenceCards" :key="item.title" :class="`is-${item.tone}`">
                 <div><strong>{{ item.title }}</strong><AppStatusTag :type="item.tone" :label="item.label" /></div>
                 <p>{{ item.detail }}</p>
-                <small>正式来源：方案校验服务</small>
               </article>
             </div>
           </section>
@@ -622,8 +621,8 @@ export default {
     changeLogActionLabel(a) { return _CHANGE_LOG_ACTION_LABEL[a] || a || '' },
     stageHint(index) {
       if (index < this.workflowStageIndex) return '来源数据可追溯'
-      if (index === this.workflowStageIndex) return '当前设计视角'
-      return '按真实状态解锁'
+      if (index === this.workflowStageIndex) return '当前环节'
+      return ''
     },
     openProgramEvidence(row) {
       if (!row?.programId) return

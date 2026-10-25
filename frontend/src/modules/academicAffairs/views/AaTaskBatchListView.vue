@@ -18,13 +18,6 @@
     <div class="mp-stack">
       <AaOperationReceipt :receipt="receipt && { title: '任务生成回执', ...receipt }" />
       <AaTeachingTaskStageRail v-if="showGen" :current="1" current-note="生成新批次" />
-      <section v-if="!loading && !error" class="task-batch-overview">
-        <article v-for="metric in metrics" :key="metric.label" class="task-batch-metric">
-          <span>{{ metric.label }}</span>
-          <strong>{{ metric.value }}</strong>
-          <small>{{ metric.note }}</small>
-        </article>
-      </section>
 
       <AppSectionCard v-if="showGen && canManage" title="从已发布培养方案生成">
         <div class="aa-cal-form">
@@ -51,19 +44,22 @@
       </AppSectionCard>
 
       <section class="task-batch-filters">
-        <label>学期
+        <label class="task-batch-filters__term" aria-label="学期">
           <AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" clearable @change="applyFilters" />
         </label>
-        <label>批次状态
+        <label aria-label="批次状态">
           <select v-model="filters.status" class="aa-select" @change="applyFilters">
             <option value="">全部状态</option>
             <option v-for="(label, key) in batchStatuses" :key="key" :value="key">{{ label }}</option>
           </select>
         </label>
-        <label class="task-batch-filters__search">快速搜索
-          <input v-model.trim="keyword" class="aa-input" placeholder="输入批次名称" @keyup.enter="applyFilters" />
+        <label class="task-batch-filters__search" aria-label="快速搜索">
+          <input v-model.trim="keyword" class="aa-input" placeholder="搜索批次名称" @keyup.enter="applyFilters" />
         </label>
-        <AppButton @click="applyFilters">查询批次</AppButton>
+        <AppButton @click="applyFilters">查询</AppButton>
+        <ul v-if="!loading && !error" class="aa-stat-strip task-batch-strip" aria-label="批次概况">
+          <li v-for="metric in metrics" :key="metric.label" :title="metric.note"><span>{{ metric.short }}</span><b>{{ metric.value }}</b></li>
+        </ul>
       </section>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -158,10 +154,10 @@ export default {
       const processing = rows.filter(row => ['ASSIGNING', 'TEACHER_CONFIRMING', 'COLLEGE_CONFIRMED'].includes(row.status)).length
       const completed = rows.filter(row => ['APPROVED', 'ARCHIVED'].includes(row.status)).length
       return [
-        { label: '当前范围批次', value: this.pagination.total, note: '按正式学期与权限范围读取' },
-        { label: '本页待启动', value: pending, note: '需确认来源方案与生成责任' },
-        { label: '本页进行中', value: processing, note: '逐批核对派师与确认节点' },
-        { label: '本页已完成', value: completed, note: '可回查原批次及正式任务' }
+        { label: '当前范围批次', short: '共', value: this.pagination.total, note: '当前学期与权限范围内的批次' },
+        { label: '本页待启动', short: '待启动', value: pending, note: '本页待启动' },
+        { label: '本页进行中', short: '进行中', value: processing, note: '本页进行中' },
+        { label: '本页已完成', short: '已完成', value: completed, note: '本页已完成' }
       ]
     },
     filteredRows() { return this.rows }
@@ -281,9 +277,10 @@ export default {
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--gray-700); }
 .aa-cal-form__item--grow { flex: 1; min-width: 220px; }
 .aa-input, .aa-select { height: 36px; padding: 0 10px; border: 1px solid var(--gray-300); border-radius: 7px; background: var(--bg-card); color: var(--gray-900); font-size: 13px; box-sizing: border-box; }
-.task-batch-filters { display: flex; align-items: flex-end; gap: 10px; padding: 9px 12px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--bg-card); }
+.task-batch-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--bg-card); }
 .task-batch-filters label { display: flex; flex-direction: column; gap: 4px; color: var(--gray-600); font-size: 12px; }
-.task-batch-filters__search { flex: 1; }
+.task-batch-filters__search { flex: 0 1 260px; }
+.task-batch-strip { margin-left: auto; }
 .task-batch-filters__search .aa-input { width: 100%; }
 .task-progress-line { display: flex; justify-content: space-between; color: var(--gray-700); font-size: 12px; }
 .task-progress-line.is-secondary { margin-top: 8px; }
@@ -296,4 +293,7 @@ export default {
 .mp-cell-sub.is-warning { color: var(--warning-700); }
 @media (max-width: 1180px) { .task-batch-overview { grid-template-columns: repeat(3, 1fr); } }
 @media (max-width: 760px) { .task-batch-overview { grid-template-columns: 1fr 1fr; } .task-batch-filters { flex-direction: column; align-items: stretch; } }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

@@ -10,7 +10,7 @@
       <AppSectionCard title="学籍导入" subtitle="原始 Excel 先完成安全扫描，再由系统对同一份文件预检查">
         <p class="mp-note">
           学号、姓名、班级必填，班级须为已存在的行政班。页面只展示系统预检结果，不再把名单回传作为写入依据；
-          扫描或解析未完成时不能确认，确认请求仅包含任务编号和任务版本。
+          扫描或解析未完成时不能确认。
         </p>
         <AppButton variant="primary" @click="importVisible = true">打开批量导入</AppButton>
       </AppSectionCard>
@@ -41,7 +41,7 @@
           <article v-for="item in jobs.list" :key="`${item.jobType}-${item.id}`" class="aa-task-card">
             <div>
               <strong>{{ item.jobType === 'IMPORT' ? '导入' : '导出' }} · {{ academicExchangeTypeLabel(item.importType || item.exportType) }}</strong>
-              <p class="mp-note">状态 {{ academicStatusLabel(item.status) }} · 任务编号 {{ item.id }} · {{ item.createdAt || '-' }}</p>
+              <p class="mp-note">状态 {{ academicStatusLabel(item.status) }} · {{ item.createdAt || '-' }}</p>
               <p v-if="item.status === 'SCANNING'" class="mp-note">安全扫描进行中，文件不会被提前解析。</p>
               <p v-else-if="item.status === 'PARSING'" class="mp-note">安全扫描已通过，正在预检查。</p>
               <p v-if="item.errorMessage" class="aa-task-error">{{ item.errorMessage }}</p>

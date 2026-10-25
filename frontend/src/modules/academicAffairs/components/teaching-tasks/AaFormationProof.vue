@@ -2,7 +2,7 @@
   <section class="aa-proof" aria-label="形成方式依据核实">
     <header><h4>核实形成方式依据</h4><button type="button" :disabled="saving" @click="$emit('close')">收起补证</button></header>
     <p>每份来源分别核实，由校教务责任人依据学校正式材料确认。确认后保留原任务、来源字段和历史办理记录。</p>
-    <p v-if="loading" role="status">正在读取正式来源和确认责任…</p>
+    <p v-if="loading" role="status">正在读取…</p>
     <p v-if="error" role="alert" class="aa-proof__error">{{ error }}</p>
     <button type="button" :disabled="loading || saving" @click="load">重新读取并核对来源</button>
     <p v-if="receipt" role="status">{{ receipt }}</p>

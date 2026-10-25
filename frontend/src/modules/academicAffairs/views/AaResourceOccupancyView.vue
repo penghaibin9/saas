@@ -44,10 +44,8 @@
           <template #cell-source="{ row }">
             <div class="aaro-source">
               <StatusTag :type="row.source === 'BOOKING' ? 'primary' : 'default'" :label="row.source === 'BOOKING' ? '已批准预约' : '正式课表'" />
-              <div v-if="row.source === 'BOOKING'" class="mp-cell-sub">{{ row.bookingResourceKind === 'LAB' ? '实训室预约' : '教室预约' }} #{{ row.bookingId }}</div>
+              <div v-if="row.source === 'BOOKING'" class="mp-cell-sub">{{ row.bookingResourceKind === 'LAB' ? '实训室预约' : '教室预约' }}</div>
               <template v-else>
-                <div class="mp-cell-sub">课位编号 {{ row.scheduleItemId }} · 批次编号 {{ row.batchId }} · 学期编号 {{ row.termId }}</div>
-                <div class="mp-cell-sub">{{ row.classId ? `班级编号 ${row.classId}` : '班级 ID 缺失' }} · {{ row.taskId ? `任务编号 ${row.taskId}` : '任务 ID 缺失' }}</div>
                 <div :class="['mp-cell-sub', { 'aaro-swap': row.calendarSource === 'SWAP' }]">{{ scheduleDateFact(row) }}</div>
               </template>
             </div>

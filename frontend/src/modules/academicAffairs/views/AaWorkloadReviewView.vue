@@ -97,11 +97,11 @@ export default {
       loading: true, error: '', status: '', termCode: '', rows: [], rejecting: null, rejectNote: '', submitting: false,
       revision: 0, lifecycle: 0, receipt: null, approveTarget: null, pending: null, invalid: false, pagination: { page: 1, pageSize: 20, total: 0 },
       workloadSteps: [
-        { label: '正式记录', note: '按真实状态解锁' },
-        { label: '范围与学期', note: '按真实状态解锁' },
-        { label: '统计口径', note: '按真实状态解锁' },
-        { label: '明细下钻', note: '按真实状态解锁' },
-        { label: '导出快照', note: '按真实状态解锁' }
+        { label: '正式记录', note: '' },
+        { label: '范围与学期', note: '' },
+        { label: '统计口径', note: '' },
+        { label: '明细下钻', note: '' },
+        { label: '导出快照', note: '' }
       ],
       statusOptions: [
         { label: '全部', value: '' }, { label: '待审核', value: 'SUBMITTED' },

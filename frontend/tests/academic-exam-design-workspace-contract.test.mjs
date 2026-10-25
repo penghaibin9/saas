@@ -47,16 +47,19 @@ test('exam local object and stage components expose the required responsibility 
     source('components/exam/AaExamObjectBar.vue'),
     source('components/exam/AaExamStageRail.vue')
   ])
-  for (const label of ['对象来源', '当前状态', '当前责任人', '当前阻断', '下一责任岗位']) {
+  // 对象摘要收成一行：保留状态、责任人、阻断和下一岗位，不再展示来源说明和内部编号
+  for (const label of ['status', '当前责任人', '当前阻断', '下一责任岗位']) {
     assert.match(objectBar, new RegExp(label))
   }
+  assert.doesNotMatch(objectBar, /\{\{ objectId|\{\{ source/)
   assert.match(stageRail, /activeIndex/)
   assert.match(stageRail, /is-active/)
 })
 
 test('AA-176/177/178 shared makeup page exposes source, blocker, responsibility and return context', async () => {
   const view = await source('views/AaMakeupConsoleView.vue')
-  for (const label of ['对象来源', '当前责任', '为什么轮到我', '当前阻断', '下一责任岗位', '返回位置']) {
+  // 自证文字（对象来源、为什么轮到我、返回位置）已删除，保留责任、阻断和下一岗位
+  for (const label of ['当前责任', '当前阻断', '下一责任岗位']) {
     assert.match(view, new RegExp(label))
   }
   assert.match(view, /选择正式不及格成绩/)

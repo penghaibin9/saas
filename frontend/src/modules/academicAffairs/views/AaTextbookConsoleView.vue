@@ -45,7 +45,7 @@
     />
 
     <AaTextbookObjectBar
-      v-if="showObjectBar && selectedObject"
+      v-if="showObjectBar && activeRowKey && selectedObject"
       :title="selectedObject.primary"
       :object-type="pageSpec.object"
       :object-id="selectedObject.objectId"
@@ -55,23 +55,17 @@
       :current-owner="selectedObject.currentOwner || pageSpec.role"
       :next-owner="selectedObject.nextOwner || pageSpec.nextRole"
     />
-    <AaTextbookStageRail v-if="showStageRail" :current="pageSpec.stage" />
-
-    <section v-if="showObjectBar" class="aatb-guidance">
-      <div><span>为什么轮到我</span><strong>{{ pageSpec.whyMe }}</strong></div>
-      <div><span>当前阻断</span><strong>{{ blockerText }}</strong></div>
-      <div><span>办理后交接</span><strong>{{ selectedObject?.nextOwner || pageSpec.nextRole }}</strong></div>
-    </section>
+    <AaTextbookStageRail v-if="showStageRail && activeRowKey && selectedObject" :current="pageSpec.stage" />
 
     <ErrorState v-if="error" :description="error" @retry="retryLoad" />
     <LoadingState v-else-if="loading" />
     <template v-else>
       <AppInlineAlert v-if="tab === 'stock' && rows.some(row => row.dataConflict)" type="danger" title="库存记录存在冲突" description="已签收与待签收占用超过到货数量。请核对到货、发放及退领原记录；负数按实际差额展示，不视为可继续发放。" />
-      <section class="aatb-metrics" aria-label="教材业务指标">
-        <article v-for="metric in metricCards" :key="metric.label" :class="{ 'is-warning': metric.warning }">
-          <span>{{ metric.label }}</span><strong>{{ metric.value }}</strong><small>{{ metric.note }}</small>
-        </article>
-      </section>
+      <div v-if="tab === 'stats'" class="aa-pagebar">
+        <ul class="aa-stat-strip" aria-label="教材业务指标">
+          <li v-for="metric in metricCards" :key="metric.label" :class="{ 'is-warning': metric.warning }" :title="metric.note"><span>{{ metric.label.replace(/^本页/, '') }}</span><b>{{ metric.value }}</b></li>
+        </ul>
+      </div>
 
       <template v-if="tab === 'stats'">
         <section class="aatb-analytics">
@@ -100,15 +94,14 @@
       </template>
 
       <section v-else class="aatb-table-card">
-        <header>
-          <div><h2>{{ pageSpec.tableTitle }}</h2><p>{{ pageSpec.tableNote }}</p></div>
-          <span>共 {{ total }} 条</span>
-        </header>
         <div class="aatb-toolbar">
           <AppTextInput v-model="keyword" :placeholder="`搜索${pageSpec.title}`" :disabled="saving" @keyup.enter="search" />
           <AppButton size="small" :disabled="saving" @click="search">查询</AppButton>
           <button class="aatb-clear" :disabled="saving" @click="clearSearch">清空</button>
-          <small v-if="tab !== 'catalog' && keyword">当前不支持关键词查询，仅筛选本页已读取的记录</small>
+          <small v-if="tab !== 'catalog' && keyword">仅筛选本页记录</small>
+          <ul class="aa-stat-strip aatb-strip" aria-label="教材业务指标">
+            <li v-for="metric in metricCards" :key="metric.label" :class="{ 'is-warning': metric.warning }" :title="metric.note"><span>{{ metric.label.replace(/^本页/, '') }}</span><b>{{ metric.value }}</b></li>
+          </ul>
         </div>
         <EmptyState v-if="!filteredRows.length" title="暂无数据" :description="emptyHint" />
         <DataTable
@@ -283,7 +276,7 @@ export default {
         if (this.tab === 'review') return { ...row, primary: row.batchName || '未命名审核批次', secondary: `审核批次 ${row.reviewBatchId || '—'}`, objectId: row.reviewBatchId }
         if (this.tab === 'order') return { ...row, primary: row.batchName || '未命名征订批次', secondary: `征订批次 ${row.orderBatchId || '—'}`, objectId: row.orderBatchId, detailHint: '打开后读取征订与到货明细' }
         if (this.tab === 'distribution') return { ...row, primary: row.orderBatchName || '教材发放批次', secondary: `${row.className || '班级待核对'} · 发放批次 ${row.distributionBatchId || '—'}`, objectId: row.distributionBatchId }
-        if (this.tab === 'fee') return { ...row, primary: row.textbookName || '教材费用', secondary: `学生 ${row.studentName || row.studentId || '待核对'} · 台账 ${row.feeId || '—'}`, objectId: row.feeId }
+        if (this.tab === 'fee') return { ...row, primary: row.textbookName || '教材费用', secondary: `学生 ${row.studentName || '姓名待核对'}${row.studentNo ? ' · ' + row.studentNo : ''}`, objectId: row.feeId }
         return { ...row, primary: row.textbookName || '教材库存', secondary: `教材 ${row.textbookId || '—'} · 以库存流水为准`, objectId: row.textbookId, status: row.stockQty > 0 ? 'ENABLED' : 'DRAFT' }
       })
     },
@@ -590,11 +583,14 @@ export default {
 .aatb-guidance div { display: grid; gap: 4px; padding: 11px 14px; background: #f8fbff; }.aatb-guidance span { color: #7a889d; font-size: 11px; }.aatb-guidance strong { color: #28405e; font-size: 12px; }
 .aatb-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }.aatb-metrics article { display: grid; gap: 5px; min-height: 82px; padding: 14px 16px; border: 1px solid #d8e2ef; border-radius: 10px; background: #fff; }.aatb-metrics article.is-warning { border-color: #ecd09c; background: #fff8ea; }.aatb-metrics span { color: #64758b; font-size: 12px; }.aatb-metrics strong { color: #243b59; font-size: 25px; line-height: 1; }.aatb-metrics small { color: #8794a7; font-size: 11px; }
 .aatb-table-card, .aatb-panel { overflow: hidden; border: 1px solid #d8e2ee; border-radius: 10px; background: #fff; }.aatb-table-card > header, .aatb-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 48px; padding: 10px 16px; border-bottom: 1px solid #e3eaf2; }.aatb-table-card h2, .aatb-panel h2 { margin: 0; color: #24374f; font-size: 14px; }.aatb-table-card header p { margin: 3px 0 0; color: #7b899b; font-size: 11px; }.aatb-table-card header > span, .aatb-panel header > span { color: #7c899a; font-size: 11px; }
-.aatb-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #e3eaf2; }.aatb-toolbar :deep(.app-text-input) { max-width: 280px; }.aatb-toolbar small { margin-left: auto; color: #966317; }.aatb-clear { border: 0; background: transparent; color: #5d6d82; cursor: pointer; }
+.aatb-toolbar { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-bottom: 1px solid #e3eaf2; }.aatb-toolbar :deep(.app-text-input) { max-width: 280px; }.aatb-toolbar small { color: #966317; }.aatb-strip { margin-left: auto; }.aatb-clear { border: 0; background: transparent; color: #5d6d82; cursor: pointer; }
 .aatb-object-link { padding: 0; border: 0; background: transparent; color: #245aa5; font: inherit; font-weight: 650; cursor: pointer; }.aatb-object-link + small, :deep(td small) { display: block; margin-top: 3px; color: #8190a3; font-size: 10px; }
 .aatb-analytics { display: grid; grid-template-columns: 1.05fr .95fr; gap: 14px; }.aatb-bars { display: grid; gap: 18px; padding: 22px 18px; }.aatb-bars > div { display: grid; grid-template-columns: 64px 1fr 54px; align-items: center; gap: 10px; color: #52647c; font-size: 12px; }.aatb-bars i { overflow: hidden; height: 9px; border-radius: 99px; background: #edf2f8; }.aatb-bars b { display: block; height: 100%; border-radius: inherit; background: #3e72c4; }.aatb-bars strong { text-align: right; color: #294d7c; }
 .aatb-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 18px; }.aatb-facts div { min-height: 58px; padding: 11px 12px; border-radius: 8px; background: #f5f8fc; }.aatb-facts dt { color: #7b899b; font-size: 11px; }.aatb-facts dd { margin: 7px 0 0; color: #2d435e; font-size: 15px; font-weight: 650; }
 .aatb-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }.aatb-form-wide { grid-column: 1 / -1; }.aatb-form-stack { display: flex; flex-direction: column; gap: 12px; }.aatb-items { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }.aatb-items li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #edf1f5; }.aatb-arr { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 900px) { .aatb-metrics, .aatb-guidance, .aatb-analytics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 640px) { .aatb-metrics, .aatb-guidance, .aatb-analytics, .aatb-form-grid { grid-template-columns: 1fr; }.aatb-form-wide { grid-column: auto; }.aatb-toolbar { align-items: stretch; flex-direction: column; }.aatb-toolbar small { margin-left: 0; } }
+</style>
+<style>
+@import '../styles/page-compact.css';
 </style>

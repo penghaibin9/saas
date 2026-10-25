@@ -10,15 +10,6 @@
       <AaOperationReceipt :receipt="receipt" />
       <AppInlineAlert v-if="scopeReadOnlyReason" type="info" :description="scopeReadOnlyReason" />
       <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
-      <AaTeachingTaskObjectBar
-        v-if="primaryRow"
-        :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
-        :identity="`教学任务编号 ${primaryRow.taskId} · 批次编号 ${primaryRow.batchId}`"
-        source="来源：正式教学任务与当前教学班名单；合班只调整授课组织，不覆盖历史课程和名单身份。"
-        :status="statusLabel(primaryRow.status)"
-        owner="学院教务 / 任课教师"
-        next-owner="教师确认岗 → 学院教务核对岗 → 排课岗"
-      />
       <AaTeachingTaskStageRail :current="2" current-note="当前合拆班工作区" />
       <AppSectionCard title="待合班任务（教师确认前，勾选同批次+同课程的 2 条及以上）">
         <ErrorState v-if="error" :description="error" @retry="load" />
@@ -33,7 +24,7 @@
             <div class="mp-cell-main">{{ row.courseName }}</div>
             <div class="mp-cell-sub">{{ row.teachingClassName }}</div>
           </template>
-          <template #cell-batch="{ row }">批次编号 {{ row.batchId }}</template>
+          <template #cell-batch="{ row }">{{ row.termName || row.termCode || '—' }}</template>
           <template #cell-teacher="{ row }">{{ row.teacherName || '未分配' }}</template>
           <template #cell-students="{ row }">{{ row.expectedStudents ?? '—' }} 人</template>
           <template #cell-status="{ row }"><AppStatusTag :type="taskColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag></template>
@@ -53,7 +44,7 @@
             <div class="mp-cell-main">{{ row.courseName }}</div>
             <div class="mp-cell-sub">{{ row.teachingClassName }}</div>
           </template>
-          <template #cell-batch="{ row }">批次编号 {{ row.batchId }}</template>
+          <template #cell-batch="{ row }">{{ row.termName || row.termCode || '—' }}</template>
           <template #cell-students="{ row }">{{ row.expectedStudents ?? '—' }} 人</template>
           <template #cell-status="{ row }"><AppStatusTag :type="taskColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag></template>
           <template #cell-actions="{ row }">
@@ -71,7 +62,7 @@
       <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
       <p class="mp-note">将把选中的 {{ selected.length }} 条教学任务合并为一个教学班（人数相加），
         以最早一条为主任务；如需还原请在合班后使用「拆班」。</p>
-      <ul><li v-for="row in selectedRows" :key="row.taskId">{{ row.courseName }} · {{ row.teachingClassName }} · 任务编号 {{ row.taskId }} · 课程版本身份编号 {{ row.courseId }}</li></ul>
+      <ul><li v-for="row in selectedRows" :key="row.taskId">{{ row.courseName }} · {{ row.teachingClassName }}</li></ul>
       <p class="mp-note">提交前重新读取候选。正式名单与下游影响由系统核对；当前没有独立的合班拆班影响预览。</p>
       <label class="aa-note-label">合班备注（选填）
         <input ref="noteInput" v-model.trim="mergeDialog.note" class="aa-input" placeholder="如：小班合并授课" maxlength="200" />
@@ -80,7 +71,7 @@
     </AppConfirmDialog>
     <AppConfirmDialog :visible="Boolean(splitRow)" title="确认拆回原任务" confirm-text="确认拆班" :submitting="merging" :confirm-disabled="!canSplit(splitRow) || actionLoading" @update:visible="value => { if (!value) splitRow = null }" @confirm="doSplit(splitRow)">
       <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
-      <p>{{ splitRow?.courseName }} · {{ splitRow?.teachingClassName }} · 任务编号 {{ splitRow?.taskId }}</p>
+      <p>{{ splitRow?.courseName }} · {{ splitRow?.teachingClassName }}</p>
       <p>按系统保留的合班快照恢复；已确认任务和下游引用的限制以系统核对结果为准。</p>
     </AppConfirmDialog>
   </ModulePageShell>
@@ -101,7 +92,6 @@ import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teac
 import { matchPermission } from '@/config/navPlan'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
 import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
-import AaTeachingTaskObjectBar from '../components/teaching-tasks/AaTeachingTaskObjectBar.vue'
 import { readTaskPages } from '../components/parallel-a/taskFacts'
 import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 
@@ -109,7 +99,7 @@ const PRE_CONFIRM = ['PENDING_ASSIGN', 'ASSIGNED']
 
 export default {
   name: 'AaTaskMergeSplitView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases, AppInlineAlert, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases, AppInlineAlert, AaOperationReceipt, AaTeachingTaskStageRail },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -127,9 +117,8 @@ export default {
     }
   },
   computed: {
-    primaryRow() { return this.selectedRows[0] || this.candidates[0] || this.merged[0] || null },
     mutationContext() { return JSON.stringify([this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
-    scopeReadOnlyReason() { return (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' ? '' : '当前为只读范围。合班和拆班由开课责任学院的当前有效办理人处理，学校负责统筹与终审。' },
+    scopeReadOnlyReason() { return (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' ? '' : '学校仅查看，合班拆班由开课责任学院办理。' },
     canManageMerge() { return !this.scopeReadOnlyReason && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.merge') },
     candidates() {
       return this.all.filter((r) => PRE_CONFIRM.includes(r.status) && !r.isMerged && !Number(r.mergedIntoId))
@@ -228,7 +217,7 @@ export default {
         const rows = ids.map(id => this.all.find(row => String(row.taskId) === String(id)))
         const survivor = rows.find(row => row?.isMerged)
         const confirmed = survivor && rows.every(row => row && (row === survivor || (row.status === 'MERGED' && String(row.mergedIntoId) === String(survivor.taskId))))
-        this.receipt = { object: `任务 ${ids.join('、')}`, status: confirmed ? '已合班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: confirmed ? '核对合班教学班的正式名单及教师，再交教师本人确认。' : '请重新读取正式任务；不要重复合班。' }
+        this.receipt = { object: rows.map(row => row?.teachingClassName || row?.courseName).filter(Boolean).join('、') || `${ids.length} 个教学任务`, status: confirmed ? '已合班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: confirmed ? '核对合班教学班的正式名单及教师，再交教师本人确认。' : '请重新读取正式任务；不要重复合班。' }
         this.mergeDialog.visible = false
         if (confirmed) this.selected = []
       } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复合班。') }
@@ -249,7 +238,7 @@ export default {
         if (!await this.load() || !valid()) return
         const current = this.all.find(item => String(item.taskId) === String(id))
         const confirmed = current && !current.isMerged && !this.all.some(item => String(item.mergedIntoId) === String(id))
-        this.receipt = { object: `任务编号 ${id}`, status: confirmed ? '已拆班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: '核对恢复的教学班及正式名单，再继续派师和确认。' }
+        this.receipt = { object: [row.courseName, row.teachingClassName].filter(Boolean).join(' · ') || '教学任务', status: confirmed ? '已拆班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: '核对恢复的教学班及正式名单，再继续派师和确认。' }
         this.splitRow = null
       } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复拆班。') }
       finally { if (!this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx) this.merging = false }

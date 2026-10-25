@@ -291,7 +291,7 @@ test('teacher V3 attendance uses one classroom page and defaults teacher to curr
   assert.match(source, /pageTitle\(\) \{ return '课堂考勤' \}/)
   assert.match(source, /initializeCurrentTerm/)
   assert.match(source, /String\(res\.data\.yearCode\) \+ '-' \+ String\(res\.data\.termNo\)/)
-  assert.match(source, /查看学生汇总/)
+  assert.match(source, /学生汇总/)
   assert.doesNotMatch(source, /pageTitle\(\) \{ return this\.panel === 'sessions' \? '考勤场次查询'/)
 })
 

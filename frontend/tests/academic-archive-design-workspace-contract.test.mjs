@@ -10,7 +10,6 @@ test('AA-260/262/264/265 archive console keeps the 13-domain workflow and object
   for (const token of [
     ':title="pageTitle"',
     "pageTitle(){return this.$route.query?.entry==='batch'?'批量归档':'归档与封存'}",
-    '当前业务对象 · 学期归档批次',
     '当前责任',
     '当前阻断',
     '下一责任岗位',
@@ -43,7 +42,6 @@ test('AA-263 export binds an archived batch, purpose and server audit receipt be
     'title="归档导出"',
     '导出范围与用途',
     '三种范围不要混淆',
-    '当前业务对象 · 学期归档批次',
     '至少5个字',
     'const before = await api.getBatch(frozen.batchId)',
     'await this.loadLog(frozen.batchId)',

@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="教师任务确认"
-    subtitle="本人确认不授予修改全校任务权限"
+    subtitle="核对课程、教学班、学时和人数后确认"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
@@ -21,7 +21,7 @@
       </div>
       <button v-if="pendingCommand" class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(acting)" @click="queryPending">查询原办理结果（不会重复提交）</button>
       <AaTeachingTaskObjectBar
-        v-if="primaryRow"
+        v-if="focusTaskId && primaryRow"
         :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
         :identity="`本人教学任务编号 ${primaryRow.taskId} · ${primaryRow.courseCode || '课程代码待提供'}`"
         source="来源：学院已分配至当前登录教师的稳定工号；本入口不能代办他人任务。"
@@ -29,33 +29,29 @@
         :owner="currentOwner(primaryRow)"
         :next-owner="nextOwner(primaryRow)"
       />
-      <AaTeachingTaskStageRail :current="taskStage(primaryRow)" :current-note="stageNote(primaryRow)" />
+      <AaTeachingTaskStageRail v-if="focusTaskId && primaryRow" :current="taskStage(primaryRow)" :current-note="stageNote(primaryRow)" />
       <section v-if="!loading && !error" class="teacher-task__summary">
         <article>
           <span>等待本人确认</span>
           <strong>{{ counts.assigned }}</strong>
-          <small>请优先处理，避免阻塞学院确认</small>
         </article>
         <article>
           <span>已确认</span>
           <strong>{{ counts.confirmed }}</strong>
-          <small>等待学院核对或教务终审</small>
         </article>
         <article>
           <span>已退回学院</span>
           <strong>{{ counts.rejected }}</strong>
-          <small>学院重新分配后会再次出现</small>
         </article>
         <article>
           <span>已就绪</span>
           <strong>{{ counts.ready }}</strong>
-          <small>可进入排课和后续教学运行</small>
         </article>
       </section>
 
       <section class="teacher-task__notice">
         <strong>{{ showHistory ? '历史教学任务' : '当前学期教学任务' }}</strong>
-        <span>{{ showHistory ? '历史任务仅供查询；默认工作队列只显示当前学期。' : `当前学期：${currentTermName || currentTermId || '待确认'}。确认前请核对课程、教学班、周学时、授课周次和预计人数。` }}</span>
+        <span>{{ showHistory ? '历史任务仅供查询；默认工作队列只显示当前学期。' : `当前学期：${currentTermName || '待确认'}` }}</span>
       </section>
 
       <section class="teacher-task__filters">

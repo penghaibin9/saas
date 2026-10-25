@@ -39,7 +39,7 @@
       <DataTable v-else :columns="columns" :rows="rows" row-key="certificateId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-student="{ row }"><div class="mp-cell-main">{{ row.studentName || `学生 ${row.studentId}` }}</div><div class="mp-cell-sub">{{ row.studentNo || row.studentId }} · {{ row.majorName || '专业待确认' }}</div></template>
         <template #cell-cert="{ row }"><div class="mp-cell-main">{{ row.certNo }}</div><div class="mp-cell-sub">{{ row.eRegNo ? `电子注册号 ${row.eRegNo}` : '无电子注册号' }}</div></template>
-        <template #cell-source="{ row }"><div class="mp-cell-main">审核批次编号 {{ row.auditBatchId || '—' }}</div><div class="mp-cell-sub">签发 {{ row.issueDate || row.issueYear || '待确认' }}</div></template>
+        <template #cell-source="{ row }"><div class="mp-cell-main">{{ row.auditBatchName || '毕业审核' }}</div><div class="mp-cell-sub">签发 {{ row.issueDate || row.issueYear || '待确认' }}</div></template>
         <template #cell-type="{ row }"><StatusTag :type="row.certType === 'GRADUATION' ? 'success' : 'warning'" :label="row.certType === 'GRADUATION' ? '毕业证' : '结业证'" dot /></template>
         <template #cell-status="{ row }"><StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot /></template>
         <template #cell-ops="{ row }">
@@ -97,7 +97,7 @@ export default {
     pagination: { page: 1, pageSize: 20, total: 0 }, metrics: { total: 0, generated: 0, issued: 0, voided: 0 },
     statusOptions: [{ label: '全部状态', value: '' }, { label: '已生成', value: 'GENERATED' }, { label: '已发放', value: 'ISSUED' }, { label: '已作废', value: 'VOIDED' }],
     typeOptions: [{ label: '全部类型', value: '' }, { label: '毕业证', value: 'GRADUATION' }, { label: '结业证', value: 'COMPLETION' }],
-    columns: [{ key: 'student', title: '学生对象' }, { key: 'cert', title: '证书编号' }, { key: 'source', title: '正式来源' }, { key: 'type', title: '类型' }, { key: 'status', title: '状态' }, { key: 'ops', title: '当前主动作', width: '170px' }],
+    columns: [{ key: 'student', title: '学生' }, { key: 'cert', title: '证书编号' }, { key: 'source', title: '审核批次' }, { key: 'type', title: '类型' }, { key: 'status', title: '状态' }, { key: 'ops', title: '当前主动作', width: '170px' }],
     genVisible: false, genForm: { batchId: '', prefix: '', year: '', eRegPrefix: '', issueDate: '' }, genError: '',
     voidVisible: false, voidRow: null, voidReason: '', voidError: '', saving: false,
     confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null, actionReceipt: null

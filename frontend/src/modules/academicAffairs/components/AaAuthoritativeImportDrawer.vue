@@ -4,7 +4,7 @@
       <header class="aai-head">
         <div>
           <h3>{{ title }}</h3>
-          <p>原文件会先进入安全扫描，页面只显示系统的预检查结果；正式确认只提交导入任务编号和版本。</p>
+          <p>文件会先做安全扫描和预检查，通过后才能确认导入。</p>
         </div>
         <button type="button" aria-label="关闭" class="aai-close" @click="close">×</button>
       </header>

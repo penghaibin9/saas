@@ -47,8 +47,7 @@
           </template>
           <template #cell-schedule="{ row }">
             <div class="mp-cell-main">{{ row.scheduleCourseName || '课程待确认' }}｜{{ row.scheduleClassName || '班级待确认' }}</div>
-            <div class="mp-cell-sub">{{ row.scheduleTeacherName || '教师待确认' }} · 课位编号 {{ row.scheduleItemId }} · 批次编号 {{ row.batchId }}</div>
-            <div class="mp-cell-sub">{{ row.classId ? `班级编号 ${row.classId}` : '班级 ID 缺失' }} · {{ row.taskId ? `任务编号 ${row.taskId}` : '任务 ID 缺失' }}</div>
+            <div class="mp-cell-sub">{{ row.scheduleTeacherName || '教师待确认' }}</div>
             <div :class="['mp-cell-sub', { 'aarc-swap': row.calendarSource === 'SWAP' }]">{{ scheduleDateFact(row) }}</div>
           </template>
           <template #cell-actions="{ row }">

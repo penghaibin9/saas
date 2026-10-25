@@ -8,9 +8,8 @@
   >
     <div class="mp-stack">
       <p class="mp-note">
-        本页为学籍名册的分类结果视图（只读），数据取自「学籍异动」审批流水；
-        如需发起新的{{ pageMeta.title }}申请，请前往
-        <button class="mp-link" @click="goApply">学籍异动 · {{ pageMeta.title }}申请</button>。
+        已生效的结果名单，只读。发起新申请请到
+        <button class="mp-link" @click="goApply">{{ pageMeta.title.replace('学生', '') }}申请</button>。
       </p>
 
       <AdvancedFilter v-model="filters" :fields="filterFields" @search="search" @reset="reset" />
@@ -22,7 +21,7 @@
                  :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.realName }}</div>
-          <div class="mp-cell-sub">学号 {{ row.studentNo || '—' }} · {{ row.fromStatus }} → {{ row.toStatus }}</div>
+          <div class="mp-cell-sub">学号 {{ row.studentNo || '—' }}<template v-if="row.fromStatus && row.fromStatus !== row.toStatus"> · {{ studentStatusText(row.fromStatus) }} → {{ studentStatusText(row.toStatus) }}</template></div>
         </template>
         <template #cell-status="{ row }"><StatusTag :type="statusColor(row.status)" :label="statusLabel(row.status)" dot /></template>
         <template #cell-effectiveDate="{ row }">{{ row.effectiveDate ? row.effectiveDate.slice(0, 10) : '—' }}</template>
@@ -52,6 +51,7 @@
 import { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { STATUS_LABEL, NODE_LABEL, statusColor } from '@/modules/academicAffairs/constants/status-change'
+import { ACADEMIC_STUDENT_STATUS_LABELS } from '@/modules/academicAffairs/config/academicStudentLabels'
 
 const PAGE_META = {
   RESUME: { title: '复学学生', subtitle: '休学后已完成复学（学籍异动·复学，终审生效）的学生结果名单' },
@@ -101,6 +101,7 @@ export default {
     this.load()
   },
   methods: {
+    studentStatusText(s) { return ACADEMIC_STUDENT_STATUS_LABELS[s] || '状态待核对' },
     statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     statusColor,
     nodeLabel(n) { return n ? (NODE_LABEL[n] || n) : '—' },

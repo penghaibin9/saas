@@ -1,38 +1,47 @@
 <template>
-  <ol class="aa-task-rail" aria-label="教学任务办理阶段">
-    <li
-      v-for="(step, index) in normalizedSteps"
-      :key="step.label"
-      :class="{ 'is-current': index + 1 === current, 'is-done': index + 1 < current }"
-    >
-      <span class="aa-task-rail__number">{{ index + 1 < current ? '✓' : index + 1 }}</span>
-      <span class="aa-task-rail__copy">
-        <strong>{{ step.label }}</strong>
-        <small>{{ index + 1 === current ? currentNote : index + 1 < current ? '上游事实可回查' : step.note }}</small>
-      </span>
-    </li>
-  </ol>
+  <div class="aa-stage-fold">
+    <button type="button" class="aa-stage-fold__toggle" :aria-expanded="String(stageOpen)" @click="stageOpen = !stageOpen">
+      <span class="aa-stage-fold__arrow">▸</span>办理进度：<b>{{ normalizedSteps[current - 1]?.label || '' }}</b>（第 {{ current }} 步 / 共 {{ normalizedSteps.length }} 步）
+    </button>
+    <ol v-show="stageOpen" class="aa-task-rail" aria-label="教学任务办理阶段">
+      <li
+        v-for="(step, index) in normalizedSteps"
+        :key="step.label"
+        :class="{ 'is-current': index + 1 === current, 'is-done': index + 1 < current }"
+      >
+        <span class="aa-task-rail__number">{{ index + 1 < current ? '✓' : index + 1 }}</span>
+        <span class="aa-task-rail__copy">
+          <strong>{{ step.label }}</strong>
+          <small v-if="index + 1 === current">当前环节</small>
+        </span>
+      </li>
+    </ol>
+  </div>
 </template>
 
 <script setup>
+import { ref } from 'vue'
+
+const stageOpen = ref(false)
 const props = defineProps({
   current: { type: Number, default: 1 },
-  currentNote: { type: String, default: '当前设计视角' },
+  currentNote: { type: String, default: '当前环节' },
   steps: { type: Array, default: () => [] }
 })
 
 const defaults = [
-  { label: '方案生成', note: '按真实状态解锁' },
-  { label: '分配教师', note: '按真实状态解锁' },
-  { label: '教师确认', note: '按真实状态解锁' },
-  { label: '学院教务核对', note: '按真实状态解锁' },
-  { label: '正式就绪', note: '按真实状态解锁' }
+  { label: '方案生成' },
+  { label: '分配教师' },
+  { label: '教师确认' },
+  { label: '学院教务核对' },
+  { label: '正式就绪' }
 ]
 
 const normalizedSteps = props.steps.length ? props.steps : defaults
 </script>
 
 <style scoped>
+@import '../../styles/stage-fold.css';
 .aa-task-rail {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));

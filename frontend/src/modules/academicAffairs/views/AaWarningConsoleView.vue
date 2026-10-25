@@ -29,7 +29,7 @@
         <div class="aawc-metric-grid">
           <div class="aawc-metric aawc-metric--total">
             <div class="aawc-metric__value">{{ summary.total }}</div>
-            <div class="aawc-metric__label">在办预警总数（非已关闭）</div>
+            <div class="aawc-metric__label">预警总数（含已关闭）</div>
           </div>
           <div v-for="s in dashboardSources" :key="s.code" class="aawc-metric">
             <div class="aawc-metric__value">{{ s.count }}</div>
@@ -98,9 +98,10 @@
 
     <!-- 预警跟进 -->
     <div v-else-if="tab === 'followup'" class="mp-stack">
-      <div class="aa-filter">
+      <div class="aa-filter aa-filter--row">
         <AppSelect v-model="followFilters.status" :options="warningStatusOptions" placeholder="全部状态" @change="loadFollowList" />
         <AppSelect v-model="followFilters.sourceCode" :options="warningSourceOptions" placeholder="全部来源" @change="loadFollowList" />
+        <span v-if="!listLoading && !listError" class="aa-filter__count">共 {{ pagination.total }} 条</span>
       </div>
       <ErrorState v-if="listError" :description="listError" @retry="loadFollowList" />
       <LoadingState v-else-if="listLoading" />
@@ -184,7 +185,7 @@
       <ErrorState v-else-if="summaryError" :description="summaryError" @retry="loadSummary" />
       <template v-else>
         <div class="aawc-metric-grid">
-          <div class="aawc-metric aawc-metric--total"><div class="aawc-metric__value">{{ summary.total }}</div><div class="aawc-metric__label">在办预警总数</div></div>
+          <div class="aawc-metric aawc-metric--total"><div class="aawc-metric__value">{{ summary.total }}</div><div class="aawc-metric__label">预警总数（含已关闭）</div></div>
         </div>
         <div class="aawc-section-title">按来源分布</div>
         <div class="aawc-bars">
@@ -576,6 +577,9 @@ export default {
 .aawc-receipt strong, .aawc-receipt span, .aawc-receipt small, .aawc-receipt b { display: block; }.aawc-receipt strong { color: #15803d; }.aawc-receipt span, .aawc-receipt small { margin-top: 3px; color: #64748b; font-size: 11px; }.aawc-receipt b { margin-top: 3px; font-size: 12px; }
 .aawc-bar { display: flex; align-items: center; gap: 12px; margin-bottom: 4px; }
 .aa-filter { display: flex; gap: 12px; align-items: center; }
+.aa-filter--row { flex-flow: row wrap; padding: 10px 14px; border: 1px solid var(--card-b, #dce5ef); border-radius: 10px; background: var(--bg-card, #fff); }
+.aa-filter--row > :deep(.app-select) { flex: 0 0 180px; width: 180px; }
+.aa-filter__count { margin-left: auto; color: var(--text-secondary, #64748b); font-size: 12px; }
 .aa-select { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
 .aawc-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 12px; margin-bottom: 8px; }
 .aawc-metric { padding: 16px; background: var(--fill-light, #f8fafc); border-radius: 10px; }

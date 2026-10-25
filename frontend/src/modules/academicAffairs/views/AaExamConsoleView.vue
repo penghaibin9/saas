@@ -29,8 +29,8 @@
       <AaExamAttendanceWorkbench v-if="attendanceRoomId" :key="identityKey + ':' + attendanceRoomId" :room-id="attendanceRoomId" />
       <AaExamIncidentWorkbench v-if="myExamBatch" :key="myExamBatch.batchId" :batch="myExamBatch" />
     </section>
-    <AaExamObjectBar v-else v-bind="objectBar" />
-    <AaExamStageRail v-if="!teacherExamView && (current || selectedDefer || selectedArchive)" :steps="stageSteps" :active-index="stageIndex" :aria-label="pageMeta.title + '办理阶段'" />
+    <AaExamObjectBar v-else-if="viewMode !== 'defer'" v-bind="objectBar" />
+    <AaExamStageRail v-if="!teacherExamView && viewMode !== 'defer' && (current || selectedArchive)" :steps="stageSteps" :active-index="stageIndex" :aria-label="pageMeta.title + '办理阶段'" />
 
     <div v-if="viewMode === 'exam' && !teacherExamView" class="aaexam-layout">
       <div class="aaexam-list">
@@ -182,59 +182,62 @@
     <section v-else-if="viewMode === 'defer'" class="aaexam-mode-grid">
       <div class="aaexam-mode-main">
         <div class="aaexam-panel-head">
-          <div>
-            <h2>当前责任队列</h2>
-            <p>只有命中真实班级、授课或学院关系的申请才会进入列表；教务处按全校范围查看。</p>
-          </div>
+          <h2>申请记录</h2>
           <span>共 {{ modePagination.total }} 条</span>
         </div>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!deferRows.length" title="当前没有缓考申请" description="新的申请会从辅导员节点开始进入四级审核链" />
+        <EmptyState v-else-if="!deferRows.length" title="暂无缓考申请" description="学生提交的缓考申请会显示在这里" />
         <DataTable
           v-else
           :columns="deferColumns"
           :rows="deferRows"
           row-key="deferId"
           :pagination="modePagination"
+          :row-class="row => selectedDefer && row.deferId === selectedDefer.deferId ? 'aaexam-row-active' : ''"
+          row-clickable
+          @row-click="selectDefer"
           @page-change="onModePageChange"
         >
           <template #cell-student="{ row }">
             <div class="mp-cell-main">{{ row.studentName || '—' }}</div>
-            <div class="mp-cell-sub">学生对象 {{ row.studentId || '—' }}</div>
           </template>
           <template #cell-course="{ row }">
             <div class="mp-cell-main">{{ row.courseName || '—' }}</div>
-            <div class="mp-cell-sub">考试课程 {{ row.examCourseId || '—' }}</div>
           </template>
           <template #cell-reason="{ row }">
-            <div>{{ row.reason || '未填写说明' }}</div>
-            <div class="mp-cell-sub">{{ row.reasonType || '未标原因类型' }}</div>
+            <div class="aaexam-reason">{{ row.reason || '未填写说明' }}</div>
           </template>
           <template #cell-status="{ row }"><StatusTag :type="deferStatusType(row.status)" :label="deferStatusLabel(row.status)" dot /></template>
           <template #cell-actions="{ row }">
-            <button class="mp-link" @click="selectDefer(row)">查看证据</button>
-            <template v-if="canReviewDefer(row)">
-              <button class="mp-link" @click="openDeferDecision(row, 'APPROVE')">通过</button>
-              <button class="mp-link" @click="openDeferDecision(row, 'RETURN')">退回</button>
-              <button class="mp-link is-danger" @click="openDeferDecision(row, 'REJECT')">驳回</button>
-            </template>
+            <button class="mp-link" @click.stop="selectDefer(row)">{{ canReviewDefer(row) ? '审核' : '查看' }}</button>
           </template>
         </DataTable>
       </div>
       <aside class="aaexam-mode-aside">
-        <h2>审核证据与流转</h2>
-        <EmptyState v-if="!selectedDefer" title="选择一条申请" description="查看申请原因、当前节点与下一责任岗位" />
+        <EmptyState v-if="!selectedDefer" title="选择一条申请" description="点击左侧“审核”或“查看”" />
         <template v-else>
-          <dl class="aaexam-evidence">
-            <div><dt>申请人</dt><dd>{{ selectedDefer.studentName || '—' }}</dd></div>
+          <div class="aaexam-aside-head">
+            <h2>申请详情</h2>
+            <StatusTag :type="deferStatusType(selectedDefer.status)" :label="deferStatusLabel(selectedDefer.status)" dot />
+          </div>
+          <dl class="aaexam-evidence aaexam-evidence--rows">
+            <div><dt>学生</dt><dd>{{ selectedDefer.studentName || '—' }}</dd></div>
             <div><dt>考试课程</dt><dd>{{ selectedDefer.courseName || '—' }}</dd></div>
+            <div v-if="deferReasonTypeLabel(selectedDefer.reasonType)"><dt>原因类型</dt><dd>{{ deferReasonTypeLabel(selectedDefer.reasonType) }}</dd></div>
+            <div><dt>申请原因</dt><dd>{{ selectedDefer.reason || '未填写说明' }}</dd></div>
             <div><dt>提交时间</dt><dd>{{ formatTime(selectedDefer.applyAt) }}</dd></div>
-            <div><dt>当前节点</dt><dd>{{ deferStatusLabel(selectedDefer.status) }}</dd></div>
-            <div><dt>为什么轮到我</dt><dd>{{ deferWhyMine(selectedDefer) }}</dd></div>
-            <div><dt>退回记录</dt><dd>{{ selectedDefer.returnReason || '无' }}</dd></div>
+            <div v-if="selectedDefer.returnReason"><dt>退回原因</dt><dd class="is-danger">{{ selectedDefer.returnReason }}</dd></div>
           </dl>
-          <AppInlineAlert type="info" :description="'通过后流向：' + deferNextOwner(selectedDefer.status) + '。真实权限与数据范围由系统再次校验。'" />
+          <div class="aaexam-next">
+            <template v-if="canReviewDefer(selectedDefer)">当前环节：{{ deferOwner(selectedDefer.status) }}审核；通过后交{{ deferNextOwner(selectedDefer.status) }}。</template>
+            <template v-else>下一步：{{ deferNextOwner(selectedDefer.status) }}{{ selectedDefer.status === 'APPROVED' ? '安排缓考' : '' }}。</template>
+          </div>
+          <div v-if="canReviewDefer(selectedDefer)" class="aaexam-decision">
+            <AppButton variant="primary" @click="openDeferDecision(selectedDefer, 'APPROVE')">通过</AppButton>
+            <AppButton @click="openDeferDecision(selectedDefer, 'RETURN')">退回补充</AppButton>
+            <AppButton variant="danger" @click="openDeferDecision(selectedDefer, 'REJECT')">驳回</AppButton>
+          </div>
         </template>
       </aside>
     </section>
@@ -244,11 +247,9 @@
         <div class="aaexam-panel-head">
           <div>
             <h2>已封存考试批次</h2>
-            <p>仅列出已正式归档的批次，课程与异常摘要来自归档记录。</p>
           </div>
           <span>共 {{ modePagination.total }} 个</span>
         </div>
-        <AppInlineAlert type="info" description="归档页保持只读。课程确认数、缺考与违纪数用于核验封存完整性，不提供绕过状态机的补写入口。" />
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!archiveRows.length" title="暂无考务归档" description="考试结束并通过正式归档命令后显示在此" />
@@ -262,14 +263,14 @@
         >
           <template #cell-batch="{ row }">
             <div class="mp-cell-main">{{ row.batchName || '未命名批次' }}</div>
-            <div class="mp-cell-sub">批次 {{ row.batchId }} · 学期 {{ row.termId || '—' }}</div>
           </template>
           <template #cell-status><StatusTag type="default" label="已归档" dot /></template>
+          <template #cell-archivedAt="{ row }">{{ formatTime(row.archivedAt) }}</template>
           <template #cell-completeness="{ row }">
             <div>课程 {{ row.completenessSummary?.courseCount ?? 0 }} · 已确认 {{ row.completenessSummary?.confirmedCount ?? 0 }}</div>
             <div class="mp-cell-sub">缺考 {{ row.completenessSummary?.absentCount ?? 0 }} · 违纪 {{ row.completenessSummary?.violationCount ?? 0 }}</div>
           </template>
-          <template #cell-actions="{ row }"><button class="mp-link" @click="selectArchive(row)">查看封存证据</button></template>
+          <template #cell-actions="{ row }"><button class="mp-link" @click="selectArchive(row)">查看</button></template>
         </DataTable>
       </div>
       <aside class="aaexam-mode-aside">
@@ -516,8 +517,8 @@ export default {
         { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
       ],
       deferColumns: [
-        { key: 'student', title: '申请学生' }, { key: 'course', title: '考试课程' },
-        { key: 'reason', title: '申请依据' }, { key: 'status', title: '当前责任节点' }, { key: 'actions', title: '办理' }
+        { key: 'student', title: '学生', width: '96px' }, { key: 'course', title: '考试课程' },
+        { key: 'reason', title: '申请原因' }, { key: 'status', title: '状态' }, { key: 'actions', title: '操作', width: '80px' }
       ],
       archiveColumns: [
         { key: 'batch', title: '考试批次' }, { key: 'status', title: '封存状态' },
@@ -535,7 +536,7 @@ export default {
     },
     pageMeta() {
       if (this.teacherExamView) return { title: '我的监考安排', subtitle: '本人正式指派 → 核对时间与教室 → 监考及异常处置' }
-      if (this.viewMode === 'defer') return { title: '缓考审批', subtitle: `学生申请 → 四级审核 → 缓考安排 → 结果归档 · 共 ${this.modePagination.total} 条申请` }
+      if (this.viewMode === 'defer') return { title: '缓考审批', subtitle: '' }
       if (this.viewMode === 'archive') return { title: '考务归档', subtitle: `只读核验已封存考试批次与异常摘要 · 共 ${this.modePagination.total} 个批次` }
       return { title: '考务安排', subtitle: `批次 → 圈课冻结 → 编排预检 → 发布 → 异常收口 · 共 ${this.pagination.total} 个批次` }
     },
@@ -678,6 +679,9 @@ export default {
     },
     deferNextOwner(status) {
       return ({ COUNSELOR_REVIEW: '任课教师', TEACHER_CONFIRM: '学院教务', COLLEGE_REVIEW: '教务处终审岗', ACADEMIC_FINAL: '缓考安排岗', APPROVED: '缓考安排岗', RETURNED: '申请学生', REJECTED: '流程结束' })[status] || '按正式状态机判定'
+    },
+    deferReasonTypeLabel(type) {
+      return ({ SICK: '生病', ILLNESS: '生病', MEDICAL: '就医', EMERGENCY: '突发情况', CONFLICT: '时间冲突', FAMILY: '家庭原因', OTHER: '其他' })[String(type || '').toUpperCase()] || ''
     },
     deferWhyMine(row) {
       const role = this.ctx.currentRole.roleName || '当前身份'
@@ -1157,6 +1161,16 @@ export default {
 .aaexam-panel-head p { margin: 5px 0 0; color: #71839f; font-size: 12px; line-height: 1.55; }
 .aaexam-panel-head > span { flex: 0 0 auto; padding: 4px 9px; border-radius: 999px; background: #edf4ff; color: #2f66c5; font-size: 12px; }
 .aaexam-evidence { display: grid; gap: 0; margin: 12px 0; }
+.aaexam-evidence--rows > div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 8px; align-items: baseline; }
+.aaexam-evidence--rows dt { margin-bottom: 0; font-size: 12px; }
+.aaexam-evidence dd.is-danger { color: #c4402f; }
+.aaexam-mode-main :deep(.aaexam-row-active) td { background: #f2f7ff; }
+.aaexam-mode-main :deep(.aaexam-row-active) td:first-child { box-shadow: inset 3px 0 0 #2f66c5; }
+.aaexam-aside-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.aaexam-aside-head h2 { margin: 0; }
+.aaexam-next { padding: 10px 12px; border-radius: 8px; background: #f4f7fc; color: #34507a; font-size: 13px; line-height: 1.6; }
+.aaexam-decision { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.aaexam-reason { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; line-height: 1.5; }
 .aaexam-evidence > div { padding: 10px 0; border-bottom: 1px solid #edf1f7; }
 .aaexam-evidence dt { margin-bottom: 4px; color: #71839f; font-size: 11px; }
 .aaexam-evidence dd { margin: 0; color: #17365f; font-size: 13px; line-height: 1.55; overflow-wrap: anywhere; }

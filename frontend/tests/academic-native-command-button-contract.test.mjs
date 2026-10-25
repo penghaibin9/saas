@@ -14,7 +14,7 @@ test('status-change ledgers render row commands with the shared button component
 
 test('grade task entry and reminder commands use the shared button component', async () => {
   const source = await readView('AaGradeEntryView.vue')
-  assert.match(source, /<AppButton size="small" variant="ghost" :disabled="writeBusy" @click="openTask\(t\)">进入<\/AppButton>/)
+  assert.match(source, /<AppButton size="small" :variant="[^"]+" :disabled="writeBusy" @click="openTask\(t\)">\{\{[^}]*'进入录入' \}\}<\/AppButton>/)
   assert.match(source, /<AppButton v-if="canRemind\(t\)" size="small" variant="ghost"/)
   assert.doesNotMatch(source, /<button[^>]*class="mp-link"[^>]*>进入<\/button>/)
 })

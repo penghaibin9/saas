@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="选课归档"
-    subtitle="已锁定名单不能普通退课，归档批次只读并保留正式凭证"
+    subtitle="归档批次只读；纠错须另建版本并留痕"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -9,16 +9,10 @@
       <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/selection')">查看锁定名单</AppButton>
     </template>
 
-    <section v-if="current" class="aasar-context">
-      <div><strong>{{ current.batchName }}</strong><p>选课归档批次 · {{ current.batchId }} · {{ current.termName || '正式学期以原批次为准' }}</p></div>
-      <dl><div><dt>当前责任</dt><dd>选课管理岗</dd></div><div><dt>下一责任</dt><dd>归档查阅人</dd></div></dl>
-    </section>
-
-    <div class="aasar-notice"><strong>已封存的记录只读；待核验的业务域会阻断新的封存</strong><span>原始名单不可修改；受控纠错必须建立新版本并保留操作凭证。</span></div>
 
     <div class="aasar-layout">
       <div class="aasar-list">
-        <header class="aasar-list-head"><div><strong>选课归档批次 · 原记录与正式凭证</strong></div><div class="aasar-toolbar"><AppTermEntityPicker v-model="termId" placeholder="全部学期" /><AppButton size="small" variant="ghost" @click="applyFilter">查询</AppButton></div></header>
+        <header class="aasar-list-head"><div><strong>已归档批次</strong><small v-if="!loading && !error"> 共 {{ pagination.total }} 个</small></div><div class="aasar-toolbar"><AppTermEntityPicker v-model="termId" placeholder="全部学期" /><AppButton size="small" variant="ghost" @click="applyFilter">查询</AppButton></div></header>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!rows.length" title="暂无已归档批次" description="批次名单已锁定后，在选课管理控制台点「归档」即可在此查询" />
@@ -26,8 +20,8 @@
           <template #cell-batchName="{ row }">
             <button class="mp-link" @click="select(row)">{{ row.batchName }}</button>
           </template>
-          <template #cell-term="{ row }">{{ row.termName || row.termId || '—' }}</template>
-          <template #cell-lockedAt="{ row }">{{ row.lockedAt || '—' }}</template>
+          <template #cell-term="{ row }">{{ row.termName || '—' }}</template>
+          <template #cell-lockedAt="{ row }">{{ timeText(row.lockedAt) }}</template>
           <template #cell-count="{ row }">{{ row.studentCount ?? row.selectedCount ?? '—' }}</template>
           <template #cell-status><span class="aasar-status">已归档</span></template>
           <template #cell-ops="{ row }"><button class="mp-link" @click="select(row)">查看封存凭证</button></template>
@@ -92,6 +86,7 @@ export default {
   watch: { '$route.fullPath'() { this.syncRoute() } },
   beforeUnmount() { this.disposed = true; this.listSeq += 1; this.detailSeq += 1 },
   methods: {
+    timeText(value) { if (!value) return '—'; const date = new Date(value); if (Number.isNaN(date.getTime())) return String(value); const pad = n => String(n).padStart(2, '0'); return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}` },
     routeTermId() { const value = this.$route.query?.termId; return typeof value === 'string' && /^[1-9]\d*$/.test(value) ? value : '' },
     invalidRouteTerm() { return this.$route.query?.termId !== undefined && !this.routeTermId() },
     syncRoute() {
