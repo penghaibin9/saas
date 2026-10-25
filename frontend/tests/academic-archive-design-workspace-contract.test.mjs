@@ -40,8 +40,11 @@ test('AA-263 export binds an archived batch, purpose and server audit receipt be
   const source = await read('ArchiveExportView.vue')
   for (const token of [
     'title="归档导出"',
-    '导出范围与用途',
-    '三种范围不要混淆',
+    '整批导出',
+    '归档材料',
+    'logOperator(row)',
+    'logAction(row)',
+    'logPurpose(row)',
     '至少5个字',
     'const before = await api.getBatch(frozen.batchId)',
     'await this.loadLog(frozen.batchId)',

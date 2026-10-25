@@ -12,6 +12,10 @@
     <AppInlineAlert v-if="actionNotice" :type="pendingCommand ? 'warning' : 'success'" :description="actionNotice" />
     <AppInlineAlert v-if="confirmError" type="danger" :description="confirmError" />
     <AppButton v-if="pendingCommand?.termId" @click="readPendingOriginal">刷新查看原学期{{ pendingCommand.batchId ? `归档批次 ${pendingCommand.batchId}` : '归档批次列表' }}</AppButton>
+    <div class="aaar-context">
+      <AppFormItem label="学期"><AppTermEntityPicker :model-value="routeTermId()" placeholder="全部学期" :disabled="actionBusy || !!pendingCommand" @update:model-value="changeTerm" /></AppFormItem>
+      <span v-if="current">当前批次：{{ current.batchName }}</span>
+    </div>
     <div class="aaar-layout">
       <section class="aaar-list">
         <header class="aaar-list-head"><div><h2>学期归档批次</h2><p>{{ isCollegeScope ? '查看学校归档进度；本院缺项请进入实时预检' : '选择批次查看十三域正式结论' }}</p></div><span>{{ rows.length }} 个批次</span></header>
@@ -30,7 +34,7 @@
             @keydown.enter.prevent="select(b)"
             @keydown.space.prevent="select(b)"
           >
-            <span class="aaar-item__name"><strong>{{ b.batchName }}</strong><small>#{{ b.batchId }} · {{ b.termCode || `学期编号 ${b.termId || '—'}` }}</small></span>
+            <span class="aaar-item__name"><strong>{{ b.batchName }}</strong><small>{{ b.termCode || '学期待核对' }}</small></span>
             <span class="aaar-item__facts"><small>{{ batchMissingLabel(b) }}</small><StatusTag :type="sType(b.status)" :label="sLabel(b.status)" dot /></span>
           </li>
         </ul>
@@ -44,12 +48,10 @@
               <div class="aaar-title">{{ current.batchName }}</div>
               <p v-if="isCollegeScope">本院缺项以实时检查结果为准</p>
             </div>
-            <dl>
-              <div><dt>当前状态</dt><dd><StatusTag :type="sType(current.status)" :label="sLabel(current.status)" dot /></dd></div>
-              <div><dt>当前责任</dt><dd>{{ archiveOwner }}</dd></div>
-              <div><dt>当前阻断</dt><dd :class="{ 'is-bad': Number(current.missingCount) > 0 }">{{ blockerText }}</dd></div>
-              <div><dt>下一责任岗位</dt><dd>{{ nextRole }}</dd></div>
-            </dl>
+            <div class="aaar-current-state"><StatusTag :type="sType(current.status)" :label="sLabel(current.status)" dot /><span>当前责任：{{ archiveOwner }}</span></div>
+            <details class="aaar-responsibility"><summary>查看办理责任与下一步</summary>
+              <p>当前阻断：{{ blockerText }}</p><p>下一责任岗位：{{ nextRole }}</p>
+            </details>
           </section>
           <AppInlineAlert v-if="isCollegeScope" type="info" :description="archiveScopeNote" />
           <div v-if="isCollegeScope" class="aaar-head">
@@ -63,14 +65,6 @@
             <li :class="{ 'is-done': current.status === 'ARCHIVED', 'is-current': current.status === 'READY' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '4' }}</b><span><strong>正式封存</strong><small>{{ current.status === 'READY' ? '等待确认' : '按状态解锁' }}</small></span></li>
             <li :class="{ 'is-done': current.status === 'ARCHIVED' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '5' }}</b><span><strong>受控纠错</strong><small>{{ current.status === 'ARCHIVED' ? '普通解冻关闭' : '封存后启用' }}</small></span></li>
           </ol>
-          <div v-if="canManageArchive" class="aaar-head">
-            <div><strong>当前主动作</strong><small>{{ archiveActionHint }}</small></div>
-            <div class="aaar-actions">
-              <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" :disabled="!!pendingCommand" :loading="actionBusy" @click="doCheck">完整性检查</AppButton>
-              <AppButton v-if="current.status === 'READY'" size="small" variant="primary" :disabled="actionBusy || !!pendingCommand || !canConfirmArchive" @click="doConfirm">确认归档</AppButton>
-              <AppButton v-if="!['ARCHIVED','CANCELLED'].includes(current.status)" size="small" variant="ghost" :disabled="actionBusy || !!pendingCommand" @click="doCancel">取消</AppButton>
-            </div>
-          </div>
           <AppInlineAlert v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" type="warning" :description="confirmReason" />
           <AppButton v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" size="small" :disabled="actionBusy || !!pendingCommand" @click="refreshCurrentFromServer">重新核对归档权限</AppButton>
           <div v-if="!isCollegeScope || current.archivedAt" class="aaar-summary">
@@ -95,13 +89,29 @@
             @refresh-batch="refreshCurrentFromServer"
           />
           <template v-else-if="!isCollegeScope">
-            <div class="aaar-section-title">数据域完整性</div>
+            <div class="aaar-section-title"><strong>归档资料检查</strong>
+              <AppButton v-if="current.termId" size="small" variant="ghost" @click="goCollegePrecheck">查看缺失提醒</AppButton>
+            </div>
+            <div v-if="items.length" class="aaar-counts">
+              <span>已通过 {{ items.filter(row => itemState(row) === 'PASS').length }} 类</span>
+              <span>不适用 {{ items.filter(row => itemState(row) === 'NOT_APPLICABLE').length }} 类</span>
+              <span>阻断 {{ items.filter(row => itemState(row) === 'BLOCKED').length }} 类</span>
+              <span>待核验 {{ items.filter(row => itemState(row) === 'UNKNOWN').length }} 类</span>
+            </div>
             <EmptyState v-if="!items.length" title="未检查" description="点击「完整性检查」聚合各数据域" />
             <DataTable v-else :columns="itemColumns" :rows="items" row-key="domain">
               <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
               <template #cell-result="{ row }"><StatusTag :type="itemType(row)" :label="itemLabel(row)" dot /></template>
             </DataTable>
           </template>
+          <div v-if="canManageArchive" class="aaar-head">
+            <div><strong>当前主动作</strong><small>{{ archiveActionHint }}</small></div>
+            <div class="aaar-actions">
+              <AppButton v-if="['DRAFT','MISSING_ITEMS','READY'].includes(current.status)" size="small" variant="ghost" :disabled="!!pendingCommand" :loading="actionBusy" @click="doCheck">完整性检查</AppButton>
+              <AppButton v-if="current.status === 'READY'" size="small" variant="primary" :disabled="actionBusy || !!pendingCommand || !canConfirmArchive" @click="doConfirm">确认归档</AppButton>
+              <AppButton v-if="!['ARCHIVED','CANCELLED'].includes(current.status)" size="small" variant="ghost" :disabled="actionBusy || !!pendingCommand" @click="doCancel">取消</AppButton>
+            </div>
+          </div>
         </template>
       </div>
     </div>
@@ -157,7 +167,7 @@ export default {
     return {
       alive:true,scope:0,seq:0,detailSeq:0,pendingCommand:null,actionNotice:'',
       listError: '', loading: true, rows: [], current: null, items: [],
-      itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' }, { key: 'result', title: '归档状态' }, { key: 'remark', title: '备注' }],
+      itemColumns: [{ key: 'domain', title: '归档资料' }, { key: 'recordCount', title: '正式记录数' }, { key: 'result', title: '检查结论' }, { key: 'remark', title: '说明' }],
       createVisible: false, form: { termId: '' }, formError: '', saving: false,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', confirmKind: '', confirmError: '', pendingAction: null,
       actionBusy: false
@@ -195,6 +205,14 @@ export default {
   beforeUnmount(){this.alive=false;this.clearPrivate()},
  methods: {
     capture(){return {scope:this.scope,identity:this.identity,route:this.$route.fullPath}},isCurrent(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath},
+    changeTerm(value) {
+      if (this.actionBusy || this.pendingCommand) return
+      const query = { ...this.$route.query }
+      delete query.batchId
+      if (value) query.termId = String(value)
+      else delete query.termId
+      return this.$router.push({ name: 'aa-archive', query })
+    },
     routeTermId(){const value=this.$route.query?.termId;return typeof value==='string'&&/^[1-9][0-9]*$/.test(value)?value:''},
     invalidRouteTerm(){return this.$route.query?.termId!==undefined&&!this.routeTermId()},
     matchesRouteTerm(batch){const termId=this.routeTermId();return !termId||String(batch?.termId)===termId},
@@ -380,58 +398,50 @@ export default {
 </script>
 
 <style scoped>
-.aaar-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
-.aaar-list, .aaar-detail { min-width: 0; }
-.aaar-list { order: 2; overflow: hidden; border: 1px solid var(--border-color, #e5e7eb); border-radius: 12px; background: var(--bg-card, #fff); }
-.aaar-detail { order: 1; }
-.aaar-list-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 14px 18px; border-bottom: 1px solid var(--border-color, #e5e7eb); }
-.aaar-list-head h2 { margin: 0; font-size: 16px; }
-.aaar-list-head p, .aaar-list-head > span { margin: 4px 0 0; color: var(--text-secondary, #64748b); font-size: 12px; }
-.aaar-items { list-style: none; margin: 0; padding: 0; display: grid; }
-.aaar-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 16px; padding: 13px 18px; border-bottom: 1px solid var(--border-color, #e5e7eb); cursor: pointer; }
-.aaar-item:last-child { border-bottom: 0; }
-.aaar-item.is-active { border-color: var(--primary-color, #2563eb); background: var(--primary-bg, #eff6ff); }
-.aaar-item:focus-visible { outline: 2px solid var(--primary-color, #2563eb); outline-offset: 2px; }
-.aaar-item__name, .aaar-item__facts { display: flex; min-width: 0; align-items: center; gap: 12px; }
-.aaar-item__name { flex-wrap: wrap; }
-.aaar-item__name strong { color: var(--primary-color, #2563eb); font-size: 13px; }
-.aaar-item__name small, .aaar-item__facts small { color: var(--text-secondary, #64748b); font-size: 11px; }
-.aaar-object-card { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(420px, 1fr); gap: 18px; padding: 16px 18px; margin-bottom: 14px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 12px; background: var(--bg-card, #fff); }
-.aaar-object-main > small { color: var(--text-secondary, #64748b); font-size: 11px; }
-.aaar-title { margin: 5px 0 4px; overflow-wrap: anywhere; color: var(--text-primary, #172033); font-size: 18px; font-weight: 650; }
-.aaar-object-main p { margin: 0; color: var(--text-secondary, #64748b); font-size: 12px; line-height: 1.6; }
-.aaar-object-card dl { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 0; }
-.aaar-object-card dl > div { min-width: 0; padding: 9px 11px; border-radius: 8px; background: var(--fill-light, #f6f8fb); }
-.aaar-object-card dt { margin-bottom: 5px; color: var(--text-secondary, #64748b); font-size: 10px; }
-.aaar-object-card dd { margin: 0; color: var(--text-primary, #172033); font-size: 12px; font-weight: 600; line-height: 1.4; }
-.aaar-object-card dd.is-bad { color: var(--danger-color, #dc2626); }
-.aaar-stage-rail { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); margin: 0 0 14px; padding: 14px 18px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 12px; background: var(--bg-card, #fff); list-style: none; }
-.aaar-stage-rail li { position: relative; display: flex; align-items: center; gap: 9px; min-width: 0; }
-.aaar-stage-rail li:not(:last-child)::after { position: absolute; top: 14px; right: 9px; width: calc(100% - 42px); height: 1px; background: var(--border-color, #e5e7eb); content: ''; transform: translateX(100%); }
-.aaar-stage-rail b { z-index: 1; display: grid; width: 28px; height: 28px; flex: 0 0 28px; place-items: center; border: 1px solid var(--border-color, #e5e7eb); border-radius: 50%; background: var(--bg-card, #fff); color: var(--text-secondary, #64748b); font-size: 11px; }
-.aaar-stage-rail span { display: grid; gap: 2px; }
-.aaar-stage-rail strong { color: var(--text-primary, #172033); font-size: 11px; }
-.aaar-stage-rail small { color: var(--text-secondary, #64748b); font-size: 9px; }
-.aaar-stage-rail .is-done b { border-color: #b7dfc5; background: #eef9f2; color: #23834f; }
-.aaar-stage-rail .is-current b { border-color: var(--primary-color, #2563eb); background: var(--primary-color, #2563eb); color: #fff; }
-.aaar-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 16px; margin-bottom: 12px; border: 1px solid #cdddf7; border-radius: 10px; background: #f1f6ff; }
-.aaar-head > div:first-child { display: grid; gap: 3px; }
-.aaar-head > div:first-child small { color: var(--text-secondary, #64748b); font-size: 11px; }
-.aaar-actions { display: flex; gap: 8px; flex-wrap: wrap; }
-.aaar-summary { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 10px 12px; background: var(--fill-light, #f8fafc); border-radius: 8px; margin-bottom: 12px; font-size: 13px; }
-.aaar-summary .is-bad { color: var(--danger-color, #dc2626); font-weight: 600; }
-.aaar-section-title { font-weight: 500; margin: 12px 0 8px; }
-.aaar-form { display: flex; flex-direction: column; gap: 12px; }
-@media (max-width: 900px) {
-  .aaar-object-card { grid-template-columns: minmax(0, 1fr); }
-  .aaar-list { max-height: 300px; overflow: auto; }
-}
-@media (max-width: 600px) {
-  .aaar-head { flex-direction: column; }
-  .aaar-actions { width: 100%; }
-  .aaar-summary { flex-direction: column; gap: 6px; }
-  .aaar-object-card dl { grid-template-columns: minmax(0, 1fr); }
-  .aaar-stage-rail { grid-template-columns: minmax(0, 1fr); gap: 9px; }
-  .aaar-stage-rail li::after { display: none; }
-}
+.aaar-context { display:flex;align-items:center;flex-wrap:wrap;gap:20px;margin-bottom:16px; }
+.aaar-context .app-form-item { width:350px;max-width:100%;margin:0; }
+.aaar-context > span { font-size:13px;color:var(--text-secondary,#64748b); }
+.aaar-layout { display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--border-color,#dbe3ee);border-radius:8px;background:var(--bg-card,#fff); }
+.aaar-list,.aaar-detail { min-width:0; }
+.aaar-list { border-right:1px solid var(--border-color,#dbe3ee); }
+.aaar-list-head { display:flex;align-items:center;justify-content:space-between;gap:8px;padding:18px 14px; }
+.aaar-list-head h2 { margin:0;font-size:16px; }
+.aaar-list-head p,.aaar-list-head > span { margin:6px 0 0;color:var(--text-secondary,#64748b);font-size:12px;line-height:1.5; }
+.aaar-items { list-style:none;margin:0;padding:0 10px 14px;display:grid;gap:8px;max-height:580px;overflow:auto; }
+.aaar-item { display:flex;flex-direction:column;gap:12px;padding:14px 12px;border:1px solid var(--border-color,#dbe3ee);border-radius:6px;cursor:pointer;overflow-wrap:anywhere; }
+.aaar-item.is-active { border-color:var(--primary-color,#285cba);background:var(--primary-bg,#eff6ff); }
+.aaar-item:focus-visible { outline:2px solid var(--primary-color,#285cba);outline-offset:2px; }
+.aaar-item__name { display:grid;gap:6px; }
+.aaar-item__name strong { font-size:14px;line-height:1.6; }
+.aaar-item__name small,.aaar-item__facts small { font-size:12px;color:var(--text-secondary,#64748b); }
+.aaar-item__facts { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px; }
+.aaar-detail { padding:20px; }
+.aaar-object-card { margin-bottom:16px; }
+.aaar-title { font-size:20px;font-weight:650;line-height:1.5;overflow-wrap:anywhere; }
+.aaar-object-main p { font-size:13px;color:var(--text-secondary,#64748b); }
+.aaar-current-state { display:flex;gap:18px;align-items:center;flex-wrap:wrap;margin:10px 0; }
+.aaar-current-state > span,.aaar-responsibility { font-size:13px;line-height:1.6;color:var(--text-secondary,#64748b); }
+.aaar-responsibility summary { cursor:pointer; }
+.aaar-responsibility p { margin:6px 0; }
+.aaar-stage-rail { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;list-style:none;padding:16px 0;margin:0 0 14px;border-top:1px solid var(--border-color,#dbe3ee);border-bottom:1px solid var(--border-color,#dbe3ee); }
+.aaar-stage-rail li { display:flex;align-items:flex-start;gap:8px; }
+.aaar-stage-rail b { color:var(--text-secondary,#64748b);font-size:14px; }
+.aaar-stage-rail span { display:grid;gap:4px; }
+.aaar-stage-rail strong { font-size:13px; }
+.aaar-stage-rail small { font-size:12px;color:var(--text-secondary,#64748b);line-height:1.5; }
+.aaar-stage-rail .is-done b { color:var(--success-color,#23834f); }
+.aaar-stage-rail .is-current strong,.aaar-stage-rail .is-current b { color:var(--primary-color,#285cba); }
+.aaar-head { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:14px;padding:16px 0 0;margin-top:16px;border-top:1px solid var(--border-color,#dbe3ee); }
+.aaar-head > div:first-child { display:grid;gap:6px; }
+.aaar-head small { font-size:13px;line-height:1.5;color:var(--text-secondary,#64748b); }
+.aaar-actions { display:flex;flex-wrap:wrap;gap:8px; }
+.aaar-summary,.aaar-counts { display:flex;flex-wrap:wrap;gap:12px 20px;font-size:13px;line-height:1.6;margin:12px 0; }
+.aaar-summary .is-bad { color:var(--danger-color,#c53636); }
+.aaar-section-title { display:flex;align-items:center;justify-content:space-between;gap:12px;margin:16px 0 8px; }
+.aaar-detail :deep(.dt__scroll) { max-height:420px;overflow:auto; }
+.aaar-detail :deep(.dt__th) { position:sticky;top:0;z-index:1;background:var(--fill-light,#f4f7fc); }
+.aaar-detail :deep(.dt__td) { white-space:normal;overflow-wrap:anywhere; }
+.aaar-form { display:flex;flex-direction:column;gap:12px; }
+@media(max-width:1100px) { .aaar-layout { grid-template-columns:minmax(0,1fr); }.aaar-list { border-right:0;border-bottom:1px solid var(--border-color,#dbe3ee); }.aaar-items { grid-template-columns:repeat(auto-fit,minmax(220px,1fr));max-height:210px; }.aaar-stage-rail { grid-template-columns:repeat(auto-fit,minmax(120px,1fr)); } }
+@media(max-width:600px) { .aaar-context { align-items:stretch;flex-direction:column; }.aaar-context .app-form-item { width:100%; }.aaar-detail { padding:12px; }.aaar-detail :deep(.dt__table) { min-width:560px; }.aaar-stage-rail { grid-template-columns:1fr 1fr; }.aaar-title { font-size:18px; } }
 </style>

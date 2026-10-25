@@ -21,14 +21,57 @@ const components = {
   AppInlineAlert: { props: ['description'], setup: props => () => Vue.h('p', props.description) },
   EmptyState: { props: ['title', 'description'], setup: props => () => Vue.h('p', `${props.title} ${props.description}`) },
   LoadingState: { render: () => Vue.h('p', '读取中') }, ErrorState: { props: ['description'], setup: props => () => Vue.h('p', props.description) },
-  AppTermEntityPicker: { render: () => Vue.h('input') }, AppTextInput: { render: () => Vue.h('input') }, AppTextarea: { render: () => Vue.h('textarea') }, AppDrawer: { render: () => null }, AppConfirmDialog: { render: () => null },
+  AppSelect: { render: () => Vue.h('select') }, AppTermEntityPicker: { render: () => Vue.h('input') }, AppTextInput: { render: () => Vue.h('input') }, AppTextarea: { render: () => Vue.h('textarea') }, AppDrawer: { render: () => null }, AppConfirmDialog: { render: () => null },
   AaArchiveCorrectionWorkspace: { render: () => Vue.h('p', '学校封存纠错工作区') },
-  DataTable: { props: ['rows'], setup: props => () => Vue.h('p', props.rows.map(row => row.remark).join('；')) }
+  DataTable: { props: ['rows', 'columns'], setup: (props, { slots }) => () => Vue.h('table', props.rows.map(row =>
+    Vue.h('tr', props.columns.map(col => Vue.h('td', slots['cell-' + col.key]?.({ row }) || String(row[col.key] ?? '')))))) }
 }
 const deps = { ...components, ...registry, gradeError, safeBusinessMessage, safeEnumLabel, matchPermission }
 const archiveDeps = api => ({ ...deps, readAllPages, academicAffairsArchiveApi: api })
 const batch = (overrides = {}) => ({ batchId: '9007199254740993', termId: '52', termCode: '2026-2027-1', batchName: '秋季学期归档', status: 'READY', scopeType: 'COLLEGE', scopeNote: '学校封存材料由校教务统筹；请查看本院实时预检', missingCount: null, items: [], ...overrides })
 const precheck = (termId, overrides = {}) => ({ code: 0, data: { termId, termCode: `学期${termId}`, scopeType: 'COLLEGE', scopeNote: '仅核验本院学生及开课业务明细', result: 'PASS', blockingCount: 0, blockedDomains: 0, domains: domainNames.map(domain => ({ domain, domainLabel: '业务域', result: 'PASS', blockingCount: 0, recordCount: 1 })), ...overrides } })
+
+test('下载记录以中文显示动作与用途，无法解析的内部账号不冒充姓名', async () => {
+  const current = batch({ status: 'ARCHIVED', scopeType: 'TENANT_ALL' })
+  const html = await renderPage('ArchiveExportView', {
+    loading: false, rows: [current], current,
+    downloadLog: [{ operator: 'db-109', action: 'BATCH_EXPORT_DOWNLOAD', detail: '打包下载 用途=上级检查留档核对', downloadAt: '2026-10-25T15:07:00' }]
+  })
+  assert.match(html, /操作人员信息待核实/)
+  assert.match(html, /整批归档材料/)
+  assert.match(html, /上级检查留档核对/)
+  assert.doesNotMatch(html, /db-109|BATCH_EXPORT_DOWNLOAD|用途=/)
+  const { state } = page('ArchiveExportView', deps, { ctx })
+  assert.equal(state.logOperator({ operatorName: '测试教务员', operator: 'db-109' }), '测试教务员')
+  assert.equal(state.logAction({ action: 'ITEM_EXPORT_DOWNLOAD' }), '单类归档材料')
+  assert.equal(state.logAction({ action: 'NEW_ACTION' }), '归档材料下载')
+})
+
+test('单类导出打开抽屉保留已填用途，切换批次不沿用旧成功提示', async () => {
+  const current = batch({ status: 'ARCHIVED', scopeType: 'TENANT_ALL' })
+  const { state } = page('ArchiveExportView', { ...deps, academicAffairsArchiveApi: {
+    getBatch: async () => ({ code: 0, data: current }), downloadLog: async () => ({ code: 0, data: [] })
+  } }, { ctx })
+  state.current = current; state.exportPurpose = '学期成绩复核'; state.exportNotice = '旧批次导出成功'
+  state.openExport('GRADE')
+  assert.equal(state.exportPurpose, '学期成绩复核')
+  assert.equal(state.exportVisible, true); assert.equal(state.pendingCategory, 'GRADE')
+  state.closeExport()
+  await state.select(current)
+  assert.equal(state.exportNotice, ''); assert.equal(state.exportPurpose, '学期成绩复核')
+})
+
+test('封存页切换学期清除旧批次定位，待核实命令期间禁止切换', () => {
+  const calls = []
+  const { state } = page('AaArchiveConsoleView', deps, { ctx })
+  state.$route.query = { termId: '51', batchId: 'old', entry: 'batch' }
+  state.$router.push = value => calls.push(value)
+  state.changeTerm('52')
+  assert.equal(calls[0].query.termId, '52'); assert.equal(calls[0].query.batchId, undefined)
+  assert.equal(calls[0].query.entry, 'batch')
+  state.pendingCommand = { sent: true }
+  state.changeTerm('53'); assert.equal(calls.length, 1)
+})
 
 async function renderPage(name, data, props = {}, overrides = {}) {
   const { definition } = page(name, { ...deps, ...overrides }, { ctx, ...props })

@@ -9,9 +9,9 @@ test('Stage D 归档预检首屏只消费后端真实语义结果与阻断计数
   const source = await readFile(viewUrl, 'utf8')
 
   for (const token of [
-    '归档前置检查',
-    '当前结论',
-    '建议下一动作',
+    '优先处理',
+    'precheckTitle',
+    'overallDescription',
     'passedDomains',
     'blockedDomains',
     'blockingCount',
@@ -32,7 +32,7 @@ test('Stage D 归档预检必须把阻断域放在通过域之前并按阻断项
   assert.match(source, /\['PASS', 'NOT_APPLICABLE'\]\.includes\(domain\.result\)/)
 
   assert.ok(
-    source.indexOf('归档阻断 / 待处理数据域') < source.indexOf('已通过检查的业务域'),
+    source.indexOf('优先处理（') >= 0 && source.indexOf('优先处理（') < source.indexOf('已通过与不适用（'),
     'blocking and unknown domains must render before non-blocking domains'
   )
 })
@@ -57,9 +57,8 @@ test('Stage D 归档预检具备阻断优先与移动端响应式收口', async 
   const source = await readFile(viewUrl, 'utf8')
 
   assert.match(source, /去处理首要阻断/)
-  assert.match(source, /grid-template-columns: repeat\(4, minmax\(0,1fr\)\)/)
-  assert.match(source, /@media \(max-width: 900px\)/)
-  assert.match(source, /@media \(max-width: 600px\)/)
+  assert.match(source, /:rows="blockedDomainRows"/)
+  assert.match(source, /@media\s*\(max-width:\s*600px\)/)
 })
 
 test('D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色', async () => {
@@ -73,10 +72,10 @@ test('D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色', asy
     "NOT_APPLICABLE: 'info'",
     'UNKNOWN 不会被当成 PASS',
     'BLOCKED 与 UNKNOWN 均不得进入正式归档',
-    "d.result === 'NOT_APPLICABLE' ? 'is-na' : 'is-ok'",
+    "'is-na': d.result === 'NOT_APPLICABLE'",
     'data.blockedDomains ?? fallbackBlockedDomains',
     "['BLOCKED', 'UNKNOWN'].includes(d.result)",
-    '.aapc-card.is-na'
+    '.aapc-result-row.is-na'
   ]) assert.ok(source.includes(token), `missing D-W1 archive state token: ${token}`)
   assert.ok(!source.includes('data.blockedDomains ||'), 'blockedDomains=0 must never fall through to legacy non-PASS counting')
 })
@@ -93,7 +92,7 @@ test('D-W1 正式归档控制台必须按 result 四态展示，且不存在整�
     "UNKNOWN: 'warning'",
     "NOT_APPLICABLE: 'info'",
     "itemColumns: [{ key: 'domain'",
-    "{ key: 'result', title: '归档状态' }",
+    "{ key: 'result', title: '检查结论' }",
     '整体强制归档已停用',
     '请处理阻断或待处理的数据域后重新执行完整性检查。',
     "api.confirm(batchId, false)"
@@ -115,9 +114,9 @@ test('D-W1 正式归档控制台不可逆动作必须防重复提交并在窄屏
     '@keydown.enter.prevent="select(b)"',
     '@keydown.space.prevent="select(b)"',
     '.aaar-item:focus-visible',
-    '@media (max-width: 900px)',
-    '.aaar-layout { display: grid; grid-template-columns: minmax(0, 1fr);',
-    '@media (max-width: 600px)'
+    '@media(max-width:1100px)',
+    '.aaar-layout { grid-template-columns:minmax(0,1fr);',
+    '@media(max-width:600px)'
   ]) assert.ok(source.includes(token), `missing archive console production UI guard: ${token}`)
 })
 

@@ -137,7 +137,9 @@ test('发送前读取失败不沿用缓存许可，原确认内容保持', async
 
 test('真实按钮与对话框模板缺许可时禁用，原因及重新核对入口可见', async () => {
   const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaArchiveConsoleView.vue', import.meta.url), 'utf8')
-  const template = source.match(/<div v-if="canManageArchive" class="aaar-head">[\s\S]*?(?=<div v-if="!isCollegeScope \|\| current.archivedAt")/)[0]
+  const template = source.match(/<div v-if="canManageArchive" class="aaar-head">[\s\S]*?<\/div>\s*<\/div>/)[0]
+    + source.match(/<AppInlineAlert v-if="!isCollegeScope && current.status === 'READY'[\s\S]*?\/>/)[0]
+    + source.match(/<AppButton v-if="!isCollegeScope && current.status === 'READY'[\s\S]*?<\/AppButton>/)[0]
   const dialogTemplate = source.match(/<AppConfirmDialog[\s\S]*?<\/AppConfirmDialog>/)[0]
   for (const snippet of [template, dialogTemplate]) {
     const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)

@@ -7,96 +7,68 @@
   >
     <AppInlineAlert v-if="isCollegeScope" type="info" :description="scopeNote" />
     <AppButton v-if="isCollegeScope" variant="primary" @click="goCollegePrecheck">查看本院实时预检</AppButton>
-    <ol v-else class="aaex-stage-rail" aria-label="归档导出所处阶段">
-      <li class="is-done"><b>✓</b><span><strong>建立批次</strong><small>归档对象已建立</small></span></li>
-      <li class="is-done"><b>✓</b><span><strong>十三域预检</strong><small>正式检查已完成</small></span></li>
-      <li class="is-done"><b>✓</b><span><strong>补齐缺失</strong><small>阻断已处理</small></span></li>
-      <li class="is-current"><b>4</b><span><strong>正式封存</strong><small>从封存记录申请导出</small></span></li>
-      <li><b>5</b><span><strong>双人纠错</strong><small>不通过导出改写记录</small></span></li>
-    </ol>
-
-    <section v-if="current" class="aaex-object-card">
-      <div>
-        <h2>{{ current.batchName }}</h2>
-        <p v-if="isCollegeScope">学院仅查看封存进度，不提供学校物料下载</p>
-      </div>
-      <dl>
-        <div><dt>当前状态</dt><dd><StatusTag type="success" label="已归档" dot /></dd></div>
-        <div><dt>当前责任</dt><dd>{{ archiveOwner }}</dd></div>
-        <div><dt>当前阻断</dt><dd>{{ isCollegeScope ? '本院缺项请查看实时预检' : '无；下载用途必须留痕' }}</dd></div>
-        <div><dt>下一责任岗位</dt><dd>{{ nextOwner }}</dd></div>
-      </dl>
-    </section>
-
-    <section v-if="current && !isCollegeScope" class="aaex-request-grid">
-      <div class="aaex-request-card">
-        <header><div><h3>导出范围与用途</h3><p>范围由当前归档批次和授权共同确定</p></div></header>
-        <div class="aaex-request-fields">
-          <AppFormItem label="学期归档批次"><AppTextInput :model-value="`${current.batchName}（#${current.batchId}）`" disabled /></AppFormItem>
-          <AppFormItem label="数据范围"><AppTextInput model-value="当前批次全部十三域（按正式记录数导出）" disabled /></AppFormItem>
-          <AppFormItem label="导出用途" required>
-            <AppTextarea v-model="exportPurpose" :rows="4" :maxlength="500" show-count placeholder="至少5个字，说明正式用途" :disabled="exporting" />
-          </AppFormItem>
-          <AppInlineAlert v-if="exportError" type="danger" :description="exportError" />
-        </div>
-        <footer><span>完整导出由系统生成带水印的文件，并写入下载审计。</span><AppButton variant="primary" :disabled="!!pendingExport" :loading="exporting && pendingCategory === null" @click="quickExport">申请归档导出</AppButton></footer>
-      </div>
-      <aside class="aaex-scope-card">
-        <h3>三种范围不要混淆</h3>
-        <ul>
-          <li><b>本页记录</b><span>当前表格可见的数据域</span></li>
-          <li><b>已选记录</b><span>使用单域“下载”动作</span></li>
-          <li><b>当前筛选全部</b><span>由系统按当前批次与权限完成</span></li>
-        </ul>
-      </aside>
-    </section>
-
-    <div class="aaex-layout">
-      <div class="aaex-list">
-        <div class="aaex-list-title">已归档批次</div>
-        <LoadingState v-if="loading" />
-        <ErrorState v-else-if="listError" :description="listError" @retry="load" />
-        <EmptyState v-else-if="!rows.length" title="暂无已归档批次" :description="isCollegeScope ? '学校正式封存由校教务统筹，本院可继续核对实时预检' : '批次确认归档后可在此下载物料'" />
-        <ul v-else class="aaex-items">
-          <li v-for="b in rows" :key="b.batchId" :class="['aaex-item', { 'is-active': current && current.batchId === b.batchId }]" @click="select(b)">
-            <span>{{ b.batchName }}</span>
-            <span class="aaex-item-date">{{ fmt(b.archivedAt) }}</span>
-          </li>
-        </ul>
+    <LoadingState v-if="loading" />
+    <ErrorState v-else-if="listError" :description="listError" @retry="load" />
+    <EmptyState v-else-if="!rows.length && !current && !detailError" title="暂无已归档批次" :description="isCollegeScope ? '学校正式封存由校教务统筹，本院可继续核对实时预检' : '批次确认归档后可在此下载物料'" />
+    <template v-else>
+      <div class="aaex-context">
+        <label for="archive-export-batch">已封存批次</label>
+        <AppSelect id="archive-export-batch" :model-value="selectedBatchId" :options="rows" label-key="batchName" value-key="batchId" :disabled="exporting || !!pendingExport" @change="select({ batchId: $event })" />
+        <template v-if="current">
+          <StatusTag type="success" label="已归档" dot />
+          <span>封存时间：{{ fmt(current.archivedAt) || '时间待核' }}</span>
+        </template>
         <AppButton v-if="rows.length < pagination.total" size="small" variant="ghost" :loading="loadingMore" @click="loadMore">加载更多已归档批次</AppButton>
       </div>
-
-      <div class="aaex-detail">
-        <ErrorState v-if="detailError" :description="detailError" @retry="retryDetail" />
-        <EmptyState v-else-if="!current" title="选择批次" :description="isCollegeScope ? '从左侧选择批次查看学校封存进度' : '从左侧选择已归档批次查看可下载物料'" />
-        <template v-else>
-          <div class="aaex-head">
-            <div class="aaex-title">{{ current.batchName }}</div>
-            <span class="aaex-server-note"><template v-if="!isCollegeScope">正式记录 {{ items.reduce((sum, item) => sum + Number(item.recordCount || 0), 0) }} 条 · </template>封存于 {{ fmt(current.archivedAt) || '时间待核' }}</span>
+      <ErrorState v-if="detailError" :description="detailError" @retry="retryDetail" />
+      <LoadingState v-else-if="!current" />
+      <template v-else>
+        <details class="aaex-responsibility">
+          <summary>查看归档责任与后续办理</summary>
+          <p>当前责任：{{ archiveOwner }}；下一责任岗位：{{ nextOwner }}</p>
+        </details>
+        <template v-if="!isCollegeScope">
+          <div class="aaex-workspace">
+            <section class="aaex-materials" aria-labelledby="archive-materials-title">
+              <header><h2 id="archive-materials-title">归档材料</h2><span>{{ items.length }} 类资料 · {{ downloadableItems.length }} 类可导出</span></header>
+              <EmptyState v-if="!downloadableItems.length" title="本批次暂无可导出资料" description="没有正式记录的资料不提供导出" />
+              <DataTable v-else :columns="itemColumns" :rows="downloadableItems" row-key="domain">
+                <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
+                <template #cell-action="{ row }">
+                  <AppButton size="small" variant="ghost" :disabled="exporting || !!pendingExport" @click="openExport(row.domain)">单类导出</AppButton>
+                </template>
+              </DataTable>
+              <p class="aaex-note">只列出有正式记录的资料，导出范围受当前账号权限限制。</p>
+            </section>
+            <section class="aaex-request-card" aria-labelledby="archive-request-title">
+              <header><h2 id="archive-request-title">整批导出</h2></header>
+              <div class="aaex-form">
+                <AppFormItem label="导出范围"><AppTextInput model-value="当前批次全部可导出资料" disabled /></AppFormItem>
+                <AppFormItem label="导出用途" required>
+                  <AppTextarea v-model="exportPurpose" :rows="2" :maxlength="500" show-count placeholder="至少5个字，说明正式用途" :disabled="exporting || !!pendingExport" />
+                </AppFormItem>
+                <AppInlineAlert v-if="exportError && !exportVisible" type="danger" :description="exportError" />
+                <AppButton variant="primary" :disabled="!!pendingExport || !downloadableItems.length" :loading="exporting && pendingCategory === null" @click="quickExport">生成整批文件</AppButton>
+                <p class="aaex-note">文件带水印，生成及下载均留痕。</p>
+                <AppInlineAlert v-if="exportNotice" :type="pendingExport ? 'warning' : 'success'" :description="exportNotice" />
+              </div>
+            </section>
           </div>
-
-          <template v-if="!isCollegeScope">
-          <div class="aaex-section-title">物料清单（{{ items.length }} 域，仅列出有数据域）</div>
-          <DataTable :columns="itemColumns" :rows="downloadableItems" row-key="domain">
-            <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
-            <template #cell-action="{ row }">
-              <AppButton size="small" variant="ghost" :disabled="!!pendingExport" @click="openExport(row.domain)">下载</AppButton>
-            </template>
-          </DataTable>
-
-          <div class="aaex-section-title">下载记录</div>
-          <LoadingState v-if="logLoading" />
-          <ErrorState v-else-if="logError" :description="logError" @retry="loadLog()" />
-          <EmptyState v-else-if="!downloadLog.length" title="暂无下载记录" description="尚未有人下载过本批次物料" />
-          <DataTable v-else :columns="logColumns" :rows="downloadLog" row-key="downloadAt">
-            <template #cell-downloadAt="{ row }">{{ fmt(row.downloadAt) }}</template>
-          </DataTable>
-          </template>
+          <section class="aaex-log" aria-labelledby="archive-log-title">
+            <header><h2 id="archive-log-title">下载记录</h2><AppButton size="small" variant="ghost" :loading="logLoading" @click="loadLog()">刷新记录</AppButton></header>
+            <LoadingState v-if="logLoading" />
+            <ErrorState v-else-if="logError" :description="logError" @retry="loadLog()" />
+            <EmptyState v-else-if="!downloadLog.length" title="暂无下载记录" description="尚未有人下载过本批次物料" />
+            <DataTable v-else :columns="logColumns" :rows="downloadLog" row-key="downloadAt">
+              <template #cell-operator="{ row }">{{ logOperator(row) }}</template>
+              <template #cell-action="{ row }">{{ logAction(row) }}</template>
+              <template #cell-detail="{ row }">{{ logPurpose(row) }}</template>
+              <template #cell-downloadAt="{ row }">{{ fmt(row.downloadAt) }}</template>
+            </DataTable>
+          </section>
         </template>
-      </div>
-    </div>
-
-    <AppInlineAlert v-if="exportNotice" :type="pendingExport ? 'warning' : 'success'" :description="exportNotice" />
+      </template>
+    </template>
 
     <AppDrawer :visible="exportVisible" title="下载归档物料" mode="modal" size="small" @close="closeExport">
       <div class="aaex-form">
@@ -119,8 +91,9 @@
  * 已归档批次的水印 xlsx 单域下载 + zip 打包全量下载 + 下载记录查询。批次未 ARCHIVED 不出现在列表。 */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppTextarea, AppFormItem, AppInlineAlert } from '@/components/common'
+import { AppTextInput, AppTextarea, AppFormItem, AppInlineAlert, AppSelect } from '@/components/common'
 import { academicAffairsArchiveApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
+import { safeBusinessMessage } from '@/utils/presentationSafety'
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 import { gradeError } from './parallel-c/grade-review'
@@ -134,16 +107,16 @@ function _download(blob, filename) {
 
 export default {
   name: 'ArchiveExportView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppInlineAlert },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, StatusTag, AppButton, AppDrawer, AppTextInput, AppTextarea, AppFormItem, AppInlineAlert, AppSelect },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       alive: true, scope: 0, listSeq: 0, detailSeq: 0, logSeq: 0,
       loading: true, listError: '', detailError: '', selectedBatchId: '', rows: [], current: null, items: [],
       pagination: { page: 1, pageSize: 20, total: 0 }, loadingMore: false,
-      itemColumns: [{ key: 'domain', title: '数据域' }, { key: 'domainLabel', title: '名称' }, { key: 'recordCount', title: '记录数' }, { key: 'action', title: '操作' }],
+      itemColumns: [{ key: 'domain', title: '资料名称' }, { key: 'recordCount', title: '正式记录数' }, { key: 'action', title: '操作' }],
       logLoading: false, logError: '', downloadLog: [],
-      logColumns: [{ key: 'operator', title: '下载人' }, { key: 'action', title: '类型' }, { key: 'detail', title: '说明' }, { key: 'downloadAt', title: '时间' }],
+      logColumns: [{ key: 'operator', title: '下载人' }, { key: 'action', title: '导出内容' }, { key: 'detail', title: '用途' }, { key: 'downloadAt', title: '下载时间' }],
       exportVisible: false, exportPurpose: '', exportError: '', exportNotice: '', exporting: false, pendingCategory: null, pendingExport: null
     }
   },
@@ -174,6 +147,18 @@ export default {
   created() { this.load() },
   beforeUnmount() { this.alive = false; this.clearPrivate() },
   methods: {
+    logOperator(row) {
+      const name = row.operatorName || row.operator
+      return name && !/^(?:db-\d+|\d+)$/.test(name) ? safeBusinessMessage(name, '操作人员信息待核实') : '操作人员信息待核实'
+    },
+    logAction(row) {
+      return { ITEM_EXPORT_DOWNLOAD: '单类归档材料', BATCH_EXPORT_DOWNLOAD: '整批归档材料' }[row.action] || '归档材料下载'
+    },
+    logPurpose(row) {
+      const detail = String(row.detail || '')
+      const marker = detail.indexOf('用途=')
+      return safeBusinessMessage(marker >= 0 ? detail.slice(marker + 3) : detail, '用途待核实')
+    },
     capture(extra = '') { return { scope: this.scope, identity: this.identity, extra: String(extra || '') } },
     tokenValid(c) { return this.alive && c.scope === this.scope && c.identity === this.identity },
     denied(err) { return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code, err?.bizCode].join(' ')) },
@@ -212,6 +197,7 @@ export default {
       const batchId = String(b?.batchId || ''), c = this.capture(batchId), seq = ++this.detailSeq
       if (!batchId) return
       this.selectedBatchId = batchId
+      this.exportError = ''; this.exportNotice = ''
       this.current = null; this.items = []; this.downloadLog = []; this.detailError = ''; this.logError = ''; this.logSeq++; this.logLoading = false
       try {
         const res = await api.getBatch(batchId)
@@ -249,7 +235,7 @@ export default {
     openExport(category) {
       if (this.isCollegeScope || !this.current || this.current.status !== 'ARCHIVED' || this.exporting || this.pendingExport) return
       this.pendingCategory = category
-      this.exportPurpose = ''; this.exportError = ''; this.exportVisible = true
+      this.exportError = ''; this.exportVisible = true
     },
     quickExport() {
       if (this.isCollegeScope || !this.current || this.exporting || this.pendingExport) return
@@ -300,49 +286,23 @@ export default {
 </script>
 
 <style scoped>
-.aaex-stage-rail { display:grid;grid-template-columns:repeat(5,minmax(0,1fr));list-style:none;margin:0 0 16px;padding:14px 16px;border:1px solid var(--border-color,#dbe3ee);border-radius:10px;background:var(--bg-card,#fff); }
-.aaex-stage-rail li { display:flex;gap:9px;align-items:flex-start;position:relative;color:var(--text-tertiary,#94a3b8); }
-.aaex-stage-rail li:not(:last-child)::after { content:'';position:absolute;left:31px;right:8px;top:12px;height:1px;background:var(--border-color,#dbe3ee); }
-.aaex-stage-rail b { position:relative;z-index:1;display:grid;place-items:center;width:24px;height:24px;border:1px solid var(--border-color,#dbe3ee);border-radius:50%;background:var(--bg-card,#fff);font-size:12px; }
-.aaex-stage-rail span { display:grid;gap:2px;min-width:0; }
-.aaex-stage-rail strong { color:var(--text-primary,#183153);font-size:13px; }
-.aaex-stage-rail small { font-size:11px;line-height:1.35; }
-.aaex-stage-rail .is-done b { color:#26875f;border-color:#b9e4d1;background:#effaf5; }
-.aaex-stage-rail .is-current b { color:#fff;border-color:var(--primary-color,#2563eb);background:var(--primary-color,#2563eb); }
-.aaex-object-card { display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:24px;margin-bottom:16px;padding:16px;border:1px solid var(--border-color,#dbe3ee);border-left:3px solid var(--primary-color,#2563eb);border-radius:10px;background:var(--bg-card,#fff); }
-.aaex-object-card > * { min-width:0; }
-.aaex-object-card small,.aaex-object-card p,.aaex-request-card p,.aaex-server-note { color:var(--text-secondary,#64748b);font-size:12px; }
-.aaex-object-card h2 { margin:5px 0;font-size:18px; }
-.aaex-object-card p { margin:0; }
-.aaex-object-card dl { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 18px;margin:0; }
-.aaex-object-card dl div { display:grid;gap:3px; }
-.aaex-object-card dt { color:var(--text-tertiary,#94a3b8);font-size:11px; }
-.aaex-object-card dd { margin:0;font-size:13px;overflow-wrap:anywhere; }
-.aaex-request-grid { display:grid;grid-template-columns:minmax(0,1fr) 270px;gap:16px;margin-bottom:16px; }
-.aaex-request-card,.aaex-scope-card { border:1px solid var(--border-color,#dbe3ee);border-radius:10px;background:var(--bg-card,#fff); }
-.aaex-request-card header,.aaex-request-card footer,.aaex-scope-card h3 { padding:14px 16px;border-bottom:1px solid var(--border-color,#dbe3ee); }
-.aaex-request-card h3,.aaex-request-card p,.aaex-scope-card h3 { margin:0; }
-.aaex-request-card footer { display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--border-color,#dbe3ee);border-bottom:0;background:var(--primary-bg,#eff6ff); }
-.aaex-request-card footer span { color:var(--text-secondary,#64748b);font-size:12px; }
-.aaex-request-fields { display:grid;grid-template-columns:1fr 1fr;gap:12px;padding:16px; }
-.aaex-request-fields > :nth-child(3),.aaex-request-fields > :nth-child(4) { grid-column:1 / -1; }
-.aaex-scope-card h3 { font-size:15px; }
-.aaex-scope-card ul { list-style:none;margin:0;padding:4px 16px 12px; }
-.aaex-scope-card li { display:grid;gap:3px;padding:12px 0;border-bottom:1px solid var(--border-color,#eef2f7); }
-.aaex-scope-card li:last-child { border-bottom:0; }
-.aaex-scope-card b { font-size:13px; }
-.aaex-scope-card span { color:var(--text-secondary,#64748b);font-size:12px;line-height:1.5; }
-.aaex-layout { display: grid; grid-template-columns: 280px 1fr; gap: 16px; }
-.aaex-list-title { font-weight: 500; margin-bottom: 8px; }
-.aaex-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
-.aaex-item { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--border-color, #e5e7eb); border-radius: 8px; cursor: pointer; }
-.aaex-item.is-active { border-color: var(--primary-color, #2563eb); background: var(--primary-bg, #eff6ff); }
-.aaex-item-date { font-size: 12px; color: var(--text-tertiary, #94a3b8); }
-.aaex-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
-.aaex-title { font-size: 16px; font-weight: 600; }
-.aaex-server-note { text-align:right; }
-.aaex-section-title { font-weight: 500; margin: 16px 0 8px; }
-.aaex-form { display: flex; flex-direction: column; gap: 12px; }
-@media (max-width: 1050px) { .aaex-stage-rail { grid-template-columns:1fr;gap:10px; }.aaex-stage-rail li::after { display:none; }.aaex-object-card,.aaex-request-grid,.aaex-layout { grid-template-columns:1fr; }.aaex-request-fields { grid-template-columns:1fr; }.aaex-request-fields > * { grid-column:auto !important; } }
-@media (max-width: 600px) { .aaex-object-card dl { grid-template-columns:1fr; } }
+.aaex-context { display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px; }
+.aaex-context .app-select { width:390px;max-width:100%; }
+.aaex-context > span,.aaex-note,.aaex-responsibility { color:var(--text-secondary,#64748b);font-size:13px;line-height:1.6; }
+.aaex-responsibility { margin-bottom:16px; }
+.aaex-responsibility summary { cursor:pointer; }
+.aaex-responsibility p { margin:8px 0; }
+.aaex-workspace { display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:20px;align-items:start; }
+.aaex-materials,.aaex-request-card,.aaex-log { min-width:0;background:var(--bg-card,#fff);border:1px solid var(--border-color,#dbe3ee);border-radius:8px;padding:16px; }
+.aaex-workspace header,.aaex-log header { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px; }
+.aaex-workspace header span { color:var(--text-secondary,#64748b);font-size:13px; }
+.aaex-workspace h2,.aaex-log h2 { margin:0;font-size:17px; }
+.aaex-form { display:flex;flex-direction:column;gap:14px; }
+.aaex-note { margin:10px 0 0; }
+.aaex-log { margin-top:20px; }
+.aaex-materials :deep(.dt__scroll) { max-height:370px;overflow:auto; }
+.aaex-materials :deep(.dt__th) { position:sticky;top:0;z-index:1;background:var(--fill-light,#f4f7fc); }
+.aaex-log :deep(.dt__td) { overflow-wrap:anywhere; }
+@media(max-width:1100px) { .aaex-workspace { grid-template-columns:minmax(0,1fr); }.aaex-materials :deep(.dt__scroll) { max-height:none; } }
+@media(max-width:600px) { .aaex-context { align-items:flex-start;flex-direction:column; }.aaex-context .app-select { width:100%; }.aaex-materials,.aaex-request-card,.aaex-log { padding:12px; }.aaex-materials :deep(table),.aaex-log :deep(table) { min-width:500px; } }
 </style>
