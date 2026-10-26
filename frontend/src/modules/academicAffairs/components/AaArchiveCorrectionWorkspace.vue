@@ -1,10 +1,10 @@
 <template>
   <section class="aacw" aria-label="归档后纠错工作区">
-    <section class="aacw-context" aria-label="归档后纠错约束">
+    <section v-if="activeTab === 'corrections'" class="aacw-context" aria-label="归档后纠错约束">
       <div>
         <span>归档后纠错 · 独立流程</span>
-        <h3>{{ batch.batchName }}</h3>
-        <p>原归档批次 {{ batch.batchId }} 与归档清单第 1 版永久保留；纠错只追加新正式记录和后继版本。</p>
+        <h3>归档后纠错办理</h3>
+        <p>原归档批次与归档清单第 1 版永久保留；纠错只追加新正式记录和后继版本。</p>
       </div>
       <ol>
         <li><b>1</b><span><strong>申请人提交</strong><small>冻结目标记录、原因与依据</small></span></li>
@@ -32,11 +32,9 @@
     <template v-if="!loading && activeTab === 'facts'">
       <div class="aacw-kpis">
         <div class="aacw-kpi"><span>归档清单当前版本</span><strong>{{ latestManifest ? `第 ${latestManifest.versionNo} 版` : '待核对' }}</strong></div>
-        <div class="aacw-kpi"><span>当前完整性校验值</span><strong class="mono">{{ shortHash(latestManifest?.hash) }}</strong></div>
+        <details class="aacw-hash"><summary>实施人员使用：完整性校验值</summary><span class="mono">{{ latestManifest?.hash || '尚未取得' }}</span></details>
         <div class="aacw-kpi"><span>已应用纠错</span><strong>{{ manifest?.appliedCorrections ?? '待核对' }}</strong></div>
         <div class="aacw-kpi"><span>完整性结论</span><strong :class="manifest?.ok ? 'ok' : 'bad'">{{ manifest ? (manifest.ok ? '完整' : '异常') : '未校验' }}</strong></div>
-      </div>
-      <div class="aacw-toolbar">
         <AppButton size="small" variant="ghost" :loading="verifyBusy" @click="verifyNow">校验完整性</AppButton>
       </div>
       <AppInlineAlert
@@ -54,6 +52,7 @@
       <DataTable v-else :columns="factColumns" :rows="items" row-key="domain">
         <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
         <template #cell-result="{ row }"><StatusTag :type="factType(row)" :label="factLabel(row)" dot /></template>
+        <template #cell-remark="{ row }">{{ businessText(row.remark) }}</template>
       </DataTable>
     </template>
 
@@ -286,7 +285,7 @@ export default {
       tabs: [
         { key: 'facts', label: '归档记录' },
         { key: 'corrections', label: '归档后纠错' },
-        { key: 'manifest', label: 'Manifest版本链' }
+        { key: 'manifest', label: '归档清单版本链' }
       ],
       activeTab: 'facts', loading: false, verifyBusy: false, busy: false,
       corrections: [], manifest: null,
@@ -296,7 +295,7 @@ export default {
       detailVisible: false, detailLoading: false, detail: null,
       approveConfirmVisible: false, rejectConfirmVisible: false,
       factColumns: [
-        { key: 'domain', title: '数据域' }, { key: 'recordCount', title: '记录数' },
+        { key: 'domain', title: '归档资料' }, { key: 'recordCount', title: '正式记录数' },
         { key: 'result', title: '归档状态' }, { key: 'remark', title: '备注' }
       ],
       correctionColumns: [
@@ -608,6 +607,8 @@ export default {
 </script>
 
 <style scoped>
+.aacw .aacw-hash { order:1;margin:0;font-size:12px; }
+
 /* A confirmation opened from the teleported modal drawer must stay above it. */
 .aacw :deep(.app-confirm-dialog__mask) {
   z-index: calc(var(--z-modal) + 1);
@@ -618,9 +619,9 @@ export default {
 .aacw-tab { border: 0; border-radius: 8px; background: transparent; padding: 8px 14px; white-space: nowrap; cursor: pointer; color: var(--text-secondary, #475569); font: inherit; }
 .aacw-tab.is-active { background: var(--surface-color, #fff); color: var(--primary-color, #2563eb); font-weight: 600; box-shadow: 0 1px 2px rgb(15 23 42 / 8%); }
 .aacw-tab:focus-visible { outline: 2px solid var(--primary-color, #2563eb); outline-offset: 2px; }
-.aacw-kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 14px 0 10px; }
-.aacw-kpi { min-width: 0; border: 1px solid var(--border-color, #e5e7eb); border-radius: 9px; padding: 12px; background: var(--surface-color, #fff); }
-.aacw-kpi span { display: block; color: var(--text-secondary, #64748b); font-size: 12px; margin-bottom: 5px; }
+.aacw-kpis { display:flex;align-items:center;flex-wrap:wrap;gap:12px 22px;margin:12px 0; }
+.aacw-kpi { display:flex;align-items:center;gap:8px;min-width:0; }
+.aacw-kpi span { display: block; color: var(--text-secondary, #64748b); font-size: 13px; margin-bottom: 0; }
 .aacw-kpi strong { display: block; overflow-wrap: anywhere; }
 .aacw-kpi .ok { color: var(--success-color, #15803d); }
 .aacw-kpi .bad { color: var(--danger-color, #dc2626); }

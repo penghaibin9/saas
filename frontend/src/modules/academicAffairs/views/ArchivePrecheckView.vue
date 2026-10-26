@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell
+  <ModulePageShell class="aapc-page"
     title="归档缺失提醒"
     :subtitle="isCollegeScope ? '只核对本院实时缺项；学校正式封存由校教务统筹' : '十三个数据域逐项核对；待处理与已阻断均不能封存，不适用项必须有正式依据'"
     :role-name="ctx.currentRole.roleName"
@@ -306,14 +306,19 @@ export default {
 </script>
 
 <style scoped>
-.aapc-toolbar { display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:16px; }
+.aapc-page { gap:10px; }
+.aapc-toolbar :deep(.app-form-item) { display:flex;align-items:center;gap:12px; }
+.aapc-toolbar :deep(.app-form-item__label) { flex-shrink:0;margin:0; }
+.aapc-toolbar :deep(.app-form-item__control) { min-width:0;flex:1; }
+
+.aapc-toolbar { display:flex;align-items:center;flex-wrap:wrap;gap:16px;margin-bottom:4px; }
 .aapc-toolbar .app-form-item { width:350px;max-width:100%;margin:0; }
 .aapc-toolbar > span,.aapc-note { color:var(--text-secondary,#64748b);font-size:13px; }
 .aapc-decision { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;border:1px solid #f5d599;border-radius:8px;background:#fffbef; }
 .aapc-decision.is-pass { background:#f0faf5;border-color:#b8dfca; }
 .aapc-decision h2 { font-size:16px;margin:0 0 5px; }
 .aapc-decision p { font-size:13px;line-height:1.6;margin:0; }
-.aapc-counts { display:flex;flex-wrap:wrap;gap:20px;margin:16px 0;font-size:14px; }
+.aapc-counts { display:flex;flex-wrap:wrap;gap:20px;margin:4px 0;font-size:14px; }
 .aapc-section,.aapc-passed { background:var(--bg-card,#fff);border:1px solid var(--border-color,#dbe3ee);border-radius:8px;overflow:hidden; }
 .aapc-section header { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;padding:14px 18px;background:var(--fill-light,#f4f7fc); }
 .aapc-section h3 { margin:0;font-size:16px; }

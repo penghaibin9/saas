@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell
+  <ModulePageShell class="aaex-page"
     title="归档导出"
     :subtitle="isCollegeScope ? '学校封存材料和下载记录由校教务统筹；本院事项请查看实时预检' : '从正式封存批次申请导出；文件、用途和下载回执全程留痕'"
     :role-name="ctx.currentRole.roleName"
@@ -286,10 +286,14 @@ export default {
 </script>
 
 <style scoped>
+.aaex-page { gap:10px; }
+.aaex-form :deep(.app-form-item) { margin-bottom:0; }
+.aaex-request-card :deep(.app-form-item__label) { margin-bottom:8px; }
+
 .aaex-context { display:flex;align-items:center;flex-wrap:wrap;gap:12px;margin-bottom:10px; }
 .aaex-context .app-select { width:390px;max-width:100%; }
 .aaex-context > span,.aaex-note,.aaex-responsibility { color:var(--text-secondary,#64748b);font-size:13px;line-height:1.6; }
-.aaex-responsibility { margin-bottom:16px; }
+.aaex-responsibility { margin-bottom:4px; }
 .aaex-responsibility summary { cursor:pointer; }
 .aaex-responsibility p { margin:8px 0; }
 .aaex-workspace { display:grid;grid-template-columns:minmax(0,2fr) minmax(280px,1fr);gap:20px;align-items:start; }
@@ -299,8 +303,9 @@ export default {
 .aaex-workspace h2,.aaex-log h2 { margin:0;font-size:17px; }
 .aaex-form { display:flex;flex-direction:column;gap:14px; }
 .aaex-note { margin:10px 0 0; }
-.aaex-log { margin-top:20px; }
-.aaex-materials :deep(.dt__scroll) { max-height:370px;overflow:auto; }
+.aaex-log { margin-top:8px; }
+.aaex-materials :deep(.dt__scroll) { max-height:250px;overflow:auto; }
+.aaex-materials :deep(.dt__table .dt__td) { padding:4px 12px; }
 .aaex-materials :deep(.dt__th) { position:sticky;top:0;z-index:1;background:var(--fill-light,#f4f7fc); }
 .aaex-log :deep(.dt__td) { overflow-wrap:anywhere; }
 @media(max-width:1100px) { .aaex-workspace { grid-template-columns:minmax(0,1fr); }.aaex-materials :deep(.dt__scroll) { max-height:none; } }

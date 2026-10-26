@@ -8,6 +8,10 @@
     @menu-select="onMenuSelect"
   >
     <div v-if="ctx" class="aa-business-area">
+      <AaSemesterPilotView v-if="isSemesterPilot && canManageArchive" />
+      <template v-if="!(isSemesterPilot && canManageArchive)">
+        <router-view v-if="ctx" :ctx="ctx" />
+      </template>
       <details v-if="isArchiveArea && canManageArchive" class="aa-ops-strip">
         <summary>归档检查工具</summary>
         <div>
@@ -17,10 +21,6 @@
         <button v-if="!isSemesterPilot" type="button" @click="openSemesterPilot">真实学期验收</button>
         <button v-else type="button" @click="closeSemesterPilot">返回教务归档</button>
       </details>
-      <AaSemesterPilotView v-if="isSemesterPilot && canManageArchive" />
-      <template v-if="!(isSemesterPilot && canManageArchive)">
-        <router-view v-if="ctx" :ctx="ctx" />
-      </template>
     </div>
     <ErrorState
       v-else-if="error"
@@ -154,7 +154,7 @@ export default {
 </script>
 
 <style scoped>
-.aa-ops-strip { margin: 0 0 14px; padding: 10px 12px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
+.aa-ops-strip { margin: 0 0 4px; padding: 4px 0; }
 .aa-ops-strip summary { color: var(--text-secondary); font-size: 13px; cursor: pointer; }
 .aa-ops-strip[open] > div { margin: 12px 0; }
 .aa-ops-strip > div { min-width: 0; display: grid; gap: 3px; }

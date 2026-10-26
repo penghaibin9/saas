@@ -218,6 +218,29 @@ test('真实模板无资格禁用发起、隐藏二审动作且展示原因，�
   assert.match(html, /申请人本人不能二次复核/); assert.match(html, /当前无学校纠错发起责任/)
   assert.match(html, /成绩：59/); assert.match(html, /成绩：65/); assert.match(html, /已登记 1 项证据引用/)
   assert.match(html, /<details><summary>实施人员使用/); assert.doesNotMatch(html, /<details open/)
-  assert.match(html, /Manifest版本链/)
+  assert.match(html, /归档清单版本链/)
+  assert.doesNotMatch(html, /Manifest版本链/)
   assert.doesNotMatch(html, /REJECTED|HIGH|supersedes/)
+})
+
+test('归档记录使用中文备注，完整性异常保留，纠错说明只在纠错页展示', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue', import.meta.url), 'utf8')
+  const render = new Function('Vue', compile(source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1], { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const { state } = instance()
+  state.activeTab = 'facts'; state.loading = false; state.detailVisible = false
+  state.manifest = { ok: false, reason: '校验依据不一致', versions: [] }
+  state.items = [{ domain: 'PROGRAM', remark: '方案无BLOCKER；HARD冲突0' }]
+  delete state.$route; delete state.$router; delete state.$emit
+  const app = Vue.createSSRApp({ render, setup: () => state, components: {
+    AppButton: { setup: (_, { slots }) => () => Vue.h('button', slots.default?.()) },
+    AppInlineAlert: { props: ['description'], setup: props => () => Vue.h('p', props.description) },
+    DataTable: { props: ['rows'], setup: (props, { slots }) => () => Vue.h('div', props.rows.map(row => slots['cell-remark']({ row }))) },
+    AppDrawer: { render: () => null }, AppConfirmDialog: { render: () => null },
+    LoadingState: { render: () => null }, EmptyState: { render: () => null }, StatusTag: { render: () => null }
+  } })
+  const html = await renderToString(app)
+  assert.match(html, /方案无阻断项；严重冲突0/)
+  assert.match(html, /校验未通过：校验依据不一致/)
+  assert.doesNotMatch(html, /BLOCKER|HARD|归档后纠错 · 独立流程/)
+  assert.match(html, /实施人员使用：完整性校验值/)
 })

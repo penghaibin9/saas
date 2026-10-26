@@ -1,5 +1,5 @@
 <template>
-  <ModulePageShell
+  <ModulePageShell class="aaar-page"
     :title="pageTitle"
     :subtitle="pageSubtitle"
     :role-name="ctx.currentRole.roleName"
@@ -58,13 +58,15 @@
             <div><strong>本院归档准备</strong><small>进入该学期的本院实时预检，核对本院缺项与责任岗位</small></div>
             <AppButton variant="primary" :disabled="!current.termId" @click="goCollegePrecheck">查看本院实时预检</AppButton>
           </div>
-          <ol v-else class="aaar-stage-rail" aria-label="归档办理阶段">
+          <details v-else class="aaar-flow" :class="{ 'is-final': ['ARCHIVED','CANCELLED'].includes(current.status) }" :open="!['ARCHIVED','CANCELLED'].includes(current.status)"><summary>查看归档办理阶段</summary>
+          <ol class="aaar-stage-rail" aria-label="归档办理阶段">
             <li class="is-done"><b>✓</b><span><strong>建立批次</strong><small>学期对象已锁定</small></span></li>
             <li :class="{ 'is-done': items.length === 13, 'is-current': !items.length }"><b>{{ items.length === 13 ? '✓' : '2' }}</b><span><strong>十三域检查</strong><small>{{ items.length === 13 ? '已读取正式结论' : '等待检查' }}</small></span></li>
             <li :class="{ 'is-done': current.status === 'READY' || current.status === 'ARCHIVED', 'is-current': current.status === 'MISSING_ITEMS' }"><b>{{ current.status === 'READY' || current.status === 'ARCHIVED' ? '✓' : '3' }}</b><span><strong>缺失处理</strong><small>{{ current.status === 'MISSING_ITEMS' ? '当前责任阶段' : '按结果解锁' }}</small></span></li>
             <li :class="{ 'is-done': current.status === 'ARCHIVED', 'is-current': current.status === 'READY' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '4' }}</b><span><strong>正式封存</strong><small>{{ current.status === 'READY' ? '等待确认' : '按状态解锁' }}</small></span></li>
             <li :class="{ 'is-done': current.status === 'ARCHIVED' }"><b>{{ current.status === 'ARCHIVED' ? '✓' : '5' }}</b><span><strong>受控纠错</strong><small>{{ current.status === 'ARCHIVED' ? '普通解冻关闭' : '封存后启用' }}</small></span></li>
           </ol>
+          </details>
           <AppInlineAlert v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" type="warning" :description="confirmReason" />
           <AppButton v-if="!isCollegeScope && current.status === 'READY' && !canConfirmArchive" size="small" :disabled="actionBusy || !!pendingCommand" @click="refreshCurrentFromServer">重新核对归档权限</AppButton>
           <div v-if="!isCollegeScope || current.archivedAt" class="aaar-summary">
@@ -102,6 +104,7 @@
             <DataTable v-else :columns="itemColumns" :rows="items" row-key="domain">
               <template #cell-domain="{ row }">{{ row.domainLabel }}</template>
               <template #cell-result="{ row }"><StatusTag :type="itemType(row)" :label="itemLabel(row)" dot /></template>
+              <template #cell-remark="{ row }">{{ archiveText(row.remark) }}</template>
             </DataTable>
           </template>
           <div v-if="canManageArchive" class="aaar-head">
@@ -204,6 +207,7 @@ export default {
   created(){this.syncRoute()},
   beforeUnmount(){this.alive=false;this.clearPrivate()},
  methods: {
+    archiveText: academicFlowText,
     capture(){return {scope:this.scope,identity:this.identity,route:this.$route.fullPath}},isCurrent(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath},
     changeTerm(value) {
       if (this.actionBusy || this.pendingCommand) return
@@ -398,7 +402,14 @@ export default {
 </script>
 
 <style scoped>
-.aaar-context { display:flex;align-items:center;flex-wrap:wrap;gap:20px;margin-bottom:16px; }
+.aaar-page { gap:10px; }
+.aaar-context :deep(.app-form-item) { display:flex;align-items:center;gap:12px; }
+.aaar-context :deep(.app-form-item__label) { flex-shrink:0;margin:0; }
+.aaar-context :deep(.app-form-item__control) { min-width:0;flex:1; }
+.aaar-flow > summary { cursor:pointer;color:var(--text-secondary,#64748b);font-size:13px; }
+.aaar-flow { margin:10px 0; }
+
+.aaar-context { display:flex;align-items:center;flex-wrap:wrap;gap:20px;margin-bottom:4px; }
 .aaar-context .app-form-item { width:350px;max-width:100%;margin:0; }
 .aaar-context > span { font-size:13px;color:var(--text-secondary,#64748b); }
 .aaar-layout { display:grid;grid-template-columns:270px minmax(0,1fr);border:1px solid var(--border-color,#dbe3ee);border-radius:8px;background:var(--bg-card,#fff); }
@@ -415,7 +426,8 @@ export default {
 .aaar-item__name strong { font-size:14px;line-height:1.6; }
 .aaar-item__name small,.aaar-item__facts small { font-size:12px;color:var(--text-secondary,#64748b); }
 .aaar-item__facts { display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px; }
-.aaar-detail { padding:20px; }
+.aaar-detail { display:flex;flex-direction:column;padding:20px; }
+.aaar-flow.is-final { order:2; }
 .aaar-object-card { margin-bottom:16px; }
 .aaar-title { font-size:20px;font-weight:650;line-height:1.5;overflow-wrap:anywhere; }
 .aaar-object-main p { font-size:13px;color:var(--text-secondary,#64748b); }
