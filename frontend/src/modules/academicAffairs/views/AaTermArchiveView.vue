@@ -109,7 +109,7 @@ export default {
       if (res.code === 0) {
         this.rows = res.data || []
       } else {
-        this.error = res.message
+        this.error = res
       }
       this.loading = false
       this.academicFlow?.restorePosition?.()

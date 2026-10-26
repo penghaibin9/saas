@@ -3,9 +3,9 @@
     <div class="aa-copy-toolbar">
       <label class="aa-copy-field">
         来源学期
-        <AppSelect v-model="sourceTermId" :options="sourceOptions" placeholder="选择要参考的历史学期" />
+        <AppSelect v-model="sourceTermId" :options="sourceOptions" :disabled="disabled || busy" placeholder="选择要参考的历史学期" />
       </label>
-      <AppButton variant="primary" :disabled="disabled || !sourceTermId" :loading="loading" @click="loadPreview">
+      <AppButton variant="primary" :disabled="disabled || applying || !sourceTermId" :loading="loading" @click="loadPreview">
         预览复制结果
       </AppButton>
     </div>
@@ -44,12 +44,12 @@
       </div>
 
       <label v-if="preview.reviewCount" class="aa-copy-confirm">
-        <input v-model="reviewConfirmed" type="checkbox" />
+        <input v-model="reviewConfirmed" type="checkbox" :disabled="disabled || busy" />
         我已逐项核对节假日 / 调休日历，确认目标日期无误
       </label>
 
       <div class="aa-copy-actions">
-        <AppButton variant="ghost" :disabled="applying" @click="loadPreview">刷新权威预览</AppButton>
+        <AppButton variant="ghost" :disabled="disabled || busy" @click="loadPreview">刷新权威预览</AppButton>
         <AppButton
           variant="primary"
           :loading="applying"
@@ -78,10 +78,12 @@ export default {
   components: { StatusTag, AppButton, AppInlineAlert, AppSectionCard, AppSelect },
   props: {
     terms: { type: Array, default: () => [] },
+    ctx: { type: Object, required: true },
     targetTermId: { type: [String, Number], default: '' },
     disabled: { type: Boolean, default: false }
   },
-  emits: ['applied'],
+  inject: { academicFlow: { default: null } },
+  emits: ['applied', 'busy'],
   data() {
     return {
       sourceTermId: '',
@@ -90,10 +92,15 @@ export default {
       applying: false,
       reviewConfirmed: false,
       error: '',
-      previewSeq: 0
+      previewSeq: 0,
+      previewContext: '',
+      disposed: false
     }
   },
   computed: {
+    contextKey() { return JSON.stringify([this.ctx, this.academicFlow?.identity?.() || '']) },
+    busy() { return this.loading || this.applying },
+    previewOwnerKey() { return JSON.stringify([this.contextKey, String(this.sourceTermId), String(this.targetTermId)]) },
     sourceOptions() {
       return this.terms
         .filter((term) => String(term.termId) !== String(this.targetTermId))
@@ -103,88 +110,107 @@ export default {
         }))
     },
     canApply() {
-      if (!this.preview || this.applying || this.disabled) return false
+      if (!this.preview || this.busy || this.disabled || this.disposed || this.previewContext !== this.previewOwnerKey) return false
       if (!this.preview.canConfirm || this.preview.blockedCount || this.preview.targetExistingCount) return false
       return !this.preview.reviewCount || this.reviewConfirmed
     }
   },
   watch: {
-    sourceTermId() {
-      this.previewSeq += 1
-      this.loading = false
-      this.preview = null
-      this.reviewConfirmed = false
-      this.error = ''
-    },
+    contextKey: { flush: 'sync', handler() { this.invalidatePreview() } },
+    busy: { immediate: true, flush: 'sync', handler(value) { this.$emit('busy', value) } },
+    sourceTermId() { this.invalidatePreview() },
     targetTermId: {
       immediate: true,
       handler() {
-        this.previewSeq += 1
-        this.loading = false
-        this.preview = null
-        this.reviewConfirmed = false
-        this.error = ''
+        this.invalidatePreview()
         if (!this.sourceOptions.some((item) => String(item.value) === String(this.sourceTermId))) {
           this.sourceTermId = this.sourceOptions[0]?.value || ''
         }
       }
     }
   },
+  beforeUnmount() { this.disposed = true; this.invalidatePreview(); this.$emit('busy', false) },
   methods: {
+    invalidatePreview() {
+      this.previewSeq++
+      this.loading = false
+      this.applying = false
+      this.preview = null
+      this.previewContext = ''
+      this.reviewConfirmed = false
+      this.error = ''
+    },
+    beginRequest() {
+      const seq = ++this.previewSeq, source = String(this.sourceTermId), target = String(this.targetTermId), context = this.contextKey
+      return () => !this.disposed && seq === this.previewSeq && source === String(this.sourceTermId) && target === String(this.targetTermId) && context === this.contextKey
+    },
     eventTypeLabel(type) { return EVENT_TYPES[type] || (type ? '类型待确认' : '—') },
     statusLabel(status) { return { READY: '可复制', REVIEW: '需复核', BLOCKED: '阻断' }[status] || (status ? '状态待确认' : '—') },
     statusTone(status) { return { READY: 'success', REVIEW: 'warning', BLOCKED: 'danger' }[status] || 'default' },
     async loadPreview() {
-      if (!this.targetTermId || !this.sourceTermId || this.loading) return
+      if (!this.targetTermId || !this.sourceTermId || this.disabled || this.busy || this.disposed) return
       const targetTermId = String(this.targetTermId)
       const sourceTermId = String(this.sourceTermId)
-      const seq = ++this.previewSeq
+      const current = this.beginRequest()
       this.loading = true
       this.error = ''
       this.reviewConfirmed = false
-      const res = await termCalendarConvenienceApi.previewCalendarCopy(targetTermId, sourceTermId)
-      if (seq !== this.previewSeq || targetTermId !== String(this.targetTermId) || sourceTermId !== String(this.sourceTermId)) return
-      this.loading = false
-      if (res.code === 0) {
-        this.preview = res.data
-      } else {
-        this.preview = null
-        this.error = res.message || '复制预览失败'
-      }
+      try {
+        const res = await termCalendarConvenienceApi.previewCalendarCopy(targetTermId, sourceTermId)
+        if (!current()) return
+        if (res.code === 0) {
+          this.preview = res.data
+          this.previewContext = this.previewOwnerKey
+        } else {
+          this.preview = null
+          this.previewContext = ''
+          this.error = res.message || '复制预览失败'
+        }
+      } catch {
+        if (current()) { this.preview = null; this.previewContext = ''; this.error = '复制预览失败，请重试' }
+      } finally { if (current()) this.loading = false }
     },
     async applyCopy() {
       if (!this.canApply) return
+      const current = this.beginRequest()
       const targetTermId = this.targetTermId
       const rows = [...this.preview.items]
       this.applying = true
       this.error = ''
       let applied = 0
-      for (const row of rows) {
-        if (!['READY', 'REVIEW'].includes(row.status)) continue
-        const body = {
-          eventType: row.eventType,
-          startDate: row.startDate,
-          endDate: row.eventType === 'SWAP' ? undefined : (row.endDate || row.startDate),
-          swapToDate: row.eventType === 'SWAP' ? row.swapToDate : undefined,
-          remark: row.remark || undefined
+      try {
+        for (const row of rows) {
+          if (!current()) return
+          if (!['READY', 'REVIEW'].includes(row.status)) continue
+          const body = {
+            eventType: row.eventType,
+            startDate: row.startDate,
+            endDate: row.eventType === 'SWAP' ? undefined : (row.endDate || row.startDate),
+            swapToDate: row.eventType === 'SWAP' ? row.swapToDate : undefined,
+            remark: row.remark || undefined
+          }
+          const res = await academicAffairsApi.addCalendarEvent(targetTermId, body)
+          if (!current()) return
+          if (res.code !== 0) {
+            this.previewSeq += 1
+            this.preview = null
+            this.reviewConfirmed = false
+            const unknown = res.code === 503002 && (res.httpStatus === undefined || res.httpStatus === null)
+            this.error = unknown
+              ? `已复制 ${applied} 项（仅计已收到成功回执的项目）；第 ${applied + 1} 项结果尚未确认。请先刷新预览并核对校历与操作记录，不要自动重发本次请求。`
+              : `已复制 ${applied} 项；第 ${applied + 1} 项被系统拒绝：${res.message || '发生冲突'}。请刷新预览后再处理。`
+            this.applying = false
+            this.$emit('applied', { applied, partial: true })
+            return
+          }
+          applied += 1
         }
-        const res = await academicAffairsApi.addCalendarEvent(targetTermId, body)
-        if (res.code !== 0) {
-          this.previewSeq += 1
-          this.preview = null
-          this.reviewConfirmed = false
-          this.error = `已复制 ${applied} 项；第 ${applied + 1} 项被系统拒绝：${res.message || '发生冲突'}。请刷新预览后再处理。`
-          this.applying = false
-          this.$emit('applied', { applied, partial: true })
-          return
-        }
-        applied += 1
-      }
-      this.applying = false
-      toast.success(`已复制 ${applied} 项校历事件`)
-      this.$emit('applied', { applied, partial: false })
-      this.preview = null
-      this.reviewConfirmed = false
+        this.applying = false
+        toast.success(`已复制 ${applied} 项校历事件`)
+        this.preview = null
+        this.reviewConfirmed = false
+        this.$emit('applied', { applied, partial: false })
+      } finally { if (current()) this.applying = false }
     }
   }
 }

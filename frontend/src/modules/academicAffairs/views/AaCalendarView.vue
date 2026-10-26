@@ -13,10 +13,10 @@
     </template>
     <div class="mp-stack">
       <div class="aa-filter">
-        <label class="aa-filter__item">
-          学期
-          <AppTermEntityPicker v-model="termId" :options="termOptions" :clearable="false" :disabled="busy || termsLoading" @change="onTermChange" />
-        </label>
+        <div class="aa-filter__item" role="group" aria-labelledby="aa-calendar-term-label" data-dirty-ignore="true">
+          <span id="aa-calendar-term-label">学期</span>
+          <AppTermEntityPicker :model-value="termId" :options="termOptions" :clearable="false" :disabled="busy || termsLoading" @update:model-value="onTermChange" />
+        </div>
       </div>
 
       <AppInlineAlert
@@ -57,11 +57,12 @@
 
           <details v-if="tab === 'events' && canEditCalendar && !isLocked" class="aa-calendar-copy">
             <summary>从历史学期复制校历</summary>
-            <AaCalendarCopyPanel
+            <AaCalendarCopyPanel ref="calendarCopyPanel"
+            :ctx="ctx"
             :terms="terms"
             :target-term-id="termId"
             :disabled="!canEditEvents || adding || saving || deleting || publishing"
-            @applied="loadEvents"
+            @applied="onCopyApplied"
             @busy="copying = $event"
             />
           </details>
@@ -70,23 +71,23 @@
             <fieldset class="aa-cal-form" :disabled="busy">
               <label v-if="tab === 'events'" class="aa-cal-form__item">
                 类型
-                <AppSelect v-model="draft.eventType" :options="eventTypeOptions" />
+                <AppSelect :model-value="draft.eventType" @update:model-value="updateEventField('create', 'eventType', $event)" :options="eventTypeOptions" />
               </label>
               <label class="aa-cal-form__item">
                 {{ tab === 'makeup' ? '原停课日期' : '开始日期' }}
-                <AppDatePicker v-model="draft.startDate" />
+                <AppDatePicker :model-value="draft.startDate" @update:model-value="updateEventField('create', 'startDate', $event)" />
               </label>
               <label v-if="tab !== 'makeup' && draft.eventType !== 'SWAP'" class="aa-cal-form__item">
                 结束日期
-                <AppDatePicker v-model="draft.endDate" />
+                <AppDatePicker :model-value="draft.endDate" @update:model-value="updateEventField('create', 'endDate', $event)" />
               </label>
               <label v-if="tab === 'makeup' || draft.eventType === 'SWAP'" class="aa-cal-form__item">
                 调至日期（补课日）
-                <AppDatePicker v-model="draft.swapToDate" />
+                <AppDatePicker :model-value="draft.swapToDate" @update:model-value="updateEventField('create', 'swapToDate', $event)" />
               </label>
               <label class="aa-cal-form__item aa-cal-form__item--grow">
                 备注
-                <AppTextInput v-model="draft.remark" placeholder="选填，如 国庆假期 / 国庆调休" :maxlength="60" />
+                <AppTextInput :model-value="draft.remark" @update:model-value="updateEventField('create', 'remark', $event)" placeholder="选填，如 国庆假期 / 国庆调休" :maxlength="60" />
               </label>
               <AppButton variant="primary" :disabled="!canEditEvents || busy" :loading="adding" @click="addEvent">添加</AppButton>
             </fieldset>
@@ -199,19 +200,19 @@
     <AppDrawer :visible="editVisible" title="编辑校历事件" mode="modal" size="large" @close="editVisible = false">
       <fieldset class="aa-cal-form aa-cal-form--drawer" v-if="editForm" :disabled="saving">
         <AppFormItem label="类型" v-if="tab === 'events'">
-          <AppSelect v-model="editForm.eventType" :options="eventTypeOptions" />
+          <AppSelect :model-value="editForm.eventType" @update:model-value="updateEventField('edit', 'eventType', $event)" :options="eventTypeOptions" />
         </AppFormItem>
         <AppFormItem :label="editForm.eventType === 'SWAP' ? '原停课日期' : '开始日期'" required>
-          <AppDatePicker v-model="editForm.startDate" />
+          <AppDatePicker :model-value="editForm.startDate" @update:model-value="updateEventField('edit', 'startDate', $event)" />
         </AppFormItem>
         <AppFormItem label="结束日期" v-if="editForm.eventType !== 'SWAP'">
-          <AppDatePicker v-model="editForm.endDate" />
+          <AppDatePicker :model-value="editForm.endDate" @update:model-value="updateEventField('edit', 'endDate', $event)" />
         </AppFormItem>
         <AppFormItem label="调至日期（补课日）" v-if="editForm.eventType === 'SWAP'" required>
-          <AppDatePicker v-model="editForm.swapToDate" />
+          <AppDatePicker :model-value="editForm.swapToDate" @update:model-value="updateEventField('edit', 'swapToDate', $event)" />
         </AppFormItem>
         <AppFormItem label="备注">
-          <AppTextInput v-model="editForm.remark" :maxlength="60" />
+          <AppTextInput :model-value="editForm.remark" @update:model-value="updateEventField('edit', 'remark', $event)" :maxlength="60" />
         </AppFormItem>
         <AppInlineAlert v-if="editError" type="danger" :description="editError" />
       </fieldset>
@@ -221,6 +222,11 @@
       </template>
     </AppDrawer>
 
+    <AppConfirmDialog v-model:visible="eventSwitchVisible" title="放弃未保存的校历修改？"
+                      message="当前事件还有未保存的修改。放弃这些修改后，才能编辑另一个校历事件。"
+                      confirm-text="放弃修改并切换" cancel-text="继续编辑原事件" type="warning"
+                      :submitting="busy" :confirm-disabled="disposed || !canEditEvents"
+                      @confirm="confirmEventSwitch" @cancel="cancelEventSwitch" />
     <AppConfirmDialog v-model:visible="confirmVisible" title="删除校历事件"
                       message="删除后，该安排将从校历移除。确认删除？" type="danger" :submitting="deleting" @confirm="doDelete" />
     <AppConfirmDialog v-model:visible="publishVisible" title="发布校历"
@@ -246,6 +252,7 @@ import { loadAcademicTermCatalog } from '@/modules/academicAffairs/pickerAdapter
 import { toast } from '@/utils/toast'
 import { matchPermission } from '@/config/navPlan'
 import { currentUserFromToken } from '@/services/http/client'
+import { systemConfirm } from '@/services/systemDialog'
 
 const EVENT_TYPES = { TEACHING: '教学', EXAM: '考试', INTERNSHIP: '实习', HOLIDAY: '节假日', SWAP: '补课日' }
 const TYPE_COLOR = { TEACHING: 'primary', EXAM: 'danger', INTERNSHIP: 'warning', HOLIDAY: 'success', SWAP: 'default' }
@@ -285,7 +292,7 @@ export default {
       eventRequestVersion: 0, weekRequestVersion: 0, currentRequestVersion: 0,
       publishReviewVersion: 0, publishLoading: false, publishReadError: '', publishEvidence: null,
       pendingPublish: null, publishReceiptStorageKey, publishReceipts: readCalendarReceipts(publishReceiptStorageKey),
-      copying: false, deleting: false, publishVisible: false, createVisible: false, disposed: false, catalogVersion: 0,
+      copying: false, deleting: false, publishVisible: false, createVisible: false, disposed: false, releaseDirtyConfirmation: null, catalogVersion: 0,
       terms: [],
       termId: '',
       currentContext: null,
@@ -306,7 +313,8 @@ export default {
       formError: '',
       draft: { eventType: 'TEACHING', startDate: '', endDate: '', swapToDate: '', remark: '' },
       editVisible: false,
-      editForm: null,
+      editForm: null, editBaseline: null, editOwnerKey: '', editIdentityKey: '', draftBaseline: null, eventWriteVersion: 0,
+      eventSwitchVisible: false, pendingEventSwitch: null,
       editError: '',
       saving: false,
       confirmVisible: false,
@@ -319,6 +327,8 @@ export default {
   },
   computed: {
     contextKey() { return JSON.stringify([this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns]) },
+    eventEditorIdentityKey() { return JSON.stringify(this.academicFlow?.identity?.() || null) },
+    eventSwitchContextKey() { return JSON.stringify([this.contextKey, this.eventEditorIdentityKey, String(this.termId), this.tab]) },
     busy() { return this.adding || this.saving || this.deleting || this.publishing || this.copying },
     canEditCalendar() { return this.hasPermission('academicAffairs.calendar.manage') },
     canEditEvents() { return this.canEditCalendar && this.selectedTerm?.status === 'DRAFT' && !this.termsLoading && !this.catalogError },
@@ -430,7 +440,19 @@ export default {
     this.resetDraft()
     this.refreshTermCatalog()
   },
+  mounted() {
+    const guard = window.__SAAS_DIRTY_FORM_GUARD__
+    if (!guard?.registerConfirmation) return
+    this.releaseDirtyConfirmation = guard.registerConfirmation(async (message) => {
+      const owner = JSON.stringify([this.disposed, this.contextKey, this.academicFlow?.identity?.() || '', String(this.termId), this.tab]), sourceFullPath = this.$route?.fullPath
+      const accepted = await systemConfirm({ title: '确认离开当前页面', message, confirmText: '放弃修改并离开', type: 'danger' })
+      if (accepted !== true || this.$route?.fullPath !== sourceFullPath) return accepted
+      return owner === JSON.stringify([this.disposed, this.contextKey, this.academicFlow?.identity?.() || '', String(this.termId), this.tab]) ? accepted : false
+    })
+  },
   watch: {
+    eventSwitchContextKey: { flush: 'sync', handler() { this.invalidateEventSwitch() } },
+    canEditEvents: { flush: 'sync', handler(allowed) { if (!allowed) this.invalidateEventSwitch() } },
     contextKey() {
       this.catalogVersion++; this.currentRequestVersion++; this.eventRequestVersion++; this.weekRequestVersion++
       this.invalidatePublishReview()
@@ -439,21 +461,16 @@ export default {
       this.terms = []; this.events = []; this.weekData = null
       this.refreshTermCatalog()
     },
-    '$route.query.tab'(key) { this.switchTab(this.tabs.some(t => t.key === key) ? key : 'events') },
-    '$route.query.termId'(id) {
-      if (!this.busy && String(id || '') !== String(this.termId || '')) {
-        if (typeof id !== 'string' || !this.terms.some(t => String(t.termId) === id)) {
-          this.invalidatePublishReview()
-          this.termId = ''; this.events = []; this.weekData = null
-          this.eventRequestVersion++; this.weekRequestVersion++
-          this.catalogError = '入口指定的学期不可用，请重新选择学期。'; return
-        }
-        this.termId = id; this.onTermChange()
-      }
-    }
+    '$route.query.tab'(key) { this.applyRouteSelection(this.$route.query.termId ?? this.termId, key) },
+    '$route.query.termId'(id) { if (!this.busy) this.applyRouteSelection(id, this.$route.query.tab || this.tab) }
   },
   beforeRouteUpdate(to, from, next) { if (this.busy) { toast.warning('正在保存校历，请稍候再切换'); next(false) } else next() },
-  beforeUnmount() { this.disposed = true; this.catalogVersion++; this.currentRequestVersion++; this.eventRequestVersion++; this.weekRequestVersion++; this.invalidatePublishReview() },
+  beforeRouteLeave(to, from, next) { if (this.busy) { toast.warning('正在保存校历，请稍候再离开'); next(false) } else next() },
+  beforeUnmount() {
+    this.disposed = true; this.invalidateEventSwitch(); this.catalogVersion++; this.currentRequestVersion++; this.eventRequestVersion++; this.weekRequestVersion++; this.invalidatePublishReview()
+    this.releaseDirtyConfirmation?.()
+    this.releaseDirtyConfirmation = null
+  },
   methods: {
     weekdayLabel(value) { const day = new Date(`${String(value || '').slice(0, 10)}T00:00:00Z`).getUTCDay(); return ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][day] || '待核对' },
     storePublishReceipt(termId, receipt) {
@@ -463,7 +480,7 @@ export default {
     termLabel(term) { return term?.termName || `${term?.yearCode || '学年待确认'} 第 ${term?.termNo || '—'} 学期` },
     selectPublishTerm(term) {
       if (this.busy || String(term.termId) === String(this.termId)) return
-      this.termId = String(term.termId); this.onTermChange()
+      return this.onTermChange(String(term.termId))
     },
     openPublishSource(path, tab) {
       const returnToken = this.academicFlow?.captureReturn()
@@ -504,19 +521,64 @@ export default {
       }
       this.currentLoading = false
     },
+    eventSignature(form) {
+      return JSON.stringify([String(form?.eventId || ''), form?.eventType || '', ...['startDate', 'endDate', 'swapToDate'].map(key => String(form?.[key] || '').slice(0, 10)), form?.remark || ''])
+    },
+    normalizedEvent(row) {
+      return { eventId: row.eventId, eventType: row.eventType, startDate: String(row.startDate || '').slice(0, 10), endDate: String(row.endDate || '').slice(0, 10), swapToDate: row.swapToDate && row.swapToDate !== '—' ? String(row.swapToDate).slice(0, 10) : '', remark: row.remark || '' }
+    },
+    updateEventField(editor, field, value) {
+      if (this.busy || !this.canEditEvents || !['eventType', 'startDate', 'endDate', 'swapToDate', 'remark'].includes(field)) return
+      const form = editor === 'create' ? this.draft : editor === 'edit' ? this.editForm : null
+      if (!form || form[field] === value) return
+      form[field] = value
+      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty?.()
+    },
+    retainOtherDraftProtection() {
+      const copy = this.$refs?.calendarCopyPanel
+      const pending = this.eventSignature(this.draft) !== this.draftBaseline || (this.editForm && this.eventSignature(this.editForm) !== this.editBaseline) || copy?.preview || copy?.reviewConfirmed || copy?.loading || copy?.applying
+      if (pending) window.__SAAS_DIRTY_FORM_GUARD__?.markDirty?.()
+      else window.__SAAS_DIRTY_FORM_GUARD__?.markSaved?.()
+    },
+    onCopyApplied(result) {
+      if (Number.isInteger(result?.applied) && result.applied > 0) this.retainOtherDraftProtection()
+      return this.loadEvents()
+    },
+    validEventAcknowledgement(data, termId, body, eventId = '') {
+      if (!data?.eventId || String(data.termId) !== String(termId) || (eventId && String(data.eventId) !== String(eventId)) || !Number.isInteger(data.version) || data.version < 0) return false
+      const day = value => String(value || '').slice(0, 10)
+      const swap = body.eventType === 'SWAP'
+      return data.eventType === body.eventType && day(data.startDate) === day(body.startDate) && day(data.endDate) === (swap ? '' : day(body.endDate || body.startDate)) && day(data.swapToDate) === (swap ? day(body.swapToDate) : '') && (data.remark || '') === (body.remark || '')
+    },
     resetDraft() {
       const fixedType = TAB_EVENT_TYPE[this.tab]
       this.draft = { eventType: fixedType || 'TEACHING', startDate: '', endDate: '', swapToDate: '', remark: '' }
+      this.draftBaseline = this.eventSignature(this.draft)
       this.formError = ''
     },
+    async requestSelection(termId, tab) {
+      if (this.busy) return
+      try {
+        await this.$router.replace({ query: { ...this.$route.query, ...(termId ? { termId: String(termId) } : {}), tab } })
+      } catch { toast.warning('页面切换未完成，未保存的输入已保留') }
+    },
     switchTab(key) {
-      if (this.tab === key || this.busy) return
+      if (this.tab === key || this.busy || !this.tabs.some(tab => tab.key === key)) return
+      return this.requestSelection(this.termId, key)
+    },
+    applyRouteSelection(id, key) {
+      const tab = this.tabs.some(item => item.key === key) ? key : 'events'
+      const termId = typeof id === 'string' && this.terms.some(term => String(term.termId) === id) ? id : ''
+      if (String(this.termId) === termId && this.tab === tab) { this.syncQuery(); return }
+      this.invalidateEventSwitch()
       this.invalidatePublishReview()
-      this.tab = key
-      this.createVisible = false
-      this.syncQuery()
-      this.resetDraft()
-      this.loadForTab()
+      this.termId = termId; this.tab = tab
+      this.catalogError = termId ? '' : '入口指定的学期不可用，请重新选择学期。'
+      this.createVisible = false; this.editVisible = false; this.editForm = null; this.editBaseline = null; this.editOwnerKey = ''; this.editIdentityKey = ''
+      this.confirmVisible = false; this.pendingDelete = null
+      this.eventRequestVersion++; this.weekRequestVersion++
+      this.events = []; this.weekData = null
+      this.resetDraft(); this.syncQuery(); this.loadForTab()
     },
     async refreshTermCatalog() {
       const version = ++this.catalogVersion
@@ -548,15 +610,10 @@ export default {
       this.termsLoading = false
       if (['publish', 'archive'].includes(this.tab)) this.academicFlow?.restorePosition?.()
     },
-    onTermChange() {
-      this.invalidatePublishReview()
-      this.catalogError = ''
-      this.createVisible = false
-      this.eventRequestVersion++; this.weekRequestVersion++
-      this.events = []; this.weekData = null
-      this.resetDraft(); this.editVisible = false; this.confirmVisible = false; this.publishVisible = false
-      this.syncQuery()
-      this.loadForTab()
+    onTermChange(value) {
+      const id = String(value ?? '')
+      if (this.busy || id === String(this.termId) || !this.terms.some(term => String(term.termId) === id)) return
+      return this.requestSelection(id, this.tab)
     },
     syncQuery() {
       if (this.termId && (String(this.$route.query.termId) !== String(this.termId) || this.$route.query.tab !== this.tab)) {
@@ -580,7 +637,7 @@ export default {
       if (res.code === 0) {
         this.events = res.data || []
       } else {
-        this.error = res.message
+        this.error = res
       }
       this.eventsLoading = false
       this.academicFlow?.restorePosition?.()
@@ -607,23 +664,71 @@ export default {
         swapToDate: eventType === 'SWAP' ? this.draft.swapToDate : undefined,
         remark: this.draft.remark || undefined
       }
-      const res = await academicAffairsApi.addCalendarEvent(this.termId, body)
-      this.adding = false
-      if (res.code === 0) {
-        toast.success('已添加')
-        this.createVisible = false
-        this.resetDraft()
-        this.loadEvents()
-      } else {
-        this.formError = res.message || '添加失败'
-      }
+      const termId = this.termId, context = this.contextKey, tab = this.tab, signature = this.eventSignature(this.draft), ticket = ++this.eventWriteVersion
+      const current = () => !this.disposed && ticket === this.eventWriteVersion && context === this.contextKey && String(termId) === String(this.termId) && tab === this.tab && signature === this.eventSignature(this.draft)
+      try {
+        const res = await academicAffairsApi.addCalendarEvent(termId, body)
+        if (!current()) return
+        if (res.code === 0 && this.validEventAcknowledgement(res.data, termId, body)) {
+          toast.success('已添加')
+          this.createVisible = false
+          this.resetDraft()
+          this.retainOtherDraftProtection()
+          this.loadEvents()
+        } else {
+          this.formError = res.code !== 0 ? res.message || '添加失败' : '保存回执不完整，请核对校历后重试'
+        }
+      } catch { if (current()) this.formError = '添加失败，未保存的输入已保留' }
+      finally { if (ticket === this.eventWriteVersion) this.adding = false }
     },
-    openEdit(row) {
-      if (this.busy || !this.canEditEvents) return
-      this.editForm = { eventId: row.eventId, eventType: row.eventType, startDate: row.startDate ? row.startDate.slice(0, 10) : '',
-        endDate: row.endDate ? row.endDate.slice(0, 10) : '', swapToDate: row.swapToDate && row.swapToDate !== '—' ? row.swapToDate.slice(0, 10) : '', remark: row.remark || '' }
+    invalidateEventSwitch() { this.eventSwitchVisible = false; this.pendingEventSwitch = null },
+    adoptEventEditor(row) {
+      this.editForm = this.normalizedEvent(row)
+      this.editBaseline = this.eventSignature(this.editForm)
+      this.editOwnerKey = JSON.stringify([this.contextKey, String(this.termId)])
+      this.editIdentityKey = this.eventEditorIdentityKey
       this.editError = ''
       this.editVisible = true
+    },
+    openEdit(row) {
+      if (this.disposed || this.busy || !this.canEditEvents || this.eventSwitchVisible || !row?.eventId ||
+          (row.termId != null && String(row.termId) !== String(this.termId))) return
+      const owner = JSON.stringify([this.contextKey, String(this.termId)])
+      const pending = this.editOwnerKey === owner && this.editIdentityKey === this.eventEditorIdentityKey &&
+        this.editForm && this.eventSignature(this.editForm) !== this.editBaseline
+      if (pending) {
+        if (String(this.editForm.eventId) === String(row.eventId)) { this.editVisible = true; return }
+        const target = this.events.find(item => String(item.eventId) === String(row.eventId))
+        if (!target || String(target.termId) !== String(this.termId) || !Number.isInteger(target.version) || target.version < 0) return
+        this.pendingEventSwitch = {
+          context: this.eventSwitchContextKey, owner, sourceId: String(this.editForm.eventId),
+          signature: this.eventSignature(this.editForm), baseline: this.editBaseline,
+          targetId: String(target.eventId), targetSignature: this.eventSignature(target), targetVersion: target.version
+        }
+        this.eventSwitchVisible = true
+        return
+      }
+      this.adoptEventEditor(row)
+    },
+    cancelEventSwitch() {
+      const intent = this.pendingEventSwitch
+      this.invalidateEventSwitch()
+      if (intent && !this.disposed && !this.busy && this.canEditEvents && intent.context === this.eventSwitchContextKey &&
+          this.editOwnerKey === intent.owner && this.editIdentityKey === this.eventEditorIdentityKey &&
+          String(this.editForm?.eventId) === intent.sourceId) this.editVisible = true
+    },
+    confirmEventSwitch() {
+      const intent = this.pendingEventSwitch
+      this.invalidateEventSwitch()
+      if (!intent || this.disposed || this.busy || !this.canEditEvents || intent.context !== this.eventSwitchContextKey ||
+          this.editOwnerKey !== intent.owner || this.editIdentityKey !== this.eventEditorIdentityKey ||
+          String(this.editForm?.eventId) !== intent.sourceId || this.eventSignature(this.editForm) !== intent.signature ||
+          this.editBaseline !== intent.baseline) return
+      const target = this.events.find(item => String(item.eventId) === intent.targetId)
+      if (!target || String(target.termId) !== String(this.termId) || target.version !== intent.targetVersion ||
+          this.eventSignature(target) !== intent.targetSignature) return
+      this.adoptEventEditor(target)
+      this.retainOtherDraftProtection()
     },
     async submitEdit() {
       if (this.busy || !this.canEditEvents || !this.editForm) return
@@ -640,15 +745,25 @@ export default {
         swapToDate: this.editForm.eventType === 'SWAP' ? this.editForm.swapToDate : null,
         remark: this.editForm.remark || ''
       }
-      const res = await academicAffairsApi.updateCalendarEvent(this.termId, this.editForm.eventId, body)
-      this.saving = false
-      if (res.code === 0) {
-        toast.success('已保存')
-        this.editVisible = false
-        this.loadEvents()
-      } else {
-        this.editError = res.message || '保存失败'
-      }
+      const termId = this.termId, eventId = this.editForm.eventId, context = this.contextKey, tab = this.tab, signature = this.eventSignature(this.editForm), ticket = ++this.eventWriteVersion
+      const current = () => !this.disposed && ticket === this.eventWriteVersion && context === this.contextKey && String(termId) === String(this.termId) && tab === this.tab && signature === this.eventSignature(this.editForm)
+      try {
+        const res = await academicAffairsApi.updateCalendarEvent(termId, eventId, body)
+        if (!current()) return
+        if (res.code === 0 && this.validEventAcknowledgement(res.data, termId, body, eventId)) {
+          toast.success('已保存')
+          this.editForm = this.normalizedEvent(res.data)
+          this.editBaseline = this.eventSignature(this.editForm)
+          this.editOwnerKey = JSON.stringify([context, String(termId)])
+          this.editIdentityKey = this.eventEditorIdentityKey
+          this.editVisible = false
+          this.retainOtherDraftProtection()
+          this.loadEvents()
+        } else {
+          this.editError = res.code !== 0 ? res.message || '保存失败' : '保存回执不完整，请核对校历后重试'
+        }
+      } catch { if (current()) this.editError = '保存失败，未保存的输入已保留' }
+      finally { if (ticket === this.eventWriteVersion) this.saving = false }
     },
     confirmDelete(row) {
       if (this.busy || !this.canEditEvents) return
@@ -679,7 +794,7 @@ export default {
       if (res.code === 0) {
         this.weekData = res.data
       } else {
-        this.weekError = res.message
+        this.weekError = res
         this.weekData = null
       }
       this.weekLoading = false

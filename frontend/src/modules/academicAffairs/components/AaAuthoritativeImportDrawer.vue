@@ -45,11 +45,11 @@
 
         <div class="aai-upload">
           <div class="aai-file">
-            <div class="aai-label">2. 上传原始 XLSX</div>
-            <input ref="fileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" :disabled="busy || !!job" @change="onFile" />
+            <div class="aai-label">2. 上传原始表格</div>
+            <input ref="fileInput" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" :disabled="busy || !!job || !!existingJobId" @change="onFile" />
             <p v-if="file">{{ file.name }} · {{ fileSize(file.size) }}</p>
           </div>
-          <AppButton variant="primary" :loading="busy && !job" :disabled="!file || busy || !!job" @click="upload">上传并预检查</AppButton>
+          <AppButton variant="primary" :loading="busy && !job" :disabled="!file || busy || !!job || !!existingJobId" @click="upload">上传并预检查</AppButton>
         </div>
 
         <div v-if="job" class="aai-job">
@@ -86,7 +86,7 @@
       </div>
 
       <footer class="aai-foot">
-        <AppButton variant="ghost" :disabled="busy" @click="reset">重新选择文件</AppButton>
+        <AppButton variant="ghost" :disabled="busy || !!existingJobId" @click="reset">重新选择文件</AppButton>
         <AppButton variant="ghost" :disabled="busy" @click="close">关闭</AppButton>
         <AppButton
           variant="primary"
@@ -125,7 +125,10 @@ export default {
   components: { AppButton, AppInlineAlert, AppStatusTag, AppImportErrorSummary, AppImportPreviewTable },
   props: {
     visible: { type: Boolean, default: false },
-    title: { type: String, default: '权威 Excel 导入' },
+    existingJobId: { type: String, default: '' },
+    expectedImportType: { type: String, default: '' },
+    ctx: { type: Object, default: null },
+    title: { type: String, default: '表格导入' },
     templateName: { type: String, default: '导入模板.xlsx' },
     previewFields: { type: Array, default: () => [] },
     phaseLabel: { type: String, default: '' },
@@ -133,9 +136,14 @@ export default {
     downloadTemplateFn: { type: Function, required: true },
     uploadFn: { type: Function, required: true }
   },
+  inject: { academicFlow: { default: null } },
   emits: ['update:visible', 'imported'],
   data() {
     return {
+      resumeBusy: false,
+      resumeEpoch: 0,
+      resumeOwner: null,
+      resumeDisposed: false,
       file: null,
       importMode: 'ATOMIC',
       job: null,
@@ -150,19 +158,126 @@ export default {
     }
   },
   computed: {
-    busy() { return this.uploadBusy || this.confirmBusy || this.errorBusy },
+    busy() { return this.resumeBusy || this.uploadBusy || this.confirmBusy || this.errorBusy },
+    resumeContextKey() {
+      return JSON.stringify([this.ctx?.ctxKey, this.ctx?.currentRole, this.ctx?.dataScope, this.ctx?.permissionPatterns, this.academicFlow?.identity?.() || ''])
+    },
     canConfirm() {
-      if (!this.job || this.polling) return false
+      if (!this.job || this.polling || (this.existingJobId && !this.isResumeCurrent(this.resumeOwner))) return false
       if (this.job.canConfirm === true) return Number(this.preview.validRows || 0) > 0
       return this.job.status === 'VALIDATED' && Number(this.preview.invalidRows || 0) === 0 && Number(this.preview.validRows || 0) > 0
     }
   },
   watch: {
-    visible(value) { if (value) this.reset() }
+    visible: { immediate: true, flush: 'sync', handler(value) {
+      if (value) this.openDrawer()
+      else this.invalidateResume()
+    } },
+    existingJobId: { flush: 'sync', handler() { if (this.visible) this.openDrawer() } },
+    resumeContextKey: { flush: 'sync', handler() {
+      this.invalidateResume()
+      if (!this.existingJobId) this.file = null
+      this.job = null
+      this.preview = { ...EMPTY_PREVIEW }
+      this.messageType = 'warning'
+      this.message = '办理上下文已变化，请关闭后重新打开任务核对。'
+    } }
   },
+  beforeUnmount() { this.resumeDisposed = true; this.invalidateResume() },
   methods: {
-    close() { this.$emit('update:visible', false) },
+    invalidateResume() {
+      this.resumeEpoch += 1
+      this.resumeOwner = null
+      this.resumeBusy = false
+      this.polling = false
+      this.uploadBusy = false
+      this.confirmBusy = false
+    },
+    captureDrawerOwner() {
+      return { epoch: this.resumeEpoch, context: this.resumeContextKey, existingJobId: this.existingJobId }
+    },
+    isDrawerOwnerCurrent(owner) {
+      return !!owner && !this.resumeDisposed && this.visible && owner.epoch === this.resumeEpoch &&
+        owner.context === this.resumeContextKey && owner.existingJobId === this.existingJobId
+    },
+    isResumeCurrent(owner) {
+      return !!owner && !this.resumeDisposed && this.visible && owner.epoch === this.resumeEpoch &&
+        owner.id === this.existingJobId && owner.context === this.resumeContextKey
+    },
+    acceptResumeJob(item, owner) {
+      if (!this.isResumeCurrent(owner)) return false
+      if (!item || item.id !== owner.id || item.jobType !== 'IMPORT' ||
+          item.moduleCode !== 'ACADEMIC_AFFAIRS' || item.adapterType !== 'EXCEL_IMPORT_JOB' ||
+          (this.expectedImportType && item.importType !== this.expectedImportType) ||
+          typeof item.sourceFileId !== 'string' || !item.sourceFileId.trim() ||
+          !Number.isInteger(item.version) || item.version < 0 ||
+          (owner.sourceFileId && owner.sourceFileId !== item.sourceFileId)) {
+        throw new Error('任务信息与当前导入入口不一致，请关闭后核对任务列表。')
+      }
+      if (item.status === 'SUCCEEDED') {
+        try {
+          this.requireCompletedImport(item)
+        } catch (error) {
+          if (typeof item.errorMessage === 'string' && item.errorMessage) {
+            throw new Error(`${item.errorMessage}\n${error.message}`)
+          }
+          throw error
+        }
+      }
+      owner.sourceFileId = item.sourceFileId
+      this.syncJob(item)
+      return true
+    },
+    requireCompletedImport(item) {
+      const result = item?.result
+      if (item?.status !== 'SUCCEEDED' || !result || typeof result !== 'object' ||
+          Array.isArray(result) || ![Object.prototype, null].includes(Object.getPrototypeOf(result))) {
+        throw new Error('导入完成结果尚未确认，请核对任务状态；不会自动重复确认。')
+      }
+      if (this.expectedImportType === 'ACADEMIC_ROSTER') {
+        const keys = ['created', 'reused', 'filled', 'skipped', 'identityConflict', 'orgConflict', 'voidedConflict', 'failed']
+        const present = keys.filter(key => Object.prototype.hasOwnProperty.call(result, key))
+        if (!present.length || present.some(key => !Number.isInteger(result[key]) || result[key] < 0)) {
+          throw new Error('导入完成统计尚未确认，请核对任务状态；不会自动重复确认。')
+        }
+      }
+    },
+    openDrawer() {
+      this.invalidateResume()
+      this.file = null
+      this.job = null
+      this.preview = { ...EMPTY_PREVIEW }
+      this.message = ''
+      this.messageType = 'info'
+      if (this.existingJobId) this.resumeExistingJob()
+      else this.reset()
+    },
+    async resumeExistingJob() {
+      const owner = { id: this.existingJobId, context: this.resumeContextKey, epoch: this.resumeEpoch }
+      this.resumeOwner = owner
+      this.resumeBusy = true
+      try {
+        const result = await academicFileExchangeApi.getImportJob(owner.id)
+        if (!this.isResumeCurrent(owner)) return
+        if (!result || result.code !== 0) throw new Error(result?.message || '导入任务读取失败')
+        this.acceptResumeJob(result.data, owner)
+        if (!TERMINAL.has(this.job.status)) await this.pollUntilTerminal(owner)
+        if (!this.isResumeCurrent(owner)) return
+        this.messageType = this.canConfirm ? 'success' : (this.preview.invalidRows ? 'warning' : 'info')
+        this.message = this.job?.status === 'SUCCEEDED'
+          ? (typeof this.job.errorMessage === 'string' && this.job.errorMessage ? this.job.errorMessage : '该导入任务已完成，无需再次确认。')
+          : this.canConfirm ? '服务端权威预检完成，可确认导入。' : (this.job?.errorMessage || '当前任务不可确认，请核对服务端结果。')
+      } catch (error) {
+        if (!this.isResumeCurrent(owner)) return
+        this.messageType = 'danger'
+        this.message = error?.message || '导入任务读取失败'
+      } finally {
+        if (this.isResumeCurrent(owner)) this.resumeBusy = false
+      }
+    },
+    close() { this.invalidateResume(); this.$emit('update:visible', false) },
     reset() {
+      if (this.existingJobId) return
       this.file = null
       this.importMode = 'ATOMIC'
       this.job = null
@@ -172,7 +287,7 @@ export default {
       this.messageType = 'info'
       if (this.$refs.fileInput) this.$refs.fileInput.value = ''
     },
-    onFile(event) { this.file = event?.target?.files?.[0] || null },
+    onFile(event) { if (!this.existingJobId) this.file = event?.target?.files?.[0] || null },
     fileSize(size) {
       const bytes = Number(size || 0)
       if (bytes < 1024) return `${bytes} B`
@@ -228,59 +343,100 @@ export default {
       }
     },
     async upload() {
-      if (!this.file || this.uploadBusy) return
+      if (this.existingJobId || !this.file || this.uploadBusy) return
+      const drawerOwner = this.captureDrawerOwner()
+      if (!this.isDrawerOwnerCurrent(drawerOwner)) return
       this.uploadBusy = true
       this.message = ''
       try {
         const result = await this.uploadFn(this.file, this.importMode)
+        if (!this.isDrawerOwnerCurrent(drawerOwner)) return
         if (!result || result.code !== 0) throw new Error(result?.message || '文件上传失败')
         this.syncJob(result.data)
-        if (!TERMINAL.has(this.job.status)) await this.pollUntilTerminal()
+        if (!TERMINAL.has(this.job.status)) await this.pollUntilTerminal(null, drawerOwner, this.job.id)
+        if (!this.isDrawerOwnerCurrent(drawerOwner)) return
         this.messageType = this.canConfirm ? 'success' : (this.preview.invalidRows ? 'warning' : 'info')
         this.message = this.canConfirm
           ? '预检查完成，可确认导入。'
           : (this.job?.errorMessage || '当前任务不可确认，请根据检查结果处理后重新上传。')
       } catch (error) {
+        if (!this.isDrawerOwnerCurrent(drawerOwner)) return
         this.messageType = 'danger'
         this.message = error?.message || '预检查失败'
       } finally {
-        this.uploadBusy = false
+        if (this.isDrawerOwnerCurrent(drawerOwner)) this.uploadBusy = false
       }
     },
-    async pollUntilTerminal() {
+    async pollUntilTerminal(owner = null, drawerOwner = this.captureDrawerOwner(), jobId = this.job?.id) {
+      const current = () => this.isDrawerOwnerCurrent(drawerOwner) && (!owner || this.isResumeCurrent(owner))
+      if (!current()) return
       this.polling = true
       try {
         for (let attempt = 0; attempt < 60 && this.job && !TERMINAL.has(this.job.status); attempt += 1) {
+          if (!current()) return
           await sleep(1500)
-          const detail = await academicFileExchangeApi.getImportJob(this.job.id)
+          if (!current()) return
+          const detail = await academicFileExchangeApi.getImportJob(jobId)
+          if (!current()) return
           if (detail.code !== 0) throw new Error(detail.message || '导入任务读取失败')
-          this.syncJob(detail.data)
+          if (owner) this.acceptResumeJob(detail.data, owner)
+          else this.syncJob(detail.data)
         }
+        if (!current()) return
         if (this.job && !TERMINAL.has(this.job.status)) {
           throw new Error('文件仍在后台安全扫描，请稍后重新打开任务继续处理')
         }
       } finally {
-        this.polling = false
+        if (current()) this.polling = false
       }
     },
     async confirm() {
-      if (!this.canConfirm || !this.job || this.confirmBusy) return
+      if (!this.canConfirm || !this.job || this.confirmBusy || (this.existingJobId && this.busy)) return
+      const owner = this.existingJobId ? this.resumeOwner : null
+      const drawerOwner = this.captureDrawerOwner()
+      const current = () => this.isDrawerOwnerCurrent(drawerOwner) && (!owner || this.isResumeCurrent(owner))
+      if (!current()) return
+      const jobId = this.job.id, jobVersion = this.job.version
       this.confirmBusy = true
       this.message = ''
+      let confirmWarning = ''
       try {
-        const result = await academicFileExchangeApi.confirmImport(this.job.id, this.job.version)
+        const result = await academicFileExchangeApi.confirmImport(jobId, jobVersion)
+        if (!current()) return
+        if (typeof result?.data?.errorMessage === 'string') confirmWarning = result.data.errorMessage
         if (result.code !== 0) throw new Error(result.message || '确认导入失败')
-        this.syncJob(result.data)
+        this.requireCompletedImport(result.data)
+        if (owner) this.acceptResumeJob(result.data, owner)
+        else this.syncJob(result.data)
         this.messageType = 'success'
-        this.message = '导入已确认完成，页面将重新读取正式数据。'
+        this.message = typeof result.data.errorMessage === 'string' && result.data.errorMessage
+          ? result.data.errorMessage : '导入已由服务器确认完成，页面将重新读取正式数据。'
         this.$emit('imported', result.data)
       } catch (error) {
+        if (!current()) return
         this.messageType = 'danger'
-        this.message = error?.message || '确认导入失败'
-        const detail = this.job?.id ? await academicFileExchangeApi.getImportJob(this.job.id) : null
-        if (detail?.code === 0) this.syncJob(detail.data)
+        const firstError = error?.message || '确认导入失败'
+        const confirmErrorMessage = confirmWarning ? `${confirmWarning}\n${firstError}` : firstError
+        this.message = confirmErrorMessage
+        try {
+          const detail = jobId ? await academicFileExchangeApi.getImportJob(jobId) : null
+          if (!current()) return
+          if (detail?.code === 0) {
+            if (owner) this.acceptResumeJob(detail.data, owner)
+            else this.syncJob(detail.data)
+            if (typeof detail.data?.errorMessage === 'string' && detail.data.errorMessage) {
+              this.message = `${confirmErrorMessage}\n${detail.data.errorMessage}`
+            }
+          } else if (typeof detail?.message === 'string' && detail.message) {
+            this.message = `${confirmErrorMessage}\n${detail.message}`
+          }
+        } catch (recoveryError) {
+          if (!current()) return
+          this.messageType = 'danger'
+          this.message = `${confirmErrorMessage}\n${recoveryError?.message || '导入任务读取失败'}`
+        }
       } finally {
-        this.confirmBusy = false
+        if (current()) this.confirmBusy = false
       }
     },
     async downloadServerErrors() {

@@ -9,6 +9,7 @@ function ok(data) {
 function fail(error) {
   return {
     code: error?.code || 1,
+    bizCode: error?.bizCode || '',
     data: error?.details || null,
     message: error?.message || '真实接口不可用'
   }

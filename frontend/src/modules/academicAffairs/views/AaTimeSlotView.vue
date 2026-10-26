@@ -23,26 +23,26 @@
         <div class="aa-slot-workspace"><main>
         <details v-if="canManageSlots" class="aa-slot-template">
           <summary>使用标准作息模板</summary>
-          <AaTimeSlotTemplatePanel :disabled="adding || saving || actionBusy" @busy="templateApplying = $event" @applied="load" />
+          <AaTimeSlotTemplatePanel ref="timeSlotTemplate" :ctx="ctx" :disabled="adding || saving || actionBusy" @busy="templateApplying = $event" @applied="load" />
         </details>
 
         <AppDrawer v-if="canManageSlots" :visible="createSlotVisible" title="新增节次" mode="modal" size="medium" @close="createSlotVisible = false">
           <fieldset class="aa-slot-form" :disabled="busy">
             <label class="aa-slot-form__item">
               第几节
-              <AppNumberInput v-model="draft.slotNo" :min="1" :step="1" placeholder="如 1" />
+              <AppNumberInput :model-value="draft.slotNo" @update:model-value="updateEditorField('slotCreate', 'slotNo', $event)" :min="1" :step="1" placeholder="如 1" />
             </label>
             <label class="aa-slot-form__item">
               名称
-              <AppTextInput v-model="draft.slotName" placeholder="选填，如 第一大节" :maxlength="30" />
+              <AppTextInput :model-value="draft.slotName" @update:model-value="updateEditorField('slotCreate', 'slotName', $event)" placeholder="选填，如 第一大节" :maxlength="30" />
             </label>
             <label class="aa-slot-form__item">
               开始时间
-              <AppTimePicker v-model="draft.startTime" />
+              <AppTimePicker :model-value="draft.startTime" @update:model-value="updateEditorField('slotCreate', 'startTime', $event)" />
             </label>
             <label class="aa-slot-form__item">
               结束时间
-              <AppTimePicker v-model="draft.endTime" />
+              <AppTimePicker :model-value="draft.endTime" @update:model-value="updateEditorField('slotCreate', 'endTime', $event)" />
             </label>
             <AppButton variant="primary" :loading="adding" @click="addSlot">添加节次</AppButton>
           </fieldset>
@@ -51,7 +51,7 @@
 
         <AppSectionCard title="作息时间 · 按节次核对">
           <template #header-extra>
-            <label class="aa-check">
+            <label class="aa-check" data-dirty-ignore="true">
               <input type="checkbox" v-model="includeDisabled" :disabled="busy" @change="load" />
               显示已停用
             </label>
@@ -95,10 +95,10 @@
       <template v-else>
         <AppSectionCard title="选择节次">
           <div class="aa-slot-form">
-            <label class="aa-slot-form__item aa-slot-form__item--grow">
-              节次
-              <AppTimeSlotPicker v-model="bandSlotId" :options="slotOptions" :query="{ includeDisabled: true }" :disabled="busy || loading" placeholder="请选择节次" @change="onBandSlotChange" />
-            </label>
+            <div class="aa-slot-form__item aa-slot-form__item--grow" role="group" aria-labelledby="aa-timeslot-band-label" data-dirty-ignore="true">
+              <span id="aa-timeslot-band-label">节次</span>
+              <AppTimeSlotPicker :model-value="bandSlotId" :options="slotOptions" :query="{ includeDisabled: true }" :disabled="busy || loading" placeholder="请选择节次" @update:model-value="onBandSlotChange" />
+            </div>
           </div>
         </AppSectionCard>
 
@@ -111,27 +111,27 @@
             <fieldset class="aa-slot-form" :disabled="busy">
               <label class="aa-slot-form__item">
                 名称
-                <AppTextInput v-model="bandDraft.bandName" placeholder="选填，如 夏季作息" :maxlength="50" />
+                <AppTextInput :model-value="bandDraft.bandName" @update:model-value="updateEditorField('bandCreate', 'bandName', $event)" placeholder="选填，如 夏季作息" :maxlength="50" />
               </label>
               <label class="aa-slot-form__item">
                 校区
-                <AppTextInput v-model="bandDraft.campusCode" placeholder="学校使用的校区编码，选填" :maxlength="50" />
+                <AppTextInput :model-value="bandDraft.campusCode" @update:model-value="updateEditorField('bandCreate', 'campusCode', $event)" placeholder="学校使用的校区编码，选填" :maxlength="50" />
               </label>
               <label class="aa-slot-form__item">
                 生效开始
-                <AppDatePicker v-model="bandDraft.effectiveStart" />
+                <AppDatePicker :model-value="bandDraft.effectiveStart" @update:model-value="updateEditorField('bandCreate', 'effectiveStart', $event)" />
               </label>
               <label class="aa-slot-form__item">
                 生效结束
-                <AppDatePicker v-model="bandDraft.effectiveEnd" />
+                <AppDatePicker :model-value="bandDraft.effectiveEnd" @update:model-value="updateEditorField('bandCreate', 'effectiveEnd', $event)" />
               </label>
               <label class="aa-slot-form__item">
                 开始时间
-                <AppTimePicker v-model="bandDraft.startTime" />
+                <AppTimePicker :model-value="bandDraft.startTime" @update:model-value="updateEditorField('bandCreate', 'startTime', $event)" />
               </label>
               <label class="aa-slot-form__item">
                 结束时间
-                <AppTimePicker v-model="bandDraft.endTime" />
+                <AppTimePicker :model-value="bandDraft.endTime" @update:model-value="updateEditorField('bandCreate', 'endTime', $event)" />
               </label>
               <AppButton variant="primary" :loading="bandAdding" @click="addBand">添加时间段</AppButton>
             </fieldset>
@@ -173,11 +173,11 @@
     <AppDrawer :visible="editVisible" title="编辑节次" mode="modal" size="medium" @close="editVisible = false">
       <fieldset class="aa-cal-form--drawer" v-if="editForm" :disabled="saving">
         <AppFormItem label="第几节" required>
-          <AppNumberInput v-model="editForm.slotNo" :min="1" />
+          <AppNumberInput :model-value="editForm.slotNo" @update:model-value="updateEditorField('slotEdit', 'slotNo', $event)" :min="1" />
         </AppFormItem>
-        <AppFormItem label="名称"><AppTextInput v-model="editForm.slotName" :maxlength="30" /></AppFormItem>
-        <AppFormItem label="开始时间"><AppTimePicker v-model="editForm.startTime" /></AppFormItem>
-        <AppFormItem label="结束时间"><AppTimePicker v-model="editForm.endTime" /></AppFormItem>
+        <AppFormItem label="名称"><AppTextInput :model-value="editForm.slotName" @update:model-value="updateEditorField('slotEdit', 'slotName', $event)" :maxlength="30" /></AppFormItem>
+        <AppFormItem label="开始时间"><AppTimePicker :model-value="editForm.startTime" @update:model-value="updateEditorField('slotEdit', 'startTime', $event)" /></AppFormItem>
+        <AppFormItem label="结束时间"><AppTimePicker :model-value="editForm.endTime" @update:model-value="updateEditorField('slotEdit', 'endTime', $event)" /></AppFormItem>
         <AppInlineAlert v-if="editError" type="danger" :description="editError" />
       </fieldset>
       <template #footer>
@@ -189,12 +189,12 @@
     <!-- 编辑上课时间段 -->
     <AppDrawer :visible="editBandVisible" title="编辑上课时间段" mode="modal" size="large" @close="editBandVisible = false">
       <fieldset class="aa-cal-form--drawer" v-if="editBandForm" :disabled="bandSaving">
-        <AppFormItem label="名称"><AppTextInput v-model="editBandForm.bandName" :maxlength="50" /></AppFormItem>
-        <AppFormItem label="校区"><AppTextInput v-model="editBandForm.campusCode" :maxlength="50" /></AppFormItem>
-        <AppFormItem label="生效开始"><AppDatePicker v-model="editBandForm.effectiveStart" /></AppFormItem>
-        <AppFormItem label="生效结束"><AppDatePicker v-model="editBandForm.effectiveEnd" /></AppFormItem>
-        <AppFormItem label="开始时间" required><AppTimePicker v-model="editBandForm.startTime" /></AppFormItem>
-        <AppFormItem label="结束时间" required><AppTimePicker v-model="editBandForm.endTime" /></AppFormItem>
+        <AppFormItem label="名称"><AppTextInput :model-value="editBandForm.bandName" @update:model-value="updateEditorField('bandEdit', 'bandName', $event)" :maxlength="50" /></AppFormItem>
+        <AppFormItem label="校区"><AppTextInput :model-value="editBandForm.campusCode" @update:model-value="updateEditorField('bandEdit', 'campusCode', $event)" :maxlength="50" /></AppFormItem>
+        <AppFormItem label="生效开始"><AppDatePicker :model-value="editBandForm.effectiveStart" @update:model-value="updateEditorField('bandEdit', 'effectiveStart', $event)" /></AppFormItem>
+        <AppFormItem label="生效结束"><AppDatePicker :model-value="editBandForm.effectiveEnd" @update:model-value="updateEditorField('bandEdit', 'effectiveEnd', $event)" /></AppFormItem>
+        <AppFormItem label="开始时间" required><AppTimePicker :model-value="editBandForm.startTime" @update:model-value="updateEditorField('bandEdit', 'startTime', $event)" /></AppFormItem>
+        <AppFormItem label="结束时间" required><AppTimePicker :model-value="editBandForm.endTime" @update:model-value="updateEditorField('bandEdit', 'endTime', $event)" /></AppFormItem>
         <AppInlineAlert v-if="editBandError" type="danger" :description="editBandError" />
       </fieldset>
       <template #footer>
@@ -203,6 +203,14 @@
       </template>
     </AppDrawer>
 
+    <AppConfirmDialog v-model:visible="slotSwitchVisible" title="放弃未保存的节次修改？"
+                      message="当前节次还有未保存的修改。放弃这些修改后，才能编辑另一个节次。"
+                      confirm-text="放弃修改并切换" cancel-text="继续编辑原节次" type="warning"
+                      :submitting="busy" @confirm="confirmSlotSwitch" @cancel="cancelSlotSwitch" />
+    <AppConfirmDialog v-model:visible="bandSwitchVisible" title="放弃未保存的时间段修改？"
+                      message="当前时间段还有未保存的修改。放弃这些修改后，才能编辑另一个时间段。"
+                      confirm-text="放弃修改并切换" cancel-text="继续编辑原时间段" type="warning"
+                      :submitting="busy" @confirm="confirmBandSwitch" @cancel="cancelBandSwitch" />
     <AppConfirmDialog v-model:visible="confirmVisible" title="删除节次"
                       message="删除后，该节次及其时间段将不再提供作息。已有业务引用的节次不能删除。确认删除？" type="danger" :submitting="actionBusy" @confirm="doDelete" />
     <AppConfirmDialog v-model:visible="confirmBandVisible" title="删除上课时间段"
@@ -221,6 +229,11 @@ import AaTimeSlotTemplatePanel from '@/modules/academicAffairs/components/AaTime
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { matchPermission } from '@/config/navPlan'
+import { systemConfirm } from '@/services/systemDialog'
+
+const EDITORS = { slotCreate: ['draft', 'adding', 'formError'], slotEdit: ['editForm', 'saving', 'editError'], bandCreate: ['bandDraft', 'bandAdding', 'bandFormError'], bandEdit: ['editBandForm', 'bandSaving', 'editBandError'] }
+const SLOT_FIELDS = ['slotNo', 'slotName', 'startTime', 'endTime']
+const BAND_FIELDS = ['bandName', 'campusCode', 'effectiveStart', 'effectiveEnd', 'startTime', 'endTime']
 
 const HHMM_RE = /^([01]\d|2[0-3]):[0-5]\d$/
 
@@ -235,7 +248,7 @@ export default {
   inject: { academicFlow: { default: null } },
   data() {
     return {
-      tab: 'periods', createSlotVisible: false,
+      tab: 'periods', createSlotVisible: false, disposed: false, releaseDirtyConfirmation: null, writeVersion: 0, editorBaselines: {}, unresolvedEditorDirty: false,
       actionBusy: false, templateApplying: false, loadVersion: 0, bandLoadVersion: 0,
       commandError: '',
       slotColumns: [
@@ -256,7 +269,8 @@ export default {
       adding: false,
       formError: '',
       draft: { slotNo: null, slotName: '', startTime: '', endTime: '' },
-      editVisible: false,
+      editVisible: false, slotEditOwnerKey: '', slotSwitchVisible: false, pendingSlotSwitch: null,
+      bandSwitchVisible: false, pendingBandSwitch: null,
       editForm: null,
       editError: '',
       saving: false,
@@ -270,7 +284,7 @@ export default {
       bandAdding: false,
       bandFormError: '',
       bandDraft: { bandName: '', campusCode: '', effectiveStart: '', effectiveEnd: '', startTime: '', endTime: '' },
-      editBandVisible: false,
+      editBandVisible: false, bandEditOwnerKey: '',
       editBandForm: null,
       editBandError: '',
       bandSaving: false,
@@ -279,6 +293,9 @@ export default {
     }
   },
   computed: {
+    contextKey() { return JSON.stringify(this.ctx) },
+    slotEditorContextKey() { return JSON.stringify([this.contextKey, this.academicFlow?.identity?.() || null]) },
+    bandEditorOwnerKey() { return JSON.stringify([this.slotEditorContextKey, String(this.bandSlotId), this.tab]) },
     canManageSlots() { return this.hasPermission('academicAffairs.timeslot.manage') },
     canViewBands() { return this.hasPermission('academicAffairs.classTimeBand.view') },
     canManageBands() { return this.canViewBands && this.hasPermission('academicAffairs.classTimeBand.manage') },
@@ -289,45 +306,125 @@ export default {
     }
   },
   created() {
+    this.initializeDraftBaselines()
     const q = this.$route && this.$route.query && this.$route.query.tab
     if (q === 'bands' && this.canViewBands) this.tab = 'bands'
     this.bandSlotId = this.$route.query.slotId || ''
     this.includeDisabled = this.tab === 'bands'
     this.load()
   },
-  watch: {
-    '$route.query.tab'(key) { this.switchTab(key === 'bands' && this.canViewBands ? 'bands' : 'periods') },
-    '$route.query.slotId'(id) {
-      if (id && String(id) !== String(this.bandSlotId) && !this.busy) { this.bandSlotId = id; this.onBandSlotChange() }
-    }
+  mounted() {
+    const guard = window.__SAAS_DIRTY_FORM_GUARD__
+    if (!guard?.registerConfirmation) return
+    this.releaseDirtyConfirmation = guard.registerConfirmation(async (message) => {
+      const owner = JSON.stringify([this.disposed, this.contextKey, this.academicFlow?.identity?.() || '', this.tab, String(this.bandSlotId), String(this.editForm?.slotId || ''), String(this.editBandForm?.bandId || '')]), sourceFullPath = this.$route?.fullPath
+      const accepted = await systemConfirm({ title: '确认离开当前页面', message, confirmText: '放弃修改并离开', type: 'danger' })
+      if (accepted !== true || this.$route?.fullPath !== sourceFullPath) return accepted
+      return owner === JSON.stringify([this.disposed, this.contextKey, this.academicFlow?.identity?.() || '', this.tab, String(this.bandSlotId), String(this.editForm?.slotId || ''), String(this.editBandForm?.bandId || '')]) ? accepted : false
+    })
   },
-  beforeUnmount() { this.loadVersion++; this.bandLoadVersion++ },
+  watch: {
+    slotEditorContextKey: { flush: 'sync', handler() { this.invalidateSlotSwitch(); this.invalidateBandEditOwner() } },
+    '$route.query.tab'(key) { this.applyRouteSelection(key, this.$route.query.slotId) },
+    '$route.query.slotId'(id) { this.applyRouteSelection(this.$route.query.tab, id) }
+  },
+  beforeUnmount() {
+    this.disposed = true; this.invalidateSlotSwitch(); this.invalidateBandEditOwner(); this.writeVersion++; this.loadVersion++; this.bandLoadVersion++
+    this.releaseDirtyConfirmation?.()
+    this.releaseDirtyConfirmation = null
+  },
   beforeRouteUpdate(to, from, next) { if (this.busy) { toast.warning('正在保存作息，请稍候再切换'); next(false) } else next() },
   beforeRouteLeave(to, from, next) { if (this.busy) { toast.warning('正在保存作息，请稍候再离开'); next(false) } else next() },
   methods: {
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     dateOnly(value) { return value ? String(value).slice(0, 10) : '' },
+    editorSignature(kind, form = this[EDITORS[kind][0]]) {
+      if (!form) return null
+      return JSON.stringify([String(form.slotId || ''), String(form.bandId || ''), ...(kind.startsWith('slot') ? SLOT_FIELDS : BAND_FIELDS).map(key => key === 'slotNo' ? (form[key] == null || form[key] === '' ? null : Number(form[key])) : form[key] || '')])
+    },
+    initializeDraftBaselines() { for (const kind of Object.keys(EDITORS)) this.editorBaselines[kind] = this.editorSignature(kind) },
+    updateEditorField(kind, field, value) {
+      const spec = EDITORS[kind], keys = kind.startsWith('slot') ? SLOT_FIELDS : BAND_FIELDS
+      if (!spec || this.busy || !(kind.startsWith('slot') ? this.canManageSlots : this.canManageBands) || !keys.includes(field)) return
+      const form = this[spec[0]]
+      if (!form || form[field] === value) return
+      form[field] = value
+      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty?.()
+    },
+    retainOtherDraftProtection() {
+      const template = this.$refs?.timeSlotTemplate
+      const pending = this.unresolvedEditorDirty || Object.keys(EDITORS).some(kind => this[EDITORS[kind][0]] && this.editorSignature(kind) !== this.editorBaselines[kind]) || template?.preview || template?.loading || template?.applying
+      if (pending) window.__SAAS_DIRTY_FORM_GUARD__?.markDirty?.()
+      else window.__SAAS_DIRTY_FORM_GUARD__?.markSaved?.()
+    },
+    normalizedEditor(kind, row) {
+      if (kind.startsWith('slot')) return { slotId: row.slotId, slotNo: row.slotNo, slotName: row.slotName || '', startTime: row.startTime || '', endTime: row.endTime || '', enabled: row.enabled }
+      return { bandId: row.bandId, bandName: row.bandName || '', campusCode: row.campusCode || '', effectiveStart: this.dateOnly(row.effectiveStart), effectiveEnd: this.dateOnly(row.effectiveEnd), startTime: row.startTime || '', endTime: row.endTime || '' }
+    },
+    validEditorAcknowledgement(kind, data, body, id, slotId) {
+      if (!data || !Number.isInteger(data.version) || data.version < 0 || !['ENABLED', 'DISABLED'].includes(data.status)) return false
+      const text = value => value || '', day = value => String(value || '').slice(0, 10)
+      const nullableDate = value => value === null || (typeof value === 'string' && /^\d{4}-\d{2}-\d{2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?$/.test(value) && !Number.isNaN(Date.parse(value)))
+      if (kind.startsWith('slot')) return typeof data.slotId === 'string' && !!data.slotId && (!id || data.slotId === String(id)) && typeof data.enabled === 'boolean' && Number.isInteger(data.slotNo) && data.slotNo === body.slotNo && typeof data.campusCode === 'string' && ['slotName', 'startTime', 'endTime'].every(key => typeof data[key] === 'string' && data[key] === text(body[key]))
+      return typeof data.bandId === 'string' && !!data.bandId && (!id || data.bandId === String(id)) && String(data.slotId) === String(slotId) && typeof data.bandName === 'string' && data.bandName === text(body.bandName) && typeof data.campusCode === 'string' && data.campusCode === String(body.campusCode || '').trim() && ['startTime', 'endTime'].every(key => typeof data[key] === 'string' && data[key] === String(body[key] || '').trim()) && ['effectiveStart', 'effectiveEnd'].every(key => Object.hasOwn(data, key) && nullableDate(data[key]) && day(data[key]) === day(body[key]))
+    },
+    async saveEditor(kind, body, send, id = '') {
+      const [property, pending, error] = EDITORS[kind]
+      const bandOwner = kind === 'bandEdit' ? this.bandEditOwnerKey : null
+      if (kind === 'bandEdit' && (!bandOwner || bandOwner !== this.bandEditorOwnerKey)) { this[pending] = false; return }
+      const context = this.contextKey, tab = this.tab, slotId = this.bandSlotId, signature = this.editorSignature(kind), ticket = ++this.writeVersion
+      const current = () => !this.disposed && ticket === this.writeVersion && context === this.contextKey && tab === this.tab && (!kind.startsWith('band') || String(slotId) === String(this.bandSlotId)) && signature === this.editorSignature(kind) && (kind !== 'bandEdit' || (bandOwner === this.bandEditorOwnerKey && bandOwner === this.bandEditOwnerKey))
+      try {
+        const res = await send()
+        if (!current()) return
+        if (res.code === 0 && this.validEditorAcknowledgement(kind, res.data, body, id, slotId)) {
+          toast.success(kind.endsWith('Create') ? '已添加' : '已保存')
+          if (kind === 'slotCreate') { this.draft = { slotNo: null, slotName: '', startTime: '', endTime: '' }; this.createSlotVisible = false }
+          else if (kind === 'bandCreate') this.bandDraft = { bandName: '', campusCode: '', effectiveStart: '', effectiveEnd: '', startTime: '', endTime: '' }
+          else { this[property] = this.normalizedEditor(kind, res.data); if (kind === 'slotEdit') this.editVisible = false; else { this.editBandVisible = false; this.bandEditOwnerKey = this.bandEditorOwnerKey } }
+          this.editorBaselines[kind] = this.editorSignature(kind)
+          this.retainOtherDraftProtection()
+          if (kind.startsWith('slot')) this.load(); else this.loadBands()
+        } else this[error] = res.code !== 0 ? res.message || '保存失败' : '保存回执不完整，请核对作息记录后重试'
+      } catch { if (current()) this[error] = '保存失败，未保存的输入已保留' }
+      finally { if (ticket === this.writeVersion) this[pending] = false }
+    },
     syncQuery() {
       const slotId = this.tab === 'bands' && this.bandSlotId ? String(this.bandSlotId) : undefined
       if (this.$route.query.tab !== this.tab || this.$route.query.slotId !== slotId) this.$router.replace({ query: { ...this.$route.query, tab: this.tab, slotId } })
     },
-    goBands(row) {
-      if (!this.canViewBands || this.busy) return
-      this.bandSlotId = row.slotId
-      this.switchTab('bands')
+    async requestSelection(tab, slotId) {
+      if (this.busy) return
+      try { await this.$router.replace({ query: { ...this.$route.query, tab, slotId: tab === 'bands' && slotId ? String(slotId) : undefined } }) }
+      catch { toast.warning('页面切换未完成，未保存的输入已保留') }
     },
-    onBandSlotChange() {
-      this.editBandVisible = false; this.confirmBandVisible = false; this.bandFormError = ''
-      this.bandDraft = { bandName: '', campusCode: '', effectiveStart: '', effectiveEnd: '', startTime: '', endTime: '' }
-      this.syncQuery(); this.loadBands()
+    goBands(row) { if (this.canViewBands && !this.busy) return this.requestSelection('bands', row.slotId) },
+    onBandSlotChange(value) {
+      const id = String(value ?? '')
+      if (this.busy || id === String(this.bandSlotId) || (id && !this.rows.some(row => String(row.slotId) === id))) return
+      return this.requestSelection('bands', id)
     },
     switchTab(key) {
-      if (this.tab === key || this.busy || (key === 'bands' && !this.canViewBands)) return
-      this.tab = key
-      this.createSlotVisible = false
-      this.editVisible = false; this.editBandVisible = false; this.confirmVisible = false; this.confirmBandVisible = false
-      this.syncQuery()
-      this.load()
+      if (this.tab === key || this.busy || !this.tabs.some(tab => tab.key === key)) return
+      return this.requestSelection(key, this.bandSlotId)
+    },
+    applyRouteSelection(key, id) {
+      const tab = key === 'bands' && this.canViewBands ? 'bands' : 'periods'
+      const slotId = tab === 'bands' ? (typeof id === 'string' ? id : '') : this.bandSlotId
+      if (this.tab === tab && String(this.bandSlotId) === String(slotId)) return
+      this.invalidateSlotSwitch()
+      this.invalidateBandEditOwner()
+      this.tab = tab; this.bandSlotId = slotId
+      this.createSlotVisible = false; this.editVisible = false; this.editBandVisible = false
+      this.confirmVisible = false; this.confirmBandVisible = false
+      this.draft = { slotNo: null, slotName: '', startTime: '', endTime: '' }
+      this.bandDraft = { bandName: '', campusCode: '', effectiveStart: '', effectiveEnd: '', startTime: '', endTime: '' }
+      this.editForm = null; this.editBandForm = null
+      this.slotEditOwnerKey = ''
+      this.unresolvedEditorDirty = false
+      this.formError = ''; this.editError = ''; this.bandFormError = ''; this.editBandError = ''
+      this.initializeDraftBaselines(); this.bandLoadVersion++; this.bandRows = []
+      this.syncQuery(); this.load()
     },
     validate(d) {
       if (!Number.isInteger(Number(d.slotNo)) || Number(d.slotNo) < 1) return '请填写有效的节次序号（正整数）'
@@ -349,16 +446,7 @@ export default {
         startTime: this.draft.startTime || undefined,
         endTime: this.draft.endTime || undefined
       }
-      const res = await academicAffairsApi.createTimeSlot(body)
-      this.adding = false
-      if (res.code === 0) {
-        toast.success(`已添加第 ${body.slotNo} 节`)
-        this.createSlotVisible = false
-        this.draft = { slotNo: null, slotName: '', startTime: '', endTime: '' }
-        this.load()
-      } else {
-        this.formError = res.message || '添加失败'
-      }
+      return this.saveEditor('slotCreate', body, () => academicAffairsApi.createTimeSlot(body))
     },
     async load() {
       const version = ++this.loadVersion
@@ -371,34 +459,61 @@ export default {
         if (this.bandSlotId && !this.rows.some(s => String(s.slotId) === String(this.bandSlotId))) this.bandSlotId = ''
         if (this.tab === 'bands') this.loadBands()
       } else {
-        this.error = res.message
+        this.error = res
       }
       this.loading = false
     },
-    openEdit(row) {
-      if (!this.canManageSlots || this.busy) return
-      this.editForm = { slotId: row.slotId, slotNo: row.slotNo, slotName: row.slotName || '',
-        startTime: row.startTime || '', endTime: row.endTime || '', enabled: row.enabled }
+    invalidateSlotSwitch() { this.slotSwitchVisible = false; this.pendingSlotSwitch = null },
+    adoptSlotEditor(row) {
+      this.editForm = this.normalizedEditor('slotEdit', row)
+      this.editorBaselines.slotEdit = this.editorSignature('slotEdit')
+      this.slotEditOwnerKey = this.slotEditorContextKey
       this.editError = ''
       this.editVisible = true
+    },
+    openEdit(row) {
+      if (this.disposed || !this.canManageSlots || this.busy || this.slotSwitchVisible || !row?.slotId) return
+      const pending = this.editForm && this.editorSignature('slotEdit') !== this.editorBaselines.slotEdit
+      if (pending && this.slotEditOwnerKey === this.slotEditorContextKey) {
+        if (String(this.editForm.slotId) === String(row.slotId)) { this.editVisible = true; return }
+        const target = this.rows.find(item => String(item.slotId) === String(row.slotId))
+        if (!target) return
+        this.pendingSlotSwitch = {
+          owner: this.slotEditorContextKey, sourceId: String(this.editForm.slotId),
+          signature: this.editorSignature('slotEdit'), baseline: this.editorBaselines.slotEdit,
+          targetId: String(target.slotId), targetSignature: this.editorSignature('slotEdit', target)
+        }
+        this.slotSwitchVisible = true
+        return
+      }
+      if (pending) this.unresolvedEditorDirty = true
+      this.adoptSlotEditor(row)
+    },
+    cancelSlotSwitch() {
+      const intent = this.pendingSlotSwitch
+      this.invalidateSlotSwitch()
+      if (intent && !this.disposed && !this.busy && this.canManageSlots && intent.owner === this.slotEditorContextKey &&
+          this.slotEditOwnerKey === intent.owner && String(this.editForm?.slotId) === intent.sourceId) this.editVisible = true
+    },
+    confirmSlotSwitch() {
+      const intent = this.pendingSlotSwitch
+      this.invalidateSlotSwitch()
+      if (!intent || this.disposed || this.busy || !this.canManageSlots || intent.owner !== this.slotEditorContextKey ||
+          this.slotEditOwnerKey !== intent.owner || String(this.editForm?.slotId) !== intent.sourceId ||
+          this.editorSignature('slotEdit') !== intent.signature || this.editorBaselines.slotEdit !== intent.baseline) return
+      const target = this.rows.find(item => String(item.slotId) === intent.targetId)
+      if (!target || this.editorSignature('slotEdit', target) !== intent.targetSignature) return
+      this.adoptSlotEditor(target)
+      this.retainOtherDraftProtection()
     },
     async submitEdit() {
       if (!this.canManageSlots || this.busy || !this.editForm) return
       const err = this.validate(this.editForm)
       if (err) { this.editError = err; return }
       this.saving = true
-      const res = await academicAffairsApi.updateTimeSlot(this.editForm.slotId, {
-        slotNo: Number(this.editForm.slotNo), slotName: this.editForm.slotName || '',
-        startTime: this.editForm.startTime || null, endTime: this.editForm.endTime || null
-      })
-      this.saving = false
-      if (res.code === 0) {
-        toast.success('已保存')
-        this.editVisible = false
-        this.load()
-      } else {
-        this.editError = res.message || '保存失败'
-      }
+      const id = this.editForm.slotId
+      const body = { slotNo: Number(this.editForm.slotNo), slotName: this.editForm.slotName || '', startTime: this.editForm.startTime || null, endTime: this.editForm.endTime || null }
+      return this.saveEditor('slotEdit', body, () => academicAffairsApi.updateTimeSlot(id, body), id)
     },
     async toggleEnabled(row) {
       if (!this.canManageSlots || this.busy) return
@@ -452,7 +567,7 @@ export default {
       if (res.code === 0) {
         this.bandRows = res.data || []
       } else {
-        this.bandError = res.message
+        this.bandError = res
       }
       this.bandLoading = false
     },
@@ -469,42 +584,64 @@ export default {
         effectiveEnd: this.bandDraft.effectiveEnd || undefined,
         startTime: this.bandDraft.startTime, endTime: this.bandDraft.endTime
       }
-      const res = await academicAffairsApi.createTimeBand(this.bandSlotId, body)
-      this.bandAdding = false
-      if (res.code === 0) {
-        toast.success('已添加')
-        this.bandDraft = { bandName: '', campusCode: '', effectiveStart: '', effectiveEnd: '', startTime: '', endTime: '' }
-        this.loadBands()
-      } else {
-        this.bandFormError = res.message || '添加失败'
-      }
+      const slotId = this.bandSlotId
+      return this.saveEditor('bandCreate', body, () => academicAffairsApi.createTimeBand(slotId, body))
     },
-    openEditBand(row) {
-      if (!this.canManageBands || this.busy) return
-      this.editBandForm = { bandId: row.bandId, bandName: row.bandName || '', campusCode: row.campusCode || '',
-        effectiveStart: this.dateOnly(row.effectiveStart), effectiveEnd: this.dateOnly(row.effectiveEnd),
-        startTime: row.startTime || '', endTime: row.endTime || '' }
+    invalidateBandSwitch() { this.bandSwitchVisible = false; this.pendingBandSwitch = null },
+    invalidateBandEditOwner() { this.invalidateBandSwitch(); this.bandEditOwnerKey = ''; this.editBandVisible = false },
+    adoptBandEditor(row) {
+      this.editBandForm = this.normalizedEditor('bandEdit', row)
+      this.editorBaselines.bandEdit = this.editorSignature('bandEdit')
+      this.bandEditOwnerKey = this.bandEditorOwnerKey
       this.editBandError = ''
       this.editBandVisible = true
     },
+    openEditBand(row) {
+      if (!this.canManageBands || this.busy || this.disposed || this.bandSwitchVisible || !row?.bandId || !this.bandSlotId) return
+      if (row.slotId != null && String(row.slotId) !== String(this.bandSlotId)) return
+      const owner = this.bandEditorOwnerKey
+      const ownedPending = this.bandEditOwnerKey === owner && this.editBandForm && this.editorSignature('bandEdit') !== this.editorBaselines.bandEdit
+      if (ownedPending) {
+        if (String(this.editBandForm.bandId) === String(row.bandId)) { this.editBandVisible = true; return }
+        const target = this.bandRows.find(item => String(item.bandId) === String(row.bandId))
+        if (!target || String(target.slotId) !== String(this.bandSlotId)) return
+        this.pendingBandSwitch = {
+          owner, sourceId: String(this.editBandForm.bandId), signature: this.editorSignature('bandEdit'),
+          baseline: this.editorBaselines.bandEdit, error: this.editBandError,
+          targetId: String(target.bandId), targetSignature: this.editorSignature('bandEdit', target), targetVersion: target.version
+        }
+        this.bandSwitchVisible = true
+        return
+      }
+      this.adoptBandEditor(row)
+    },
+    currentBandSwitchSource(intent) {
+      return !!intent && !this.disposed && !this.busy && this.canManageBands && intent.owner === this.bandEditorOwnerKey &&
+        this.bandEditOwnerKey === intent.owner && String(this.editBandForm?.bandId) === intent.sourceId &&
+        this.editorSignature('bandEdit') === intent.signature && this.editorBaselines.bandEdit === intent.baseline && this.editBandError === intent.error
+    },
+    cancelBandSwitch() {
+      const intent = this.pendingBandSwitch
+      this.invalidateBandSwitch()
+      if (this.currentBandSwitchSource(intent)) this.editBandVisible = true
+    },
+    confirmBandSwitch() {
+      const intent = this.pendingBandSwitch
+      this.invalidateBandSwitch()
+      if (!this.currentBandSwitchSource(intent)) return
+      const target = this.bandRows.find(item => String(item.bandId) === intent.targetId)
+      if (!target || String(target.slotId) !== String(this.bandSlotId) || this.editorSignature('bandEdit', target) !== intent.targetSignature || target.version !== intent.targetVersion) return
+      this.adoptBandEditor(target)
+      this.retainOtherDraftProtection()
+    },
     async submitEditBand() {
-      if (!this.canManageBands || this.busy || !this.editBandForm) return
+      if (!this.canManageBands || this.busy || this.disposed || !this.editBandForm || !this.bandEditOwnerKey || this.bandEditOwnerKey !== this.bandEditorOwnerKey) return
       const err = this.validateBand(this.editBandForm)
       if (err) { this.editBandError = err; return }
       this.bandSaving = true
-      const res = await academicAffairsApi.updateTimeBand(this.editBandForm.bandId, {
-        bandName: this.editBandForm.bandName || '', campusCode: this.editBandForm.campusCode || '',
-        effectiveStart: this.editBandForm.effectiveStart || null, effectiveEnd: this.editBandForm.effectiveEnd || null,
-        startTime: this.editBandForm.startTime, endTime: this.editBandForm.endTime
-      })
-      this.bandSaving = false
-      if (res.code === 0) {
-        toast.success('已保存')
-        this.editBandVisible = false
-        this.loadBands()
-      } else {
-        this.editBandError = res.message || '保存失败'
-      }
+      const id = this.editBandForm.bandId
+      const body = { bandName: this.editBandForm.bandName || '', campusCode: this.editBandForm.campusCode || '', effectiveStart: this.editBandForm.effectiveStart || null, effectiveEnd: this.editBandForm.effectiveEnd || null, startTime: this.editBandForm.startTime, endTime: this.editBandForm.endTime }
+      return this.saveEditor('bandEdit', body, () => academicAffairsApi.updateTimeBand(id, body), id)
     },
     async toggleBandStatus(row) {
       if (!this.canManageBands || this.busy) return

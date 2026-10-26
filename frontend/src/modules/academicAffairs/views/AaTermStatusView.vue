@@ -175,7 +175,7 @@ export default {
         const archiveByTerm = new Map((archive.code === 0 ? archive.data || [] : []).map(row => [String(row.termId), row]))
         this.rows = res.data.list.map(row => ({ scheduleReferenceCount: 0, ...row, ...(archiveByTerm.get(String(row.termId)) || {}) }))
       } else {
-        this.error = res.message
+        this.error = res
       }
       this.loading = false
       this.academicFlow?.restorePosition?.()

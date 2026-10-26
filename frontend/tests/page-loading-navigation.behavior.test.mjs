@@ -92,3 +92,61 @@ test('单接口超时不会熔断后续页面，断网仍进入离线状态', as
   await assert.rejects(raw('/offline'))
   assert.equal(offline, true)
 })
+
+// Actual rawRequest/transportFailure, with declared HTTP200/json collaborators.
+// No token, real HTTP, app import, global replacement, or fake clock.
+import { normalizeUiError as bodyReadNormalizeUiError } from '../src/utils/presentationSafety.js'
+function bodyReadClientFixture(fetcher) {
+  const source = readFileSync(new URL('../src/services/http/client.js', import.meta.url), 'utf8')
+  const rawSource = source.slice(source.indexOf('async function rawRequest('), source.indexOf('function newBrowserSessionId('))
+  const failureSource = source.slice(source.indexOf('function transportFailure('), source.indexOf('function markOffline('))
+  const transportFailure = new Function(failureSource + ';return transportFailure')()
+  const stats = { fetch: 0, json: 0, markOffline: 0, clearOffline: 0, offline: false }
+  const env = {
+    fetch: async (url, options) => {
+      stats.fetch++; assert.equal(options.method, 'GET'); assert.equal(options.headers.Authorization, undefined)
+      const response = await fetcher(url, options)
+      return { status: response.status, json: async () => { stats.json++; return response.json() } }
+    },
+    state: { token: '' }, REQUEST_TIMEOUT_MS: 4000,
+    isBackendOffline: () => stats.offline, canUseMockFallback: () => false,
+    isWriteMethod: method => !['GET', 'HEAD', 'OPTIONS'].includes(String(method).toUpperCase()),
+    API_BASE_URL: '', API_PREFIX: '', normalizeUiError: bodyReadNormalizeUiError,
+    clearOfflineState() { stats.clearOffline++; stats.offline = false },
+    markOffline() { stats.markOffline++; stats.offline = true },
+    throwOfflineSkip() { throw new Error('Unexpected mock-only cooldown in declared production fixture') },
+    transportFailure
+  }
+  return { raw: new Function(...Object.keys(env), rawSource + ';return rawRequest')(...Object.values(env)), stats }
+}
+
+test('HTTP200 body AbortError and TimeoutError retain timeout metadata and cause without marking the service offline', async () => {
+  for (const name of ['AbortError', 'TimeoutError']) {
+    const original = new DOMException('Declared body read cancellation', name)
+    let healthy = false
+    const f = bodyReadClientFixture(async () => ({ status: 200, json: async () => { if (!healthy) throw original; return { code: 0, data: { ready: true } } } }))
+    await assert.rejects(f.raw('/declared/body'), error => {
+      assert.equal(error.bizCode, 'REQUEST_TIMEOUT'); assert.equal(error.code, 503001); assert.equal(error.biz, true)
+      assert.equal(error.transportErrorName, name); assert.equal(error.cause, original); return true
+    })
+    assert.equal(f.stats.fetch, 1); assert.equal(f.stats.json, 1); assert.equal(f.stats.markOffline, 0); assert.equal(f.stats.offline, false)
+    healthy = true
+    assert.deepEqual(await f.raw('/declared/healthy'), { ready: true })
+    assert.equal(f.stats.fetch, 2); assert.equal(f.stats.json, 2); assert.equal(f.stats.clearOffline, 1)
+  }
+})
+
+test('ordinary invalid JSON preserves structure-error classification and production GET remains reachable', async () => {
+  const original = new SyntaxError('Declared malformed JSON')
+  let healthy = false
+  const f = bodyReadClientFixture(async () => ({ status: 200, json: async () => { if (!healthy) throw original; return { code: 0, data: 'declared healthy' } } }))
+  await assert.rejects(f.raw('/declared/malformed'), error => {
+    assert.equal(error.code, 503001); assert.equal(error.biz, true); assert.equal(error.bizCode, undefined)
+    assert.match(error.cause.message, /^响应结构异常（HTTP 200）$/); assert.equal(error.cause.name, 'Error')
+    assert.notEqual(error.cause, original); return true
+  })
+  assert.equal(f.stats.markOffline, 1); assert.equal(f.stats.offline, true)
+  healthy = true
+  assert.equal(await f.raw('/declared/healthy'), 'declared healthy')
+  assert.equal(f.stats.fetch, 2); assert.equal(f.stats.json, 2); assert.equal(f.stats.offline, false)
+})

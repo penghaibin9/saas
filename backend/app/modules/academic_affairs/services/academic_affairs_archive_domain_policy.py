@@ -13,6 +13,7 @@ from sqlalchemy import or_, select
 from app.services.db_service import _tid
 
 from . import academic_affairs_archive_core_service as _core
+from . import academic_affairs_archive_operational_policy as _operational
 from . import academic_affairs_archive_rule_evaluator as _semantic
 from .academic_affairs_effective_grade_policy_service import policy_snapshot_debt
 
@@ -710,6 +711,9 @@ def evaluate_domains(db, term_id, term_code, college_ids=None) -> dict[str, dict
     if college_ids is not None:
         return _evaluate_college_domains(db, term_id, term_code, college_ids)
     base = _core._evaluate_domains(db, term_id, term_code, college_ids)
+    # Operational state owns the schedule baseline; semantic reconciliation adds
+    # independent coverage and HARD conflicts to that baseline exactly once.
+    base["SCHEDULE"] = _safe("SCHEDULE", lambda: _operational.evaluate_schedule(db, term_id, college_ids))
     base["STATUS_CHANGE"] = _safe("STATUS_CHANGE", lambda: evaluate_status_change(db, term_id, term_code))
     base["GRADUATION"] = _safe("GRADUATION", lambda: evaluate_graduation(db, term_id))
     results = _semantic.evaluate_first_batch(

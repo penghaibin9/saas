@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+import { createOwnedHistoryAdapter, registerOwnedHistoryAdapter } from './ownedAcademicNavigation'
 import { getToken, request } from '@/services/http/client'
 import {
   canEnterRoute,
@@ -64,8 +65,15 @@ const moduleRoutes = projectNavigationRoutePermissions([
 ].flatMap((def) => (Array.isArray(def) ? def : [def])), [...NAV_PLAN, PLATFORM_PLAN])
 const projectedCoreControlRoutes = projectNavigationRoutePermissions(coreControlRoutes, [...NAV_PLAN, PLATFORM_PLAN])
 
+const ownedAcademicHistory = createOwnedHistoryAdapter(createWebHistory(import.meta.env.BASE_URL), {
+  resolveLocation: raw => router.resolve(raw),
+  shouldEnforce: path => {
+    const meta = router.resolve(path).meta
+    return meta.moduleCode === 'ACADEMIC_AFFAIRS' && canEnterRoute(meta)
+  }
+})
 const router = createRouter({
-  history: createWebHistory(import.meta.env.BASE_URL),
+  history: ownedAcademicHistory.history,
   routes: [
     {
       /* PORTAL-ROOT：主域名根路径 = 对外统一门户首页（公开，不需登录）。
@@ -144,6 +152,8 @@ const router = createRouter({
     ...moduleRoutes
   ]
 })
+
+registerOwnedHistoryAdapter(router, ownedAcademicHistory)
 
 /**
  * P6-SECURITY / P-02：平台控制面 identity-first + capability-second 路由守卫。

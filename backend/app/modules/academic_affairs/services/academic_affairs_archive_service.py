@@ -68,13 +68,6 @@ def _evaluate_domains(db, term_id, term_code, college_ids=None):
     results = _policy.evaluate_domains(db, term_id, term_code, college_ids)
     if college_ids is not None:
         return results
-    schedule_operational = _operational.evaluate_schedule(db, term_id, college_ids)
-    results["SCHEDULE"] = _merge_blocking_result(
-        "SCHEDULE",
-        results["SCHEDULE"],
-        schedule_operational,
-        rule_code="SCHEDULE_OPERATIONAL_CLOSURE",
-    )
     results["EXAM"] = _public_result(
         "EXAM",
         _operational.evaluate_exam(db, term_id),

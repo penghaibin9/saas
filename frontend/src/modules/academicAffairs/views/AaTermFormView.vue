@@ -12,7 +12,7 @@
 
     <div class="aa-term-create-layout">
     <AppSectionCard title="学期信息" subtitle="按学校已确认的校历填写；学年与学期序号创建后不可修改。">
-      <div class="aa-form">
+      <fieldset class="aa-form" :disabled="submitting">
         <div class="aa-form__row">
           <label for="aa-term-year" class="aa-form__label required">学年</label>
           <div class="aa-form__field">
@@ -70,7 +70,7 @@
             <div v-if="errors.examWeekStart" class="aa-form__err">{{ errors.examWeekStart }}</div>
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <div class="aa-form__actions">
         <AppButton @click="goBack">取消</AppButton>
@@ -100,6 +100,7 @@ import { AppSectionCard, AppSelect } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { matchPermission } from '@/config/navPlan'
+import { systemConfirm } from '@/services/systemDialog'
 
 const YEAR_RE = /^(\d{4})-(\d{4})$/
 
@@ -113,7 +114,7 @@ export default {
   },
   data() {
     return {
-      submitting: false, disposed: false,
+      submitting: false, disposed: false, releaseDirtyConfirmation: null,
       termOptions: [
         { value: 1, label: '第 1 学期（秋季）' },
         { value: 2, label: '第 2 学期（春季）' }
@@ -130,7 +131,22 @@ export default {
       errors: {}
     }
   },
-  beforeUnmount() { this.disposed = true },
+  mounted() {
+    const guard = window.__SAAS_DIRTY_FORM_GUARD__
+    if (!guard?.registerConfirmation) return
+    this.releaseDirtyConfirmation = guard.registerConfirmation(async (message) => {
+      const context = this.contextKey(), sourceFullPath = this.$route?.fullPath
+      const accepted = await systemConfirm({ title: '确认离开当前页面', message, confirmText: '放弃修改并离开', type: 'danger' })
+      // An already committed newer navigation keeps the Router's own cancellation result.
+      if (accepted !== true || this.$route?.fullPath !== sourceFullPath) return accepted
+      return context === this.contextKey() ? accepted : false
+    })
+  },
+  beforeUnmount() {
+    this.disposed = true
+    this.releaseDirtyConfirmation?.()
+    this.releaseDirtyConfirmation = null
+  },
   methods: {
     contextKey() { return JSON.stringify([this.disposed, this.academicFlow?.identity() || JSON.stringify(this.ctx), this.$route?.fullPath]) },
     goBack() {
@@ -181,6 +197,12 @@ export default {
       if (context !== this.contextKey()) return
       this.submitting = false
       if (res.code === 0) {
+        if (!res.data || typeof res.data !== 'object' || Array.isArray(res.data) ||
+          typeof res.data.termId !== 'string' || !res.data.termId.trim()) {
+          toast.error('创建结果未能确认，请核对学期列表；填写内容已保留')
+          return
+        }
+        window.__SAAS_DIRTY_FORM_GUARD__?.markSaved?.()
         toast.success('学期草稿已创建')
         this.$router.push({ name: 'aa-term-detail', params: { termId: res.data.termId }, query: this.$route.query.returnToken ? { returnToken: this.$route.query.returnToken } : {} })
       } else {
@@ -202,6 +224,10 @@ export default {
 .aa-term-create-guide strong { color: var(--text-primary); }
 .aa-term-create-guide li p { margin: 7px 0 0; color: var(--text-secondary); line-height: 1.7; }
 .aa-form {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;

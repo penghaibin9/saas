@@ -310,7 +310,7 @@ export default {
         this.rows = res.data.list
         this.pagination.total = res.data.total
       } else {
-        this.error = res.message
+        this.error = res
       }
       this.loading = false
       this.academicFlow?.restorePosition()

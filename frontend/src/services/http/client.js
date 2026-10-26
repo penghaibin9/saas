@@ -152,7 +152,10 @@ async function rawRequest(path, {
       signal: controller.signal,
       credentials: 'include'
     })
-    const payload = await res.json().catch(() => null)
+    const payload = await res.json().catch(error => {
+      if (['AbortError', 'TimeoutError'].includes(error?.name) || /abort/i.test(String(error?.message || ''))) throw error
+      return null
+    })
     if (!payload || typeof payload.code !== 'number') {
       throw new Error(`响应结构异常（HTTP ${res.status}）`)
     }
@@ -496,7 +499,7 @@ export async function request(path, options = {}) {
     return await rawRequest(path, options)
   } catch (e) {
     if (options.noAuthRetry) throw e
-    if (e.biz && e.code === 401001) {
+    if (e.biz && e.code === 401001 && e.httpStatus === 401) {
       if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
       // 同一逻辑会话内，别的请求可能已经完成 refresh；允许使用同身份的新 accessToken 重试。
       if (state.token && state.token !== accessTokenAtStart) return rawRequest(path, options)
@@ -603,6 +606,7 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
         const err = new Error('未登录，请先登录')
         err.biz = true
         err.code = 401001
+        err.httpStatus = res.status
         throw err
       }
       if (!res.ok) {
@@ -610,6 +614,7 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
         const err = new Error(payload?.message || `下载失败（HTTP ${res.status}）`)
         err.biz = true
         err.code = payload?.code || res.status
+        err.httpStatus = res.status
         err.bizCode = payload?.bizCode
         err.details = payload?.details
         throw err
@@ -632,7 +637,7 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
   try {
     return await doFetch()
   } catch (e) {
-    if (e.biz && e.code === 401001) {
+    if (e.biz && e.code === 401001 && e.httpStatus === 401) {
       if (state.sessionGeneration !== generationAtStart) throw staleSessionError()
       if (state.token && state.token !== accessTokenAtStart) return doFetch()
       if (await tryRefresh()) {

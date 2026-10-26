@@ -48,7 +48,7 @@ export default {
   props: {
     term: { type: Object, required: true }, events: { type: Array, default: () => [] },
     weeks: { type: Array, default: () => [] }, weekMode: Boolean,
-    loading: Boolean, error: { type: String, default: '' }, canCreate: Boolean,
+    loading: Boolean, error: { type: [String, Object], default: '' }, canCreate: Boolean,
     title: { type: String, default: '校历管理' }, authorityHint: { type: String, default: '当前学期的启用方式以学校当前权威结论为准。' }
   },
   emits: ['retry', 'create'],

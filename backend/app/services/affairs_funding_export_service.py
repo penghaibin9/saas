@@ -7,7 +7,6 @@ Web 请求只冻结筛选、导出用途、操作者和学工 data scope，并�
 from __future__ import annotations
 
 import json
-import socket
 import uuid
 from datetime import datetime, timedelta
 from io import BytesIO
@@ -30,7 +29,7 @@ _MAX_ATTEMPTS = 5
 _LEASE_SECONDS = 10 * 60
 _PAGE_SIZE = 500
 _TTL_HOURS = 24
-_WORKER_ID = f"{socket.gethostname()}:{uuid.uuid4().hex[:12]}"
+_WORKER_ID = f"affairs-funding-export:{uuid.uuid4().hex}"
 
 _COLUMNS = (
     ("studentNo", "学号"),

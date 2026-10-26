@@ -166,3 +166,59 @@ test('E2E staff role switch waits for the new document refresh rotation before a
   assert.ok(navigation < settle, 'the helper must first enter the new document, then finish its refresh rotation')
   assert.match(switchBlock[1], /bootstrapRefresh\.ok\(\)/)
 })
+
+
+// Whole production client; only imports/build constants/declared fetch are wired.
+import { normalizeUiError as replayNormalizeUiError } from '../src/utils/presentationSafety.js'
+async function wholeAuthReplayFixture(firstStatus, binary = false) {
+  const source = (await readSource(clientUrl)).replace(/^import .*$/gm, '').replace(/\bimport\.meta\b/g, '__replayBuildMeta').replace(/^export /gm, '')
+  const calls = [], counts = { writes: 0, refresh: 0 }
+  const memory = new Map(), storage = { getItem: key => memory.get(key) ?? null, setItem: (key, value) => memory.set(key, String(value)), removeItem: key => memory.delete(key) }
+  const reply = (status, code, data) => ({ status, ok: status >= 200 && status < 300, clone() { return this }, blob: async () => new Blob(['DECLARED_BLOB']), json: async () => ({ code, bizCode: code === 0 ? 'SUCCESS' : 'UNAUTHORIZED', message: '声明认证响应', data, traceId: 'DECLARED_AUTH_REPLAY' }) })
+  const fetch = async (url, options) => {
+    assert.equal(options.method, 'POST'); assert.equal(options.credentials, 'include')
+    calls.push({ path: url, method: options.method, hasAuthorization: typeof options.headers.Authorization === 'string' })
+    if (url === '/api/v1/auth/browser-refresh') {
+      counts.refresh++; assert.ok(counts.refresh <= 1)
+      assert.equal(options.headers.Authorization, undefined)
+      return reply(200, 0, { accessToken: 'DECLARED_ROTATED_SESSION_TOKEN' })
+    }
+    assert.equal(url, '/api/v1/declared/write'); counts.writes++; assert.ok(counts.writes <= 2)
+    if (counts.writes === 1) return reply(firstStatus, 401001, null)
+    return reply(200, 0, { ack: 'DECLARED_ACK' })
+  }
+  const client = new Function('API_BASE_URL', 'API_PREFIX', 'allowMockFallback', 'realApiEnabled', 'toast', 'normalizeUiError', 'fetch', 'sessionStorage', 'localStorage', 'BroadcastChannel', 'window', '__replayBuildMeta', source + ';return {request,requestBlob,setToken,currentSessionGeneration}')(
+    '', '/api/v1', () => false, () => true, { info() {} }, replayNormalizeUiError, fetch, storage, storage, undefined, undefined, { env: { DEV: false, PROD: true } }
+  )
+  client.setToken('DECLARED_INITIAL_SESSION_TOKEN')
+  const generation = client.currentSessionGeneration()
+  let result, caught
+  try { result = await (binary ? client.requestBlob : client.request)('/declared/write', { method: 'POST', body: { declared: true } }) } catch (error) { caught = error }
+  return { calls, counts, result, caught, generation, finalGeneration: client.currentSessionGeneration() }
+}
+
+test('whole JSON client HTTP500 with a stale401 code cannot refresh or replay the original POST', async () => {
+  const f = await wholeAuthReplayFixture(500)
+  assert.equal(f.counts.writes, 1, 'HTTP500 is not authorization to repeat the canonical POST')
+  assert.equal(f.counts.refresh, 0); assert.equal(f.result, undefined)
+  assert.equal(f.caught.httpStatus, 500); assert.equal(f.caught.code, 401001); assert.equal(f.caught.traceId, 'DECLARED_AUTH_REPLAY')
+  assert.equal(f.finalGeneration, f.generation); assert.deepEqual(f.calls.map(item => item.path), ['/api/v1/declared/write'])
+})
+
+test('whole JSON client actual HTTP401 retains one successful same-session refresh and one retry', async () => {
+  const f = await wholeAuthReplayFixture(401)
+  assert.equal(f.counts.writes, 2); assert.equal(f.counts.refresh, 1); assert.equal(f.caught, undefined)
+  assert.deepEqual(f.result, { ack: 'DECLARED_ACK' }); assert.equal(f.finalGeneration, f.generation)
+  assert.deepEqual(f.calls.map(item => item.path), ['/api/v1/declared/write', '/api/v1/auth/browser-refresh', '/api/v1/declared/write'])
+  assert.deepEqual(f.calls.map(item => item.hasAuthorization), [true, false, true])
+})
+
+
+test('文件响应的服务错误不重放写请求，真正未登录仍正常刷新一次', async () => {
+  const failed = await wholeAuthReplayFixture(500, true)
+  assert.equal(failed.counts.writes, 1); assert.equal(failed.counts.refresh, 0)
+  assert.equal(failed.caught.httpStatus, 500); assert.equal(failed.caught.code, 401001)
+  const expired = await wholeAuthReplayFixture(401, true)
+  assert.equal(expired.counts.writes, 2); assert.equal(expired.counts.refresh, 1)
+  assert.equal(expired.caught, undefined); assert.equal(await expired.result.text(), 'DECLARED_BLOB')
+})

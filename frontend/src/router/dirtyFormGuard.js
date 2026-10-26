@@ -4,6 +4,11 @@ import { systemConfirm } from '../services/systemDialog.js'
 // 先覆盖实习批次/企业，再扩到同域岗位、指导、企业评价、协议模板等长表单；
 // 后续只需追加 route name，不再复制页面级 beforeRouteLeave。
 const DEFAULT_GUARDED_ROUTES = new Set([
+  'aa-term-new',
+  'aa-term-detail',
+  'aa-term-teaching-weeks',
+  'aa-calendar',
+  'aa-time-slots',
   'internship-plans',
   'internship-batch-new',
   'internship-batch-edit',
@@ -38,7 +43,9 @@ export function installDirtyFormGuard(router, options = {}) {
   const guardedRoutes = new Set(options.routeNames || DEFAULT_GUARDED_ROUTES)
   const message = options.message || '当前表单有未保存修改。离开此页将丢失这些修改，仍要离开吗？'
   let dirty = false
-  let pendingDiscardFrom = ''
+  let dirtyRevision = 0
+  let pendingDiscardApprovals = new WeakMap()
+  let pendingRevisionChecks = new WeakMap()
   let confirmationHandler = null
 
   const markDirty = (event) => {
@@ -47,8 +54,9 @@ export function installDirtyFormGuard(router, options = {}) {
     const target = event.target
     if (!(target instanceof Element) || !target.matches(EDITABLE_SELECTOR)) return
     if (target.closest('[data-dirty-ignore="true"], .advanced-filter, .mp-filter, .app-search')) return
+    dirtyRevision++
     dirty = true
-    pendingDiscardFrom = ''
+    pendingDiscardApprovals = new WeakMap()
   }
 
   const beforeUnload = (event) => {
@@ -62,8 +70,9 @@ export function installDirtyFormGuard(router, options = {}) {
   window.addEventListener('beforeunload', beforeUnload)
 
   const removeBefore = router.beforeEach(async (to, from) => {
-    if (!dirty || !isGuarded(from, guardedRoutes)) {
-      pendingDiscardFrom = ''
+    if (!isGuarded(from, guardedRoutes)) {
+      pendingDiscardApprovals.delete(to)
+      pendingRevisionChecks.delete(to)
       return true
     }
     if (String(to?.fullPath || '') === String(from?.fullPath || '')) return true
@@ -73,9 +82,17 @@ export function installDirtyFormGuard(router, options = {}) {
       if ([...keys].every((key) => key === 'section' || to.query?.[key] === from.query?.[key])) return true
     }
 
+    if (!dirty) {
+      pendingDiscardApprovals.delete(to)
+      pendingRevisionChecks.set(to, { fromPath: String(from?.fullPath || ''), revision: dirtyRevision })
+      return true
+    }
+
     // fail-closed：点击“保存/提交”本身绝不清理 dirty，也不存在时间放行窗。
     // 用户确认丢弃时也只记录“本次离开已确认”，真正导航成功后才在 afterEach 清理。
     // 若后续权限/业务 guard 取消或导航失败，dirty 必须继续保留，下一次离开仍会提醒。
+    const confirmationRevision = dirtyRevision
+    const sourceFullPath = String(from?.fullPath || '')
     let accepted = false
     try {
       accepted = confirmationHandler
@@ -83,20 +100,38 @@ export function installDirtyFormGuard(router, options = {}) {
         : await systemConfirm({ title: '确认离开当前页面', message, confirmText: '放弃修改并离开', type: 'danger' })
     } catch { accepted = false }
     if (accepted === true) {
-      pendingDiscardFrom = String(from?.fullPath || '')
+      pendingRevisionChecks.set(to, { fromPath: sourceFullPath, revision: confirmationRevision })
+      if (confirmationRevision !== dirtyRevision) {
+        pendingDiscardApprovals.delete(to)
+        const mayLeave = !dirty || String(router.currentRoute.value?.fullPath || '') !== sourceFullPath
+        if (!mayLeave) pendingRevisionChecks.delete(to)
+        return mayLeave
+      }
+      pendingDiscardApprovals.set(to, { fromPath: String(from?.fullPath || '') })
       return true
     }
-    pendingDiscardFrom = ''
+    pendingDiscardApprovals.delete(to)
+    pendingRevisionChecks.delete(to)
     return false
+  })
+
+  // Component resolution can await after confirmation; new input revokes only this request.
+  const removeResolve = router.beforeResolve((to, from) => {
+    const snapshot = pendingRevisionChecks.get(to)
+    return !(snapshot && snapshot.fromPath === String(from?.fullPath || '') &&
+      snapshot.fromPath === String(router.currentRoute.value?.fullPath || '') &&
+      dirty && snapshot.revision !== dirtyRevision)
   })
 
   const removeAfter = router.afterEach((to, from, failure) => {
     const fromPath = String(from?.fullPath || '')
     const toPath = String(to?.fullPath || '')
-    if (!failure && pendingDiscardFrom && pendingDiscardFrom === fromPath && toPath !== fromPath) {
+    const approval = pendingDiscardApprovals.get(to)
+    if (!failure && approval && approval.fromPath === fromPath && toPath !== fromPath) {
       dirty = false
     }
-    pendingDiscardFrom = ''
+    pendingDiscardApprovals.delete(to)
+    pendingRevisionChecks.delete(to)
     if (!failure && toPath !== fromPath && !isGuarded(from, guardedRoutes)) {
       dirty = false
     }
@@ -111,13 +146,15 @@ export function installDirtyFormGuard(router, options = {}) {
     handlesRoute: (route) => isGuarded(route, guardedRoutes),
     markDirty: () => {
       if (isGuarded(router.currentRoute.value, guardedRoutes)) {
+        dirtyRevision++
         dirty = true
-        pendingDiscardFrom = ''
+        pendingDiscardApprovals = new WeakMap()
       }
     },
     markSaved: () => {
+      dirtyRevision++
       dirty = false
-      pendingDiscardFrom = ''
+      pendingDiscardApprovals = new WeakMap()
     },
     isDirty: () => dirty
   }
@@ -127,7 +164,9 @@ export function installDirtyFormGuard(router, options = {}) {
     document.removeEventListener('change', markDirty, true)
     window.removeEventListener('beforeunload', beforeUnload)
     if (typeof removeBefore === 'function') removeBefore()
+    if (typeof removeResolve === 'function') removeResolve()
     if (typeof removeAfter === 'function') removeAfter()
+    pendingRevisionChecks = new WeakMap()
     delete window.__SAAS_DIRTY_FORM_GUARD__
   }
 }

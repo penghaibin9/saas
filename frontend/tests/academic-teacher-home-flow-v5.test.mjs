@@ -28,7 +28,7 @@ test('教师今日教学真实模板接入已有责任视图，同时保留今�
     AppButton: { setup: (_, { slots }) => () => Vue.h('button', slots.default?.()) },
     AppInlineAlert: { props: ['description'], setup: props => () => Vue.h('p', props.description) },
     AcademicFlowOverview: { props: ['ctx', 'termId', 'canOpen'], setup: props => { seen.push(props); return () => Vue.h('section', { 'aria-label': '学期责任接力' }, '本人责任与下一岗位') } },
-    LoadingState: { render: () => Vue.h('p', '正在读取正式事实') }, ErrorState: { props: ['description'], setup: props => () => Vue.h('p', props.description) }, EmptyState: { props: ['title'], setup: props => () => Vue.h('p', props.title) }
+    LoadingState: { render: () => Vue.h('p', '正在读取正式事实') }, ErrorState: { props: ['description'], setup: props => () => Vue.h('p', props.description) }, EmptyState: { props: ['title', 'description'], setup: props => () => Vue.h('p', `${props.title} ${props.description || ''}`) }
   }
   async function renderPage(query, role = teacher(), overrides = {}) {
     const app = Vue.createSSRApp({ ...definition, data() { return { ...definition.data.call(this), ...overrides } }, created: undefined, render, components: stubs }, { ctx: role })
@@ -49,6 +49,28 @@ test('教师今日教学真实模板接入已有责任视图，同时保留今�
   const failed = await renderPage({}, teacher(), { todayError: '网络异常，请检查网络连接后重试' })
   assert.equal((failed.match(/网络异常，请检查网络连接后重试/g) || []).length, 2)
   assert.doesNotMatch(failed, /今天没有授课安排|当前没有需要本人处理的事项/)
+  const unconfigured = await renderPage({}, teacher(), { currentTermId: '', loading: false })
+  assert.match(unconfigured, /学校尚未设置当前学期/)
+  assert.doesNotMatch(unconfigured, /已经处理完|已核对校历与本人正式课表/)
+})
+
+test('教师首页按正式学期回执区分未设置学期，并在刷新时清除旧学期', async () => {
+  let response = { termId: '', todayItems: [], workbench: { actionItems: [] } }
+  const { state } = instance({ getMyTeacherToday: async () => ({ code: 0, data: response }) })
+  await state.load()
+  assert.equal(state.currentTermId, '')
+  assert.match(state.todayNote, /学校尚未设置当前学期/)
+  response = { termId: '8', calendarSource: 'HOLIDAY', todayItems: [] }
+  await state.load()
+  assert.equal(state.currentTermId, '8')
+  assert.match(state.todayNote, /节假日/)
+  response = { termId: '8', calendarSource: 'NORMAL', todayItems: [] }
+  await state.load()
+  assert.doesNotMatch(state.todayNote, /尚未设置|已经处理完/)
+  response = { termId: '', todayItems: [] }
+  await state.load()
+  assert.equal(state.currentTermId, '')
+  assert.match(state.todayNote, /学校尚未设置当前学期/)
 })
 
 test('教师责任学期使用字符串深链并保留原待办标签与返回位置', async () => {

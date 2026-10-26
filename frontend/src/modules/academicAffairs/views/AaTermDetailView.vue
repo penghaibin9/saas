@@ -12,23 +12,23 @@
         <AppButton v-if="hasPermission('academicAffairs.dashboard.view')" variant="ghost" @click="goReadiness">学期运行概况</AppButton>
         <AppButton
           v-if="detail.allowedActions?.publish && publishAllowed"
-          :disabled="hasChanges || saving || previewing"
+          :disabled="hasChanges || saving || previewing || recovering || versionConflict"
           variant="primary"
           @click="openAction('PUBLISH')"
         >{{ governanceManaged ? '发布学期' : '发布并设为当前' }}</AppButton>
         <AppButton
           v-if="detail.allowedActions?.setCurrent && directCurrentSwitchAllowed"
-          :disabled="hasChanges || saving || previewing"
+          :disabled="hasChanges || saving || previewing || recovering || versionConflict"
           variant="primary"
           @click="openAction('SET_CURRENT')"
         >设为当前学期</AppButton>
         <AppButton
           v-if="canManage && detail.allowedActions?.freeze"
-          :disabled="hasChanges || saving || previewing"
+          :disabled="hasChanges || saving || previewing || recovering || versionConflict"
           variant="ghost"
           @click="openAction('FREEZE')"
         >冻结学期</AppButton>
-        <AppButton v-if="canManage && detail.status === 'FROZEN'" variant="ghost" @click="openAction('UNFREEZE')">解冻学期</AppButton>
+        <AppButton v-if="canManage && detail.status === 'FROZEN'" :disabled="hasChanges || saving || previewing || recovering || versionConflict" variant="ghost" @click="openAction('UNFREEZE')">解冻学期</AppButton>
         <AppButton
           v-if="hasPermission('academicAffairs.archive.view') && detail.allowedActions?.archive"
           variant="primary"
@@ -86,7 +86,7 @@
               <span>学期名称</span>
               <input
                 v-model.trim="form.termName"
-                :disabled="!canEditName || saving"
+                :disabled="!canEditName || saving || recovering"
                 maxlength="100"
                 placeholder="填写学校正式使用的学期名称"
                 @input="invalidatePreview"
@@ -94,11 +94,11 @@
             </label>
             <label>
               <span>开学日期</span>
-              <input v-model="form.startDate" type="date" :disabled="!canEditTimeline || saving" @input="invalidatePreview" />
+              <input v-model="form.startDate" type="date" :disabled="!canEditTimeline || saving || recovering" @input="invalidatePreview" />
             </label>
             <label>
               <span>结束日期</span>
-              <input v-model="form.endDate" type="date" :disabled="!canEditTimeline || saving" @input="invalidatePreview" />
+              <input v-model="form.endDate" type="date" :disabled="!canEditTimeline || saving || recovering" @input="invalidatePreview" />
             </label>
             <label>
               <span>教学周数</span>
@@ -107,7 +107,7 @@
                 type="number"
                 min="1"
                 max="30"
-                :disabled="!canEditTimeline || saving"
+                :disabled="!canEditTimeline || saving || recovering"
                 @input="invalidatePreview"
               />
             </label>
@@ -118,7 +118,7 @@
                 type="number"
                 min="1"
                 max="30"
-                :disabled="!canEditTimeline || saving"
+                :disabled="!canEditTimeline || saving || recovering"
                 @input="invalidatePreview"
               />
             </label>
@@ -129,18 +129,32 @@
             <p>{{ detail.impactWarning }}</p>
           </div>
 
+          <section v-if="versionConflict || recoveryComparison.length" class="atd-recovery" aria-label="学期修改冲突恢复">
+            <strong>{{ versionConflict ? '学期信息已被其他人修改' : '已读取最新信息，请核对后重新预览' }}</strong>
+            <p>你的输入已保留。读取最新信息后，仅保留你修改过的字段，其他字段采用最新值；保存前请核对以下对照。</p>
+            <AppButton v-if="versionConflict" :loading="recovering" @click="recoverVersion">读取最新信息并保留我的修改</AppButton>
+            <AppButton v-if="restrictedFieldChanges" :disabled="recovering || saving" @click="adoptLatestRestrictedFields">采用最新的受限字段</AppButton>
+            <p v-if="restrictedFieldChanges">最新状态已锁定日期和周数。请核对后主动采用服务器的这些值，学期名称修改会保留。</p>
+            <p v-if="recoveryError" role="alert">{{ recoveryError }}</p>
+            <table v-if="recoveryComparison.length">
+              <thead><tr><th>字段</th><th>原来读取的值</th><th>服务器最新值</th><th>待保存的值</th></tr></thead>
+              <tbody><tr v-for="row in recoveryComparison" :key="row.field"><th>{{ row.label }}</th><td>{{ valueText(row.original) }}</td><td>{{ valueText(row.latest) }}</td><td>{{ valueText(form[row.field]) }}</td></tr></tbody>
+            </table>
+            <p v-if="recoveryComparison.length && !canEditName">最新状态已不允许修改。你的输入仍保留供核对，不能继续保存。</p>
+          </section>
+
           <div v-if="canEditName" class="atd-savebar">
             <span v-if="!hasChanges">当前没有未保存修改</span>
             <span v-else-if="!previewCurrent">修改后请重新执行影响预览</span>
             <span v-else>{{ preview.conclusion }}</span>
             <div>
-              <AppButton :disabled="!hasChanges" :loading="previewing" variant="ghost" @click="previewChange">
+              <AppButton :disabled="!hasChanges || versionConflict || recovering || restrictedFieldChanges" :loading="previewing" variant="ghost" @click="previewChange">
                 预览修改影响
               </AppButton>
               <AppButton
                 variant="primary"
                 :loading="saving"
-                :disabled="!previewCurrent || !preview.canSave"
+                :disabled="!previewCurrent || !preview.canSave || versionConflict || recovering || previewing || restrictedFieldChanges"
                 @click="save"
               >保存修改</AppButton>
             </div>
@@ -249,6 +263,7 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { academicAffairsTermDetailApi as termApi } from '@/modules/academicAffairs/api/academic-affairs-term-detail.api'
 import { toast } from '@/utils/toast'
 import { matchPermission } from '@/config/navPlan'
+import { systemConfirm } from '@/services/systemDialog'
 import { formatDateTime } from '@/utils/dateUtils'
 import { presentAuditRecord, safeBusinessMessage, safeEnumLabel } from '@/utils/presentationSafety'
 
@@ -270,7 +285,7 @@ export default {
   data() {
     return {
       loading: true,
-      requestVersion: 0, authorityVersion: 0, pageEpoch: 0, disposed: false,
+      requestVersion: 0, authorityVersion: 0, pageEpoch: 0, disposed: false, releaseDirtyConfirmation: null,
       error: '',
       detail: {},
       currentContextLoading: true,
@@ -280,7 +295,8 @@ export default {
       baselineSignature: '',
       previewSignature: '',
       preview: {},
-      previewing: false,
+      previewing: false, previewRequestVersion: 0,
+      versionConflict: false, recovering: false, recoveryError: '', recoveryComparison: [],
       saving: false,
       actionDialog: { visible: false, submitting: false, type: '', title: '', message: '' }
     }
@@ -311,6 +327,9 @@ export default {
     },
     currentSignature() { return JSON.stringify(this.normalizedForm()) },
     hasChanges() { return this.currentSignature !== this.baselineSignature },
+    restrictedFieldChanges() {
+      return !this.canEditTimeline && this.recoveryComparison.some(row => row.field !== 'termName' && this.normalizedForm()[row.field] !== row.latest)
+    },
     previewCurrent() { return Boolean(this.previewSignature && this.previewSignature === this.currentSignature) },
     linkedTotal() {
       const d = this.detail.linkedData || {}
@@ -338,11 +357,26 @@ export default {
     '$route.fullPath'() { this.resetPage() },
     ctx() { this.resetPage() }
   },
-  beforeUnmount() { this.disposed = true; this.pageEpoch += 1; this.actionDialog.visible = false },
+  mounted() {
+    const guard = window.__SAAS_DIRTY_FORM_GUARD__
+    if (!guard?.registerConfirmation) return
+    this.releaseDirtyConfirmation = guard.registerConfirmation(async (message) => {
+      const context = this.contextKey(), sourceFullPath = this.$route?.fullPath
+      const accepted = await systemConfirm({ title: '确认离开当前页面', message, confirmText: '放弃修改并离开', type: 'danger' })
+      if (accepted !== true || this.$route?.fullPath !== sourceFullPath) return accepted
+      return context === this.contextKey() ? accepted : false
+    })
+  },
+  beforeUnmount() {
+    this.disposed = true; this.pageEpoch += 1; this.actionDialog.visible = false
+    this.releaseDirtyConfirmation?.()
+    this.releaseDirtyConfirmation = null
+  },
   methods: {
     contextKey() { return JSON.stringify([this.disposed, this.pageEpoch, this.academicFlow?.identity() || JSON.stringify(this.ctx), this.termId, this.$route?.fullPath]) },
     resetPage() {
       if (this.disposed) return
+      this.versionConflict = false; this.recovering = false; this.recoveryError = ''; this.recoveryComparison = []
       this.pageEpoch += 1; this.actionDialog.visible = false; this.invalidatePreview(); this.previewing = false; this.saving = false
       this.loadCurrentContext(); this.load()
     },
@@ -364,6 +398,8 @@ export default {
       }
     },
     invalidatePreview() {
+      this.previewRequestVersion += 1
+      this.previewing = false
       this.preview = {}
       this.previewSignature = ''
     },
@@ -409,14 +445,52 @@ export default {
       this.loading = false
       this.academicFlow?.restorePosition()
     },
+    adoptLatestRestrictedFields() {
+      if (this.recovering || this.saving || !this.restrictedFieldChanges) return
+      for (const row of this.recoveryComparison) {
+        if (row.field !== 'termName') this.form[row.field] = ['startDate', 'endDate'].includes(row.field) ? row.latest || '' : row.latest
+      }
+      this.invalidatePreview()
+    },
+    async recoverVersion() {
+      if (!this.versionConflict || this.recovering || this.saving || this.previewing) return
+      this.invalidatePreview()
+      this.recovering = true; this.recoveryError = ''
+      const context = this.contextKey(), termId = this.termId, signature = this.currentSignature
+      const original = JSON.parse(this.baselineSignature), local = this.normalizedForm()
+      const res = await termApi.get(termId)
+      if (context !== this.contextKey() || termId !== this.termId) return
+      this.recovering = false
+      if (signature !== this.currentSignature) { this.recoveryError = '输入已变化，请重新读取最新信息'; return }
+      if (res.code !== 0 || !res.data) { this.recoveryError = res.message || '最新信息读取失败，请重试'; return }
+      const latest = {
+        termName: (res.data.termName || '').trim(),
+        startDate: (res.data.startDate || '').slice(0, 10) || null,
+        endDate: (res.data.endDate || '').slice(0, 10) || null,
+        teachingWeeks: res.data.teachingWeeks ?? null,
+        examWeekStart: res.data.examWeekStart ?? null
+      }
+      const labels = { termName: '学期名称', startDate: '开学日期', endDate: '结束日期', teachingWeeks: '教学周数', examWeekStart: '考试周开始' }
+      const merged = { ...latest }
+      this.recoveryComparison = Object.keys(latest).map(field => {
+        if (local[field] !== original[field]) merged[field] = local[field]
+        return { field, label: labels[field], original: original[field], latest: latest[field], retained: merged[field] }
+      })
+      this.detail = res.data
+      this.baselineSignature = JSON.stringify(latest)
+      this.form = { ...merged, startDate: merged.startDate || '', endDate: merged.endDate || '' }
+      this.versionConflict = false
+      this.invalidatePreview()
+    },
     async previewChange() {
-      if (!this.canEditName || !this.hasChanges || this.previewing || this.saving) return
+      if (!this.canEditName || !this.hasChanges || this.previewing || this.saving || this.versionConflict || this.recovering || this.restrictedFieldChanges) return
       this.previewing = true
+      const previewVersion = ++this.previewRequestVersion
       const context = this.contextKey()
       const signature = this.currentSignature
       const termId = this.termId
       const res = await termApi.preview(termId, this.normalizedForm())
-      if (context !== this.contextKey()) return
+      if (context !== this.contextKey() || previewVersion !== this.previewRequestVersion) return
       this.previewing = false
       if (termId !== this.termId || signature !== this.currentSignature) return
       if (res.code === 0) {
@@ -429,22 +503,43 @@ export default {
       }
     },
     async save() {
-      if (!this.canEditName || !this.previewCurrent || !this.preview.canSave || this.saving) return
+      if (!this.canEditName || !this.previewCurrent || !this.preview.canSave || this.saving || this.previewing || this.versionConflict || this.recovering || this.restrictedFieldChanges) return
       this.saving = true
       const context = this.contextKey()
       const termId = this.termId
+      const submitted = this.normalizedForm()
+      const originalDetail = { ...this.detail }
+      const expectedAckId = typeof originalDetail.termId === 'string' && originalDetail.termId.trim() ? originalDetail.termId : termId
       const res = await termApi.update(termId, {
-        ...this.normalizedForm(),
-        expectedVersion: this.detail.version ?? 0
+        ...submitted,
+        expectedVersion: originalDetail.version ?? 0
       })
       if (context !== this.contextKey()) return
       this.saving = false
       if (termId !== this.termId) return
       if (res.code === 0) {
+        const data = res.data
+        const empty = value => value == null || value === ''
+        const confirmed = data && typeof data === 'object' && !Array.isArray(data) &&
+          typeof data.termId === 'string' && Boolean(data.termId.trim()) && data.termId === expectedAckId &&
+          typeof data.termName === 'string' && Number.isInteger(data.version) && data.version >= 0 &&
+          ['startDate', 'endDate', 'teachingWeeks', 'examWeekStart'].every(field => {
+            if (!Object.prototype.hasOwnProperty.call(data, field)) return empty(submitted[field]) && empty(originalDetail[field])
+            const value = data[field]
+            return value === null || (['startDate', 'endDate'].includes(field) ? typeof value === 'string' : Number.isInteger(value))
+          })
+        if (!confirmed) {
+          toast.error('保存结果未能确认，请核对学期详情；填写内容已保留')
+          this.invalidatePreview()
+          return
+        }
         toast.success('学期信息已保存')
-        this.detail = res.data || {}
+        this.detail = data
         this.hydrateForm(this.detail)
+        this.versionConflict = false; this.recoveryComparison = []; this.recoveryError = ''
+        window.__SAAS_DIRTY_FORM_GUARD__?.markSaved?.()
       } else {
+        this.versionConflict = res.bizCode === 'APPROVAL_VERSION_CONFLICT'
         toast.error(res.message || '保存失败')
         this.invalidatePreview()
       }
@@ -472,7 +567,7 @@ export default {
       this.actionDialog = { visible: true, submitting: false, type, title, message: `${this.detail.termName || this.detail.yearCode || '学期'}（${this.termId}）：${message}`, termId: this.termId, contextKey: this.contextKey() }
     },
     actionAllowed(type) {
-      if (!this.canManage || this.hasChanges || this.saving || this.previewing) return false
+      if (!this.canManage || this.hasChanges || this.saving || this.previewing || this.versionConflict || this.recovering) return false
       const allowed = this.detail.allowedActions || {}
       return Boolean({ PUBLISH: allowed.publish && this.publishAllowed, SET_CURRENT: allowed.setCurrent && this.directCurrentSwitchAllowed, FREEZE: allowed.freeze, UNFREEZE: this.detail.status === 'FROZEN' }[type])
     },
@@ -540,6 +635,10 @@ export default {
 .atd-warning.is-locked { background: var(--fill-50, #f7f8fa); }
 .atd-warning strong { color: var(--text-900, #1d2129); }
 .atd-warning p { margin: 5px 0 0; color: var(--text-600, #4e5969); font-size: 13px; line-height: 1.6; }
+.atd-recovery { margin-top: 16px; padding: 16px; border: 1px solid var(--warning-300, #e8bb63); border-radius: 8px; overflow-x: auto; }
+.atd-recovery p { line-height: 1.7; }
+.atd-recovery table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13px; }
+.atd-recovery th, .atd-recovery td { padding: 8px; text-align: left; border-bottom: 1px solid var(--border-base); overflow-wrap: anywhere; }
 .atd-savebar { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border-200, #e5e6eb); }
 .atd-savebar > span { font-size: 13px; color: var(--text-500, #646a73); }
 .atd-savebar > div { display: flex; gap: 8px; }

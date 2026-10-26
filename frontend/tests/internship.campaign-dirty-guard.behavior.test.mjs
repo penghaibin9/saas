@@ -14,12 +14,12 @@ test('prefilled position forms leave without confirmation while real changes sti
   globalThis.Element = class { matches() { return true } closest() { return null } }
   globalThis.window = { addEventListener() {}, removeEventListener() {}, confirm() { throw new Error('native confirmation must not run') } }
   globalThis.document = { addEventListener(name, fn) { if (name === 'input') input = fn }, removeEventListener() {}, querySelectorAll: () => [{ value: '已有工作内容', readOnly: false, disabled: false, getClientRects: () => [1] }] }
-  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, afterEach(fn) { after = fn } }
+  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, beforeResolve(fn) { this.resolveGuard = fn; return () => { if (this.resolveGuard === fn) this.resolveGuard = null } }, afterEach(fn) { after = fn } }
   let dispose
   try {
     dispose = installDirtyFormGuard(router)
     window.__SAAS_DIRTY_FORM_GUARD__.registerConfirmation(() => { confirmations++; return Promise.resolve(accept) })
-    const shellGuard = new Function('window', 'document', 'systemConfirm', `${shellGuardSource}; return confirmUnsubmitted`)(window, document, () => { confirmations++; return Promise.resolve(accept) })
+    const shellGuard = new Function('window', 'document', 'systemConfirm', 'props', `${shellGuardSource}; return confirmUnsubmitted`)(window, document, () => { confirmations++; return Promise.resolve(accept) }, { activeCenter: 'internship' })
     assert.equal(window.__SAAS_DIRTY_FORM_GUARD__.handlesRoute(from), true)
     assert.equal(await before(to, from), true); assert.equal(await shellGuard(to, from), true); assert.equal(confirmations, 0)
     input({ isTrusted: false, target: new Element() })
@@ -41,7 +41,7 @@ test('unmanaged forms keep the shared-shell fallback confirmation', async () => 
   let calls = 0
   const browser = { __SAAS_DIRTY_FORM_GUARD__: { handlesRoute: () => false }, confirm() { throw new Error('native confirmation must not run') } }
   const document = { querySelectorAll: () => [{ value: '未提交内容', readOnly: false, disabled: false, getClientRects: () => [1] }] }
-  const guard = new Function('window', 'document', 'systemConfirm', `${shellGuardSource}; return confirmUnsubmitted`)(browser, document, () => { calls++; return Promise.resolve(false) })
+  const guard = new Function('window', 'document', 'systemConfirm', 'props', `${shellGuardSource}; return confirmUnsubmitted`)(browser, document, () => { calls++; return Promise.resolve(false) }, { activeCenter: 'internship' })
   assert.equal(await guard({ path: '/other' }, { path: '/form' }), false); assert.equal(calls, 1)
   delete browser.__SAAS_DIRTY_FORM_GUARD__
   assert.equal(await guard({ path: '/other' }, { path: '/form' }), false); assert.equal(calls, 2)
@@ -54,7 +54,7 @@ test('campaign draft cancellation and failed navigation preserve dirty state unt
   const to = { name: 'internship-recruitment-campaign-detail', fullPath: '/admin/internship/recruitment-campaigns/1?batchId=23' }
   globalThis.window = { addEventListener() {}, removeEventListener() {}, confirm() { throw new Error('native confirmation must not run') } }
   globalThis.document = { addEventListener() {}, removeEventListener() {} }
-  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, afterEach(fn) { after = fn } }
+  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, beforeResolve(fn) { this.resolveGuard = fn; return () => { if (this.resolveGuard === fn) this.resolveGuard = null } }, afterEach(fn) { after = fn } }
   let dispose
   try {
     dispose = installDirtyFormGuard(router)
@@ -82,7 +82,7 @@ test('plan draft guard allows workspace tabs but protects batch switch and refre
   const from = { name: 'internship-plans', path: '/admin/internship/plans', fullPath: '/admin/internship/plans?batchId=1', query: { batchId: '1' } }
   globalThis.window = { addEventListener(name, fn) { if (name === 'beforeunload') unload = fn }, removeEventListener() {}, confirm() { throw new Error('native confirmation must not run') } }
   globalThis.document = { addEventListener() {}, removeEventListener() {} }
-  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, afterEach() {} }
+  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, beforeResolve(fn) { this.resolveGuard = fn; return () => { if (this.resolveGuard === fn) this.resolveGuard = null } }, afterEach() {} }
   let dispose
   try {
     dispose = installDirtyFormGuard(router); const guard = window.__SAAS_DIRTY_FORM_GUARD__; guard.registerConfirmation(() => { confirmations++; return Promise.resolve(false) }); guard.markDirty()
@@ -105,7 +105,7 @@ test('in-page discard confirmation preserves drafts on cancel, dialog failure, a
   let before, after, unload, nativeCalls = 0, resolveDialog
   globalThis.window = { addEventListener(name, fn) { if (name === 'beforeunload') unload = fn }, removeEventListener() {}, confirm() { nativeCalls++; return false } }
   globalThis.document = { addEventListener() {}, removeEventListener() {} }
-  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, afterEach(fn) { after = fn } }
+  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, beforeResolve(fn) { this.resolveGuard = fn; return () => { if (this.resolveGuard === fn) this.resolveGuard = null } }, afterEach(fn) { after = fn } }
   let dispose
   try {
     dispose = installDirtyFormGuard(router)
@@ -139,7 +139,7 @@ test('unmounting an earlier confirmation host cannot remove a newer handler', as
   let before
   globalThis.window = { addEventListener() {}, removeEventListener() {}, confirm() { throw new Error('native fallback must not run') } }
   globalThis.document = { addEventListener() {}, removeEventListener() {} }
-  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, afterEach() {} }
+  const router = { currentRoute: { value: from }, beforeEach(fn) { before = fn }, beforeResolve(fn) { this.resolveGuard = fn; return () => { if (this.resolveGuard === fn) this.resolveGuard = null } }, afterEach() {} }
   let dispose
   try {
     dispose = installDirtyFormGuard(router)

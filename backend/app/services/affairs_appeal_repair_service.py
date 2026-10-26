@@ -7,7 +7,6 @@ from __future__ import annotations
 
 import hashlib
 import logging
-import socket
 import uuid
 from contextvars import ContextVar
 from datetime import datetime, timedelta
@@ -20,7 +19,7 @@ from app.services.db_service import _tid, session
 log = logging.getLogger(__name__)
 _MAX_ATTEMPTS = 8
 _LEASE_SECONDS = 5 * 60
-_WORKER_ID = f"{socket.gethostname()}:{uuid.uuid4().hex[:12]}"
+_WORKER_ID = f"affairs-appeal-repair:{uuid.uuid4().hex}"
 _REPAIRING: ContextVar[bool] = ContextVar("affairs_appeal_repairing", default=False)
 _RAW_SYNC = None
 _RAW_NOTICE = None

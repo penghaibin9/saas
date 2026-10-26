@@ -7,12 +7,12 @@
     show-subtitle-in-concise
   >
     <div class="mp-stack">
-      <AppSectionCard title="学籍导入" subtitle="原始 Excel 先完成安全扫描，再由系统对同一份文件预检查">
+      <AppSectionCard title="学籍导入" subtitle="原始表格先完成安全扫描，再由系统对同一份文件预检查">
         <p class="mp-note">
           学号、姓名、班级必填，班级须为已存在的行政班。页面只展示系统预检结果，不再把名单回传作为写入依据；
           扫描或解析未完成时不能确认。
         </p>
-        <AppButton variant="primary" @click="importVisible = true">打开批量导入</AppButton>
+        <AppButton variant="primary" @click="openNewImport">打开批量导入</AppButton>
       </AppSectionCard>
 
       <AppSectionCard title="学籍导出" subtitle="生成导出文件和导出任务，不再直接下载">
@@ -32,13 +32,18 @@
 
       <AppSectionCard title="教务数据交换任务" subtitle="刷新页面任务不丢失；这里只展示当前操作者的教务任务">
         <div class="aa-task-head">
-          <span class="mp-note">共 {{ jobs.total }} 个任务</span>
-          <AppButton variant="ghost" :disabled="jobs.loading" @click="loadJobs">刷新</AppButton>
+          <span v-if="!jobs.loading && !jobs.error" class="mp-note">共 {{ jobs.total }} 个任务</span>
+          <AppButton variant="ghost" :disabled="jobs.loading || jobsNavigationBusy" @click="loadJobs">刷新</AppButton>
         </div>
-        <div v-if="jobs.loading" class="mp-note">正在读取任务…</div>
-        <div v-else-if="!jobs.list.length" class="mp-note">暂无导入导出任务。</div>
-        <div v-else class="aa-task-list">
-          <article v-for="item in jobs.list" :key="`${item.jobType}-${item.id}`" class="aa-task-card">
+        <AppGlobalState
+          :state="jobListState"
+          :title="jobs.error ? (jobs.error.title || '任务读取失败') : '暂无导入导出任务。'"
+          :description="jobs.error?.userMessage || '当前没有可展示的导入导出任务。'"
+          loading-text="正在读取任务…"
+          @retry="loadJobs"
+        >
+        <div class="aa-task-list">
+          <article v-for="item in jobs.list" :key="`${item.jobType}-${item.id}`" class="aa-task-card" :data-job-id="item.id">
             <div>
               <strong>{{ item.jobType === 'IMPORT' ? '导入' : '导出' }} · {{ academicExchangeTypeLabel(item.importType || item.exportType) }}</strong>
               <p class="mp-note">状态 {{ academicStatusLabel(item.status) }} · {{ item.createdAt || '-' }}</p>
@@ -47,6 +52,7 @@
               <p v-if="item.errorMessage" class="aa-task-error">{{ item.errorMessage }}</p>
             </div>
             <div class="aa-task-actions">
+              <AppButton v-if="canResumeJob(item)" size="small" :disabled="importVisible" @click="resumeImport(item)">继续处理</AppButton>
               <AppButton
                 v-if="item.jobType === 'EXPORT' && item.status === 'SUCCEEDED'"
                 size="small"
@@ -60,12 +66,25 @@
             </div>
           </article>
         </div>
+        <AppPagination
+          v-if="jobs.total > 50"
+          :total="jobs.total"
+          :page="jobs.page"
+          :page-size="50"
+          :show-size-changer="false"
+          :disabled="jobs.loading || jobsNavigationBusy"
+          @change="onJobsPageChange"
+        />
+        </AppGlobalState>
       </AppSectionCard>
     </div>
 
     <AaAuthoritativeImportDrawer
       v-model:visible="importVisible"
-      title="学籍名册权威 XLSX 导入"
+      title="学籍名册表格导入"
+      :existing-job-id="existingImportJobId"
+      expected-import-type="ACADEMIC_ROSTER"
+      :ctx="ctx"
       template-name="学籍导入模板.xlsx"
       :preview-fields="['studentNo', 'realName', 'className', 'initialStatus']"
       :download-template-fn="() => academicAffairsApi.downloadRosterImportTemplate()"
@@ -85,13 +104,17 @@
 <script>
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSectionCard, AppConfirmDialog, AppSelect } from '@/components/common'
+import { AppSectionCard, AppConfirmDialog, AppSelect, AppGlobalState, AppPagination } from '@/components/common'
 import AaAuthoritativeImportDrawer from '@/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicFileExchangeApi } from '@/modules/academicAffairs/api/academic-file-exchange.api'
 import { academicExchangeTypeLabel, academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
 import { toast } from '@/utils/toast'
 import { systemPrompt } from '@/services/systemDialog'
+import { normalizeUiError } from '@/utils/presentationSafety'
+import { academicRouteState, routeScalar } from '../academicFlowContext.js'
+
+const TASK_ROUTE = '/admin/academic-affairs/roster/import-export'
 
 const STATUS_LABEL = {
   NORMAL: '正常', PENDING_REGISTER: '待注册', REGISTERED: '在籍注册', UNREGISTERED: '未注册',
@@ -135,9 +158,23 @@ function previewResponse(item, message) {
 
 export default {
   name: 'AaRosterImportExportView',
-  components: { ModulePageShell, AppButton, AppSectionCard, AaAuthoritativeImportDrawer, AppConfirmDialog, AppSelect },
+  components: { ModulePageShell, AppButton, AppSectionCard, AaAuthoritativeImportDrawer, AppConfirmDialog, AppSelect, AppGlobalState, AppPagination },
   props: { ctx: { type: Object, required: true } },
+  inject: { academicFlow: { default: null } },
   computed: {
+    jobListContextKey() {
+      return JSON.stringify([this.ctx?.ctxKey, this.ctx?.currentRole, this.ctx?.dataScope, this.ctx?.permissionPatterns, this.academicFlow?.identity?.() || ''])
+    },
+    jobRoutePositionKey() {
+      const route = this.$router ? this.$route : null
+      const query = route?.query || {}
+      return JSON.stringify([route?.path || '', query.page, Object.prototype.hasOwnProperty.call(query, 'returnToken'), query.returnToken])
+    },
+    jobListState() {
+      if (this.jobs.loading) return 'loading'
+      if (this.jobs.error) return this.jobs.error.pageState
+      return this.jobs.list.length ? 'ready' : 'empty'
+    },
     statusOptions() {
       return Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))
     }
@@ -146,17 +183,79 @@ export default {
     return {
       academicAffairsApi, academicFileExchangeApi,
       importVisible: false,
+      existingImportJobId: '',
       currentImportJob: null,
       exporting: false,
       exportDialog: { visible: false },
       exportFilters: { keyword: '', status: '' },
-      jobs: { list: [], total: 0, loading: false }
+      jobsRequestEpoch: 0,
+      jobsDisposed: false,
+      jobsNavigationEpoch: 0,
+      jobsNavigationBusy: false,
+      jobsNavigationTarget: '',
+      jobsNavigationContext: '',
+      jobsSuppressedRoute: '',
+      jobsSuppressedRouteEpoch: 0,
+      jobs: { list: [], total: 0, page: 1, loading: false, error: null }
     }
   },
   mounted() {
+    this.jobs.page = this.readJobsRoutePage()
     this.loadJobs()
   },
+  watch: {
+    jobRoutePositionKey: {
+      flush: 'sync',
+      handler(_next, previous) {
+        if (!previous || this.jobsDisposed || !this.isJobsRoute()) return
+        if (this.$route.fullPath === this.jobsSuppressedRoute) { this.jobsSuppressedRoute = ''; return }
+        if (this.jobsNavigationBusy && this.$route.fullPath === this.jobsNavigationTarget && this.jobsNavigationContext === this.jobListContextKey) return
+        this.cancelJobsNavigation(false)
+        this.jobsRequestEpoch++
+        this.jobs.loading = false
+        this.jobs.page = this.readJobsRoutePage()
+        this.loadJobs()
+      }
+    },
+    jobListContextKey: {
+      flush: 'sync',
+      handler() {
+        if (this.jobsDisposed) return
+        this.cancelJobsNavigation(true)
+        this.jobsRequestEpoch++
+        this.jobs.list = []
+        this.jobs.total = 0
+        this.jobs.page = 1
+        this.jobs.loading = false
+        this.jobs.error = { pageState: 'error', title: '任务列表需刷新', userMessage: '身份或管理范围已变化，请重新读取任务列表' }
+      }
+    }
+  },
+  beforeRouteLeave() {
+    this.cancelJobsNavigation(false)
+    return true
+  },
+  beforeUnmount() {
+    this.cancelJobsNavigation(false)
+    this.jobsDisposed = true
+    this.jobsRequestEpoch++
+  },
   methods: {
+    canResumeJob(item) {
+      return item.jobType === 'IMPORT' && item.moduleCode === 'ACADEMIC_AFFAIRS' &&
+        item.importType === 'ACADEMIC_ROSTER' && item.adapterType === 'EXCEL_IMPORT_JOB' &&
+        typeof item.id === 'string' && !!item.id.trim()
+    },
+    openNewImport() {
+      if (this.importVisible) return
+      this.existingImportJobId = ''
+      this.importVisible = true
+    },
+    resumeImport(item) {
+      if (this.importVisible || !this.canResumeJob(item)) return
+      this.existingImportJobId = item.id
+      this.importVisible = true
+    },
     academicExchangeTypeLabel,
     academicStatusLabel,
     async waitForImportJob(initial) {
@@ -246,16 +345,150 @@ export default {
       toast.success('导出任务已生成，可在任务列表下载')
       await this.loadJobs()
     },
-    async loadJobs() {
-      this.jobs.loading = true
-      const res = await academicFileExchangeApi.listJobs({ page: 1, pageSize: 50 })
-      this.jobs.loading = false
-      if (res.code !== 0) {
-        toast.error(res.message || '任务读取失败')
-        return
+    isJobsRoute() { return !!this.$router && this.$route?.path === TASK_ROUTE },
+    readJobsRoutePosition() {
+      if (!this.isJobsRoute()) return { page: 1, validToken: false }
+      const query = this.$route.query || {}
+      const livePage = academicRouteState(this.$route).page
+      if (!Object.prototype.hasOwnProperty.call(query, 'returnToken')) return { page: livePage, validToken: false }
+      const identity = this.academicFlow?.identity?.() || ''
+      const token = routeScalar(query.returnToken)
+      if (!identity || !token || token.length > 200 || typeof query.returnToken !== 'string') return { page: 1, validToken: false }
+      const entry = this.academicFlow?.returns?.resolve(token, identity)
+      if (!entry) return { page: 1, validToken: false }
+      try {
+        const saved = new URL(entry.path, 'http://academic.local')
+        if (saved.origin !== 'http://academic.local' || saved.pathname !== TASK_ROUTE) return { page: 1, validToken: false }
+        const savedPage = academicRouteState({ query: Object.fromEntries(saved.searchParams) }).page
+        return savedPage === livePage ? { page: savedPage, validToken: true } : { page: 1, validToken: false }
+      } catch { return { page: 1, validToken: false } }
+    },
+    readJobsRoutePage() { return this.readJobsRoutePosition().page },
+    jobsPositionMatches(page) {
+      const position = this.readJobsRoutePosition()
+      return position.validToken && position.page === page
+    },
+    cancelJobsNavigation(clearPosition) {
+      const pending = this.jobsNavigationBusy
+      const epoch = ++this.jobsNavigationEpoch
+      this.jobsNavigationBusy = false
+      this.jobsNavigationTarget = ''
+      this.jobsNavigationContext = ''
+      if (!clearPosition || !this.isJobsRoute()) return
+      const query = { ...this.$route.query }
+      const hadPosition = Object.prototype.hasOwnProperty.call(query, 'page') || Object.prototype.hasOwnProperty.call(query, 'returnToken')
+      delete query.page; delete query.returnToken
+      if (!pending && !hadPosition) return
+      const destination = { path: TASK_ROUTE, query }
+      const fullPath = this.$router.resolve(destination).fullPath
+      if (fullPath !== this.$route.fullPath) {
+        this.jobsSuppressedRoute = fullPath
+        this.jobsSuppressedRouteEpoch = epoch
       }
-      this.jobs.list = res.data.list || []
-      this.jobs.total = res.data.total || 0
+      // A normal replace supersedes pendingLocation even when the URL is duplicated.
+      // This cancels our old pending publication before Router can commit it.
+      Promise.resolve(this.$router.replace(destination)).catch(() => {}).finally(() => {
+        if (this.jobsSuppressedRouteEpoch === epoch) this.jobsSuppressedRoute = ''
+      })
+    },
+    async publishJobsPosition(page) {
+      if (!this.$router) return true
+      if (this.jobsDisposed || !this.isJobsRoute() || this.jobsNavigationBusy) return false
+      const epoch = ++this.jobsNavigationEpoch
+      const contextKey = this.jobListContextKey
+      const identity = this.academicFlow?.identity?.() || ''
+      const query = { ...this.$route.query }
+      delete query.page; delete query.returnToken
+      if (page !== 1) query.page = String(page)
+      const token = identity && this.academicFlow?.returns?.remember({ path: TASK_ROUTE, query }, identity)
+      if (!token) {
+        toast.error('任务页位置暂未保存，请重试')
+        return false
+      }
+      query.returnToken = token
+      const destination = { path: TASK_ROUTE, query }
+      const target = this.$router.resolve(destination).fullPath
+      this.jobsNavigationBusy = true
+      this.jobsNavigationTarget = target
+      this.jobsNavigationContext = contextKey
+      const ownsNavigation = () => !this.jobsDisposed && epoch === this.jobsNavigationEpoch && contextKey === this.jobListContextKey && this.$route?.path === TASK_ROUTE
+      try {
+        await this.$router.replace(destination)
+        const published = ownsNavigation() && this.$route.fullPath === target
+        if (ownsNavigation() && !published) toast.error('任务页暂未切换，请重试')
+        return published
+      } catch (error) {
+        if (ownsNavigation()) toast.error(normalizeUiError(error, { fallback: '任务页暂未切换，请重试' }).userMessage)
+        return false
+      } finally {
+        if (ownsNavigation()) {
+          this.jobsNavigationBusy = false
+          this.jobsNavigationTarget = ''
+          this.jobsNavigationContext = ''
+        }
+      }
+    },
+    async onJobsPageChange({ page }) {
+      if (this.jobsDisposed || this.jobs.loading || this.jobsNavigationBusy || !Number.isInteger(page) || page < 1 || page === this.jobs.page) return
+      const contextKey = this.jobListContextKey
+      if (!await this.publishJobsPosition(page) || this.jobsDisposed || contextKey !== this.jobListContextKey) return
+      this.jobs.page = page
+      this.loadJobs()
+    },
+    async loadJobs() {
+      if (this.jobsDisposed || !this.ctx || this.jobs.loading || this.jobsNavigationBusy) return
+      const epoch = ++this.jobsRequestEpoch
+      const contextKey = this.jobListContextKey
+      let activePage = this.jobs.page
+      const ownsRequest = () => !this.jobsDisposed && epoch === this.jobsRequestEpoch && contextKey === this.jobListContextKey && activePage === this.jobs.page && (!this.$router || this.isJobsRoute())
+      this.jobs.loading = true
+      this.jobs.error = null
+      this.jobs.list = []
+      this.jobs.total = 0
+      try {
+        let corrected = false
+        while (true) {
+          const res = await academicFileExchangeApi.listJobs({ page: activePage, pageSize: 50 })
+          if (!ownsRequest()) return
+          if (res.code !== 0) throw res
+          const total = res.data.total || 0
+          const lastPage = Math.max(1, Math.ceil(total / 50))
+          if (total === 0) {
+            activePage = 1
+            this.jobs.page = activePage
+            if (this.$router && !this.jobsPositionMatches(activePage) && !await this.publishJobsPosition(activePage)) {
+              if (ownsRequest()) throw new Error('任务页位置暂未保存，请重试')
+              return
+            }
+            if (!ownsRequest()) return
+          } else if (activePage > lastPage) {
+            activePage = lastPage
+            this.jobs.page = activePage
+            if (this.$router && !await this.publishJobsPosition(activePage)) {
+              if (ownsRequest()) throw new Error('任务页位置暂未保存，请重试')
+              return
+            }
+            if (!ownsRequest()) return
+            if (corrected) throw new Error('任务数量已变化，请重试')
+            corrected = true
+            continue
+          }
+          if (this.$router && !this.jobsPositionMatches(activePage) && !await this.publishJobsPosition(activePage)) {
+            if (ownsRequest()) throw new Error('任务页位置暂未保存，请重试')
+            return
+          }
+          if (!ownsRequest()) return
+          this.jobs.list = res.data.list || []
+          this.jobs.total = total
+          return
+        }
+      } catch (error) {
+        if (!ownsRequest()) return
+        const { pageState, userMessage } = normalizeUiError(error, { fallback: '任务读取失败，请重试' })
+        this.jobs.error = { pageState, userMessage }
+      } finally {
+        if (ownsRequest()) this.jobs.loading = false
+      }
     },
     async downloadExportJob(item) {
       const ticket = await academicFileExchangeApi.createExportDownloadTicket(item.id, item.version)

@@ -8,10 +8,10 @@
   >
     <div class="mp-stack">
       <div class="aa-filter">
-        <label class="aa-filter__item">
-          学期
+        <div class="aa-filter__item" role="group" aria-labelledby="aa-term-weeks-term-label">
+          <span id="aa-term-weeks-term-label">学期</span>
           <AppTermEntityPicker v-model="termId" :options="termOptions" @change="loadWeeks" />
-        </label>
+        </div>
       </div>
 
       <p v-if="currentError" class="mp-note">当前学期解析失败，未自动猜测“当前”；已保留显式学期选择供历史周次查询。{{ currentError }}</p>
@@ -176,7 +176,7 @@ export default {
       if (res.code === 0) {
         this.weeks = res.data || []
       } else {
-        this.error = res.message
+        this.error = res
       }
       this.loading = false
     }

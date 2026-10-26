@@ -12,7 +12,7 @@
         <header><h2>{{ currentTab.label }}</h2><span>{{ queue.sourceTime ? sourceTimeLabel(queue.sourceTime) + '更新' : '等待读取正式待办' }}</span></header>
         <form class="overview-search" @submit.prevent="search"><input v-model="keyword" maxlength="100" aria-label="搜索教务事项" placeholder="搜索当前岗位的正式待办" /><AppButton @click="search">查询</AppButton><AppButton variant="ghost" @click="clearSearch">清空</AppButton><small>{{ `共 ${queue.total ?? '—'} 条 · 按当前身份查询` }}</small></form>
         <LoadingState v-if="loading" />
-        <ErrorState v-else-if="error" :description="error" @retry="loadQueue" />
+        <ErrorState v-else-if="error" :error="error" @retry="loadQueue" />
         <EmptyState v-else-if="queue.scopeBlocked" title="当前身份尚未确认" description="请重新确认当前账号和角色后读取正式责任队列。" />
         <EmptyState v-else-if="!rows.length" :title="currentTab.label + '暂无记录'" description="当前身份及查询条件下暂无正式待办，可调整查询条件。" />
         <template v-else>
@@ -33,7 +33,7 @@
     </div>
     <section v-if="mode === 'overview'" class="overview-readiness">
       <header><div><h2>学期运行检查</h2><p>按所选学期核对运行前置条件，检查结果不代替业务审批。</p></div><AppTermEntityPicker v-model="termId" placeholder="当前学期" @change="changeTerm" /><AppButton :loading="readinessLoading" @click="loadReadiness">更新检查</AppButton></header>
-      <LoadingState v-if="readinessLoading" /><ErrorState v-else-if="readinessError" :description="readinessError" @retry="loadReadiness" />
+      <LoadingState v-if="readinessLoading" /><ErrorState v-else-if="readinessError" :error="readinessError" @retry="loadReadiness" />
       <template v-else>
         <div class="readiness-conclusion"><strong>{{ readiness.stageLabel || '运行阶段待核对' }} · {{ readinessStatus }}</strong><p>{{ readiness.conclusion || '运行结论尚未提供' }}</p><span>阻断 {{ countLabel(readiness.blockerCount) }} 项 · 风险 {{ countLabel(readiness.riskCount) }} 项</span></div>
         <details><summary>查看 {{ readinessItems.length }} 条规则明细及责任</summary><div class="readiness-items"><article v-for="(item, index) in readinessItems" :key="item.key || index"><div><strong>{{ safeBusinessMessage(item.title, '运行检查事项') }}</strong><p>{{ safeBusinessMessage(item.summary, '请进入责任页面核对') }}</p><small>{{ item.ownerRole || '责任岗位待明确' }} · {{ item.deadlineLabel || item.deadline || '截止时间未提供' }}</small></div><AppButton v-if="canOpen(item.route)" @click="go(item.route)">查看责任对象</AppButton></article></div></details>
@@ -58,6 +58,7 @@ import { routeTarget } from './leadershipWall/aa-wall-data.mjs'
 import { routeAllowed } from './leadershipWall/aa-wall-runtime.mjs'
 import { sourceTimeLabel } from './leadershipWall/aa-wall-presentation.mjs'
 import { safeBusinessMessage } from '@/utils/presentationSafety'
+import { issueFrameOwnedNavigation } from '@/router/ownedAcademicNavigation'
 
 import AaOverviewPageFrame from './AaOverviewPageFrame.vue'
 import AcademicFlowOverview from './AcademicFlowOverview.vue'
@@ -71,7 +72,7 @@ export default {
   data() { return {
     loading: false, error: '', queue: {}, keyword: '', message: '', requestId: 0, disposed: false,
     termId: '', readiness: {}, readinessError: '', readinessLoading: false, readinessId: 0,
-    purpose: '', exporting: false, exportId: 0, tabs: TABS, metrics: METRICS,
+    purpose: '', exporting: false, exportId: 0, navigationId: 0, tabs: TABS, metrics: METRICS,
     overviewColumns: [{ key: 'title', title: '事项' }, { key: 'object', title: '业务对象' }, { key: 'responsibility', title: '当前责任' }, { key: 'deadline', title: '截止时间' }, { key: 'blocker', title: '阻断原因' }, { key: 'action', title: '办理入口' }],
     relay: [{ title: '开学条件', description: '校历、组织与注册', target: 'aa-registration' }, { title: '开课与课表', description: '任务、名单与正式课位', target: 'aa-teaching-tasks' }, { title: '考试与成绩', description: '岗位审核与实际回执', target: 'aa-grade-overview' }, { title: '毕业与归档', description: '证据核验与受控封存', target: 'aa-archive' }]
   } },
@@ -90,14 +91,14 @@ export default {
   created() { this.syncRoute(); this.loadQueue(); if (this.mode === 'overview') this.loadReadiness() },
   beforeUnmount() { this.disposed = true; this.invalidate() },
   watch: {
-    '$route.fullPath'() { this.syncRoute(); this.loadQueue() },
+    '$route.fullPath'() { this.navigationId++; this.syncRoute(); this.loadQueue() },
     '$route.query.termId'() { this.syncRoute(); this.exportId++; this.exporting = false; this.loadReadiness() },
     contextSignature() { this.invalidate(); this.queue = {}; this.readiness = {}; this.purpose = ''; this.message = ''; this.loadQueue(); this.loadReadiness() }
   },
   methods: {
     safeBusinessMessage, sourceTimeLabel,
     identity() { return academicIdentity(currentUserFromToken(), this.ctx) },
-    invalidate() { this.requestId++; this.readinessId++; this.exportId++; this.exporting = false },
+    invalidate() { this.requestId++; this.readinessId++; this.exportId++; this.navigationId++; this.exporting = false },
     current(id, identity, key) { return !this.disposed && id === this[key] && identity === this.identity() },
     countLabel(value) { return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : '—' },
     statusLabel(value) { return ({ PENDING: '待办理', DONE: '已完成', CANCELLED: '已取消' })[value] || '状态待核对' },
@@ -121,9 +122,10 @@ export default {
       try {
         const response = await academicAffairsApi.getDashboardRoleQueue({ status: this.tab === 'done' ? 'DONE' : 'PENDING', keyword: typeof this.$route.query.keyword === 'string' ? this.$route.query.keyword : '', page: this.page, pageSize: this.pageSize })
         if (!this.current(id, identity, 'requestId')) return
-        if (response.code !== 0 || !Array.isArray(response.data?.items) || !Number.isSafeInteger(response.data.total)) throw new Error(response.message || '正式责任队列读取失败')
+        if (response.code !== 0) throw response
+        if (!Array.isArray(response.data?.items) || !Number.isSafeInteger(response.data.total)) throw new Error(response.message || '正式责任队列读取失败')
         this.queue = adaptTypedTodoPage(response.data)
-      } catch (error) { if (this.current(id, identity, 'requestId')) { this.queue = {}; this.error = safeBusinessMessage(error?.message, '责任队列读取失败，请重试') } }
+      } catch (error) { if (this.current(id, identity, 'requestId')) { this.queue = {}; this.error = error || new Error('责任队列读取失败，请重试') } }
       finally { if (this.current(id, identity, 'requestId')) this.loading = false }
     },
     async loadReadiness() {
@@ -135,7 +137,7 @@ export default {
         if (!this.current(id, identity, 'readinessId') || term !== String(this.termId || '')) return
         if (!data || !Array.isArray(data.items) || (term && String(data.term?.termId) !== term)) throw new Error('运行检查返回的学期或规则不匹配，请重新读取')
         this.readiness = data
-      } catch (error) { if (this.current(id, identity, 'readinessId')) this.readinessError = safeBusinessMessage(error?.message, '运行检查读取失败') }
+      } catch (error) { if (this.current(id, identity, 'readinessId')) this.readinessError = error || new Error('运行检查读取失败') }
       finally { if (this.current(id, identity, 'readinessId')) this.readinessLoading = false }
     },
     target(target) {
@@ -153,18 +155,24 @@ export default {
     openTodo(row) { if (this.canOpenTodo(row)) this.go(row.typedRouteTarget) },
     async go(target) {
       if (!this.canOpen(target)) return
-      const identity = this.identity()
+      const id = ++this.navigationId, identity = this.identity(), sourceFullPath = this.$route.fullPath, term = String(this.termId || '')
+      const isCurrent = () => !this.disposed && id === this.navigationId && identity === this.identity() &&
+        sourceFullPath === this.$route.fullPath && term === String(this.termId || '')
+      let ownedRequest = null
       this.message = ''
       try {
         const context = await request('/rbac/current-context')
-        if (this.disposed || identity !== this.identity()) return
+        if (!isCurrent()) return
         const location = this.target(target), resolved = this.$router.resolve(location)
         const can = (scope, code) => scope?.rbacOk !== false && Array.isArray(scope?.permissionPatterns) && matchPermission(scope.permissionPatterns, code)
         if (!routeAllowed(resolved, context, can)) { this.message = '当前身份无法进入该责任页面。'; return }
         let returnToken = ''
         try { returnToken = createAcademicReturnStore(window.sessionStorage).remember(this.$route, identity, this.$el.closest('.tw-main')?.scrollTop || 0) } catch { /* Native browser Back retains the queue URL when storage is unavailable. */ }
-        await this.$router.push({ path: resolved.path, query: { ...(this.termId ? { termId: this.termId } : {}), ...resolved.query, ...(returnToken ? { returnToken } : {}) }, hash: resolved.hash })
-      } catch (error) { if (!this.disposed && identity === this.identity()) this.message = safeBusinessMessage(error?.message, '无法进入责任工作区，请重试') }
+        ownedRequest = issueFrameOwnedNavigation(this.$router, { path: resolved.path, query: { ...(term ? { termId: term } : {}), ...resolved.query, ...(returnToken ? { returnToken } : {}) }, hash: resolved.hash }, { isCurrent })
+        await this.$router.push(ownedRequest.location)
+      } catch (error) {
+        if (!ownedRequest?.isOwnStale(error) && isCurrent()) this.message = safeBusinessMessage(error?.message, '无法进入责任工作区，请重试')
+      } finally { ownedRequest?.finish() }
     },
     openWall() { this.$router.push({ path: this.$route.path, query: this.routeQuery({ wall: '1' }) }) },
     async exportChecklist() {

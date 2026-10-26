@@ -57,7 +57,7 @@
             </div>
           </article>
         </div>
-        <EmptyState v-else title="今天没有授课安排" :description="todayNote" />
+        <EmptyState v-else :title="currentTermId === '' ? '当前学期尚未设置' : '今天没有授课安排'" :description="todayNote" />
         <p class="aat-footnote">电脑端与教师手机端共用同一课堂考勤场次、正式名单、提交状态和预警，不存在第二套点名记录。</p>
       </AppSectionCard>
 
@@ -76,7 +76,7 @@
                 <AppButton size="small" :variant="item.primary ? 'primary' : 'default'" @click="go(item.path)">{{ item.action || '去处理' }}</AppButton>
               </div>
             </template>
-            <EmptyState v-else title="当前没有需要本人处理的事项" description="当前学期需要您本人办理的任务已经处理完。" />
+            <EmptyState v-else title="当前没有需要本人处理的事项" description="后续分配给您的任务会在这里显示，请结合学期责任与课表核对。" />
           </template>
           <template v-else>
             <template v-if="waitingItems.length">
@@ -119,7 +119,7 @@ export default {
     return {
       loading: false, generation: 0, attendanceOpeningId: '', disposed: false,
       workTab: this.$route?.query?.work === 'waiting' ? 'waiting' : 'actions',
-      todayItems: [], todayDate: '', todayWeek: null, calendarSource: '', todayError: '',
+      todayItems: [], todayDate: '', todayWeek: null, currentTermId: null, calendarSource: '', todayError: '',
       workbench: EMPTY_WORKBENCH()
     }
   },
@@ -132,10 +132,11 @@ export default {
     actionItems() { return this.workbench?.actionItems || [] },
     waitingItems() { return this.workbench?.waitingItems || [] },
     todayNote() {
+      if (this.currentTermId === '') return '学校尚未设置当前学期，请联系教务管理员完成设置。'
       if (this.calendarSource === 'HOLIDAY') return '学校校历标记今天为节假日，正式课表不执行。'
       if (this.calendarSource === 'SWAP_SOURCE') return '学校校历标记今天为调休停课日，正式课表不执行。'
       if (this.calendarSource === 'OUT_OF_TERM') return '今天不在当前学期教学日期范围内。'
-      return this.todayItems.length ? '来自本人正式课表、正式任课关系与校历课次。' : '已核对校历与本人正式课表。'
+      return this.todayItems.length ? '来自本人正式课表、正式任课关系与校历课次。' : '当前未查询到本人授课安排，请结合学期责任核对。'
     },
     metrics() {
       const c = this.workbench?.counts || {}
@@ -202,7 +203,7 @@ export default {
       const ticket = ++this.generation, identity = this.identityKey
       const current = () => !this.disposed && ticket === this.generation && identity === this.identityKey
       this.loading = true
-      this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayDate = ''; this.todayWeek = null; this.calendarSource = ''; this.todayError = ''
+      this.todayItems = []; this.workbench = EMPTY_WORKBENCH(); this.todayDate = ''; this.todayWeek = null; this.currentTermId = null; this.calendarSource = ''; this.todayError = ''
       try {
         const res = await academicAffairsApi.getMyTeacherToday()
         if (!current()) return
@@ -214,6 +215,7 @@ export default {
         this.todayItems = data.todayItems || []
         this.todayDate = data.todayDate || ''
         this.todayWeek = data.currentWeek ?? null
+        this.currentTermId = data.termId ?? null
         this.calendarSource = data.calendarSource || ''
         this.todayError = ''
         this.workbench = { ...EMPTY_WORKBENCH(), ...(data.workbench || {}), counts: { ...EMPTY_WORKBENCH().counts, ...(data.workbench?.counts || {}) } }

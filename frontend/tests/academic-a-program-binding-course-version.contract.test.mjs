@@ -71,7 +71,11 @@ async function courseForm(api, { navigationFails = false, editId = '' } = {}) {
   const guard = workspace.slice(workspace.indexOf('async function confirmUnsubmitted('), workspace.indexOf('\nonBeforeRouteLeave(confirmUnsubmitted)'))
   const readOnly = () => /<textarea\b[^>]*\sreadonly(?:\s|>|=)/.test(rendered)
   const document = { querySelectorAll: () => [{ readOnly: readOnly(), disabled: /<textarea\b[^>]*\sdisabled(?:\s|>|=)/.test(rendered), value: state.form.description, getClientRects: () => [1] }] }
-  const confirm = new Function('window', 'document', 'systemConfirm', `${guard}; return confirmUnsubmitted`)(browser, document, async () => { confirmations++; return true })
+  const confirm = new Function('window', 'document', 'systemConfirm', 'props', 'route', 'academicNavigationOwners', 'academicConfirmationDisposed',
+    `${guard}; return (to, from) => confirmUnsubmitted({ ...to, fullPath: to.path }, { ...from, fullPath: from.path })`)(
+    browser, document, async () => { confirmations++; return true },
+    { activeCenter: 'academic-affairs', identityKey: 'course-test', legacyIdentityKey: '' },
+    { fullPath: '/admin/academic-affairs/courses/new' }, new WeakMap(), false)
   const destinations = []
   state.$router = { push: async destination => {
     destinations.push(destination)

@@ -19,7 +19,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, literal, select, union_all
 
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import enforce_permission
@@ -775,34 +775,57 @@ def list_academic_jobs(*, user: dict, job_type: str = "", status: str = "", page
     actor_id = jobs._actor_id(user)
     wanted = str(job_type or "").upper()
     wanted_status = str(status or "").upper()
-    items: list[dict] = []
+    empty = {"list": [], "total": 0, "page": page, "pageSize": page_size}
+    if wanted not in {"", "IMPORT", "EXPORT"}:
+        return empty
+    tenant_id = jobs._tenant_id()
+    if not actor_id:
+        return empty
+
+    def conditions(model):
+        predicates = [
+            model.tenant_id == tenant_id,
+            model.module_code == ACADEMIC_MODULE_CODE,
+            model.is_deleted.is_(False),
+            model.operator_id == actor_id,
+        ]
+        if wanted_status:
+            predicates.append(model.status == wanted_status)
+        return predicates
+
+    models = [("IMPORT", ImportJob, jobs._import_row), ("EXPORT", ExportJob, jobs._export_row)]
+    selected = [item for item in models if not wanted or item[0] == wanted]
+    projections = [
+        select(
+            literal(kind).label("job_type"),
+            model.id.label("job_id"),
+            # Preserve the canonical DTO's second precision and the old stable
+            # IMPORT-before-EXPORT tie, even when both tables have the same id.
+            func.coalesce(func.date_format(model.created_at, "%Y-%m-%dT%H:%i:%s"), "").label("created_second"),
+            literal(0 if kind == "IMPORT" else 1).label("type_rank"),
+        ).where(*conditions(model))
+        for kind, model, _serializer in selected
+    ]
+    refs = (union_all(*projections) if len(projections) > 1 else projections[0]).subquery()
     db = get_sessionmaker()()
     try:
-        if wanted in {"", "IMPORT"}:
-            stmt = select(ImportJob).where(
-                ImportJob.tenant_id == jobs._tenant_id(),
-                ImportJob.module_code == ACADEMIC_MODULE_CODE,
-                ImportJob.is_deleted.is_(False),
-            )
-            if actor_id:
-                stmt = stmt.where(ImportJob.operator_id == actor_id)
-            if wanted_status:
-                stmt = stmt.where(ImportJob.status == wanted_status)
-            items.extend(jobs._import_row(row) for row in db.scalars(stmt.order_by(ImportJob.id.desc())).all())
-        if wanted in {"", "EXPORT"}:
-            stmt = select(ExportJob).where(
-                ExportJob.tenant_id == jobs._tenant_id(),
-                ExportJob.module_code == ACADEMIC_MODULE_CODE,
-                ExportJob.is_deleted.is_(False),
-            )
-            if actor_id:
-                stmt = stmt.where(ExportJob.operator_id == actor_id)
-            if wanted_status:
-                stmt = stmt.where(ExportJob.status == wanted_status)
-            items.extend(jobs._export_row(row) for row in db.scalars(stmt.order_by(ExportJob.id.desc())).all())
-        items.sort(key=lambda item: (item.get("createdAt") or "", int(item["id"])), reverse=True)
-        total = len(items)
+        total = int(db.scalar(select(func.count()).select_from(refs)) or 0)
         start = (page - 1) * page_size
-        return {"list": items[start:start + page_size], "total": total, "page": page, "pageSize": page_size}
+        if start >= total:
+            return {"list": [], "total": total, "page": page, "pageSize": page_size}
+        page_refs = db.execute(
+            select(refs.c.job_type, refs.c.job_id)
+            .order_by(refs.c.created_second.desc(), refs.c.job_id.desc(), refs.c.type_rank.asc())
+            .offset(start)
+            .limit(page_size)
+        ).all()
+        hydrated = {}
+        for kind, model, serializer in selected:
+            ids = [ref.job_id for ref in page_refs if ref.job_type == kind]
+            if ids:
+                rows = db.scalars(select(model).where(*conditions(model), model.id.in_(ids))).all()
+                hydrated.update(((kind, row.id), serializer(row)) for row in rows)
+        items = [hydrated[(ref.job_type, ref.job_id)] for ref in page_refs if (ref.job_type, ref.job_id) in hydrated]
+        return {"list": items, "total": total, "page": page, "pageSize": page_size}
     finally:
         db.close()
