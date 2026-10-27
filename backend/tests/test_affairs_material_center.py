@@ -87,8 +87,8 @@ def test_strong_sensitive_materials_are_filtered_before_counting():
     assert "total = int(db.scalar" in service
     assert '@register_file_resolver("MATERIAL_REQUIREMENT")' in resolvers
     assert "强敏感不接受 systemAdmin.file.manage" in resolvers
-    assert "center._psy_scope_allows" in resolvers
-    assert "center._require_student_scope" in resolvers
+    assert "center._staff_can_read_content" in resolvers
+    assert "_staff_can_enumerate(db, requirement, user)" in service
 
 
 def test_archive_service_owns_true_manifest_without_runtime_replacement():
@@ -139,9 +139,10 @@ def test_phase5_router_exposes_overview_backfill_and_manifest():
     assert "affairs_material_center_router," in aggregator
 
 
-def test_phase5_real_mysql_resubmit_manifest_and_sensitivity():
-    if not os.getenv("DATABASE_URL") or os.getenv("DB_ENABLED", "").lower() != "true":
-        pytest.skip("real MySQL is required")
+def test_phase5_real_mysql_resubmit_manifest_and_sensitivity(db_mode, monkeypatch):
+    from app.db.session import get_engine
+    assert get_engine().dialect.name == "mysql", "real MySQL is required"
+    monkeypatch.setenv("DATABASE_URL", os.environ["TEST_DATABASE_URL"])
     runpy.run_path(
         str(ROOT / "backend/tests/affairs_material_center_mysql_acceptance.py"),
         run_name="__main__",

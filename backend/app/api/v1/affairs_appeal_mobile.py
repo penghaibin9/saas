@@ -124,7 +124,7 @@ def appeal_pending(
         items, total = service.list_appeals(user, status="SUBMITTED", page=page, page_size=pageSize)
     elif key == "DISCIPLINE_APPEAL":
         from app.services import affairs_discipline_service as service
-        items, total = service.list_appeals(user, status="SUBMITTED", page=page, page_size=pageSize)
+        items, total = service.list_appeals(user, status="SUBMITTED", page=page, page_size=pageSize, pending_only=True)
         _attach_discipline_types(items)
     else:
         from app.services import affairs_activity_service as service

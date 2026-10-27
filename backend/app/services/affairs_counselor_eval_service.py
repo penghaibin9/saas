@@ -10,7 +10,7 @@ from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import String, cast, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -27,7 +27,7 @@ def _op():
 
 def _uid_int(user):
     try:
-        return int((user or {}).get("userId") or 0) or None
+        return int(str((user or {}).get("userId") or "0").removeprefix("db-")) or None
     except (TypeError, ValueError):
         return None
 
@@ -37,7 +37,118 @@ def _audit(db, biz_id, action, detail=""):
     n, r, _ = _op()
     db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="COUNSELOR_EVAL",
                              biz_id=int(biz_id) if biz_id else None, action=action,
-                             operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
+                             operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow(),
+                             created_by=_uid_int(get_current_user_ctx())))
+
+
+def _accounts(db, keys):
+    from app.models import User
+    keys = {str(key) for key in keys}
+    ids = {int(key.removeprefix("db-")) for key in keys if key.removeprefix("db-").isdigit()}
+    users = db.scalars(select(User).where(User.tenant_id == _tid(),
+        or_(User.login_name.collate("utf8mb4_bin").in_(keys), User.id.in_(ids or {-1})))).all()
+    matches = {}
+    for account in users:
+        for key in (account.login_name, str(account.id), f"db-{account.id}"):
+            matches.setdefault(key, []).append(account)
+    result = {}
+    for key in keys:
+        found = {row.id: row for row in matches.get(key, [])}
+        result[key] = next(iter(found.values())) if len(found) == 1 else None
+    return result
+
+
+def _scope(db, user):
+    from app.core.affairs_security import build_affairs_context
+    from app.models import AffairsCounselorAssignment, SchoolClass
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type == "TENANT_ALL":
+        return ctx, None
+    if str(user.get("currentRoleCode") or "").upper() == "COUNSELOR":
+        return ctx, {_uid_int(user)} - {None}
+    classes = ctx.allowed_class_ids(db) or {-1}
+    ids = set(db.scalars(select(SchoolClass.counselor_id).where(
+        SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False),
+        SchoolClass.id.in_(classes), SchoolClass.counselor_id.is_not(None))).all())
+    now = datetime.utcnow()
+    ids.update(db.scalars(select(AffairsCounselorAssignment.user_id).where(
+        AffairsCounselorAssignment.tenant_id == _tid(), AffairsCounselorAssignment.class_id.in_(classes),
+        AffairsCounselorAssignment.is_deleted.is_(False), AffairsCounselorAssignment.status == "ACTIVE",
+        AffairsCounselorAssignment.effective_from <= now,
+        or_(AffairsCounselorAssignment.effective_to.is_(None), AffairsCounselorAssignment.effective_to > now))).all())
+    return ctx, ids
+
+
+def _active_counselors(db, ids):
+    from app.models import Role, UserRole
+    from app.services.role_assignment_scope_service import active_role_membership_query
+    return {row.user_id for row in db.scalars(active_role_membership_query(_tid()).where(
+        Role.role_code == "COUNSELOR", UserRole.user_id.in_(ids or {-1}))).all()}
+
+
+def _target(db, key, user, *, self_forbidden=True):
+    target = _accounts(db, [key]).get(str(key))
+    if not target or target.id not in _active_counselors(db, {target.id}):
+        raise AppException("DATA_CONFLICT", "辅导员账号、任职或历史标识尚无法核实，请先核验；原记录保留")
+    ctx, ids = _scope(db, user)
+    if ids is not None and target.id not in ids:
+        raise AppException("NO_DATA_SCOPE", "该辅导员不在当前考评职责的授权范围内")
+    actor = _uid_int(user)
+    if not actor or (self_forbidden and actor == target.id):
+        raise AppException("NO_PERMISSION", "本人考评必须回避，请由其他有权人员办理")
+    return target, ctx
+
+
+def _score_actors(db, eval_ids):
+    from app.models import AffairsAuditTrail
+    result = {int(eid): [] for eid in eval_ids}
+    # 两套考评共用业务类型，必须以现用动作区分，不能按编号混入另一套留痕。
+    for row in db.scalars(select(AffairsAuditTrail).where(
+        AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "COUNSELOR_EVAL",
+        AffairsAuditTrail.biz_id.in_(eval_ids or {-1}),
+        or_(AffairsAuditTrail.action == "EVAL_UPSERT",
+            (AffairsAuditTrail.action == "EVAL_APPEAL_REVIEW") & (AffairsAuditTrail.detail == "ADJUSTED")))).all():
+        result[int(row.biz_id)].append(row.created_by)
+    return result
+
+
+def capabilities(user):
+    from app.core.permissions import has_permission
+    with session() as db:
+        ctx, ids = _scope(db, user)
+        manage = has_permission(user, "studentAffairs.counselorEval.manage")
+        return {"canScore": manage and (ids is None or bool(ids)),
+                "canManageIndicators": manage and ctx.scope_type == "TENANT_ALL"}
+
+
+def _present(db, rows, user):
+    from app.core.permissions import has_permission
+    accounts = _accounts(db, [row.counselor_key for row in rows])
+    active = _active_counselors(db, {u.id for u in accounts.values() if u})
+    ctx, ids = _scope(db, user)
+    actor = _uid_int(user)
+    manage = has_permission(user, "studentAffairs.counselorEval.manage")
+    scorers = _score_actors(db, {row.id for row in rows if row.appeal_status == "SUBMITTED"})
+    out = []
+    for row in rows:
+        data = _eval_row(row); actions = []; target = accounts.get(row.counselor_key)
+        own = bool(target and actor == target.id)
+        writable = bool(target and target.id in active and (ids is None or target.id in ids))
+        if manage and writable and not own and row.status == "DRAFT":
+            actions.append("SCORE")
+            if ctx.scope_type == "TENANT_ALL": actions.append("PUBLISH")
+        if own and row.status == "PUBLISHED" and row.appeal_status != "SUBMITTED" and has_permission(user, "studentAffairs.counselorEval.appeal.create"):
+            actions.append("APPEAL")
+        if row.appeal_status == "SUBMITTED":
+            actors = scorers.get(row.id, [])
+            if not actors or any(not uid for uid in actors):
+                data["reviewBlockReason"] = "历史实际评分人尚无法核实，申诉与原结果保留，待核验处理。"
+            elif manage and writable and not own and actor not in actors:
+                actions.append("REVIEW")
+            else:
+                data["reviewBlockReason"] = "本次申诉须由未参与评分且符合回避要求的有权人员复核。"
+        data["allowedActions"] = actions; out.append(data)
+    return out
 
 
 # ── 指标 ──
@@ -66,6 +177,8 @@ def create_indicator(body, user) -> dict:
     if not name:
         raise AppException("VALIDATION_ERROR", "指标名称必填")
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         dup = db.scalars(select(CounselorEvalIndicator).where(
             CounselorEvalIndicator.tenant_id == _tid(), CounselorEvalIndicator.name == name,
             CounselorEvalIndicator.is_deleted.is_(False))).first()
@@ -135,32 +248,29 @@ def _weighted_total(db, scores):
     return round(num / den, 2)
 
 
-def _self_scope_keys(user):
-    """COUNSELOR 角色仅"本人"自助权（见 permissions.py 注释），非管理/复核角色收敛为自身可命中的 key 集合。"""
-    role = ((user or {}).get("currentRoleCode") or "").upper()
-    if role != "COUNSELOR":
-        return None
-    from app.core.affairs_security import _derive_keys
-    return _derive_keys(user or {})
-
-
 def list_evals(user, period_code=None, status=None, page=1, page_size=50):
-    from app.models import CounselorEval
-    my_keys = _self_scope_keys(user)
+    from app.models import CounselorEval, User
     with session() as db:
+        _, ids = _scope(db, user)
         conds = [CounselorEval.tenant_id == _tid(), CounselorEval.is_deleted.is_(False)]
+        if ids is not None:
+            key = CounselorEval.counselor_key.collate("utf8mb4_bin")
+            identity = [User.tenant_id == _tid(), or_(User.login_name.collate("utf8mb4_bin") == key,
+                cast(User.id, String).collate("utf8mb4_bin") == key,
+                func.concat("db-", User.id).collate("utf8mb4_bin") == key)]
+            conds.append(select(func.count(User.id)).where(*identity).correlate(CounselorEval).scalar_subquery() == 1)
+            conds.append(select(func.max(User.id)).where(*identity).correlate(CounselorEval).scalar_subquery().in_(ids or {-1}))
+        if str(user.get("currentRoleCode") or "").upper() == "COUNSELOR":
+            conds.append(CounselorEval.status == "PUBLISHED")
         if period_code:
             conds.append(CounselorEval.period_code == period_code)
         if status:
             conds.append(CounselorEval.status == status)
-        rows = db.scalars(select(CounselorEval).where(*conds).order_by(
-            CounselorEval.total_score.desc())).all()
-        if my_keys is not None:
-            rows = [e for e in rows if e.counselor_key in my_keys]
-        out = [_eval_row(e) for e in rows]
-        total = len(out)
+        total = int(db.scalar(select(func.count()).select_from(CounselorEval).where(*conds)) or 0)
         start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+        rows = db.scalars(select(CounselorEval).where(*conds).order_by(
+            CounselorEval.total_score.desc(), CounselorEval.id).offset(start).limit(page_size)).all()
+        return _present(db, rows, user), total
 
 
 def upsert_eval(body, user) -> dict:
@@ -172,23 +282,34 @@ def upsert_eval(body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "考评周期与辅导员标识必填")
     scores = getattr(body, "scores", None) or {}
     with session() as db:
-        e = db.scalars(select(CounselorEval).where(
+        target, _ = _target(db, key, user)
+        key = target.login_name
+        existing = db.scalars(select(CounselorEval).where(
             CounselorEval.tenant_id == _tid(), CounselorEval.period_code == period,
-            CounselorEval.counselor_key == key, CounselorEval.is_deleted.is_(False))).first()
+            CounselorEval.counselor_key.in_((key, str(target.id), f"db-{target.id}")), CounselorEval.is_deleted.is_(False)).with_for_update()).all()
+        if len(existing) > 1:
+            raise AppException("DATA_CONFLICT", "同周期存在多个历史身份标识，原记录保留，请先核验归属")
+        e = existing[0] if existing else None
+        if e:
+            resolved, _ = _target(db, e.counselor_key, user)
+            if resolved.id != target.id:
+                raise AppException("DATA_CONFLICT", "历史辅导员标识归属冲突，原记录保留，请先核验")
         if e and e.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布考评不可修改")
         if e is None:
             e = CounselorEval(tenant_id=_tid(), period_code=period, counselor_key=key,
-                              counselor_name=getattr(body, "counselorName", None),
+                              counselor_name=target.real_name,
                               scores_json=scores, total_score=_total(scores),
                               weighted_total_score=_weighted_total(db, scores), status="DRAFT",
                               remark=getattr(body, "remark", None), created_by=_uid_int(user))
             db.add(e); db.flush()
         else:
+            atomic_claim_version(db, e, getattr(body, "version", None))
             e.scores_json, e.total_score = scores, _total(scores)
             e.weighted_total_score = _weighted_total(db, scores)
-            e.counselor_name = getattr(body, "counselorName", None) or e.counselor_name
+            e.counselor_name = target.real_name
             e.remark, e.version = getattr(body, "remark", None), e.version + 1
+        e.updated_by = _uid_int(user)
         _audit(db, e.id, "EVAL_UPSERT", f"{period}/{key}")
         db.commit(); db.refresh(e)
         return _eval_row(e)
@@ -205,6 +326,9 @@ def _load(db, eval_id):
 def publish_eval(eval_id, user, expected_version=None) -> dict:
     with session() as db:
         e = _load(db, eval_id)
+        _target(db, e.counselor_key, user)
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         if e.status == "PUBLISHED":
             raise AppException("DATA_CONFLICT", "已发布")
         atomic_claim_version(db, e, expected_version)
@@ -221,15 +345,16 @@ def submit_eval_appeal(eval_id, body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "申诉理由至少 5 字")
     with session() as db:
         e = _load(db, eval_id)
-        my_keys = _self_scope_keys(user)
-        if my_keys is not None and e.counselor_key not in my_keys:
+        target = _accounts(db, [e.counselor_key]).get(e.counselor_key)
+        if not target or target.id != _uid_int(user):
             raise AppException("NO_DATA_SCOPE", "只能对本人考评发起申诉")
         if e.status != "PUBLISHED":
             raise AppException("DATA_CONFLICT", "仅已发布考评可申诉")
         if e.appeal_status == "SUBMITTED":
             raise AppException("DATA_CONFLICT", "已有待复核申诉")
+        atomic_claim_version(db, e, getattr(body, "version", None))
         e.appeal_status, e.appeal_reason, e.version = "SUBMITTED", reason, e.version + 1
-        _audit(db, e.id, "EVAL_APPEAL_SUBMIT", "")
+        _audit(db, e.id, "EVAL_APPEAL_SUBMIT", reason)
         db.commit(); db.refresh(e)
         return _eval_row(e)
 
@@ -244,6 +369,12 @@ def review_eval_appeal(eval_id, body, user) -> dict:
         raise AppException("VALIDATION_ERROR", "复核意见至少 5 字")
     with session() as db:
         e = _load(db, eval_id)
+        _target(db, e.counselor_key, user)
+        actors = _score_actors(db, {e.id})[e.id]
+        if not actors or any(not uid for uid in actors):
+            raise AppException("DATA_CONFLICT", "历史实际评分人尚无法核实，原结果与申诉保留，请先核验")
+        if _uid_int(user) in actors:
+            raise AppException("NO_PERMISSION", "原评分人不能独自复核对自己评分的申诉，请转其他有权人员")
         if e.appeal_status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "无待复核申诉")
         atomic_claim_version(db, e, getattr(body, "version", None))

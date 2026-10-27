@@ -55,6 +55,7 @@ def _normalize_page(page: int, page_size: int) -> tuple[int, int]:
 
 
 def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
+    from app.core.permissions import has_permission
     from app.models import SchoolClass, StudentProfile, UnifiedTodo
     from app.services.workbench_todo_service import _visibility_cond
 
@@ -62,6 +63,13 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
         raise no_permission("该接口仅教职工可用")
 
     page, page_size = _normalize_page(page, page_size)
+    entry_actions = [key for key, permission in (
+        ("WORK_STUDY", "studentAffairs.funding.workstudy.manage"),
+        ("LOAN", "studentAffairs.funding.loan.manage"),
+        ("REDUCTION", "studentAffairs.funding.reduction.manage"),
+        ("ACTIVITY", "studentAffairs.activity.view"),
+        ("MENTAL", "studentAffairs.mental.manage"),
+    ) if has_permission(user, permission)]
     with session() as db:
         visibility = _visibility_cond(db, user)
         if visibility is None:
@@ -71,6 +79,7 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
                 "total": 0,
                 "hasMore": False,
                 "cards": [],
+                "entryActions": entry_actions,
                 "items": [],
                 "prioritySummary": {"overdue": 0, "dueWithin24h": 0, "ordinary": 0},
                 "contractVersion": CONTRACT_VERSION,
@@ -178,6 +187,7 @@ def teacher_affairs(user: dict, *, page: int = 1, page_size: int = 20) -> dict:
             "total": total,
             "hasMore": page * page_size < total,
             "cards": cards,
+            "entryActions": entry_actions,
             "items": items,
             "prioritySummary": {
                 "overdue": overdue_count,

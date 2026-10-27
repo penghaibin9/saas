@@ -19,7 +19,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import datetime
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import or_, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.permissions import _db_granted, _granted, is_super_admin
@@ -29,15 +29,12 @@ from app.services.db_service import _tid
 # ACADEMIC_ADMIN（教务处管理员，用户已拍板"本校教务全权"，默认无人持有）纳入 TENANT_ALL：
 # 13B 教务中心组织/统计/调停课需全校教学数据范围；该角色仅持 academicAffairs.*，学工端点仍被
 # require_permission 拦截，授予全租户 scope 不越学工域。未纳入 ACADEMIC_TEACHER（普通教务教师保持按范围收敛读，更安全）。
-# FUNDING_TEACHER（资助老师）纳入 TENANT_ALL：permissions.py 注释明确"困难认定+奖助勤贷全域经办"，
-# 权限集本身已窄限于 aid/funding/dashboard/student.view/stats.view，授予全租户 scope 不越出该权限集，
-# 且修复此前 fail-closed→NONE 导致该角色"有权限但审批不了任何人"的实际阻断（历史欠账，见 permissions.py:61 注释）。
+# 旧学工和资助职责必须读取明确授权范围，未配置不默认全校。
 # 毕设管理员不属于学工公共 TENANT_ALL；其全校候选学生能力只允许在 /students?mode=picker
 # 这一用途级端点中显式放开，避免毕业设计角色被共享安全上下文扩散到学工/教务/就业等域。
 _TENANT_ALL_ROLES = {"SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN", "STUDENT_AFFAIRS_ADMIN",
-                     "STUDENT_AFFAIRS", "SCHOOL_LEADER", "SA_ADMIN", "LEADER", "ACADEMIC_ADMIN",
-                     "FUNDING_TEACHER"}
-_COLLEGE_ROLES = {"COLLEGE_ADMIN", "COLLEGE_SA"}
+                     "SCHOOL_LEADER", "SA_ADMIN", "LEADER", "ACADEMIC_ADMIN"}
+_COLLEGE_ROLES = {"COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS_COLLEGE"}
 _DORM_ROLES = {"DORM_MANAGER"}
 _PSY_ROLES = {"PSYCHOLOGY_TEACHER"}
 
@@ -52,6 +49,13 @@ _SENSITIVE_CODES = {
 def no_data_scope(msg: str = "该数据不在您的管理范围内") -> AppException:
     """统一 403002。"""
     return AppException("NO_DATA_SCOPE", msg)
+
+
+def require_school_scope(db, user):
+    ctx = build_affairs_context(user, db)
+    if ctx.scope_type != "TENANT_ALL":
+        raise no_data_scope("此操作需要明确的校级业务范围，请切换到已授权的校级职责")
+    return ctx
 
 
 def _derive_keys(user: dict) -> set[str]:
@@ -213,11 +217,14 @@ def student_directory_scope(user) -> tuple[set[int] | None, set[int] | None]:
         return (ids if ids is not None else set()), None
 
 
-def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
+def build_affairs_context(user: dict, db=None, *, trusted_tenant_id: int | None = None) -> StudentAffairsSecurityContext:
     """解析当前登录用户的学工安全上下文。db 可复用调用方会话（省一次开库）。"""
     u = user or {}
     role = (u.get("currentRoleCode") or "").upper()
-    tenant_id = _tid()
+    # 登录签发尚无请求租户；仅该内部调用传数据库用户的已核验租户。
+    tenant_id = _tid() if trusted_tenant_id is None else int(trusted_tenant_id)
+    if tenant_id <= 0:
+        raise AppException("TENANT_CONTEXT_REQUIRED", "缺少有效租户上下文")
     db_patterns = _db_granted(u)
     granted = {"*"} if is_super_admin(u) else set(
         db_patterns if db_patterns is not None else _granted(role)
@@ -273,18 +280,18 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
         db = cm.__enter__()
     try:
         keys = _derive_keys(u)
+        from app.services.role_assignment_scope_service import legacy_assignment_scopes, resolve_legacy_scope_ids
+        raw_scope_uid = str(u.get("userId") or "").removeprefix("db-")
+        scope_user_id = int(raw_scope_uid) if raw_scope_uid.isdigit() else -1
         from app.models import (
             AffairsCounselorAssignment, College, DormBuilding, Major,
-            Role, RoleAssignmentScope, RoleAssignmentValidity, SchoolClass,
-            StudentProfile, TeacherStudentScope, User, UserRole,
+            RoleAssignmentScope, SchoolClass, StudentProfile, User,
         )
-        rows = db.scalars(select(TeacherStudentScope).where(
-            TeacherStudentScope.tenant_id == tenant_id,
-            TeacherStudentScope.is_deleted.is_(False),
-            TeacherStudentScope.status == "ACTIVE",
-            (TeacherStudentScope.teacher_key.in_(keys)) |
-            (TeacherStudentScope.teacher_name.in_(keys)))).all()
-        rows = [r for r in rows if not r.role_code or (r.role_code or "").upper() == role]
+        rows = legacy_assignment_scopes(db, tenant_id=tenant_id, role_code=role, identity_keys=keys, user_id=scope_user_id)
+        if role in _PSY_ROLES:
+            rows = [row for row in rows if row.scope_type in {"PSY_STUDENT", "STUDENT"}]
+        elif role == "FUNDING_TEACHER":
+            rows = [row for row in rows if row.scope_type == "COLLEGE"]
         class_names, college_names, student_nos, psy_nos = set(), set(), set(), set()
         for r in rows:
             st = (r.scope_type or "").upper()
@@ -298,76 +305,26 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
             elif st == "PSY_STUDENT" and v:
                 psy_nos.add(v)
 
-        # 名称 → id（本租户内解析）
-        if class_names:
-            variants = class_names | {n + "班" for n in class_names} | {n.rstrip("班") for n in class_names}
-            cls = db.scalars(select(SchoolClass).where(
-                SchoolClass.tenant_id == tenant_id, SchoolClass.class_name.in_(list(variants)))).all()
-            ctx.class_ids = {c.id for c in cls}
-        if college_names:
-            cols = db.scalars(select(College).where(
-                College.tenant_id == tenant_id, College.college_name.in_(list(college_names)))).all()
-            ctx.college_ids = {c.id for c in cols}
-        if student_nos:
-            studs = db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == tenant_id, StudentProfile.student_no.in_(list(student_nos)))).all()
-            ctx.student_ids = {s.id for s in studs}
-        if psy_nos:
-            studs = db.scalars(select(StudentProfile).where(
-                StudentProfile.tenant_id == tenant_id, StudentProfile.student_no.in_(list(psy_nos)))).all()
-            ctx.psychology_student_ids = {s.id for s in studs}
+        ctx.class_ids = resolve_legacy_scope_ids(db, tenant_id=tenant_id, scope_type="CLASS", values=class_names)
+        ctx.college_ids = resolve_legacy_scope_ids(db, tenant_id=tenant_id, scope_type="COLLEGE", values=college_names)
+        ctx.student_ids = resolve_legacy_scope_ids(db, tenant_id=tenant_id, scope_type="STUDENT", values=student_nos)
+        ctx.psychology_student_ids = resolve_legacy_scope_ids(db, tenant_id=tenant_id, scope_type="PSY_STUDENT", values=psy_nos)
 
-        # 新五级授权范围以稳定主键为权威；历史 TeacherStudentScope 继续只读兼容。
-        moment = datetime.utcnow()
-        raw_scope_uid = str(u.get("userId") or "")
-        if raw_scope_uid.startswith("db-"):
-            raw_scope_uid = raw_scope_uid[3:]
-        scope_user_id = int(raw_scope_uid) if raw_scope_uid.isdigit() else -1
-        assignment_scopes = db.scalars(select(RoleAssignmentScope).where(
-            RoleAssignmentScope.tenant_id == tenant_id,
-            RoleAssignmentScope.user_id == scope_user_id,
-            RoleAssignmentScope.role_code == role,
-            RoleAssignmentScope.status == "ACTIVE",
-            RoleAssignmentScope.is_deleted.is_(False),
-            RoleAssignmentScope.effective_at <= moment,
-            (RoleAssignmentScope.expires_at.is_(None) | (RoleAssignmentScope.expires_at > moment)),
-        )).all()
+        # 新范围与令牌组织范围使用同一有效任职读取；旧范围兼容另行处理。
+        from app.services.role_assignment_scope_service import active_assignment_scopes
+        assignment_scopes = active_assignment_scopes(
+            db, tenant_id=tenant_id, user_id=scope_user_id, role_code=role,
+            context_id=str(u.get("activeContextId") or ""),
+        )
+        if role in _PSY_ROLES:
+            assignment_scopes = [row for row in assignment_scopes if row.scope_type == "STUDENT"]
+        elif role == "FUNDING_TEACHER":
+            assignment_scopes = [row for row in assignment_scopes if row.scope_type in {"SCHOOL", "COLLEGE"}]
         has_school_scope = any(str(row.scope_type or "").upper() == "SCHOOL" for row in assignment_scopes)
         major_scope_ids = {
             int(row.scope_id) for row in assignment_scopes
             if str(row.scope_type or "").upper() == "MAJOR"
         }
-        if major_scope_ids:
-            # 任期沿正式授予/回收的现行时间合同；范围表仍使用上面的 UTC 窗口。
-            from app.services.role_assignment_service import _now as assignment_now
-            validity_moment = assignment_now()
-            member_ids = set(db.scalars(select(UserRole.id)
-                .join(Role, Role.id == UserRole.role_id)
-                .join(User, User.id == UserRole.user_id)
-                .outerjoin(RoleAssignmentValidity, and_(
-                    RoleAssignmentValidity.tenant_id == tenant_id,
-                    RoleAssignmentValidity.user_role_id == UserRole.id,
-                )).where(
-                    UserRole.tenant_id == tenant_id,
-                    UserRole.user_id == scope_user_id,
-                    UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
-                    Role.tenant_id == tenant_id, Role.role_code == role,
-                    Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False),
-                    User.tenant_id == tenant_id,
-                    User.status == "ACTIVE", User.is_deleted.is_(False),
-                    or_(RoleAssignmentValidity.id.is_(None), and_(
-                        RoleAssignmentValidity.status == "ACTIVE",
-                        RoleAssignmentValidity.is_deleted.is_(False),
-                        RoleAssignmentValidity.effective_at <= validity_moment,
-                        or_(RoleAssignmentValidity.expires_at.is_(None),
-                            RoleAssignmentValidity.expires_at > validity_moment),
-                    )),
-                )).all())
-            major_scope_ids = {
-                int(row.scope_id) for row in assignment_scopes
-                if str(row.scope_type or "").upper() == "MAJOR"
-                and row.user_role_id in member_ids
-            }
         ctx.college_ids |= {
             int(row.scope_id) for row in assignment_scopes
             if str(row.scope_type or "").upper() == "COLLEGE"
@@ -396,6 +353,12 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
         # 辅导员班级以真实任职关系为权威来源。TeacherStudentScope 只是额外显式范围，
         # 不能要求学校为同一带班关系维护两份数据，否则会出现“有待办但 NO_DATA_SCOPE”。
         if role == "COUNSELOR":
+            # 正式带班关系统一约束旧文本及现代范围，不能借残留范围恢复已交接班级。
+            governed = db.scalars(select(AffairsCounselorAssignment.class_id).where(
+                AffairsCounselorAssignment.tenant_id == tenant_id,
+                AffairsCounselorAssignment.class_id.in_(ctx.class_ids or {-1}),
+            )).all()
+            ctx.class_ids.difference_update(governed)
             raw_uid = str(u.get("userId") or "")
             if raw_uid.startswith("db-"):
                 raw_uid = raw_uid[3:]
@@ -424,6 +387,15 @@ def build_affairs_context(user: dict, db=None) -> StudentAffairsSecurityContext:
                     SchoolClass.tenant_id == tenant_id,
                     SchoolClass.counselor_id == uid,
                     SchoolClass.is_deleted.is_(False),
+                    ~select(AffairsCounselorAssignment.id).where(
+                        AffairsCounselorAssignment.tenant_id == tenant_id,
+                        AffairsCounselorAssignment.class_id == SchoolClass.id,
+                    ).exists(),
+                    ~select(RoleAssignmentScope.id).where(
+                        RoleAssignmentScope.tenant_id == tenant_id,
+                        RoleAssignmentScope.user_id == uid,
+                        RoleAssignmentScope.role_code == role,
+                    ).exists(),
                 )).all()
                 ctx.class_ids |= {int(class_id) for class_id in legacy if class_id}
 

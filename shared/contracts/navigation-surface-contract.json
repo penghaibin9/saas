@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "5ec440bc82d93f70afc2efcf22dd0540c00be5f122f362404c6b5c4acca76509",
+  "digest": "c584df3f5abfbf9cccfc63855b5c6c3426d60128c6cf01888ddd258db864a897",
   "counts": {
     "total": 578,
     "production": 578,
@@ -1311,11 +1311,11 @@
       "surfaceKey": "sa-difficulty-06",
       "label": "认定统计",
       "path": "/admin/student-affairs/aid/stats",
-      "permissionKey": "studentAffairs.stats.view",
+      "permissionKey": "studentAffairs.aid.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "studentAffairs.stats.view"
+        "studentAffairs.aid.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1479,11 +1479,11 @@
       "surfaceKey": "sa-aid-07",
       "label": "资助统计",
       "path": "/admin/student-affairs/funding/stats",
-      "permissionKey": "studentAffairs.stats.view",
+      "permissionKey": "studentAffairs.funding.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "studentAffairs.stats.view"
+        "studentAffairs.funding.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1647,11 +1647,11 @@
       "surfaceKey": "sa-discipline-04",
       "label": "处分统计",
       "path": "/admin/student-affairs/discipline/stats",
-      "permissionKey": "studentAffairs.stats.view",
+      "permissionKey": "studentAffairs.discipline.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "studentAffairs.stats.view"
+        "studentAffairs.discipline.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1794,10 +1794,14 @@
       "surfaceKey": "sa-mental-01",
       "label": "心理关注名单",
       "path": "/admin/student-affairs/mental",
-      "permissionKey": "studentAffairs.risk.psyDetail.view",
-      "permissionAny": [],
+      "permissionKey": null,
+      "permissionAny": [
+        "studentAffairs.mental.manage",
+        "studentAffairs.risk.psyDetail.view"
+      ],
       "permissionAll": [],
       "permissionCodes": [
+        "studentAffairs.mental.manage",
         "studentAffairs.risk.psyDetail.view"
       ],
       "entryType": "CONFIG_VIEW",
@@ -1815,11 +1819,15 @@
       "surfaceKey": "sa-mental-02",
       "label": "心理预警摘要",
       "path": "/admin/student-affairs/mental/summary",
-      "permissionKey": "studentAffairs.risk.view",
-      "permissionAny": [],
+      "permissionKey": null,
+      "permissionAny": [
+        "studentAffairs.mental.manage",
+        "studentAffairs.risk.psyDetail.view"
+      ],
       "permissionAll": [],
       "permissionCodes": [
-        "studentAffairs.risk.view"
+        "studentAffairs.mental.manage",
+        "studentAffairs.risk.psyDetail.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1836,10 +1844,14 @@
       "surfaceKey": "sa-mental-03",
       "label": "谈话转介与回访",
       "path": "/admin/student-affairs/mental/referrals",
-      "permissionKey": "studentAffairs.risk.psyDetail.view",
-      "permissionAny": [],
+      "permissionKey": null,
+      "permissionAny": [
+        "studentAffairs.mental.manage",
+        "studentAffairs.risk.psyDetail.view"
+      ],
       "permissionAll": [],
       "permissionCodes": [
+        "studentAffairs.mental.manage",
         "studentAffairs.risk.psyDetail.view"
       ],
       "entryType": "CONFIG_VIEW",
@@ -1857,10 +1869,14 @@
       "surfaceKey": "sa-mental-04",
       "label": "危机升级",
       "path": "/admin/student-affairs/mental/crisis",
-      "permissionKey": "studentAffairs.risk.psyDetail.view",
-      "permissionAny": [],
+      "permissionKey": null,
+      "permissionAny": [
+        "studentAffairs.mental.manage",
+        "studentAffairs.risk.psyDetail.view"
+      ],
       "permissionAll": [],
       "permissionCodes": [
+        "studentAffairs.mental.manage",
         "studentAffairs.risk.psyDetail.view"
       ],
       "entryType": "CONFIG_VIEW",
@@ -1878,11 +1894,15 @@
       "surfaceKey": "sa-mental-05",
       "label": "心理统计",
       "path": "/admin/student-affairs/mental/stats",
-      "permissionKey": "studentAffairs.stats.view",
-      "permissionAny": [],
+      "permissionKey": null,
+      "permissionAny": [
+        "studentAffairs.mental.manage",
+        "studentAffairs.risk.psyDetail.view"
+      ],
       "permissionAll": [],
       "permissionCodes": [
-        "studentAffairs.stats.view"
+        "studentAffairs.mental.manage",
+        "studentAffairs.risk.psyDetail.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",
@@ -1983,11 +2003,11 @@
       "surfaceKey": "sa-activities-05",
       "label": "活动统计",
       "path": "/admin/student-affairs/activity/stats",
-      "permissionKey": "studentAffairs.stats.view",
+      "permissionKey": "studentAffairs.activity.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "studentAffairs.stats.view"
+        "studentAffairs.activity.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",

@@ -65,6 +65,35 @@ def test_exact_risk_owner_bypasses_class_scope_only_for_that_record(monkeypatch)
         '_allowed_class_ids',
         lambda _db, _user: (set(), 'DORM_BUILDING'),
     )
-    record = SimpleNamespace(owner_id=44)
+    monkeypatch.setattr(risk, 'has_permission', lambda _user, code: code == 'studentAffairs.dorm.inspection.manage')
+    record = SimpleNamespace(owner_id=44, source='DORM')
 
-    risk._scope_or_403(object(), 9001, {'userId': '44'}, record)
+    risk._scope_or_403(object(), 9001, {'userId': '44', 'currentRoleCode': 'DORM_MANAGER'}, record)
+
+
+@pytest.mark.parametrize('role,source', [('COUNSELOR', 'MENTAL'), ('PSYCHOLOGY_TEACHER', 'MENTAL'),
+                                       ('COUNSELOR', 'DORM'), ('DORM_MANAGER', 'MENTAL')])
+def test_risk_owner_cannot_borrow_another_duty_scope(monkeypatch, role, source):
+    from app.core import affairs_security
+    from app.core.exceptions import AppException
+
+    def deny_student(_db, _student_id):
+        raise AppException('NO_PERMISSION', '学生不在当前职责范围')
+    monkeypatch.setattr(affairs_security, 'build_affairs_context',
+                        lambda _user, _db: SimpleNamespace(require_student=deny_student))
+    monkeypatch.setattr(risk, 'has_permission', lambda _user, _code: True)
+    with pytest.raises(AppException):
+        risk._scope_or_403(object(), 9001, {'userId': '44', 'currentRoleCode': role},
+                          SimpleNamespace(owner_id=44, source=source))
+
+
+def test_college_affairs_risk_actions_match_superior_authority(monkeypatch):
+    from app.core import affairs_security
+
+    monkeypatch.setattr(affairs_security, 'build_affairs_context',
+                        lambda _user, _db: SimpleNamespace(scope_type='COLLEGE'))
+    user = {'userId': '44', 'currentRoleCode': 'STUDENT_AFFAIRS_COLLEGE'}
+    risk._require_takeover_authority(object(), user)
+    evaluate = risk._risk_action_evaluator(user)
+    assert 'TAKEOVER' in evaluate(SimpleNamespace(owner_id=45, source='LEAVE', status='ESCALATED'))
+    assert 'REOPEN' in evaluate(SimpleNamespace(owner_id=45, source='LEAVE', status='CLOSED'))

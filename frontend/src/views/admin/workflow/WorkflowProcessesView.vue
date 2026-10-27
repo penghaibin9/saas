@@ -51,7 +51,7 @@ import { workflowProvider, getProcessStatusText, getProcessStatusType, getNodeTy
 import { fetchLayoutContext } from '@/modules/workbench/api/workbench.api'
 import { toast } from '@/utils/toast'
 
-const ROLE_OPTIONS = ['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'COLLEGE_ADMIN', 'COUNSELOR', 'STUDENT_AFFAIRS_ADMIN', 'INTERN_MENTOR', 'GRADUATION_ADMIN']
+const ROLE_OPTIONS = ['SCHOOL_ADMIN', 'ACADEMIC_ADMIN', 'COLLEGE_ADMIN', 'COUNSELOR', 'STUDENT_AFFAIRS_ADMIN', 'STUDENT_AFFAIRS_COLLEGE', 'FUNDING_TEACHER', 'PSYCHOLOGY_TEACHER', 'DORM_MANAGER', 'YOUTH_LEAGUE', 'ORG_PERSONNEL', 'INTERN_MENTOR', 'GRADUATION_ADMIN']
 const BUSINESS_LABELS = { CsLeave: '学生请假', LEAVE: '请假审批', AID: '家庭经济困难认定', FUNDING: '奖助学金审批', DISCIPLINE: '违纪处分', DISCIPLINE_REMOVE: '处分解除', GRADE_REVIEW: '成绩审核发布', GRADE_CHANGE: '成绩更正', SCHEDULE_CHANGE: '调停课', STATUS_CHANGE: '学籍异动', PROGRAM: '培养方案', INTERNSHIP_APPLICATION: '实习申请', INTERNSHIP_CHANGE: '实习岗位变更', GD_TOPIC: '毕业设计选题', GD_PROPOSAL: '毕业设计开题', GD_FINAL: '毕业设计成果审核', EMPLOYMENT_DESTINATION: '就业去向登记' }
 const makeNode = () => ({ localKey: crypto.randomUUID(), nodeCode: '', name: '', role: 'SCHOOL_ADMIN', sla: 48 })
 const emptyEditor = () => ({ templateId: '', version: 0, name: '', bizType: '', nodes: [makeNode()] })

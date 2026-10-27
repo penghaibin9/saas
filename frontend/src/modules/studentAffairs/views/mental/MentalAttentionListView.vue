@@ -43,7 +43,7 @@
           <template #cell-note="{ row }"><span :class="row.noteMasked ? 'sa-mask' : 'mental-revealed'">{{ row.note }}</span></template>
           <template #cell-actions="{ row }">
             <div class="sa-actions">
-              <AppPermissionButton :allowed="canBtn('studentAffairs.risk.psyDetail.view')" code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="reveal(row)">
+              <AppPermissionButton :allowed="Boolean(row.canReveal)" code="studentAffairs.risk.psyDetail.view" size="sm" variant="secondary" :loading="actioning" @click="reveal(row)">
                 查看明细
               </AppPermissionButton>
               <AppPermissionButton :allowed="canBtn('studentAffairs.mental.manage')" v-if="allowed(row, 'FOLLOW')" code="studentAffairs.mental.manage" size="sm" variant="secondary" :loading="actioning" :disabled="!hasVersion(row)" @click="follow(row)">
@@ -90,7 +90,7 @@
           <AppTextarea ref="refInput" v-model="refDlg.reasonSummary" :rows="3" :maxlength="500" :disabled="actioning"
                        placeholder="客观描述观察到的表现与转介必要性" />
           <AppQuickPhrases scene-key="sa.mental.referral" @pick="onPickReferral" />
-          <p class="dr-hint">仅记录客观表现与转介事由，不作诊断结论。本字段按心理红线脱敏存储。</p>
+          <p class="dr-hint">摘要供该学生心理授权范围内的办理人员查看，请只写必要的客观事由，不填写咨询原文、诊断或其他隐私细节。</p>
         </AppFormItem>
         <AppInlineAlert v-if="refDlg.error" type="danger" :description="refDlg.error" />
       </div>
@@ -253,11 +253,11 @@ export default {
       try {
         const res = await studentAffairsApi.getMentalReferral(row.referralId, reason.trim())
         if (res.data.noteMasked) {
-          this.revDlg.error = '您对该生的心理明细无查看授权（需 PSY_STUDENT 专项授权），仅可见摘要。本次查看请求已留痕。'
+          this.revDlg.error = '当前职责没有该学生的原始记录查看授权，仅可查看办理摘要。请核对职责与授权后重试。'
         } else {
           Object.assign(row, res.data)
           this.revDlg.visible = false
-          toast.success('已展开心理明细，查看原因已写入安全审计（SENSITIVE_VIEW）。')
+          toast.success('原始记录已展开，查看原因已记录。')
         }
       } catch (e) {
         this.revDlg.error = e.message || '查看明细失败'

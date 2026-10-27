@@ -22,7 +22,7 @@ def _login(client, name, client_type):
 
 def test_queue_filters_before_paging_and_agrees_with_review_authority(client, db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import AidApply, StudentProfile, UnifiedTodo, User, WorkflowTask
+    from app.models import AidApply, StudentProfile, UnifiedTodo, User, WorkflowInstance, WorkflowTask
 
     ids = _seed(db_mode)
     admin, counselor = _login(client, "school_admin01", "PC"), _login(client, "counselor01", "TEACHER_MINI")
@@ -51,6 +51,19 @@ def test_queue_filters_before_paging_and_agrees_with_review_authority(client, db
                 expected.add(str(row.id))
             if i == 143:
                 adjust_id = str(row.id)
+            if i not in (142, 143):
+                instance = WorkflowInstance(
+                    tenant_id=TID, workflow_code="AFFAIRS_AID", source_module="student-affairs",
+                    source_biz_type="AID", source_biz_id=row.id, applicant_id=student.id,
+                    title="隔离测试审批", status="RUNNING", current_node=status,
+                )
+                db.add(instance); db.flush()
+                row.workflow_instance_id = instance.id
+                db.add(WorkflowTask(
+                    tenant_id=TID, instance_id=instance.id, node_code=status,
+                    assignee_id=other if i == 139 else school if i == 141 else owner,
+                    status="PENDING",
+                ))
             if i != 142:
                 db.add(UnifiedTodo(tenant_id=TID, source_module="student-affairs",
                     source_biz_type="AID", source_biz_id=row.id, student_id=student.id,
@@ -87,6 +100,29 @@ def test_queue_filters_before_paging_and_agrees_with_review_authority(client, db
     assert adjusts["list"][0]["allowedActions"] == ["APPROVE", "REJECT"]
     for params in ({"page": 0}, {"pageSize": 101}, {"kind": "UNKNOWN"}):
         assert client.get(f"{MOBILE}/pending", headers=counselor, params=params).status_code == 400
+
+    # 普通评审不得从旧待办兜底；动态调整必须有自己的有效受理人。
+    with get_sessionmaker()() as db:
+        row = db.get(AidApply, int(real["applyId"]))
+        task = db.scalar(select(WorkflowTask).where(WorkflowTask.instance_id == row.workflow_instance_id,
+            WorkflowTask.status == "PENDING").order_by(WorkflowTask.id.desc()))
+        task_id = task.id
+        task.assignee_id = 0
+        adjust_todo = db.scalar(select(UnifiedTodo).where(UnifiedTodo.source_biz_id == int(adjust_id),
+            UnifiedTodo.todo_type == "AID_ADJUST"))
+        adjust_todo_id = adjust_todo.id
+        adjust_todo.assignee_id = 0
+        db.commit()
+    assert client.get(f"{MOBILE}/pending", headers=counselor).json()["data"]["total"] == 130
+    assert client.get(f"{MOBILE}/pending", headers=admin,
+        params={"kind": "AID_ADJUST"}).json()["data"]["total"] == 0
+    denied = client.post(f"{MOBILE}/{real['applyId']}/review", headers=counselor,
+        json={"action": "APPROVE", "version": real["version"]})
+    assert denied.status_code == 409, denied.text
+    with get_sessionmaker()() as db:
+        db.get(WorkflowTask, task_id).assignee_id = owner
+        db.get(UnifiedTodo, adjust_todo_id).assignee_id = school
+        db.commit()
 
     # A transferred workflow task wins over the old pending todo's assignee.
     with get_sessionmaker()() as db:

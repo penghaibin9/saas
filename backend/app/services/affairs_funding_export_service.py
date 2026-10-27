@@ -6,6 +6,7 @@ Web 请求只冻结筛选、导出用途、操作者和学工 data scope，并�
 """
 from __future__ import annotations
 
+import hashlib
 import json
 import socket
 import uuid
@@ -52,6 +53,49 @@ def _now() -> datetime:
 
 def _actor_id(user: dict) -> int | None:
     return resolve_message_user_id(user or {}) or None
+
+
+def _authority_state(db, user: dict) -> dict:
+    from app.core.permissions import enforce_permission, get_base_permission_patterns
+    from app.core.affairs_security import _derive_keys, build_affairs_context
+    from app.models import Role, UserRole
+    from app.services.role_assignment_scope_service import active_assignment_scopes, active_role_membership_query, legacy_assignment_scopes
+    enforce_permission(user, "studentAffairs.funding.view")
+    enforce_permission(user, "studentAffairs.export")
+    uid = _actor_id(user)
+    role_code = str((user or {}).get("currentRoleCode") or "").upper()
+    query = active_role_membership_query(_tid()).where(UserRole.user_id == (uid or -1), Role.role_code == role_code)
+    context = str((user or {}).get("activeContextId") or "")
+    if context.startswith("role:"):
+        query = query.where(Role.id == (int(context[5:]) if context[5:].isdigit() else -1))
+    result = db.execute(query.add_columns(Role.version)).first()
+    if result is None:
+        raise AppException("NO_PERMISSION", "当前导出职责已失效，请重新核对任职")
+    member, role_version = result
+    scope = build_affairs_context(user, db)
+    if scope.scope_type == "NONE":
+        raise AppException("NO_DATA_SCOPE", "当前导出职责尚未配置有效范围")
+    explicit = active_assignment_scopes(db, tenant_id=_tid(), user_id=uid, role_code=role_code, context_id=context)
+    legacy = legacy_assignment_scopes(db, tenant_id=_tid(), role_code=role_code, identity_keys=_derive_keys(user), user_id=uid)
+    permissions = sorted(get_base_permission_patterns(user))
+    return {"userId": int(uid), "roleId": int(member.role_id), "roleCode": role_code,
+        "membershipVersion": int(member.version or 0), "roleVersion": int(role_version or 0),
+        "permissionDigest": hashlib.sha256(json.dumps(permissions).encode()).hexdigest(),
+        "scopeRecords": sorted([[int(row.id), int(row.version or 0)] for row in explicit]),
+        "legacyScopeRecords": sorted([[int(row.id), int(row.version or 0), row.scope_type, row.ref_value,
+                                        str(row.updated_at)] for row in legacy]),
+        "scopeType": scope.scope_type,
+        "collegeIds": sorted(scope.college_ids) if scope.scope_type != "TENANT_ALL" else [],
+        "classIds": sorted(scope.class_ids) if scope.scope_type != "TENANT_ALL" else [],
+        "studentIds": sorted(scope.student_ids | scope.psychology_student_ids) if scope.scope_type != "TENANT_ALL" else [],
+        "amountDetail": "studentAffairs.funding.sensitiveView" in permissions}
+
+
+def assert_export_scope(db, user: dict, row) -> None:
+    expected = (row.data_scope_snapshot_json or {}).get("authority")
+    current = _authority_state(db, user)
+    if not expected or expected != current or int(row.operator_id or 0) != current["userId"]:
+        raise AppException("NO_PERMISSION", "导出职责或范围已变化，请按当前职责重新导出")
 
 
 def _safe_user_snapshot(user: dict) -> dict:
@@ -107,13 +151,12 @@ def create_job(user: dict, *, batch_id=None, bank_status=None, purpose=None) -> 
 
     batch, status, purpose_text = _normalize(batch_id, bank_status, purpose)
     actor = dict(user or get_current_user_ctx() or {})
-    _sample, total = funding.list_disbursements(
-        actor, batch, status or None, page=1, page_size=1,
-    )
     actor_id = _actor_id(actor)
     now = _now()
     db = get_sessionmaker()()
     try:
+        authority = _authority_state(db, actor)
+        _sample, total = funding.list_disbursements(actor, batch, status or None, page=1, page_size=1)
         row = ExportJob(
             tenant_id=int(_tid()),
             module_code=MODULE_CODE,
@@ -122,7 +165,7 @@ def create_job(user: dict, *, batch_id=None, bank_status=None, purpose=None) -> 
             adapter_type=ADAPTER_TYPE,
             adapter_ref=uuid.uuid4().hex,
             filter_snapshot_json={"batchId": batch, "bankStatus": status},
-            data_scope_snapshot_json={"user": _safe_user_snapshot(actor)},
+            data_scope_snapshot_json={"user": _safe_user_snapshot(actor), "authority": authority},
             status="CREATED",
             progress=0,
             row_count=int(total or 0),
@@ -268,23 +311,28 @@ def _generate(item: dict) -> tuple[int, int]:
     processed = 0
     page = 1
 
-    wb = Workbook(write_only=True)
-    ws = wb.create_sheet("资助发放台账")
-    ws.append([
-        _excel_safe(f"导出人：{user.get('realName') or user.get('loginName') or '系统'}"),
-        _excel_safe(f"租户：{tenant_id}"),
-        _excel_safe(f"批次：{batch_id or '全部'}"),
-        _excel_safe(f"状态：{bank_status or '全部'}"),
-        _excel_safe(f"用途：{purpose}"),
-        _excel_safe(f"导出时间：{_now():%Y-%m-%d %H:%M:%S}"),
-    ])
-    ws.append([title for _key, title in _COLUMNS])
-
     previous_tenant = get_tenant()
     previous_user = get_current_user_ctx()
     set_tenant({"tenantId": str(tenant_id)})
     set_current_user(user)
     try:
+        with get_sessionmaker()() as authority_db:
+            job = authority_db.get(ExportJob, int(item["id"]))
+            if job is None or int(job.tenant_id) != tenant_id:
+                raise AppException("NO_PERMISSION", "导出任务已不存在")
+            assert_export_scope(authority_db, user, job)
+        wb = Workbook(write_only=True)
+        ws = wb.create_sheet("资助发放台账")
+        ws.append([
+            _excel_safe(f"导出人：{user.get('realName') or user.get('loginName') or '系统'}"),
+            _excel_safe(f"租户：{tenant_id}"),
+            _excel_safe(f"批次：{batch_id or '全部'}"),
+            _excel_safe(f"状态：{bank_status or '全部'}"),
+            _excel_safe(f"用途：{purpose}"),
+            _excel_safe(f"导出时间：{_now():%Y-%m-%d %H:%M:%S}"),
+        ])
+        ws.append([title for _key, title in _COLUMNS])
+
         while True:
             rows, authoritative_total = funding.list_disbursements(
                 user, batch_id, bank_status, page=page, page_size=_PAGE_SIZE,
@@ -302,6 +350,11 @@ def _generate(item: dict) -> tuple[int, int]:
             page += 1
         output = BytesIO()
         wb.save(output)
+        with get_sessionmaker()() as authority_db:
+            job = authority_db.get(ExportJob, int(item["id"]))
+            if job is None or int(job.tenant_id) != tenant_id:
+                raise AppException("NO_PERMISSION", "导出任务已不存在")
+            assert_export_scope(authority_db, user, job)
         file_id = _write_generated_file(
             output.getvalue(),
             f"资助发放台账_{_now():%Y%m%d_%H%M%S}.xlsx",

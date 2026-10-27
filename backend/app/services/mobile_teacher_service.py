@@ -59,9 +59,37 @@ def _strict_real_name_is_ambiguous(real_name: str) -> bool:
 
 
 def resolve_teacher_scope(user: dict) -> dict:
-    """复用既有范围解析，但校级审计角色不能被当成业务全校管理员。"""
+    """学工身份使用同一当前职责范围；其他中心保留自己的业务关系解析。"""
     u = _require_teacher(user)
-    return _impl._original_resolve_teacher_scope(u)
+    if not _impl.db_enabled() or not _uses_affairs_scope(u):
+        return _impl._original_resolve_teacher_scope(u)
+    from app.core.affairs_security import build_affairs_context
+    from app.models import College, SchoolClass, StudentProfile
+    with _impl._session() as db:
+        ctx = build_affairs_context(u, db)
+        scope = {"mode": "SCOPED", "by": "AFFAIRS_CURRENT_DUTY", "roleCode": u.get("currentRoleCode") or "",
+                 "tenantId": _impl._tid(), "classNames": set(), "studentNos": set(), "collegeNames": set(),
+                 "advisorName": u.get("realName") or "", "advisorNames": set(), "advisorUserIds": set()}
+        scope["authorizationBoundary"] = [ctx.scope_type, sorted(ctx.college_ids), sorted(ctx.major_ids),
+            sorted(ctx.class_ids), sorted(ctx.student_ids | ctx.psychology_student_ids)]
+        if ctx.scope_type == "TENANT_ALL":
+            scope["mode"] = "ADMIN_TENANT"
+        elif ctx.scope_type == "STUDENT":
+            scope["studentNos"] = set(db.scalars(select(StudentProfile.student_no).where(
+                StudentProfile.tenant_id == ctx.tenant_id, StudentProfile.is_deleted.is_(False),
+                StudentProfile.id.in_(ctx.student_ids | ctx.psychology_student_ids or {-1}),
+            )).all())
+        else:
+            scope["classNames"] = set(db.scalars(select(SchoolClass.class_name).where(
+                SchoolClass.tenant_id == ctx.tenant_id, SchoolClass.is_deleted.is_(False),
+                SchoolClass.id.in_(ctx.allowed_class_ids(db) or {-1}),
+            )).all())
+            if ctx.scope_type == "COLLEGE":
+                scope["collegeNames"] = set(db.scalars(select(College.college_name).where(
+                    College.tenant_id == ctx.tenant_id, College.is_deleted.is_(False),
+                    College.id.in_(ctx.college_ids or {-1}),
+                )).all())
+        return scope
 
 
 def _parse_class_id(value) -> int | None:
@@ -74,6 +102,15 @@ def _parse_class_id(value) -> int | None:
     if parsed <= 0:
         raise AppException("VALIDATION_ERROR", "classId 必须为正整数", http_status=400)
     return parsed
+
+
+def _uses_affairs_scope(user) -> bool:
+    from app.core.permissions import get_base_permission_patterns
+    from app.services.saas_role_templates import ROLE_TEMPLATE_BY_CODE
+    role = ROLE_TEMPLATE_BY_CODE.get(str((user or {}).get("currentRoleCode") or "").upper(), {})
+    if role.get("category") == "STUDENT_AFFAIRS":
+        return True
+    return any(code.startswith("studentAffairs.") for code in get_base_permission_patterns(user))
 
 
 def _authorize_requested_class(scope_mode: str, requested: int | None,
@@ -91,14 +128,32 @@ def my_students(user: dict, class_id=None) -> dict:
     u = _require_teacher(user)
     if not _impl.db_enabled():
         return {"hasData": False, "items": [], "total": 0, "note": "演示模式"}
-    scope = resolve_teacher_scope(u)
+    affairs_scope = _uses_affairs_scope(u)
+    if affairs_scope:
+        from app.core.permissions import has_permission
+        if not has_permission(u, "studentAffairs.student.view"):
+            raise AppException("NO_PERMISSION", "当前职责不能查看学生目录")
+    scope = {"mode": "SCOPED"} if affairs_scope else resolve_teacher_scope(u)
     requested = _parse_class_id(class_id)
     tid = _impl._tid()
     with _impl._session() as db:
         from app.models import SchoolClass, StudentProfile
 
         allowed_class_ids: set[int] = set()
-        if scope["mode"] != "ADMIN_TENANT":
+        exact_students = None
+        if affairs_scope:
+            from app.core.affairs_security import student_directory_scope
+            classes, exact_students = student_directory_scope(u)
+            if classes is None and exact_students is None:
+                scope["mode"] = "ADMIN_TENANT"
+            elif exact_students is not None:
+                allowed_class_ids = set(db.scalars(select(StudentProfile.class_id).where(
+                    StudentProfile.tenant_id == tid, StudentProfile.is_deleted.is_(False),
+                    StudentProfile.id.in_(exact_students or {-1}),
+                )).all())
+            else:
+                allowed_class_ids = set(classes or ())
+        elif scope["mode"] != "ADMIN_TENANT":
             numeric_uid = _impl._teacher_numeric_id(u)
             if numeric_uid is None:
                 return {"hasData": False, "items": [], "total": 0,
@@ -112,6 +167,8 @@ def my_students(user: dict, class_id=None) -> dict:
 
         _authorize_requested_class(scope["mode"], requested, allowed_class_ids)
         conds = [StudentProfile.tenant_id == tid, StudentProfile.is_deleted.is_(False)]
+        if exact_students is not None:
+            conds.append(StudentProfile.id.in_(exact_students or {-1}))
         if requested is not None:
             conds.append(StudentProfile.class_id == requested)
         elif scope["mode"] != "ADMIN_TENANT":
@@ -171,13 +228,26 @@ def my_classes(user: dict, page=1, page_size=20, keyword="") -> dict:
         return {"hasData": False, "items": [], "total": 0, "page": page,
                 "pageSize": page_size, "hasMore": False, "note": "当前无法读取班级数据"}
 
-    scope = resolve_teacher_scope(u)
+    affairs_scope = _uses_affairs_scope(u)
+    if affairs_scope:
+        from app.core.permissions import has_permission
+        if not has_permission(u, "studentAffairs.class.view"):
+            raise AppException("NO_PERMISSION", "当前职责不能查看整班目录")
+    scope = {"mode": "SCOPED"} if affairs_scope else resolve_teacher_scope(u)
     tid = _impl._tid()
     with _impl._session() as db:
         from app.models import SchoolClass, StudentProfile
 
         filters = [SchoolClass.tenant_id == tid, SchoolClass.is_deleted.is_(False)]
-        if scope["mode"] != "ADMIN_TENANT":
+        if affairs_scope:
+            from app.core.affairs_security import build_affairs_context
+            ctx = build_affairs_context(u, db)
+            if ctx.scope_type == "STUDENT":
+                raise AppException("NO_DATA_SCOPE", "当前职责仅授权具体学生，不能查看整班目录")
+            allowed = ctx.allowed_class_ids(db)
+            if allowed is not None:
+                filters.append(SchoolClass.id.in_(allowed or {-1}))
+        elif scope["mode"] != "ADMIN_TENANT":
             numeric_uid = _impl._teacher_numeric_id(u)
             if numeric_uid is None:
                 return {"hasData": False, "items": [], "total": 0, "page": page,

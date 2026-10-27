@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -196,20 +197,20 @@ def main() -> int:
     ids["evalId"] = eid
     if eid:
         pause(); admin = login("e2e_sa_admin")
-        step(report, "eval_publish", _req("POST", f"{SA}/counselor-eval/evals/{eid}/publish", token=admin))
+        pub = _req("POST", f"{SA}/counselor-eval/evals/{eid}/publish", token=admin, body={"version": ev["data"]["version"]})
+        step(report, "eval_publish", pub)
         pause(); ct = login("e2e_counselor_a")
         ap = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal", token=ct,
-                  body={"reason": "对师德指标评分有异议申请复核调分"})
+                  body={"reason": "对师德指标评分有异议申请复核调分", "version": (pub.get("data") or {}).get("version")})
         step(report, "eval_counselor_appeal", ap)
-        if not ok(ap):
-            pause(); admin = login("e2e_sa_admin")
-            ap = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal", token=admin,
-                      body={"reason": "对师德指标评分有异议申请复核调分"})
-            step(report, "eval_admin_proxy_appeal", ap)
-        pause(); admin = login("e2e_sa_admin")
-        rev = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal-review", token=admin, body={
-            "result": "ADJUSTED", "opinion": "经复核上调师德得分", "scores": {ind: 95}})
-        step(report, "eval_appeal_review", rev)
+        reviewer_login = os.environ.get("E2E_EVAL_REVIEWER_LOGIN", "").strip()
+        if ok(ap) and reviewer_login:
+            pause(); reviewer = login(reviewer_login)
+            rev = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal-review", token=reviewer, body={
+                "result": "ADJUSTED", "opinion": "经复核上调师德得分", "scores": {ind: 95}, "version": ap["data"]["version"]})
+            step(report, "eval_appeal_review", rev)
+        else:
+            step(report, "eval_independent_reviewer_required", False, {"message": "须本人申诉成功并配置独立复核账号"})
 
     # ── archive ──
     tag = uuid.uuid4().hex[:6]

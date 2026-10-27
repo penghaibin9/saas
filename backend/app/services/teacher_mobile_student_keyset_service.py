@@ -77,12 +77,15 @@ def _parse_dt(value: Any) -> datetime:
     return parsed
 
 
-def _filter_hash(user: dict, *, class_id: int | None, keyword: str) -> str:
+def _filter_hash(user: dict, *, class_id: int | None, keyword: str, scope: dict | None = None) -> str:
     payload = {
         "client": "teacherMini",
         "kind": _CURSOR_KIND,
         "tenantId": int(_tid() or 0),
         "userId": teacher_user_id(user),
+        "roleCode": str(user.get("currentRoleCode") or ""),
+        "contextId": str(user.get("activeContextId") or ""),
+        "scopeBoundary": (scope or {}).get("authorizationBoundary"),
         "classId": class_id or 0,
         "keyword": keyword,
         "sort": _SORT_CONTRACT,
@@ -162,7 +165,8 @@ def list_continuous(
     normalized_class_id = _normalize_class_id(class_id)
     normalized_keyword = _normalize_keyword(keyword)
     size = max(1, min(_PAGE_SIZE_MAX, int(page_size or _PAGE_SIZE_DEFAULT)))
-    filter_hash = _filter_hash(user, class_id=normalized_class_id, keyword=normalized_keyword)
+    scope = teacher_guard.resolve_teacher_scope(user)
+    filter_hash = _filter_hash(user, class_id=normalized_class_id, keyword=normalized_keyword, scope=scope)
     first_page = not bool(str(cursor or "").strip())
 
     if first_page:
@@ -176,7 +180,6 @@ def list_continuous(
 
     student = aliased(StudentProfile, name="visible_student")
     class_row = aliased(SchoolClass, name="student_class")
-    scope = teacher_guard.resolve_teacher_scope(user)
     object_visibility = compile_teacher_mobile_student_visibility(
         user, student.id, scope=scope,
     )

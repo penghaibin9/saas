@@ -303,6 +303,22 @@ def compile_teacher_mobile_student_visibility(user: dict, student_id_column, *, 
     the exclusive boundary.
     """
     resolved_scope = scope or teacher_scope_authority.resolve_teacher_scope(user or {})
+    if resolved_scope.get("by") == "AFFAIRS_CURRENT_DUTY":
+        from app.core.affairs_security import student_directory_scope
+        from app.core.permissions import has_permission
+        from app.core.exceptions import no_permission
+        from app.models import StudentProfile
+        if not has_permission(user, "studentAffairs.student.view"):
+            raise no_permission("当前职责不能查看学生目录")
+        classes, points = student_directory_scope(user)
+        if points is not None:
+            return student_id_column.in_(points or {-1})
+        if classes is None:
+            return true()
+        return exists(select(1).select_from(StudentProfile).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+            StudentProfile.id == student_id_column, StudentProfile.class_id.in_(classes or {-1}),
+        ))
     canonical = compile_teacher_student_visibility(
         user, student_id_column, scope=resolved_scope,
     )

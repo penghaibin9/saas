@@ -25,6 +25,21 @@ MISSING = "MISSING"
 UNSUPPORTED = "UNSUPPORTED"
 ERROR = "ERROR"
 
+_AFFAIRS_WORKSPACES = {
+    "LEAVE": ("/admin/student-affairs/leave", "recordId"),
+    "AID": ("/admin/student-affairs/aid", "recordId"),
+    "FUNDING": ("/admin/student-affairs/funding", "recordId"),
+    "DORM_TRANSFER": ("/admin/student-affairs/dorm/transfer", "recordId"),
+    "DISCIPLINE": ("/admin/student-affairs/discipline", "recordId"),
+    "DISCIPLINE_REMOVE": ("/admin/student-affairs/discipline", "recordId"),
+}
+
+
+def assert_domain_action_entry(instance) -> None:
+    if (str(instance.source_module or "").lower() == "student-affairs"
+            and str(instance.source_biz_type or "").upper() in _AFFAIRS_WORKSPACES):
+        raise AppException("DOMAIN_WORKSPACE_REQUIRED", "请打开原业务页面办理，以核验当前节点、学生范围和审批回避", http_status=409)
+
 _MASKED_PLACEHOLDER = "（敏感内容，需单独授权查看）"
 
 
@@ -161,6 +176,8 @@ def _aid_context(db, instance, *, for_update: bool = False) -> dict:
 def _funding_context(db, instance, *, for_update: bool = False) -> dict:
     """奖助评定申请。资格明细快照可能含敏感跨域信息，不在通用 Context 展开原文。"""
     from app.models import FundingApplication
+    from app.core.context import get_current_user_ctx
+    from app.services.affairs_funding_service import _can_view_amount
 
     row = _source_row(db, FundingApplication, instance.source_biz_id, for_update=for_update)
     if not row:
@@ -172,7 +189,7 @@ def _funding_context(db, instance, *, for_update: bool = False) -> dict:
     fields = [
         _field("资助类型", row.project_type),
         _field("申请来源", row.apply_source),
-        _field("申请金额", amount),
+        _field("申请金额", amount, masked=not _can_view_amount(get_current_user_ctx() or {})),
         _field("申请理由", row.statement),
         _field("资格校验快照", getattr(row, "check_snapshot_json", None), masked=True),
         _field("当前状态", row.status),
@@ -531,6 +548,16 @@ def resolve_context(db, instance, *, for_update: bool = False) -> dict:
         "attachments": [],
         "note": "",
     }
+    workspace = _AFFAIRS_WORKSPACES.get(biz_type) if str(instance.source_module or "").lower() == "student-affairs" else None
+    if workspace:
+        path, key = workspace
+        target_id = instance.source_biz_id
+        if biz_type == "DISCIPLINE_REMOVE":
+            from app.models import DisciplineRemoveApply
+            removal = _source_row(db, DisciplineRemoveApply, target_id)
+            target_id = removal.case_id if removal else None
+        if target_id:
+            base["domainWorkspace"] = {"path": path, "query": {key: str(target_id)}}
     adapter = _ADAPTERS.get(biz_type)
     if not adapter:
         if biz_type in _NON_PRODUCTION_CONTEXT_EXEMPTIONS:

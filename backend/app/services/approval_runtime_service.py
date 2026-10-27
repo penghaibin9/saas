@@ -417,6 +417,7 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
             raise not_found("审批实例不存在")
 
         from app.services import approval_business_context_service as ctx_svc
+        ctx_svc.assert_domain_action_entry(inst)
         _assert_context_gate(
             ctx_svc.resolve_context(db, inst, for_update=True),
             expected_source_version,

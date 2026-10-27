@@ -53,7 +53,7 @@ _ADMIN_ROLES = {"SCHOOL_ADMIN", "ACADEMIC_ADMIN", "STUDENT_AFFAIRS_ADMIN",
                 "GRADUATION_ADMIN", "LEADER", "SCHOOL_LEADER", "SECURITY_AUDITOR"}
 _ADVISOR_ROLES = {"GD_MENTOR", "MENTOR", "INTERN_MENTOR", "INTERNSHIP_MENTOR"}
 _RELATION_SCOPED_ROLES = {
-    "COLLEGE_ADMIN", "ACADEMIC_TEACHER", "STUDENT_AFFAIRS", "COUNSELOR",
+    "COLLEGE_ADMIN", "ACADEMIC_TEACHER", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_COLLEGE", "COUNSELOR", "ORG_PERSONNEL",
     "PSYCHOLOGY_TEACHER", "FUNDING_TEACHER", "DORM_MANAGER", "YOUTH_LEAGUE",
     "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN", "GD_MENTOR", "GD_REVIEWER",
     "GD_DEFENSE_SECRETARY", "GD_DEFENSE_EXPERT", "INTERN_MENTOR",
@@ -119,13 +119,9 @@ def resolve_teacher_scope(user: dict) -> dict:
                             ctx[4:] if ctx.startswith("ctx_") else "") if k}
         try:
             with _session() as db:
-                from app.models import TeacherStudentScope
-                rows = db.scalars(select(TeacherStudentScope).where(
-                    TeacherStudentScope.tenant_id == _tid(),
-                    TeacherStudentScope.is_deleted.is_(False),
-                    TeacherStudentScope.status == "ACTIVE",
-                    (TeacherStudentScope.teacher_key.in_(keys)) |
-                    (TeacherStudentScope.teacher_name.in_(keys)))).all()
+                from app.services.role_assignment_scope_service import legacy_assignment_scopes
+                rows = legacy_assignment_scopes(db, tenant_id=_tid(), role_code=role, identity_keys=keys,
+                                                user_id=int(db_uid) if db_uid.isdigit() else None)
         except Exception:  # noqa: BLE001 — 范围表缺失（旧库未迁移）时退回兜底，不 500
             rows = []
         for r in rows:
@@ -197,6 +193,16 @@ def can_teacher_view_student(user: dict, student, scope: dict | None = None, db=
     if getattr(student, "tenant_id", None) != _tid():
         return False
     scope = scope or resolve_teacher_scope(user)
+    if scope.get("by") == "AFFAIRS_CURRENT_DUTY":
+        from app.core.permissions import has_permission
+        from app.core.affairs_security import build_affairs_context
+        if db is None or not has_permission(user, "studentAffairs.student.view"):
+            return False
+        try:
+            build_affairs_context(user, db).require_student(db, int(student.id))
+            return True
+        except AppException:
+            return False
     if scope["mode"] != "SCOPED":
         return True
     no = getattr(student, "student_no", None)
@@ -987,18 +993,13 @@ def affairs_funding_review(user: dict, app_id: str, action: str, reason: str = "
     return result
 
 
-def affairs_discipline_pending(user: dict) -> dict:
+def affairs_discipline_pending(user: dict, page=1, page_size=20, kind="ALL") -> dict:
     u = _require_teacher(user)
     if not db_enabled():
         return {"list": [], "total": 0}
     from app.services import affairs_discipline_service as svc
-    items, _, _status_counts = svc.list_cases(u, page=1, page_size=100)
-    nodes = {"COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "REMOVE_REVIEW"}
-    out = [x for x in items if (x.get("status") or "") in nodes]
-    out = _filter_by_assignee_todos(
-        u, out, id_keys=("caseId", "id"),
-        todo_types=("DISCIPLINE_APPROVAL", "DISCIPLINE_REMOVE"))
-    return {"list": out, "total": len(out)}
+    items, total, _status_counts = svc.list_cases(u, page=page, page_size=page_size, pending_kind=kind)
+    return {"list": items, "total": total}
 
 
 def affairs_discipline_detail(user: dict, case_id: str) -> dict:
@@ -2345,7 +2346,7 @@ def message_mark_read(user: dict, message_id) -> dict:
 
 # ══════════ 教师审批列表（复用审批服务，mobile 轻量） ══════════
 
-def _filter_approvals_by_scope(scope: dict, rows: list) -> list:
+def _filter_approvals_by_scope(scope: dict, rows: list, *, user=None) -> list:
     """SCOPED 教师的审批列表按申请人（学生）范围收敛：
     按 applicantName 在本租户学生主档内解析，再复用 can_teacher_view_student。
     解析不到申请人的任务（非学生发起/历史数据）保守隐藏。"""
@@ -2367,7 +2368,7 @@ def _filter_approvals_by_scope(scope: dict, rows: list) -> list:
                     by_name.setdefault(s.real_name, s)
             for r in rows:
                 stu = by_name.get((r.get("applicantName") or "").strip())
-                if stu is not None and can_teacher_view_student({}, stu, scope=scope, db=db):
+                if stu is not None and can_teacher_view_student(user or {}, stu, scope=scope, db=db):
                     out.append(r)
     except Exception:  # noqa: BLE001 — 收敛异常时宁可少展示，不越权
         return []
@@ -2380,7 +2381,7 @@ def approvals(user: dict) -> dict:
         return {"hasData": False, "approvals": [], "filters": [], "pendingCount": 0}
     scope = resolve_teacher_scope(u)
     rows, total = _safe_list(approval_service.list_tasks, 1, 50, status="PENDING")
-    rows = _filter_approvals_by_scope(scope, rows)
+    rows = _filter_approvals_by_scope(scope, rows, user=u)
     total = len(rows) if scope.get("mode") == "SCOPED" else total
     filters = [{"key": "pending", "label": "待处理"}, {"key": "done", "label": "已处理"}]
     return {"hasData": total > 0, "approvals": rows, "filters": filters,
@@ -2403,7 +2404,7 @@ def _assert_task_in_scope(u: dict, task_id: str):
         row = approval_service.get_task(task_id)
     except Exception:
         return  # 不存在 → 交由后续动作返回 404
-    if not _filter_approvals_by_scope(scope, [row]):
+    if not _filter_approvals_by_scope(scope, [row], user=u):
         raise AppException("NO_PERMISSION", "该审批不在你的负责范围内")
 
 

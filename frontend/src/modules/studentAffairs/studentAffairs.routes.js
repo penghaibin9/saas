@@ -138,7 +138,7 @@ const studentAffairsRoutes = [
         path: 'aid/stats',
         name: 'student-affairs-aid-stats',
         component: () => import('@/modules/studentAffairs/views/aid/AidStatsView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '认定统计', requiresAuth: true, permissionKey: 'studentAffairs.aid.view' }
       },
       {
         path: 'funding',
@@ -204,13 +204,13 @@ const studentAffairsRoutes = [
         path: 'funding/stats',
         name: 'student-affairs-funding-stats',
         component: () => import('@/modules/studentAffairs/views/funding/FundingStatsView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '资助统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '资助统计', requiresAuth: true, permissionKey: 'studentAffairs.funding.view' }
       },
       {
         path: 'discipline/stats',
         name: 'student-affairs-discipline-stats',
         component: () => import('@/modules/studentAffairs/views/discipline/DisciplineStatsView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '处分统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '处分统计', requiresAuth: true, permissionKey: 'studentAffairs.discipline.view' }
       },
       {
         path: 'discipline/ledger',
@@ -282,7 +282,7 @@ const studentAffairsRoutes = [
         path: 'activity/stats',
         name: 'student-affairs-activity-stats',
         component: () => import('@/modules/studentAffairs/views/activity/ActivityStatsView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '活动统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '活动统计', requiresAuth: true, permissionKey: 'studentAffairs.activity.view' }
       },
       {
         path: 'activity/credit-appeals',
@@ -355,31 +355,31 @@ const studentAffairsRoutes = [
         path: 'mental',
         name: 'student-affairs-mental',
         component: () => import('@/modules/studentAffairs/views/mental/MentalAttentionListView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理关注名单', requiresAuth: true, permissionKey: 'studentAffairs.risk.psyDetail.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理关注名单', requiresAuth: true, permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }
       },
       {
         path: 'mental/summary',
         name: 'student-affairs-mental-summary',
         component: () => import('@/modules/studentAffairs/views/mental/MentalWarningSummaryView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理预警摘要', requiresAuth: true, permissionKey: 'studentAffairs.risk.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理预警摘要', requiresAuth: true, permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }
       },
       {
         path: 'mental/referrals',
         name: 'student-affairs-mental-referrals',
         component: () => import('@/modules/studentAffairs/views/mental/MentalReferralFollowView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话转介与回访', requiresAuth: true, permissionKey: 'studentAffairs.risk.psyDetail.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '谈话转介与回访', requiresAuth: true, permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }
       },
       {
         path: 'mental/crisis',
         name: 'student-affairs-mental-crisis',
         component: () => import('@/modules/studentAffairs/views/mental/MentalCrisisView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理危机升级', requiresAuth: true, permissionKey: 'studentAffairs.risk.psyDetail.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理危机升级', requiresAuth: true, permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }
       },
       {
         path: 'mental/stats',
         name: 'student-affairs-mental-stats',
         component: () => import('@/modules/studentAffairs/views/mental/MentalStatsView.vue'),
-        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理统计', requiresAuth: true, permissionKey: 'studentAffairs.stats.view' }
+        meta: { moduleCode: 'STUDENT_AFFAIRS', title: '心理统计', requiresAuth: true, permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }
       },
       /* 宿舍与公寓 7 页（分配/房源/入住/调宿退宿/检查/异常/统计）——对接 /student-affairs/dorm/* 后端 */
       {

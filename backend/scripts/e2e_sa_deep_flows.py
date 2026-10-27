@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import json
+import os
 import sys
 import time
 import uuid
@@ -475,25 +476,22 @@ def flow_counselor_eval(report: list) -> dict:
         return ids
     pause()
     admin = login("e2e_sa_admin")
-    pub = _req("POST", f"{SA}/counselor-eval/evals/{eid}/publish", token=admin)
+    pub = _req("POST", f"{SA}/counselor-eval/evals/{eid}/publish", token=admin, body={"version": ev["data"]["version"]})
     step(report, "eval_publish", pub)
     pause()
     # 辅导员本人申诉
     ct = login("e2e_counselor_a")
     ap = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal", token=ct,
-              body={"reason": "对师德指标评分有异议申请复核调分"})
+              body={"reason": "对师德指标评分有异议申请复核调分", "version": (pub.get("data") or {}).get("version")})
     step(report, "eval_counselor_appeal", ap)
-    if not ok(ap):
-        # 权限不足则管理员代提
-        pause()
-        admin = login("e2e_sa_admin")
-        ap = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal", token=admin,
-                  body={"reason": "对师德指标评分有异议申请复核调分"})
-        step(report, "eval_admin_proxy_appeal", ap)
+    reviewer_login = os.environ.get("E2E_EVAL_REVIEWER_LOGIN", "").strip()
+    if not ok(ap) or not reviewer_login:
+        step(report, "eval_independent_reviewer_required", False, {"message": "须本人申诉成功并配置未参与评分的考评复核账号"})
+        return ids
     pause()
-    admin = login("e2e_sa_admin")
-    rev = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal-review", token=admin, body={
-        "result": "ADJUSTED", "opinion": "经复核上调师德得分", "scores": {ind: 95}})
+    reviewer = login(reviewer_login)
+    rev = _req("POST", f"{SA}/counselor-eval/evals/{eid}/appeal-review", token=reviewer, body={
+        "result": "ADJUSTED", "opinion": "经复核上调师德得分", "scores": {ind: 95}, "version": ap["data"]["version"]})
     step(report, "eval_appeal_review", rev)
     return ids
 

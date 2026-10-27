@@ -5,7 +5,7 @@ function mount(api, id = '') {
   const source = fs.readFileSync(new URL('../src/modules/studentAffairs/views/funding/StudentLoanView.vue', import.meta.url), 'utf8')
   const imports = []
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/import\s+\{([^}]+)\}\s+from\s+['"][^'"]+['"]/g, (_, names) => { imports.push(...names.split(',').map(x=>x.trim())); return '' }).replace(/import\s+(\w+)\s+from\s+['"][^'"]+['"]/g, (_, name) => { imports.push(name); return '' }).replace('export default', 'return')
-  const c = new Function(...imports, script)(...imports.map(n=>n==='studentAffairsApi'?api:{}))
+  const c = new Function(...imports, script)(...imports.map(n=>n==='studentAffairsApi'?api:n==='toast'?{success(){},error(){}}:{}))
   const vm = {...c.data(), $route:{query:{recordId:id}}, ...c.methods}
   for (const [k,v] of Object.entries(c.computed)) Object.defineProperty(vm,k,{get:()=>v.call(vm)})
   return vm
@@ -48,4 +48,29 @@ test('focused work area exposes only server-provided actions',()=>{
  assert.deepEqual(vm.availableActions({allowedActions:['VERIFY','RETURN']}).map(a=>a.code),['VERIFY','RETURN'])
  assert.deepEqual(vm.availableActions({allowedActions:[]}),[])
  assert.deepEqual(vm.availableActions({}),[])
+})
+
+test('receipt-only handling never turns a masked amount into a replacement amount', async () => {
+  let payload
+  const vm = mount({ actionLoan: async (_id, body) => { payload = body; return { code: 0 } } })
+  vm.load = async () => {}
+  vm.openAction({ loanId: '1', version: 3, amount: '5000以上', loanType: 'ORIGIN', yearCode: '2026-2027', allowedActions: ['SUBMIT_RECEIPT'] }, 'SUBMIT_RECEIPT')
+  vm.actionDrawer.form.receiptCode = 'TEST-123456'
+  await vm.submitAction()
+  assert.ok(payload, vm.actionDrawer.errorMessage)
+  assert.equal(Object.hasOwn(payload, 'amount'), false)
+  assert.equal(payload.receiptCode, 'TEST-123456')
+})
+
+test('loan conflict reloads the exact record and retains the entered reason', async () => {
+  let query
+  const vm = mount({ actionLoan: async () => ({ code: 409001, bizCode: 'APPROVAL_VERSION_CONFLICT', message: '记录已更新' }),
+    getLoans: async q => { query = q; return { code: 0, data: { items: [{ loanId: '1', version: 4, allowedActions: ['RETURN'] }] } } } })
+  vm.openAction({ loanId: '1', version: 3, allowedActions: ['RETURN'] }, 'RETURN')
+  vm.actionDrawer.form.reason = '请补齐学校要求的回执材料'
+  await vm.submitAction()
+  assert.equal(query.recordId, '1')
+  assert.equal(vm.actionDrawer.row.version, 4)
+  assert.equal(vm.actionDrawer.form.reason, '请补齐学校要求的回执材料')
+  assert.equal(vm.actionDrawer.visible, true)
 })

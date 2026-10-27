@@ -16,10 +16,13 @@ def test_four_client_history_tracks_return_resubmit_publicity_and_result(client,
     batch = _open_batch(client, headers)
     item = _apply(client, headers, batch, ids['sa']).json()['data']
     apply_id = int(item['applyId'])
-    item = _review(client, headers, item, action='RETURN', reason='请补充家庭收入变动说明')
+    counselor = _hdr(client, 'counselor01')
+    college = _hdr(client, 'college_admin01')
+    item = _review(client, counselor, item, action='RETURN', reason='请补充家庭收入变动说明')
     item = client.post(f'{BASE}/aid/applications/{apply_id}/resubmit', headers=headers,
         json={'version': item['version']}).json()['data']
-    for _ in range(4): item = _review(client, headers, item)
+    for reviewer in (counselor, counselor, college, headers):
+        item = _review(client, reviewer, item)
     pending = client.get(f'{BASE}/aid/applications/{apply_id}', headers=headers).json()['data']
     assert pending['publicityEnd'] and pending['resultAt'] is None
     _expire_publicity(apply_id)

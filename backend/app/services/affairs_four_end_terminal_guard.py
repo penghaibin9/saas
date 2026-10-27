@@ -103,7 +103,7 @@ def _permission_problem(path: str, method: str, required: tuple[str, ...]) -> st
     if (
         (path == "/api/v1/mobile/teacher/mental" or path.startswith("/api/v1/mobile/teacher/mental/"))
         and method == "GET"
-        and required != ("studentAffairs.risk.psyDetail.view",)
+        and required != ("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view")
     ):
         return "心理个体明细权限不准确"
     return None

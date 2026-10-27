@@ -8,7 +8,7 @@
     </view>
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad">
-        <view v-if="(isAid || isAidObjection || isFunding || isFundingAppeal) && !focusId" class="ar__queue-head"><text>{{ title }}</text><text>共 {{ total }} 件</text></view>
+        <view v-if="(isAid || isAidObjection || isFunding || isFundingAppeal || isDiscipline) && !focusId" class="ar__queue-head"><text>{{ title }}</text><text>共 {{ total }} 件</text></view>
         <MobileGlobalState v-if="!list.length" state="empty" :title="'暂无' + title" description="有待办时会显示在这里；处理权限与 PC 学工工作台一致。" />
         <view class="stack" v-else>
           <view v-for="x in list" :key="rowKey(x)" class="card ar">
@@ -61,7 +61,7 @@
             <text v-else class="ar__muted">当前节点暂无可执行动作</text>
           </view>
         </view>
-        <view v-if="(isAid || isAidObjection || isFunding || isFundingAppeal) && !focusId && list.length < total" class="ar__more">
+        <view v-if="(isAid || isAidObjection || isFunding || isFundingAppeal || isDiscipline) && !focusId && list.length < total" class="ar__more">
           <text v-if="moreError" class="ar__muted">{{ moreError }}</text>
           <button class="btn btn-ghost" :disabled="loadingMore || acting" @click="loadMore">{{ loadingMore ? '正在加载…' : moreError ? '重试加载' : '加载更多待办' }}</button>
         </view>
@@ -111,6 +111,7 @@ export default {
   computed: {
     meta() { return META[this.kind] || { title: '学工待办' } }, title() { return this.focusId && this.isFunding ? '奖助申请办理' : this.isAid && this.focusId ? '困难认定办理' : this.meta.title },
     isAid() { return ['AID_APPROVAL', 'AID_ADJUST'].includes(this.kind) },
+    isDiscipline() { return ['DISCIPLINE_APPROVAL', 'DISCIPLINE_REMOVE'].includes(this.kind) },
     isFunding() { return this.kind === 'FUNDING_APPROVAL' },
     isAidObjection() { return this.kind === 'AID_OBJECTION_REVIEW' },
     isFundingAppeal() { return this.kind === 'FUNDING_APPEAL_REVIEW' },
@@ -199,13 +200,11 @@ export default {
       if (append) this.loadingMore = true
       else { this.state = 'loading'; this.expandedId = ''; this.detailMap = {}; this.appliedKeyword = this.keyword.trim() }
       this.moreError = ''
-      const params = (this.isAid || this.isFunding) ? { page, pageSize: 20, ...(this.isAid ? { kind: this.kind } : {}), keyword: this.appliedKeyword } : undefined
+      const params = (this.isAid || this.isFunding || this.isDiscipline) ? { page, pageSize: 20, ...((this.isAid || this.isDiscipline) ? { kind: this.kind } : {}), keyword: this.appliedKeyword } : undefined
       const task = this.isAppeal ? affairsAppealApi.getPending(this.meta.appealKind, (this.isAidObjection || this.isFundingAppeal) ? { page, pageSize: 20 } : {}) : (this.meta.load && teacherApi[this.meta.load] ? teacherApi[this.meta.load](params) : Promise.reject(new Error('未配置待办接口')))
       return task.then((d) => {
         if (requestId !== this.requestSeq) return
         let rows = (d && (d.items || d.list)) || []
-        if (this.kind === 'DISCIPLINE_REMOVE') rows = rows.filter((x) => x.status === 'REMOVE_REVIEW')
-        if (this.kind === 'DISCIPLINE_APPROVAL') rows = rows.filter((x) => x.status !== 'REMOVE_REVIEW')
         const previous = new Set(append ? this.list.map(this.rowKey) : [])
         this.list = append ? [...this.list, ...rows.filter(row => !previous.has(this.rowKey(row)))] : rows
         this.page = page; this.total = Number(d?.total ?? rows.length); this.state = 'ready'

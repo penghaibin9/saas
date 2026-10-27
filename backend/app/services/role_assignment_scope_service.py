@@ -18,6 +18,7 @@ _POLICY_MAP = {
     "TENANT": ("NODE", "SCHOOL"),
     "TENANT_ALL": ("NODE", "SCHOOL"),
     "COLLEGE": ("NODE", "COLLEGE"),
+    "SCHOOL_OR_COLLEGE": ("FLEX", "COLLEGE"),
     "MAJOR": ("NODE", "MAJOR"),
     "CLASS": ("NODE", "CLASS"),
     "COUNSELOR_CLASSES": ("NODE", "CLASS"),
@@ -51,6 +52,105 @@ def _actor_id(user: dict | None) -> int | None:
     return int(raw) if raw.isdigit() else None
 
 
+def active_role_membership_query(tenant_id: int):
+    """账号身份、范围读取和任务候选共用有效任职条件。"""
+    from sqlalchemy import and_, or_
+    from app.models import Role, RoleAssignmentValidity, User, UserRole
+    from app.services.role_assignment_service import _now as assignment_now
+    moment = assignment_now()
+    return select(UserRole).select_from(UserRole).join(Role, and_(
+        Role.id == UserRole.role_id, Role.tenant_id == UserRole.tenant_id,
+    )).join(User, and_(User.id == UserRole.user_id, User.tenant_id == UserRole.tenant_id)).outerjoin(
+        RoleAssignmentValidity, and_(RoleAssignmentValidity.tenant_id == UserRole.tenant_id,
+                                     RoleAssignmentValidity.user_role_id == UserRole.id),
+    ).where(
+        UserRole.tenant_id == tenant_id, UserRole.status == "ACTIVE", UserRole.is_deleted.is_(False),
+        Role.status.in_(("ACTIVE", "ENABLED")), Role.is_deleted.is_(False),
+        User.status == "ACTIVE", User.is_deleted.is_(False),
+        or_(RoleAssignmentValidity.id.is_(None), and_(
+            RoleAssignmentValidity.user_id == UserRole.user_id,
+            RoleAssignmentValidity.role_code == Role.role_code,
+            RoleAssignmentValidity.status == "ACTIVE", RoleAssignmentValidity.is_deleted.is_(False),
+            RoleAssignmentValidity.effective_at <= moment,
+            or_(RoleAssignmentValidity.expires_at.is_(None), RoleAssignmentValidity.expires_at > moment),
+        )),
+    )
+
+
+def active_assignment_scope_query(tenant_id: int):
+    from sqlalchemy import and_, or_
+    from app.models import Role, RoleAssignmentScope, UserRole
+    moment = datetime.utcnow()
+    return active_role_membership_query(tenant_id).join(RoleAssignmentScope, and_(
+        RoleAssignmentScope.user_role_id == UserRole.id,
+        RoleAssignmentScope.tenant_id == UserRole.tenant_id,
+        RoleAssignmentScope.user_id == UserRole.user_id,
+        RoleAssignmentScope.role_code == Role.role_code,
+    )).with_only_columns(RoleAssignmentScope).where(
+        RoleAssignmentScope.status == "ACTIVE", RoleAssignmentScope.is_deleted.is_(False),
+        RoleAssignmentScope.effective_at <= moment,
+        or_(RoleAssignmentScope.expires_at.is_(None), RoleAssignmentScope.expires_at > moment),
+    )
+
+
+def active_assignment_scopes(db, *, tenant_id: int, user_id: int, role_code: str, context_id: str = ""):
+    """授权读取绑定当前有效任职；账号编辑页保留独立的范围清单读法。"""
+    from app.models import Role, RoleAssignmentScope
+    query = active_assignment_scope_query(tenant_id).where(
+        RoleAssignmentScope.user_id == user_id, RoleAssignmentScope.role_code == role_code,
+    )
+    if context_id.startswith("role:"):
+        if not context_id[5:].isdigit():
+            return []
+        query = query.where(Role.id == int(context_id[5:]))
+    return list(db.scalars(query).all())
+
+
+def legacy_assignment_scopes(db, *, tenant_id: int, role_code: str, identity_keys, user_id: int | None = None):
+    """旧范围仅兼容明确职责与稳定账号键，不推断空职责或姓名授权。"""
+    from sqlalchemy import func
+    from app.models import RoleAssignmentScope, TeacherStudentScope
+    if not role_code or not identity_keys:
+        return []
+    if user_id is not None and db.scalar(select(RoleAssignmentScope.id).where(
+        RoleAssignmentScope.tenant_id == tenant_id, RoleAssignmentScope.user_id == user_id,
+        RoleAssignmentScope.role_code == role_code,
+    ).limit(1)) is not None:
+        return []
+    return list(db.scalars(select(TeacherStudentScope).where(
+        TeacherStudentScope.tenant_id == tenant_id,
+        TeacherStudentScope.is_deleted.is_(False), TeacherStudentScope.status == "ACTIVE",
+        TeacherStudentScope.teacher_key.in_(identity_keys),
+        func.upper(TeacherStudentScope.role_code) == role_code.upper(),
+    )).all())
+
+
+def resolve_legacy_scope_ids(db, *, tenant_id: int, scope_type: str, values) -> set[int]:
+    """每条旧名称及兼容别名只能定位一个对象；不把旧授权转给同名新对象。"""
+    from sqlalchemy import func, union_all
+    from app.models import College, Major, SchoolClass, StudentProfile
+    model, column = {
+        "COLLEGE": (College, College.college_name),
+        "MAJOR": (Major, Major.major_name),
+        "CLASS": (SchoolClass, SchoolClass.class_name),
+        "STUDENT": (StudentProfile, StudentProfile.student_no),
+        "PSY_STUDENT": (StudentProfile, StudentProfile.student_no),
+    }[scope_type]
+    queries = []
+    for value in sorted({str(value).strip() for value in values if str(value or "").strip()}):
+        variants = {value}
+        if scope_type == "CLASS":
+            variants |= {value + "班", value.rstrip("班")}
+        # 保留软删对象参与歧义计数，防止删后重建同名对象继承旧授权。
+        queries.append(select(func.min(model.id)).where(
+            model.tenant_id == tenant_id, column.in_(variants - {""}),
+        ).having(func.count(model.id) == 1, func.max(model.is_deleted) == 0))
+    if not queries:
+        return set()
+    query = queries[0] if len(queries) == 1 else union_all(*queries)
+    return {int(value) for value in db.scalars(query).all()}
+
+
 def _raw_role_scope(db, role) -> str:
     from app.models import DataScopeRule
     row = db.scalars(select(DataScopeRule).where(
@@ -77,6 +177,12 @@ def _raw_role_scope(db, role) -> str:
 def role_scope_policy(db, role) -> dict:
     raw = _raw_role_scope(db, role)
     role_code = str(role.role_code or "").strip().upper()
+    if role_code == "FUNDING_TEACHER" and raw == "FUNDING_BIZ":
+        raw = "SCHOOL_OR_COLLEGE"
+    if role_code == "YOUTH_LEAGUE" and raw in {"SCHOOL", "TENANT", "TENANT_ALL"}:
+        raw = "SCHOOL_OR_COLLEGE"
+    if role_code == "ORG_PERSONNEL" and raw == "DEPARTMENT":
+        raw = "SCHOOL_OR_COLLEGE"
     automatic_role_label = _ROLE_AUTOMATIC_LABELS.get(role_code)
     mode, scope_type = (
         ("AUTO", raw) if automatic_role_label else _POLICY_MAP.get(raw, ("AUTO", raw))
@@ -85,12 +191,14 @@ def role_scope_policy(db, role) -> dict:
     if mode == "NODE":
         allowed = [scope_type]
     elif mode == "FLEX":
-        allowed = ["COLLEGE", "MAJOR", "CLASS", "STUDENT"]
+        allowed = ["SCHOOL", "COLLEGE"] if raw == "SCHOOL_OR_COLLEGE" else ["COLLEGE", "MAJOR", "CLASS", "STUDENT"]
     label = (
         f"按{_SCOPE_LABELS.get(scope_type, scope_type)}授权"
         if mode in {"NODE", "FLEX"}
         else automatic_role_label or _AUTOMATIC_LABELS.get(raw, f"由 {raw} 业务关系自动确定")
     )
+    if raw == "SCHOOL_OR_COLLEGE":
+        label = "按明确授权的学校或学院范围"
     return {
         "roleScopeCode": raw,
         "scopeMode": mode,

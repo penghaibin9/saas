@@ -100,7 +100,7 @@
         <view v-else-if="!transferError" class="dm__history"><text class="dm__step-t">我的调宿申请</text><text class="dm__empty-text">暂无调宿申请</text></view>
         <view class="dm__history">
           <text class="dm__step-t">住宿历史</text>
-          <view v-for="x in stays" :key="x.stayId" class="dm__history-row"><text class="dm__history-status">{{ stayStatusLabel(x.status) }}</text><text class="dm__history-route">{{ x.bedLabel || ('床位 #' + x.bedId) }}</text><text class="dm__history-reason">{{ (x.checkinAt || '未记录') + ' → ' + (x.checkoutAt || '当前') }}</text></view>
+          <view v-for="x in stays" :key="x.stayId" class="dm__history-row"><text class="dm__history-status">{{ stayStatusLabel(x.status) }}</text><text class="dm__history-route">{{ x.bedLabel || ('床位 #' + x.bedId) }}</text><text class="dm__history-reason">{{ (x.checkinAt ? fmtTime(x.checkinAt) : '未记录') + ' → ' + (x.checkoutAt ? fmtTime(x.checkoutAt) : '当前') }}</text></view>
           <MobileInlineAlert v-if="stayError" type="warning" title="住宿历史暂不可用" :description="stayError" />
           <text v-if="!stayError && !stays.length" class="dm__empty-text">暂无住宿历史</text>
         </view>
@@ -121,6 +121,7 @@
 
 <script>
 import { studentApi } from '@/services/studentApi'
+import { leaveDate } from '@/services/leavePresentation'
 import { affairsContractApi } from '@/services/affairsContractApi'
 import { safeToast, createSubmitLock, normalizeError } from '@/services/request'
 import fileSdk from '@/services/fileSdk'
@@ -197,7 +198,7 @@ export default {
     stayStatusLabel(s) { return ({ RESERVED: '待入住', ACTIVE: '当前在住', ENDED: '已退宿', CANCELLED: '已取消' })[String(s || '').toUpperCase()] || '状态待确认' },
     rectStatusLabel(s) { return ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' })[s] || '状态待确认' },
     severityLabel(s) { return ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' })[s] || '风险待确认' },
-    fmtTime(value) { return String(value || '').slice(0, 16).replace('T', ' ') || '—' },
+    fmtTime(value) { return leaveDate(value, true) },
     showError(e, fallback) { const n = normalizeError(e); safeToast(n.text || fallback); if (n.kind === 'conflict') this.load(); return n },
     isCurrent(serial, generation) { return !this.disposed && serial === this.loadSerial && generation === currentSessionGeneration() },
     async load() {

@@ -288,7 +288,7 @@ export default {
     }
   },
   methods: {
-    canBtn(code) { return canCode(this.ctx, code) },
+    canBtn(code) { return canCode(this.ctx, code) && (code !== 'studentAffairs.funding.project.manage' || (!this.loading && this.summary.canManage === true)) },
     async loadProjects() {
       this.loadingProjects = true
       try {

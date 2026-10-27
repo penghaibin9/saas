@@ -32,7 +32,7 @@ def _loan_todo(loan_id, pending_type=None, student_login="fund_student"):
         if not active: return None
         row=active[0]; assert row.todo_type == pending_type
         student=pending_type == "STUDENT_LOAN_SUPPLEMENT"
-        assert db.get(User,row.assignee_id).login_name == (student_login if student else "sa_admin01")
+        assert db.get(User,row.assignee_id).login_name == (student_login if student else "funding_college01")
         for client,path in ([("studentPc","/campus-service"),("studentMini","/pages/student/affairs/loan")] if student else [("pc","/admin/student-affairs/funding/loans"),("teacherMini","/pages/teacher/affairs/loan/index")]):
             target=resolve_todo_route(pending_type,str(loan_id),client=client)
             assert target["path"] == path and target["exact"] is True
@@ -42,8 +42,8 @@ def _loan_todo(loan_id, pending_type=None, student_login="fund_student"):
 
 def test_student_loan_four_end_core_flow(client, db_mode):
     ids = _accounts(db_mode)
-    admin_pc = _login(client, "school_admin01", "PC")
-    admin_mini = _login(client, "school_admin01", "TEACHER_MINI")
+    admin_pc = _login(client, "funding_college01", "PC")
+    admin_mini = _login(client, "funding_college01", "TEACHER_MINI")
     student_pc = _login(client, "fund_student", "PC")
     student_mini = _login(client, "fund_student", "STUDENT_MINI")
     other_pc = _login(client, "fund_other", "PC")

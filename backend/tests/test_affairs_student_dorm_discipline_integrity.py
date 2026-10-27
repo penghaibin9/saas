@@ -39,8 +39,11 @@ def test_dorm_building_manager_binding_requires_real_active_dorm_manager_role():
     text = read("backend/app/services/affairs_dorm_node_guard.py")
     assert "_has_active_dorm_manager_role" in text
     assert 'Role.role_code == "DORM_MANAGER"' in text
-    assert 'Role.status == "ACTIVE"' in text
-    assert 'UserRole.status == "ACTIVE"' in text
+    assert "active_role_membership_query(_tid())" in text
+    membership = read("backend/app/services/role_assignment_scope_service.py")
+    assert 'Role.status.in_(("ACTIVE", "ENABLED"))' in membership
+    assert 'UserRole.status == "ACTIVE"' in membership
+    assert 'RoleAssignmentValidity.expires_at > moment' in membership
     assert 'managerTeacherKey' in text
     assert "请选择具有宿管角色的有效宿管" in text
     assert "dorm._resolve_user_by_manager_key = resolve_user_by_manager_key" in text

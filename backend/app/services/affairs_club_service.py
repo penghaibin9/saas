@@ -1,7 +1,7 @@
 """13A-D 社团管理（05 卡）：建社→审批→成员/任职→年审→注销。
 
-数据留痕走 AffairsAuditTrail(biz_type=CLUB)；社团为组织级台账（非学生 PII 敏感域），
-按租户可见，团委/学工处管理，college_id 供院级筛选。成员唯一活跃约束防重复入社。
+数据留痕走 AffairsAuditTrail(biz_type=CLUB)；社团按归属学院授权，
+成员另核对学生范围。成员唯一活跃约束防重复入社。
 """
 
 from app.core.optimistic_lock import atomic_claim_version
@@ -13,6 +13,7 @@ from sqlalchemy import func, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
+from app.services.affairs_organization_scope import organization_condition, require_organization, student_condition
 
 CLUB_TYPES = ("INTEREST", "ACADEMIC", "SPORTS", "ARTS", "VOLUNTEER", "PRACTICE")
 MEMBER_ROLES = ("MEMBER", "DEPT_HEAD", "VICE_PRESIDENT", "PRESIDENT")
@@ -42,13 +43,14 @@ def _audit(db, biz_id, action, detail=""):
                              operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
 
 
-def _load(db, club_id):
+def _load(db, club_id, user):
     from app.models import AffairsClub
     c = db.scalars(select(AffairsClub).where(
         AffairsClub.id == int(club_id), AffairsClub.tenant_id == _tid(),
         AffairsClub.is_deleted.is_(False))).first()
     if not c:
         raise not_found("社团不存在")
+    require_organization(db, user, c.college_id)
     return c
 
 
@@ -65,7 +67,8 @@ def list_clubs(user, status=None, club_type=None, page=1, page_size=50):
     from app.models import AffairsClub
     from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
-        base_conds = [AffairsClub.tenant_id == _tid(), AffairsClub.is_deleted.is_(False)]
+        base_conds = [AffairsClub.tenant_id == _tid(), AffairsClub.is_deleted.is_(False),
+                      organization_condition(db, user, AffairsClub)]
         if club_type:
             base_conds.append(AffairsClub.club_type == club_type)
         conds = list(base_conds)
@@ -94,6 +97,11 @@ def create_club(body, user) -> dict:
     if ctype not in CLUB_TYPES:
         raise AppException("VALIDATION_ERROR", "社团类型非法")
     with session() as db:
+        require_organization(db, user, getattr(body, "collegeId", None))
+        for field in ("presidentStudentId", "founderStudentId"):
+            student_id = getattr(body, field, None)
+            if student_id is not None:
+                _member_scope_or_403(db, student_id, user)
         dup = db.scalars(select(AffairsClub).where(
             AffairsClub.tenant_id == _tid(), AffairsClub.club_name == name,
             AffairsClub.is_deleted.is_(False))).first()
@@ -114,7 +122,7 @@ def create_club(body, user) -> dict:
 def review_club(club_id, user, action="APPROVE", reason="", expected_version=None) -> dict:
     """PENDING→ACTIVE(通过)/REJECTED-态(此处并入 DISBANDED? 用 reject 保留 PENDING→驳回置 SUSPENDED)。"""
     with session() as db:
-        c = _load(db, club_id)
+        c = _load(db, club_id, user)
         if c.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待审批社团可审批")
         atomic_claim_version(db, c, expected_version)
@@ -133,7 +141,7 @@ def review_club(club_id, user, action="APPROVE", reason="", expected_version=Non
 
 def disband_club(club_id, user, reason="", expected_version=None) -> dict:
     with session() as db:
-        c = _load(db, club_id)
+        c = _load(db, club_id, user)
         if c.status == "DISBANDED":
             raise AppException("DATA_CONFLICT", "社团已注销")
         if len((reason or "").strip()) < 5:
@@ -155,10 +163,13 @@ def _member_row(m, s=None) -> dict:
 def list_members(club_id, user):
     from app.models import AffairsClubMember, StudentProfile
     with session() as db:
-        _load(db, club_id)
+        _load(db, club_id, user)
         rows = db.scalars(select(AffairsClubMember).where(
             AffairsClubMember.tenant_id == _tid(), AffairsClubMember.club_id == int(club_id),
-            AffairsClubMember.status == "ACTIVE", AffairsClubMember.is_deleted.is_(False))
+            AffairsClubMember.status == "ACTIVE", AffairsClubMember.is_deleted.is_(False),
+            AffairsClubMember.student_id.in_(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                student_condition(user, StudentProfile))))
             .order_by(AffairsClubMember.id.desc())).all()
         student_ids = {int(m.student_id) for m in rows if m.student_id}
         students = db.scalars(select(StudentProfile).where(
@@ -182,14 +193,8 @@ def _sync_count(db, club_id):
 
 def _member_scope_or_403(db, student_id, user):
     """加人写范围：非全域角色只能给本数据范围内学生办入社。"""
-    from app.models import StudentProfile
-    from app.services.affairs_dashboard_service import _allowed_class_ids
-    allowed, _ = _allowed_class_ids(db, user)
-    if allowed is None:
-        return
-    s = db.get(StudentProfile, int(student_id)) if student_id else None
-    if not s or s.class_id not in allowed:
-        raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
+    from app.core.affairs_security import build_affairs_context
+    build_affairs_context(user, db).require_student(db, student_id)
 
 
 def add_member(club_id, body, user) -> dict:
@@ -199,7 +204,7 @@ def add_member(club_id, body, user) -> dict:
     if role not in MEMBER_ROLES:
         raise AppException("VALIDATION_ERROR", "任职角色非法")
     with session() as db:
-        c = _load(db, club_id)
+        c = _load(db, club_id, user)
         if c.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "仅运营中社团可增补成员")
         s = db.scalars(select(StudentProfile).where(
@@ -231,6 +236,7 @@ def remove_member(member_id, user) -> dict:
             AffairsClubMember.is_deleted.is_(False))).first()
         if not m:
             raise not_found("成员记录不存在")
+        _load(db, m.club_id, user)
         if m.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "该成员已退社")
         # 与加人对称：非全域只能退本数据范围内学生
@@ -252,7 +258,7 @@ def annual_review(club_id, body, user) -> dict:
     if result not in ("PASS", "CONDITIONAL", "FAIL"):
         raise AppException("VALIDATION_ERROR", "年审结果非法")
     with session() as db:
-        _load(db, club_id)
+        _load(db, club_id, user)
         dup = db.scalars(select(AffairsClubAnnualReview).where(
             AffairsClubAnnualReview.tenant_id == _tid(),
             AffairsClubAnnualReview.club_id == int(club_id),
@@ -274,7 +280,7 @@ def annual_review(club_id, body, user) -> dict:
 def list_annual_reviews(club_id, user):
     from app.models import AffairsClubAnnualReview
     with session() as db:
-        _load(db, club_id)
+        _load(db, club_id, user)
         rows = db.scalars(select(AffairsClubAnnualReview).where(
             AffairsClubAnnualReview.tenant_id == _tid(),
             AffairsClubAnnualReview.club_id == int(club_id),

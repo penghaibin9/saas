@@ -353,8 +353,7 @@ def install() -> None:
                     discipline._scope_or_403(db, case.student_id, user)
                 if case.status != "EFFECTIVE":
                     raise AppException("DATA_CONFLICT", "仅已生效处分可申诉")
-                appeal_todo.require_submission_assignee(
-                    db, "DISCIPLINE_APPEAL_REVIEW", int(case.student_id))
+                discipline._appeal_assignee(db, case)
                 prior = db.scalars(select(DisciplineAppeal).where(
                     DisciplineAppeal.tenant_id == _tid(),
                     DisciplineAppeal.case_id == int(case_id),
@@ -433,6 +432,7 @@ def install() -> None:
             discipline.atomic_claim_version(
                 db, appeal, getattr(body, "version", None))
             case, student = _lock_case(db, int(appeal.case_id))
+            discipline._check_appeal_review(db, appeal, case, user)
             if case.status != "EFFECTIVE":
                 raise AppException("DATA_CONFLICT", "原处分已非生效状态，不能重复复核")
 
@@ -533,6 +533,7 @@ def install() -> None:
             appeal.review_opinion = opinion
             appeal.reviewer = discipline._op()[0]
             appeal.reviewed_at = datetime.utcnow()
+            appeal.updated_by = discipline._uid_int(user)
             appeal.version = int(appeal.version or 0) + 1
             db.flush()
             appeal_todo._ensure_todo(db, "DISCIPLINE_APPEAL_REVIEW", appeal)

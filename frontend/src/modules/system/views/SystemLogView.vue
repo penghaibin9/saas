@@ -124,7 +124,7 @@ import { systemApi } from '@/modules/system/api/system.api'
 const EMPTY_FILTERS = () => ({ keyword: '', module: '', action: '', result: '', dateFrom: '', dateTo: '' })
 const ROLE_LABELS = {
   SCHOOL_ADMIN: '学校管理员', TEACHER: '教师', COUNSELOR: '辅导员',
-  ACADEMIC_ADMIN: '教务管理员', STUDENT_AFFAIRS_ADMIN: '学工管理员',
+  ACADEMIC_ADMIN: '教务管理员', STUDENT_AFFAIRS_ADMIN: '校学工管理员', STUDENT_AFFAIRS_COLLEGE: '学院学工负责人',
   PLATFORM_OPERATOR: '平台运营人员', PLATFORM_SECURITY_AUDITOR: '平台安全审计员'
 }
 

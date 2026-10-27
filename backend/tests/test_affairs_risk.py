@@ -142,9 +142,24 @@ def test_r6_mental_detail_mask_reveal_reason_audit(client, db_mode):
     admin = _hdr(client, "school_admin01")
     rid = _create(client, admin, ids["sa"], source="MENTAL", ref="3001",
                   detail="心理咨询详细记录").json()["data"]["riskId"]
+    from app.db.session import get_sessionmaker
+    from app.models import AffairsRiskHandle, StudentProfile, TeacherStudentScope
+    unassigned = client.get(f"{BASE}/risk/records/{rid}", params={"reason": "未授权不应读取原文"},
+                            headers=admin).json()["data"]
+    assert unassigned["mentalMasked"] is True
+    with get_sessionmaker()() as db:
+        student = db.get(StudentProfile, ids["sa"])
+        db.add(TeacherStudentScope(tenant_id=TID, teacher_key="school_admin01", role_code="SCHOOL_ADMIN",
+            scope_type="PSY_STUDENT", ref_value=student.student_no, status="ACTIVE"))
+        db.add(AffairsRiskHandle(tenant_id=TID, risk_id=int(rid), action="PROCESS", content="心理处置原文哨兵"))
+        db.commit()
     # 授权角色(SCHOOL_ADMIN) 无原因 → 明细仍遮蔽（详情默认仅摘要）
     d0 = client.get(f"{BASE}/risk/records/{rid}", headers=admin).json()["data"]
     assert d0["mentalMasked"] is True and "心理咨询详细记录" not in d0["detail"]
+    assert "心理处置原文哨兵" not in str(d0["handles"])
+    handles = client.get(f"{BASE}/risk/records/{rid}/handles", headers=admin)
+    assert handles.status_code == 200, handles.text
+    assert "心理处置原文哨兵" not in handles.text
     # 列表恒遮蔽心理明细
     lst = client.get(f"{BASE}/risk/records", params={"source": "MENTAL"}, headers=admin).json()["data"]["items"]
     assert lst and all(it["mentalMasked"] is True for it in lst)
@@ -152,6 +167,7 @@ def test_r6_mental_detail_mask_reveal_reason_audit(client, db_mode):
     d1 = client.get(f"{BASE}/risk/records/{rid}", params={"reason": "危机干预需核对记录"},
                     headers=admin).json()["data"]
     assert d1["detail"] == "心理咨询详细记录" and d1["mentalMasked"] is False
+    assert any(item["content"] == "心理处置原文哨兵" for item in d1["handles"])
     # 辅导员(普通教师，不在授权集) → 恒遮蔽，即便带原因
     d_c = client.get(f"{BASE}/risk/records/{rid}", params={"reason": "想看一下明细"},
                      headers=_hdr(client, "counselor01")).json()["data"]

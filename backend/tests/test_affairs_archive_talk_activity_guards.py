@@ -50,4 +50,4 @@ def test_activity_and_volunteer_dtos_return_actions_and_scope():
     assert '"version": int(row.version or 0)' in text
     assert 'build_affairs_context(user, db).require_student(db, student_id)' in text
     assert 'reliability._teacher_scope_tokens(db, user)' in text
-    assert 'reliability._activity_matches(activity, class_tokens, college_tokens)' in text
+    assert 'reliability._activity_matches(activity, class_tokens, college_tokens, db=db)' in text

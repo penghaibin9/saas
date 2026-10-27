@@ -55,6 +55,7 @@
           <div class="ws-ops">
             <AppPermissionButton v-for="action in focusActions" :key="action.code" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" :disabled="!!acting || !hasVersion(records[0])" :variant="action.code === 'REJECT' || action.code === 'TERMINATE' ? 'secondary' : 'primary'" @click="action.code === 'MONTHLY' ? openMonthly(records[0]) : openAction(records[0], action.code)">{{ action.label }}</AppPermissionButton>
           </div>
+          <p v-if="records[0].actionBlockReason" class="ws-next">{{ records[0].actionBlockReason }}</p>
           <p v-if="records[0].status === 'ONBOARD'" class="ws-next">已完成上岗。按实际工作月份登记考核与补贴，学生可在本人勤工记录查询；登记金额不代表银行已到账。</p>
           <section v-if="['ONBOARD','TERMINATED'].includes(records[0].status)" class="ws-monthly-history" aria-label="月度考核记录">
             <h3>月度考核记录</h3>
@@ -71,10 +72,11 @@
           <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel || row.status" dot /></template>
           <template #cell-actions="{ row }">
             <div class="ws-ops">
+              <span v-if="row.actionBlockReason">{{ row.actionBlockReason }}</span>
               <AppPermissionButton v-if="allows(row, 'APPROVE')" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" size="sm" :disabled="!hasVersion(row)" @click="openAction(row, 'APPROVE')">录用</AppPermissionButton>
               <AppPermissionButton v-if="allows(row, 'REJECT')" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger :disabled="!hasVersion(row)" @click="openAction(row, 'REJECT')">拒绝</AppPermissionButton>
               <AppPermissionButton v-if="allows(row, 'ONBOARD')" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" size="sm" :disabled="!hasVersion(row)" @click="openAction(row, 'ONBOARD')">核验协议并上岗</AppPermissionButton>
-              <AppPermissionButton v-if="row.status === 'ONBOARD'" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(row)">月度考核</AppPermissionButton>
+              <AppPermissionButton v-if="allows(row, 'MONTHLY')" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" @click="openMonthly(row)">月度考核</AppPermissionButton>
               <AppPermissionButton v-if="allows(row, 'TERMINATE')" :allowed="canManage" code="studentAffairs.funding.workstudy.manage" size="sm" variant="secondary" danger :disabled="!hasVersion(row)" @click="openAction(row, 'TERMINATE')">结束岗位</AppPermissionButton>
             </div>
           </template>
@@ -229,7 +231,7 @@ export default {
     ratingLabel(value) { return ({GOOD:'优秀',PASS:'合格',FAIL:'不合格'})[value] || '待核对' },
     statusCount(status) { return Number(this.statusCounts?.[status] || 0) },
     postName(id) { return this.posts.find((post) => String(post.postId) === String(id))?.postName || `岗位#${id}` },
-    money(value) { return value == null || value === '' ? '待确认' : `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` },
+    money(value) { return value == null || value === '' ? '待确认' : Number.isFinite(Number(value)) ? `¥${Number(value).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : String(value) },
     hours(value) { return value == null || value === '' ? '40 小时' : `${Number(value)} 小时` },
     dateTime(value) { return value ? String(value).replace('T', ' ').slice(0, 16) : '' },
     statusType(status) { return ({ APPLIED: 'warning', APPROVED: 'processing', ONBOARD: 'success', REJECTED: 'default', WITHDRAWN: 'default', TERMINATED: 'danger' })[status] || 'default' },
@@ -298,7 +300,7 @@ export default {
       else form.error = response.message || '代录失败'
     },
     openAction(row, action) { this.actionDlg = { visible: true, recordId: row.recordId, version: row.version, action, agreementConfirmed: false } },
-    async submitAction(reason) {
+    async submitAction({ reason = '' } = {}) {
       const form = this.actionDlg
       if (form.action === 'ONBOARD' && !form.agreementConfirmed) { toast.error('请先确认协议已经核验'); return }
       const text = String(reason || '').trim()

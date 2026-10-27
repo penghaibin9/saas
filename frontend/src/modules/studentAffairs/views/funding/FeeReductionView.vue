@@ -24,7 +24,7 @@
             <AppPermissionButton v-if="allows(row, 'REJECT')" code="studentAffairs.funding.reduction.manage" :allowed="canBtn('studentAffairs.funding.reduction.manage')" size="sm" variant="secondary" danger @click="openAction(row, 'REJECT')">驳回</AppPermissionButton>
             <AppPermissionButton v-if="allows(row, 'FULFILL')" code="studentAffairs.funding.reduction.manage" :allowed="canBtn('studentAffairs.funding.reduction.manage')" size="sm" @click="openAction(row, 'FULFILL')">{{ row.itemType === 'REDUCTION' ? '确认减免' : '登记发放' }}</AppPermissionButton>
             <div v-if="row.status === 'ISSUED'" class="fr-muted"><span>已落实 · {{ row.issuedAt ? new Date(row.issuedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}</span><small class="fr-opinion">{{ row.fulfillmentReference || '未填写凭证摘要' }}</small></div>
-            <span v-else-if="!row.allowedActions?.length" class="fr-muted">只读</span>
+            <span v-else-if="!row.allowedActions?.length" class="fr-muted">{{ row.actionBlockReason || '只读' }}</span>
           </div></template>
         </DataTable>
         <div v-else class="fr-empty"><strong>{{ focusId ? '该申请不存在或不在当前权限范围内' : emptyText }}</strong></div>
@@ -47,7 +47,7 @@
 
     <AppDrawer v-model:visible="actionDrawer.visible" :title="actionTitle" :subtitle="actionSubtitle" mode="modal" size="small">
       <div v-if="actionDrawer.row" class="fr-form">
-        <div class="fr-context"><span>{{ actionDrawer.row.realName }} · {{ actionDrawer.row.studentNo }}</span><strong>{{ typeLabel(actionDrawer.row.itemType) }} · {{ actionDrawer.row.yearCode }} · {{ amountText(actionDrawer.row.amount) }}</strong></div>
+        <div class="fr-context"><span>{{ actionDrawer.row.realName }} · {{ actionDrawer.row.studentNo }}</span><strong>{{ typeLabel(actionDrawer.row.itemType) }} · {{ actionDrawer.row.yearCode }} · {{ amountText(actionDrawer.row.amount) }}</strong><span>当前状态：{{ actionDrawer.row.statusLabel || '状态待核对' }}</span><span v-if="actionDrawer.row.reviewOpinion">最新审核意见：{{ actionDrawer.row.reviewOpinion }}</span></div>
         <AppFormItem v-if="['RETURN','REJECT'].includes(actionDrawer.action)" label="处理意见" required><AppTextarea v-model="actionDrawer.form.opinion" :rows="4" :maxlength="1000" :placeholder="actionDrawer.action === 'RETURN' ? '说明需要补正的具体信息或材料' : '说明不予通过的具体依据'" :disabled="saving" /></AppFormItem>
         <AppFormItem v-else-if="actionDrawer.action === 'APPROVE'" label="审核意见"><AppTextarea v-model="actionDrawer.form.opinion" :rows="3" :maxlength="1000" placeholder="选填" :disabled="saving" /></AppFormItem>
         <AppFormItem v-else label="结果凭证摘要"><AppTextInput v-model="actionDrawer.form.fulfillmentReference" :maxlength="200" :placeholder="actionDrawer.row.itemType === 'REDUCTION' ? '如：财务减免清单批次' : '如：财务转账批次'" :disabled="saving" /></AppFormItem>
@@ -103,7 +103,32 @@ export default {
     validate(form) { const year = String(form.yearCode || '').trim(); const amount = Number(form.amount); const reason = String(form.reason || '').trim(); if (!form.studentId) return '请选择学生'; if (!/^\d{4}-\d{4}$/.test(year) || Number(year.slice(5)) !== Number(year.slice(0, 4)) + 1) return '申请学年应为连续的 YYYY-YYYY'; if (!Number.isFinite(amount) || amount <= 0) return '申请金额必须大于0'; if (reason.length < 10) return '请填写至少10字的申请理由'; if (form.evidence && !form.evidence.readyForBusiness) return '证明材料仍在安全检查，请稍后检查状态再提交'; return '' },
     async submitRegister() { if (this.saving) return; const form = this.registerDrawer.form; const error = this.validate(form); if (error) { this.registerDrawer.errorMessage = error; return } this.saving = true; this.registerDrawer.errorMessage = ''; try { const response = await studentAffairsApi.submitFeeReduction({ studentId: String(form.studentId), itemType: form.itemType, yearCode: form.yearCode.trim(), reasonCategory: form.reasonCategory, amount: String(form.amount), reason: form.reason.trim(), attachmentIds: form.evidence ? [form.evidence.fileId] : [] }); if (response.code !== 0) throw new Error(response.message || '申请代录失败'); toast.success('申请已进入待审核'); this.registerDrawer.visible = false; this.page = 1; await this.load() } catch (error) { this.registerDrawer.errorMessage = error.message || '申请代录失败' } finally { this.saving = false } },
     openAction(row, action) { this.actionDrawer = { visible: true, row, action, form: { opinion: '', fulfillmentReference: '' }, errorMessage: '' } },
-    async submitAction() { if (this.saving || !this.actionDrawer.row) return; const { row, action, form } = this.actionDrawer; const opinion = String(form.opinion || '').trim(); if (!this.allows(row, action)) { this.actionDrawer.errorMessage = '当前状态已变化，请刷新后重试'; return } if (['RETURN', 'REJECT'].includes(action) && opinion.length < 5) { this.actionDrawer.errorMessage = '请填写至少5字的具体处理意见'; return } this.saving = true; this.actionDrawer.errorMessage = ''; try { const body = { action, version: row.version, opinion: opinion || undefined, ...(action === 'FULFILL' ? { fulfillmentChannel: row.itemType === 'REDUCTION' ? 'TUITION_LEDGER' : 'BANK_TRANSFER', fulfillmentReference: String(form.fulfillmentReference || '').trim() || undefined } : {}) }; const response = await studentAffairsApi.actionFeeReduction(row.feeId, body); if (response.code !== 0) throw new Error(response.message || '申请处理失败'); toast.success(({ APPROVE: '申请已批准', RETURN: '已退回学生补正', REJECT: '申请已驳回', FULFILL: row.itemType === 'REDUCTION' ? '学费减免已确认' : '补助发放已登记' })[action]); this.actionDrawer.visible = false; await this.load() } catch (error) { this.actionDrawer.errorMessage = error.message || '申请处理失败'; if (error.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.load() } finally { this.saving = false } },
+    async submitAction() {
+      if (this.saving || !this.actionDrawer.row) return
+      const { row, action, form } = this.actionDrawer
+      const opinion = String(form.opinion || '').trim()
+      if (!this.allows(row, action)) { this.actionDrawer.errorMessage = '当前状态已变化，请刷新后重试'; return }
+      if (['RETURN', 'REJECT'].includes(action) && opinion.length < 5) { this.actionDrawer.errorMessage = '请填写至少5字的具体处理意见'; return }
+      this.saving = true; this.actionDrawer.errorMessage = ''
+      try {
+        const body = { action, version: row.version, opinion: opinion || undefined, ...(action === 'FULFILL' ? { fulfillmentChannel: row.itemType === 'REDUCTION' ? 'TUITION_LEDGER' : 'BANK_TRANSFER', fulfillmentReference: String(form.fulfillmentReference || '').trim() || undefined } : {}) }
+        const response = await studentAffairsApi.actionFeeReduction(row.feeId, body)
+        if (response.code !== 0) throw Object.assign(new Error(response.message || '申请处理失败'), { bizCode: response.bizCode })
+        toast.success(({ APPROVE: '申请已批准', RETURN: '已退回学生补正', REJECT: '申请已驳回', FULFILL: row.itemType === 'REDUCTION' ? '学费减免已确认' : '补助发放已登记' })[action])
+        this.actionDrawer.visible = false; await this.load()
+      } catch (error) {
+        this.actionDrawer.errorMessage = error.message || '申请处理失败'
+        if (error.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          await this.load()
+          const latest = await studentAffairsApi.getFeeReductions({ recordId: row.feeId, page: 1, pageSize: 1 })
+          if (this.actionDrawer.row === row) {
+            const current = latest.data?.items?.find(item => String(item.feeId) === String(row.feeId))
+            this.actionDrawer.row = current || { ...row, allowedActions: [] }
+            this.actionDrawer.errorMessage = current ? '记录已更新，上方显示最新状态；已保留填写内容，请核对后重新确认。' : '当前记录无法重新核验，已保留填写内容，请关闭后刷新台账。'
+          }
+        }
+      } finally { this.saving = false }
+    },
     onUploaded(file) { this.registerDrawer.form.evidence = file; this.registerDrawer.errorMessage = '' }, onUploadError(error) { this.registerDrawer.errorMessage = error?.message || '证明材料上传失败' },
     async refreshUploaded() { const file = this.registerDrawer.form.evidence; if (!file?.fileId) return; try { this.registerDrawer.form.evidence = await fileSdk.metadata(file.fileId) } catch (error) { this.registerDrawer.errorMessage = error.message || '文件状态检查失败' } },
     async openEvidence(file) { if (!file?.fileId || this.fileBusy) return; this.fileBusy = file.fileId; try { if (file.canPreview) await fileSdk.preview(file.fileId, file.fileName); else if (file.canDownload) await fileSdk.download(file.fileId, file.fileName); else throw new Error('材料尚未通过安全检查') } catch (error) { toast.error(error.message || '材料打开失败') } finally { this.fileBusy = '' } }

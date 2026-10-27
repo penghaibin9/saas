@@ -525,8 +525,9 @@ def affairs_activities(user=Depends(get_current_user),
 
 
 @router.get("/affairs/activities/my", summary="我报名的活动（本人）")
-def affairs_activities_my(user=Depends(get_current_user)):
-    return success(affairs.activities_my(user))
+def affairs_activities_my(user=Depends(get_current_user),
+                          page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100)):
+    return success(affairs.activities_my(user, page, pageSize))
 
 
 @router.post("/affairs/activities/{activity_id}/enroll", summary="活动报名（本人）")

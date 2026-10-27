@@ -12,6 +12,8 @@ COUNT/OFFSET/LIMIT 之前，因此：
 """
 from __future__ import annotations
 
+import pytest
+
 TID = 1000000000000000001
 OTHER_TID = 1000000000000000002
 
@@ -22,29 +24,20 @@ TARGET_SNO = "TGTSNO0001"
 FILLER_COUNT = 130
 
 
-# 登录接口有限流（每 IP 每分钟 10 次）。同一登录名在本文件内复用令牌，
-# 否则多个用例合并跑时会撞上 RATE_LIMITED，表现为 data=None 的 TypeError。
-_TOKENS: dict[str, str] = {}
-
-
 def _hdr(client, login_name):
-    token = _TOKENS.get(login_name)
-    if not token:
-        body = client.post("/api/v1/auth/mock-login",
-                           json={"loginName": login_name, "password": "any"}).json()
-        assert body.get("code") == 0, f"登录失败：{body}"
-        token = body["data"]["accessToken"]
-        _TOKENS[login_name] = token
-    return {"Authorization": f"Bearer {token}"}
+    from test_affairs_leave import _real_hdr
+    return _real_hdr(client, login_name)
 
 
 def _seed(db_mode):
     """A班=辅导员范围内；C班=同租户但越范围；OTHER_TID=跨租户。三处都放同名同学号学生。"""
     from datetime import datetime, timedelta
     from app.db.session import get_sessionmaker
+    from app.core.security import hash_password
+    from test_affairs_leave import TEST_LOGIN_PASSWORD
     from app.models import (
         AffairsCounselorAssignment, College, CsLeave, Major, Role, SchoolClass,
-        StudentProfile, TeacherStudentScope, User, UserRole,
+        StudentProfile, TeacherStudentScope, User, UserRole, WorkflowInstance, WorkflowTask,
     )
     db = get_sessionmaker()()
 
@@ -52,11 +45,13 @@ def _seed(db_mode):
         row = db.query(User).filter_by(tenant_id=tenant_id, login_name=login_name).first()
         if row is None:
             row = User(tenant_id=tenant_id, login_name=login_name, real_name=real_name,
-                       password_hash="test-hash", user_type="TEACHER", status="ACTIVE")
+                       password_hash=hash_password(TEST_LOGIN_PASSWORD), user_type="TEACHER", status="ACTIVE")
             db.add(row)
             db.flush()
         else:
             row.status, row.is_deleted = "ACTIVE", False
+            row.password_hash = hash_password(TEST_LOGIN_PASSWORD)
+            row.must_change_password = False
         return row
 
     def ensure_role(tenant_id, role_code, role_name):
@@ -124,6 +119,19 @@ def _seed(db_mode):
                       status="PENDING_REVIEW", affairs_status="COUNSELOR_REVIEW")
         db.add(row)
         db.flush()
+        instance = WorkflowInstance(
+            tenant_id=tenant_id, workflow_code="AFFAIRS_LEAVE",
+            source_module="student-affairs", source_biz_type="LEAVE",
+            source_biz_id=row.id, applicant_id=student.id, title="待审搜索测试",
+            status="RUNNING", current_node="COUNSELOR_REVIEW",
+        )
+        db.add(instance)
+        db.flush()
+        row.workflow_instance_id = instance.id
+        db.add(WorkflowTask(
+            tenant_id=tenant_id, instance_id=instance.id,
+            node_code="COUNSELOR_REVIEW", assignee_id=counselor.id, status="PENDING",
+        ))
         return row
 
     # ① 目标学生的请假最先建 → id 最小 → 倒序排最后。
@@ -280,6 +288,37 @@ def test_pending_search_total_matches_paging_without_gap_or_dup(client, db_mode)
         page += 1
     assert len(seen) == FILLER_COUNT, f"逐页累计 {len(seen)} != total {FILLER_COUNT}"
     assert len(set(seen)) == FILLER_COUNT, "分页出现重复记录"
+
+
+@pytest.mark.parametrize("broken_assignment", ["no_flow", "no_task", "zero_owner", "latest_other"])
+def test_pending_excludes_unassigned_or_superseded_task(client, db_mode, broken_assignment):
+    from app.db.session import get_sessionmaker
+    from app.models import CsLeave, WorkflowTask
+
+    ids = _seed(db_mode)
+    db = get_sessionmaker()()
+    try:
+        leave = db.get(CsLeave, ids["target_leave"])
+        task = db.query(WorkflowTask).filter_by(instance_id=leave.workflow_instance_id).one()
+        if broken_assignment == "no_flow":
+            leave.workflow_instance_id = None
+        elif broken_assignment == "no_task":
+            db.delete(task)
+        elif broken_assignment == "zero_owner":
+            task.assignee_id = 0
+        else:
+            db.add(WorkflowTask(
+                tenant_id=TID, instance_id=leave.workflow_instance_id,
+                node_code="COUNSELOR_REVIEW", assignee_id=task.assignee_id + 100000,
+                status="PENDING",
+            ))
+        db.commit()
+    finally:
+        db.close()
+
+    hidden = _pending(client, _hdr(client, "counselor01"), keyword=TARGET_NAME)
+    assert hidden["total"] == 0
+    assert hidden["list"] == []
 
 
 def test_pending_without_keyword_restores_full_queue(client, db_mode):

@@ -211,9 +211,9 @@ def test_l2_multilevel_approve(client, db_mode):
     ids = _seed(db_mode)
     hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-06").json()["data"]["id"]  # 5 天 → LONG 两级
-    r1 = _leave_action(client, hdr, lid, "approve").json()
+    r1 = _leave_action(client, _real_hdr(client, "counselor01"), lid, "approve").json()
     assert r1["data"]["affairsStatus"] == "COLLEGE_REVIEW"  # 推进到第二级
-    r2 = _leave_action(client, hdr, lid, "approve").json()
+    r2 = _leave_action(client, _real_hdr(client, "leave_college01"), lid, "approve").json()
     assert r2["data"]["affairsStatus"] == "APPROVED"
     assert r2["data"]["legacyStatus"] == "APPROVED"
 
@@ -222,10 +222,10 @@ def test_l3_short_leave_single_node(client, db_mode):
     ids = _seed(db_mode)
     hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
-    r = _leave_action(client, hdr, lid, "approve").json()
+    r = _leave_action(client, _real_hdr(client, "counselor01"), lid, "approve").json()
     assert r["data"]["affairsStatus"] == "APPROVED"
     # 已通过再审 → 409
-    r2 = _leave_action(client, hdr, lid, "approve")
+    r2 = _leave_action(client, _real_hdr(client, "counselor01"), lid, "approve")
     assert r2.status_code == 409
 
 
@@ -234,8 +234,8 @@ def test_l4_reject_reason_required(client, db_mode):
     hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
     # 原因 <5 字 → 422
-    assert _leave_action(client, hdr, lid, "reject", {"reason": "不行"}).status_code == 400
-    r = _leave_action(client, hdr, lid, "reject", {"reason": "材料不齐请补充"}).json()
+    assert _leave_action(client, _real_hdr(client, "counselor01"), lid, "reject", {"reason": "不行"}).status_code == 400
+    r = _leave_action(client, _real_hdr(client, "counselor01"), lid, "reject", {"reason": "材料不齐请补充"}).json()
     assert r["data"]["affairsStatus"] == "REJECTED"
     assert r["data"]["legacyStatus"] == "RETURNED"
     assert r["data"].get("returnReason") == "材料不齐请补充"
@@ -247,9 +247,9 @@ def test_l5_cancel_closes_and_hits_360(client, db_mode):
     ids = _seed(db_mode)
     hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
-    _leave_action(client, hdr, lid, "approve")
+    _leave_action(client, _real_hdr(client, "counselor01"), lid, "approve")
     _leave_action(client, hdr, lid, "cancel", {"proofNote": "已返校"})
-    r = _leave_action(client, hdr, lid, "cancel-confirm", {"note": "确认返校"}).json()
+    r = _leave_action(client, _real_hdr(client, "counselor01"), lid, "cancel-confirm", {"note": "确认返校"}).json()
     assert r["data"]["affairsStatus"] == "CLOSED"
     # 进 360：学生时间线出现 LEAVE_CLOSED 事件
     from app.db.session import get_sessionmaker
@@ -264,9 +264,9 @@ def test_l6_extension(client, db_mode):
     ids = _seed(db_mode)
     hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2026-03-01", "2026-03-02").json()["data"]["id"]
-    _leave_action(client, hdr, lid, "approve")
+    _leave_action(client, _real_hdr(client, "counselor01"), lid, "approve")
     _leave_action(client, hdr, lid, "extension", {"newEnd": "2026-03-05", "reason": "因病延后返校"})
-    r = _leave_action(client, hdr, lid, "extension-approve").json()
+    r = _leave_action(client, _real_hdr(client, "counselor01"), lid, "extension-approve").json()
     assert r["data"]["affairsStatus"] == "APPROVED"
     assert r["data"]["endTime"].startswith("2026-03-05")
 
@@ -276,7 +276,7 @@ def test_l7_overdue_scan_idempotent(client, db_mode):
     hdr = _real_hdr(client, "school_admin01")
     # 结束时间在过去 → 通过后即逾期
     lid = _apply(client, hdr, ids["sa"], "2020-01-01", "2020-01-02").json()["data"]["id"]
-    _leave_action(client, hdr, lid, "approve")
+    _leave_action(client, _real_hdr(client, "counselor01"), lid, "approve")
     r = client.post("/api/v1/student-affairs/leave/scan-overdue", headers=hdr).json()
     assert r["data"]["count"] == 1
     # 幂等：再扫不重复
@@ -337,9 +337,10 @@ def test_legacy_campus_leave_routes_retired(client, db_mode):
 
 # ═══════════ 本轮新增：销假退回 / 续假驳回 / 逾期处置 / 代登记销假 / 台账 / 统计 / 导出 ═══════════
 
-def _approved_leave(client, hdr, sid, start="2026-03-01", end="2026-03-02"):
+def _approved_leave(client, hdr, sid, start="2026-03-01", end="2026-03-02", *, counselor="counselor01"):
     lid = _apply(client, hdr, sid, start, end).json()["data"]["id"]
-    _leave_action(client, hdr, lid, "approve")
+    approved = _leave_action(client, _real_hdr(client, counselor), lid, "approve")
+    assert approved.status_code == 200, approved.text
     return lid
 
 
@@ -354,9 +355,9 @@ def test_l9_proxy_cancel_then_return(client, db_mode):
     # 重复代登记 → 409（已有进行中销假）
     assert _leave_action(client, hdr, lid, "proxy-cancel", {"actualReturnAt": "2026-03-02 10:00:00"}).status_code == 409
     # 销假退回：原因<5字 → 400
-    assert _leave_action(client, hdr, lid, "cancel-confirm", {"action": "RETURN", "reason": "不符"}).status_code == 400
+    assert _leave_action(client, _real_hdr(client, "counselor01"), lid, "cancel-confirm", {"action": "RETURN", "reason": "不符"}).status_code == 400
     # 销假退回成功 → 回到 APPROVED
-    r2 = _leave_action(client, hdr, lid, "cancel-confirm", {"action": "RETURN", "reason": "返校证明与实际不符，请重新上传"}).json()
+    r2 = _leave_action(client, _real_hdr(client, "counselor01"), lid, "cancel-confirm", {"action": "RETURN", "reason": "返校证明与实际不符，请重新上传"}).json()
     assert r2["data"]["affairsStatus"] == "APPROVED"
 
 
@@ -378,8 +379,8 @@ def test_l11_extension_reject_keeps_original(client, db_mode):
     lid = _approved_leave(client, hdr, ids["sa"])
     _leave_action(client, hdr, lid, "extension", {"newEnd": "2026-03-05", "reason": "因病延后返校"})
     # 驳回原因<5字 → 400
-    assert _leave_action(client, hdr, lid, "extension-approve", {"action": "REJECT", "reason": "no"}).status_code == 400
-    r = _leave_action(client, hdr, lid, "extension-approve", {"action": "REJECT", "reason": "无正当理由，不予续假"}).json()
+    assert _leave_action(client, _real_hdr(client, "counselor01"), lid, "extension-approve", {"action": "REJECT", "reason": "no"}).status_code == 400
+    r = _leave_action(client, _real_hdr(client, "counselor01"), lid, "extension-approve", {"action": "REJECT", "reason": "无正当理由，不予续假"}).json()
     assert r["data"]["affairsStatus"] == "APPROVED"
     assert r["data"]["endTime"].startswith("2026-03-02")  # 原到期日不变
 
@@ -389,7 +390,7 @@ def test_l12_overdue_handle(client, db_mode):
     ids = _seed(db_mode)
     hdr = _real_hdr(client, "school_admin01")
     lid = _apply(client, hdr, ids["sa"], "2020-01-01", "2020-01-02").json()["data"]["id"]
-    _leave_action(client, hdr, lid, "approve")
+    _leave_action(client, _real_hdr(client, "counselor01"), lid, "approve")
     client.post("/api/v1/student-affairs/leave/scan-overdue", headers=hdr)
     # 说明<5字 → 400
     assert _leave_action(client, hdr, lid, "overdue-handle", {"handleType": "CONTACT", "note": "已联"}).status_code == 400
@@ -495,7 +496,7 @@ def test_l16_proxy_cancel_cross_class_403(client, db_mode):
     """越权：辅导员(范围=A班)对 B 班请假代登记销假 → 403 NO_DATA_SCOPE。"""
     ids = _seed(db_mode)
     admin = _real_hdr(client, "school_admin01")
-    lid = _approved_leave(client, admin, ids["sb"])  # B 班 APPROVED
+    lid = _approved_leave(client, admin, ids["sb"], counselor="counselor02")  # B 班 APPROVED
     version = _version(client, admin, lid)
     r = client.post(f"/api/v1/student-affairs/leave/{lid}/proxy-cancel",
                     headers=_real_hdr(client, "counselor01", client_type="TEACHER_MINI"),
@@ -520,8 +521,8 @@ def test_l17_counselor_cannot_skip_college_review_node(client, db_mode):
     assert r3.status_code == 403 and r3.json()["bizCode"] == "NO_PERMISSION"
     r4 = _leave_action(client, couns, lid, "return", {"reason": "越权测试退回原因"})
     assert r4.status_code == 403 and r4.json()["bizCode"] == "NO_PERMISSION"
-    # 校级管理员（TENANT_ALL）不受节点限制，仍可正常推进到终态
-    r5 = _leave_action(client, admin, lid, "approve").json()
+    # 已指派的学院受理人可以推进自己的节点。
+    r5 = _leave_action(client, _real_hdr(client, "leave_college01"), lid, "approve").json()
     assert r5["code"] == 0 and r5["data"]["affairsStatus"] == "APPROVED"
 
 

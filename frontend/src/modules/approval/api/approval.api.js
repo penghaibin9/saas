@@ -32,7 +32,7 @@ const ROLE_LABEL = {
   COLLEGE_ADMIN: '学院管理员',
   ACADEMIC_TEACHER: '任课教师',
   ACADEMIC_ADMIN: '教务管理员',
-  STUDENT_AFFAIRS_ADMIN: '学工管理员',
+  STUDENT_AFFAIRS_ADMIN: '校学工管理员', STUDENT_AFFAIRS_COLLEGE: '学院学工负责人',
   SCHOOL_ADMIN: '学校管理员'
 }
 

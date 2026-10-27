@@ -40,19 +40,23 @@ def _require_pending_assignee(db, transfer_id: int, user, todo_type: str) -> Non
 def _has_active_dorm_manager_role(db, user_id: int) -> bool:
     """绑定到楼栋的账号必须在当前租户真实持有 ACTIVE DORM_MANAGER 角色。"""
     from app.models import Role, UserRole
-    hit = db.scalar(select(Role.id).join(
-        UserRole, UserRole.role_id == Role.id,
-    ).where(
-        Role.tenant_id == _tid(),
-        Role.role_code == "DORM_MANAGER",
-        Role.status == "ACTIVE",
-        Role.is_deleted.is_(False),
-        UserRole.tenant_id == _tid(),
-        UserRole.user_id == int(user_id),
-        UserRole.status == "ACTIVE",
-        UserRole.is_deleted.is_(False),
+    from app.services.role_assignment_scope_service import active_role_membership_query
+    hit = db.scalar(active_role_membership_query(_tid()).with_only_columns(UserRole.id).where(
+        Role.role_code == "DORM_MANAGER", UserRole.user_id == int(user_id),
     ).limit(1))
     return bool(hit)
+
+
+def initial_reviewer_ids(db, transfer_ids):
+    from app.models import AffairsAuditTrail
+    result = {}
+    for row in db.scalars(select(AffairsAuditTrail).where(
+        AffairsAuditTrail.tenant_id == _tid(), AffairsAuditTrail.biz_type == "DORM_TRANSFER",
+        AffairsAuditTrail.biz_id.in_(set(transfer_ids) or {-1}), AffairsAuditTrail.action == "STEP",
+        AffairsAuditTrail.detail == "COUNSELOR_REVIEW->DORM_MANAGER_REVIEW",
+    )).all():
+        result.setdefault(int(row.biz_id), set()).add(int(row.created_by or 0))
+    return result
 
 
 def _notify(db, student_id: int, transfer_id: int, title: str, content: str, event_code: str) -> None:
@@ -201,6 +205,11 @@ def install() -> None:
                     raise AppException("NO_PERMISSION", "当前节点仅目标楼栋宿管可审批")
                 dorm._require_dorm_scope(db, target.building_id, user)
                 _require_pending_assignee(db, transfer.id, user, dorm.TODO_TRANSFER)
+                prior = initial_reviewer_ids(db, [transfer.id]).get(int(transfer.id), set())
+                if not prior or 0 in prior:
+                    raise AppException("DATA_CONFLICT", "调宿初审人记录不完整，请先核验交接；申请与原床位已保留")
+                if _user_id(user) in prior:
+                    raise AppException("NO_PERMISSION", "调宿宿管审核须由初审以外的另一名人员办理")
 
             if action == "REJECT":
                 text = str(reason or "").strip()
@@ -213,14 +222,17 @@ def install() -> None:
                 dorm._audit(db, "DORM_TRANSFER", transfer.id, "REJECTED", text)
                 _notify(db, student.id, transfer.id, "调宿申请未通过", text, "DORM.TRANSFER.REJECTED")
             elif node == "COUNSELOR_REVIEW":
+                managers = [uid for uid in dorm._dorm_manager_assignee_ids(db, target.building_id)
+                            if uid != _user_id(user)]
+                if not managers:
+                    raise AppException("ASSIGNEE_NOT_CONFIGURED", "请先配置与调宿初审人不同的目标楼栋宿管；申请与原床位已保留", http_status=409)
                 transfer.status = transfer.current_node = "DORM_MANAGER_REVIEW"
                 transfer.version = int(transfer.version or 0) + 1
                 dorm._todo_done(db, transfer.id, dorm.TODO_TRANSFER)
-                dorm._push_dorm_manager_todos(
-                    db, biz_id=transfer.id, building_id=target.building_id,
-                    student_id=student.id, title=f"调宿待审（宿管）：{student.real_name or ''}",
-                    todo_type=dorm.TODO_TRANSFER, biz_type="DORM_TRANSFER",
-                )
+                for manager in managers:
+                    dorm._todo_upsert(db, transfer.id, manager, student.id,
+                                      f"调宿待审（宿管）：{student.real_name or ''}",
+                                      dorm.TODO_TRANSFER, biz_type="DORM_TRANSFER")
                 dorm._audit(db, "DORM_TRANSFER", transfer.id, "STEP", "COUNSELOR_REVIEW->DORM_MANAGER_REVIEW")
             else:
                 if target.status != "VACANT" or target.student_id is not None:

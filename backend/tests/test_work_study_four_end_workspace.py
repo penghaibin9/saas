@@ -25,7 +25,7 @@ def _work_study_todo(record_id, pending_type=None):
         assert len(active) == (1 if pending_type else 0)
         if not active: return None
         row=active[0]; assert row.todo_type == pending_type
-        assert db.get(User,row.assignee_id).login_name == "sa_admin01"
+        assert db.get(User,row.assignee_id).login_name == "funding_college01"
         for client,path in [("pc","/admin/student-affairs/funding/work-study"),("teacherMini","/pages/teacher/affairs/work-study/index")]:
             target=resolve_todo_route(pending_type,str(record_id),client=client)
             assert target["path"] == path and target["exact"] is True
@@ -35,8 +35,8 @@ def _work_study_todo(record_id, pending_type=None):
 
 def test_work_study_four_end_core_flow(client, db_mode):
     ids = _accounts(db_mode)
-    admin_pc = _login(client, "school_admin01", "PC")
-    admin_mini = _login(client, "school_admin01", "TEACHER_MINI")
+    admin_pc = _login(client, "funding_college01", "PC")
+    admin_mini = _login(client, "funding_college01", "TEACHER_MINI")
     student_pc = _login(client, "fund_student", "PC")
     student_mini = _login(client, "fund_student", "STUDENT_MINI")
     other_pc = _login(client, "fund_other", "PC")
@@ -123,7 +123,7 @@ def test_work_study_four_end_core_flow(client, db_mode):
         json={"monthCode": month, "workHours": "32", "rating": "PASS",
               "subsidyAmount": "640.00", "remark": "本月考核合格"},
     ))
-    assert first_month["subsidyAmount"] == "640.00"
+    assert first_month["subsidyAmount"] == "2000以下"  # 普通资助经办未另授金额明文权；本人端仍须精确回读640元。
     assert client.post(
         f"{BASE}/mobile/teacher/affairs/work-study/records/{record_id}/monthly",
         headers=admin_mini,

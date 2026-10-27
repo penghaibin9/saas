@@ -16,7 +16,7 @@ from typing import Iterable
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
-from app.core.permission_catalog import load_permission_catalog
+from app.core.permission_catalog import load_permission_catalog, permission_meta
 from app.core.permissions import ROLE_PERMISSIONS
 from app.db.session import get_sessionmaker
 from app.models import Permission, Role, RolePermission
@@ -96,7 +96,8 @@ def old_builtin_allows(role_code: str, permission_code: str) -> bool:
 def expected_system_role_permissions(role_code: str) -> tuple[str, ...]:
     universe = active_tenant_permission_codes()
     patterns = ROLE_PERMISSIONS.get(str(role_code or "").strip(), set())
-    return tuple(code for code in universe if _match(code, patterns))
+    return tuple(code for code in universe if _match(code, patterns)
+                 and (not (permission_meta(code) or {}).get("requiresExplicitGrant") or code in patterns))
 
 
 def _latest_published_template(db, role_code: str) -> RoleTemplate | None:
@@ -219,20 +220,25 @@ def platform_workforce_allows(role_code: str, permission_code: str) -> bool:
     return _match(code, ROLE_PERMISSIONS.get(role, set()))
 
 
-def converge_published_system_templates(*, actor_user_id: int | None, source_commit_sha: str) -> dict:
+def converge_published_system_templates(*, actor_user_id: int | None, source_commit_sha: str,
+                                       role_codes: Iterable[str] | None = None) -> dict:
     """Publish immutable school-assignable TENANT snapshots; never edit a published version."""
     from app.services import audit_log
 
     source_sha = str(source_commit_sha or "").strip()
     if len(source_sha) < 7:
         raise AppException("VALIDATION_ERROR", "B8 template convergence requires source commit SHA")
+    available = set(delivered_system_role_codes())
+    targets = sorted(available if role_codes is None else {str(code).strip().upper() for code in role_codes})
+    if not targets or set(targets) - available:
+        raise AppException("VALIDATION_ERROR", "请明确选择有效的学校角色模板，不能更新未知角色")
     now = datetime.utcnow()
     created: list[dict] = []
     unchanged: list[str] = []
     universe = set(active_tenant_permission_codes())
     db = get_sessionmaker()()
     try:
-        for role_code in delivered_system_role_codes():
+        for role_code in targets:
             expected = set(expected_system_role_permissions(role_code))
             forbidden = sorted(code for code in expected if code not in universe or code.startswith("platform.") or code.startswith("enterprise."))
             if forbidden:
@@ -270,17 +276,19 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                 RoleTemplate.is_deleted.is_(False),
             ).order_by(RoleTemplate.template_version.desc(), RoleTemplate.id.desc()).limit(1)).first()
             next_version = int(latest_any.template_version or 0) + 1 if latest_any is not None else 1
+            from app.services.saas_role_templates import ROLE_TEMPLATE_BY_CODE
             template = RoleTemplate(
                 tenant_id=PLATFORM_TENANT,
                 template_code=role_code,
-                template_name=latest_any.template_name if latest_any is not None else role_code,
+                template_name=latest_any.template_name if latest_any is not None else ROLE_TEMPLATE_BY_CODE.get(role_code, {}).get("roleName", role_code),
                 template_version=next_version,
                 template_plane=TEMPLATE_PLANE_TENANT,
                 template_category=TEMPLATE_CATEGORY_SYSTEM_ROLE,
                 publish_status=TEMPLATE_PUBLISHED,
                 permission_digest=_digest(expected),
                 previous_template_id=int(latest_any.id) if latest_any is not None else None,
-                change_reason="B8 SYSTEM shadow: explicit school-assignable TENANT permission snapshot",
+                change_reason=("指定角色的显式权限模板更新" if role_codes is not None
+                               else "B8 SYSTEM shadow: explicit school-assignable TENANT permission snapshot"),
                 source_commit_sha=source_sha,
                 effective_at=now,
                 published_at=now,
@@ -311,7 +319,7 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
                 tenant_id=PLATFORM_TENANT,
                 resource_id=str(template.id),
                 detail={
-                    "reason": "B8_SYSTEM_SHADOW_CONVERGENCE",
+                    "reason": "SCOPED_SYSTEM_TEMPLATE_CONVERGENCE" if role_codes is not None else "B8_SYSTEM_SHADOW_CONVERGENCE",
                     "sourceCommitSha": source_sha,
                     "permissionDigest": template.permission_digest,
                     "permissionCount": len(expected),
@@ -332,12 +340,20 @@ def converge_published_system_templates(*, actor_user_id: int | None, source_com
             "createdCount": len(created),
             "unchangedRoleCodes": unchanged,
             "tenantPermissionUniverseCount": len(universe),
+            "targetRoleCodes": targets,
         }
     except Exception:
         db.rollback()
         raise
     finally:
         db.close()
+
+
+def converge_affairs_role_templates(*, actor_user_id: int | None, source_commit_sha: str) -> dict:
+    """仅更新已确认的三类基础岗和五专项，不重发其他中心或旧兼容身份。"""
+    from app.services.saas_role_templates import AFFAIRS_DELIVERY_ROLE_CODES
+    return converge_published_system_templates(actor_user_id=actor_user_id,
+        source_commit_sha=source_commit_sha, role_codes=AFFAIRS_DELIVERY_ROLE_CODES)
 
 
 def shadow_system_roles() -> dict:
@@ -375,9 +391,16 @@ def shadow_system_roles() -> dict:
                     classification = SHADOW_CLASS_DENY_ALLOW
                 counts[classification] += 1
                 if classification in (SHADOW_CLASS_ALLOW_DENY, SHADOW_CLASS_DENY_ALLOW):
-                    row = {"roleCode": role_code, "permissionCode": code, "classification": classification, "explained": False, "explanation": ""}
+                    explicit_policy = bool(classification == SHADOW_CLASS_ALLOW_DENY
+                        and not denied and code not in allowed
+                        and (permission_meta(code) or {}).get("requiresExplicitGrant")
+                        and code not in ROLE_PERMISSIONS.get(role_code, set()))
+                    row = {"roleCode": role_code, "permissionCode": code, "classification": classification,
+                           "explained": explicit_policy,
+                           "explanation": "EXPLICIT_SENSITIVE_GRANT_REQUIRED" if explicit_policy else ""}
                     comparisons.append(row)
-                    unexplained.append(row)
+                    if not explicit_policy:
+                        unexplained.append(row)
                     role_mismatches += 1
             if template is None:
                 missing = {

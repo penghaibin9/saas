@@ -9,15 +9,19 @@ import re
 
 from app.core.exceptions import AppException
 
-ROLE_TEMPLATE_VERSION = "2026.07.v1"
+ROLE_TEMPLATE_VERSION = "2026.10.v1"
+AFFAIRS_DELIVERY_ROLE_CODES = frozenset({
+    "STUDENT_AFFAIRS_ADMIN", "STUDENT_AFFAIRS_COLLEGE", "COUNSELOR", "FUNDING_TEACHER",
+    "PSYCHOLOGY_TEACHER", "DORM_MANAGER", "YOUTH_LEAGUE", "ORG_PERSONNEL",
+})
 
 
 def _role(code: str, name: str, category: str, scope: str,
-          *, teacher: bool = True, aliases: tuple[str, ...] = ()) -> dict:
+          *, teacher: bool = True, aliases: tuple[str, ...] = (), legacy: bool = False) -> dict:
     return {
         "roleCode": code, "roleName": name, "category": category,
         "defaultScope": scope, "teacherAssignable": teacher,
-        "aliases": aliases,
+        "aliases": aliases, "legacyCompatibility": legacy,
     }
 
 
@@ -33,14 +37,15 @@ BUILTIN_ROLE_TEMPLATES = (
     _role("ACADEMIC_ADMIN", "教务处管理员", "ACADEMIC", "SCHOOL", aliases=("教务管理员",)),
     _role("ACADEMIC_TEACHER", "任课教师", "ACADEMIC", "ASSIGNED",
           aliases=("课程教师", "教务老师", "ACADEMIC", "专业课教师", "公共课教师", "兼职教师")),
-    _role("STUDENT_AFFAIRS_ADMIN", "学工处管理员", "STUDENT_AFFAIRS", "SCHOOL", aliases=("学工管理员",)),
-    _role("STUDENT_AFFAIRS", "学工老师", "STUDENT_AFFAIRS", "COLLEGE", aliases=("学工干事",)),
+    _role("STUDENT_AFFAIRS_ADMIN", "校学工管理员", "STUDENT_AFFAIRS", "SCHOOL", aliases=("学工管理员", "学工处管理员")),
+    _role("STUDENT_AFFAIRS_COLLEGE", "学院学工负责人", "STUDENT_AFFAIRS", "COLLEGE", aliases=("学院学工",)),
+    _role("STUDENT_AFFAIRS", "学工老师", "STUDENT_AFFAIRS", "COLLEGE", aliases=("学工干事",), legacy=True),
     _role("COUNSELOR", "辅导员", "STUDENT_AFFAIRS", "COUNSELOR_CLASSES", aliases=("班主任",)),
-    _role("PSYCHOLOGY_TEACHER", "心理老师", "STUDENT_AFFAIRS", "PSY_STUDENT", aliases=("心理教师",)),
-    _role("FUNDING_TEACHER", "资助老师", "STUDENT_AFFAIRS", "FUNDING_BIZ", aliases=("资助管理员",)),
-    _role("DORM_MANAGER", "宿管老师", "STUDENT_AFFAIRS", "DORM_BUILDING", aliases=("宿舍管理员",)),
-    _role("YOUTH_LEAGUE", "团委老师", "STUDENT_AFFAIRS", "SCHOOL", aliases=("团委",)),
-    _role("ORG_PERSONNEL", "组织人事", "MANAGEMENT", "DEPARTMENT", aliases=("人事老师",)),
+    _role("PSYCHOLOGY_TEACHER", "心理工作", "STUDENT_AFFAIRS", "PSY_STUDENT", aliases=("心理教师", "心理老师")),
+    _role("FUNDING_TEACHER", "资助工作", "STUDENT_AFFAIRS", "SCHOOL_OR_COLLEGE", aliases=("资助管理员", "资助老师")),
+    _role("DORM_MANAGER", "宿舍工作", "STUDENT_AFFAIRS", "DORM_BUILDING", aliases=("宿舍管理员", "宿管老师")),
+    _role("YOUTH_LEAGUE", "团学活动", "STUDENT_AFFAIRS", "SCHOOL_OR_COLLEGE", aliases=("团委", "团委老师")),
+    _role("ORG_PERSONNEL", "辅导员考评", "STUDENT_AFFAIRS", "SCHOOL_OR_COLLEGE", aliases=("人事老师", "组织人事")),
     _role("GRADUATION_ADMIN", "毕设管理员", "GRADUATION", "SCHOOL", aliases=("毕业设计管理员",)),
     _role("GD_COLLEGE_ADMIN", "学院毕设管理员", "GRADUATION", "COLLEGE"),
     _role("GD_MAJOR_ADMIN", "专业毕设负责人", "GRADUATION", "MAJOR", aliases=("毕设专业负责人",)),
@@ -65,7 +70,7 @@ _ALIAS_TO_CODE = {
 
 def role_catalog(*, teacher_only: bool = False) -> dict:
     items = [dict(r) for r in BUILTIN_ROLE_TEMPLATES
-             if not teacher_only or r["teacherAssignable"]]
+             if not teacher_only or (r["teacherAssignable"] and not r["legacyCompatibility"])]
     return {"templateVersion": ROLE_TEMPLATE_VERSION, "items": items}
 
 

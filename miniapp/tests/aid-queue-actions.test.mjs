@@ -5,7 +5,7 @@ import assert from 'node:assert/strict'
 const source = fs.readFileSync(new URL('../src/pages/teacher/affairs-review/index.vue', import.meta.url), 'utf8')
 const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .+$/gm, '').replace('export default', 'return')
 function make(load, detail, uni = {}) {
-  const api = { getAffairsAidPending: load, getAffairsAidDetail: detail, getAffairsFundingPending: load, getAffairsFundingDetail: detail }
+  const api = { getAffairsAidPending: load, getAffairsAidDetail: detail, getAffairsFundingPending: load, getAffairsFundingDetail: detail, getAffairsDisciplinePending: load }
   const component = new Function('teacherApi', 'affairsContractApi', 'affairsAppealApi', 'normalizeError', 'toast', 'uni', script)(api, {}, {}, () => ({}), () => {}, uni)
   const vm = { ...component.data(), ...component.methods }
   for (const [name, getter] of Object.entries(component.computed)) Object.defineProperty(vm, name, { get: () => getter.call(vm) })
@@ -13,6 +13,23 @@ function make(load, detail, uni = {}) {
 }
 const row = id => ({ applyId: String(id), version: 1, allowedActions: ['APPROVE'] })
 const deferred = () => { let resolve, reject; const promise = new Promise((a, b) => { resolve = a; reject = b }); return { promise, resolve, reject } }
+
+for (const kind of ['DISCIPLINE_APPROVAL', 'DISCIPLINE_REMOVE']) {
+  test(`${kind} sends its kind and page and appends the next server page`, async () => {
+    const calls = []
+    const vm = make(async params => {
+      calls.push(params)
+      return { total: 2, list: [{ caseId: String(params.page), status: kind === 'DISCIPLINE_REMOVE' ? 'REMOVE_REVIEW' : 'COLLEGE_REVIEW' }] }
+    })
+    vm.kind = kind
+    await vm.load()
+    await vm.loadMore()
+    assert.deepEqual(calls.map(({ page, pageSize, kind }) => ({ page, pageSize, kind })),
+      [{ page: 1, pageSize: 20, kind }, { page: 2, pageSize: 20, kind }])
+    assert.deepEqual(vm.list.map(row => row.caseId), ['1', '2'])
+    assert.equal(vm.total, 2)
+  })
+}
 
 test('funding queue searches and pages on the server, preserving the submitted keyword', async () => {
   const calls = []

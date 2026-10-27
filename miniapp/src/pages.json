@@ -112,6 +112,7 @@
         {"path": "affairs/reduction/index", "style": {"navigationBarTitleText": "减免与临补", "navigationStyle": "custom", "enablePullDownRefresh": true}},
         {"path": "affairs/talk/index", "style": {"navigationBarTitleText": "谈心谈话", "navigationStyle": "custom"}},
         {"path": "affairs/mental/index", "style": {"navigationBarTitleText": "心理关注", "navigationStyle": "custom"}},
+        {"path": "affairs/counselor-eval/index", "style": {"navigationBarTitleText": "辅导员考评", "navigationStyle": "custom", "enablePullDownRefresh": true}},
         {"path": "affairs/activity/index", "style": {"navigationBarTitleText": "活动现场", "navigationStyle": "custom", "enablePullDownRefresh": true}},
         {"path": "notify-publish/index", "style": {"navigationBarTitleText": "发布通知", "navigationStyle": "custom"}},
         {"path": "dashboard/index", "style": {"navigationBarTitleText": "数据看板", "navigationStyle": "custom"}},

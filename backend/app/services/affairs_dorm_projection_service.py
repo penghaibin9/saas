@@ -84,6 +84,9 @@ def project_transfer_items(items, user):
             )).all()
         }
 
+        from app.services.affairs_dorm_node_guard import initial_reviewer_ids
+        prior_reviewers = initial_reviewer_ids(db, transfer_ids)
+
     for item in items:
         from_bed = beds.get(int(item["fromBedId"])) if str(item.get("fromBedId") or "").isdigit() else None
         to_bed = beds.get(int(item["toBedId"])) if str(item.get("toBedId") or "").isdigit() else None
@@ -99,6 +102,15 @@ def project_transfer_items(items, user):
             can_review = assigned_to_current
         elif node == "DORM_MANAGER_REVIEW" and context.scope_type == "DORM_BUILDING":
             can_review = assigned_to_current
+        block_reason = ""
+        if node == "DORM_MANAGER_REVIEW":
+            prior = prior_reviewers.get(transfer_id, set())
+            if not prior or 0 in prior:
+                block_reason = "初审人记录待核验，请先完成交接"
+            elif uid in prior:
+                block_reason = "须由初审以外的另一名宿管审核"
+            if block_reason:
+                can_review = False
 
         item.update({
             "fromBuildingName": from_building.building_name if from_building else "",
@@ -110,6 +122,7 @@ def project_transfer_items(items, user):
             "toBedNo": to_bed.bed_no if to_bed else "",
             "toBedLabel": _label(to_bed, to_room, to_building),
             "allowedActions": ["APPROVE", "REJECT"] if can_review else [],
+            "reviewBlockReason": block_reason,
         })
     return items
 

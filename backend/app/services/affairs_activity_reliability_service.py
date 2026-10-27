@@ -15,7 +15,7 @@ from app.core.exceptions import AppException
 from app.services.db_service import _tid, session
 
 
-def _student_org(db, user) -> tuple[object, set[str], set[str]]:
+def _student_org(db, user) -> tuple[object, set[int], set[int]]:
     from app.models import College, Major, SchoolClass
     from app.services.mobile_student_service import _require_student, resolve_student
 
@@ -23,36 +23,32 @@ def _student_org(db, user) -> tuple[object, set[str], set[str]]:
     student = resolve_student(db, user)
     if not student:
         raise AppException("DATA_NOT_FOUND", "未找到你的学生档案")
-    class_tokens: set[str] = set()
-    college_tokens: set[str] = set()
+    class_tokens: set[int] = set()
+    college_tokens: set[int] = set()
     cls = db.get(SchoolClass, int(student.class_id)) if student.class_id else None
     if cls and not cls.is_deleted and cls.tenant_id == _tid():
-        class_tokens.update(filter(None, {
-            str(cls.id), str(cls.class_code or "").strip(), str(cls.class_name or "").strip(),
-        }))
         major = db.get(Major, int(cls.major_id)) if cls.major_id else None
-        college = db.get(College, int(major.college_id)) if major and major.college_id else None
+        college = db.get(College, int(major.college_id)) if major and not major.is_deleted and major.tenant_id == _tid() and major.college_id else None
         if college and not college.is_deleted and college.tenant_id == _tid():
-            college_tokens.update(filter(None, {
-                str(college.id), str(college.code or "").strip(),
-                str(college.college_name or "").strip(), str(college.short_name or "").strip(),
-            }))
+            class_tokens.add(int(cls.id))
+            college_tokens.add(int(college.id))
     return student, class_tokens, college_tokens
 
 
-def _activity_matches(activity, class_tokens: set[str], college_tokens: set[str]) -> bool:
+def _activity_matches(activity, class_tokens: set[int], college_tokens: set[int], *, db) -> bool:
+    from app.services.affairs_activity_scope import resolve_scope_id
     scope_type = str(activity.scope_type or "SCHOOL").upper()
     ref = str(activity.scope_ref or "").strip()
     if scope_type == "SCHOOL":
         return True
     if scope_type == "CLASS":
-        return bool(ref) and ref in class_tokens
+        return resolve_scope_id(db, scope_type, ref) in class_tokens
     if scope_type == "COLLEGE":
-        return bool(ref) and ref in college_tokens
+        return resolve_scope_id(db, scope_type, ref) in college_tokens
     return False
 
 
-def _teacher_scope_tokens(db, user) -> tuple[bool, set[str], set[str]]:
+def _teacher_scope_tokens(db, user) -> tuple[bool, set[int], set[int]]:
     from app.core.affairs_security import build_affairs_context
     from app.models import College, Major, SchoolClass, StudentProfile
 
@@ -76,38 +72,34 @@ def _teacher_scope_tokens(db, user) -> tuple[bool, set[str], set[str]]:
         SchoolClass.id.in_(class_ids or {-1}),
         SchoolClass.is_deleted.is_(False),
     )).all()
-    class_tokens: set[str] = set()
+    class_tokens: set[int] = set()
     major_ids: set[int] = set()
     for cls in classes:
-        class_tokens.update(filter(None, {
-            str(cls.id), str(cls.class_code or "").strip(), str(cls.class_name or "").strip(),
-        }))
+        class_tokens.add(int(cls.id))
         if cls.major_id:
             major_ids.add(int(cls.major_id))
     majors = db.scalars(select(Major).where(
         Major.tenant_id == _tid(), Major.id.in_(major_ids or {-1}), Major.is_deleted.is_(False),
     )).all()
-    college_ids = {int(x.college_id) for x in majors if x.college_id}
+    college_ids = {int(x.college_id) for x in majors if x.college_id} | set(ctx.college_ids)
     colleges = db.scalars(select(College).where(
         College.tenant_id == _tid(), College.id.in_(college_ids or {-1}), College.is_deleted.is_(False),
     )).all()
-    college_tokens: set[str] = set()
+    college_tokens: set[int] = set()
     for college in colleges:
-        college_tokens.update(filter(None, {
-            str(college.id), str(college.code or "").strip(),
-            str(college.college_name or "").strip(), str(college.short_name or "").strip(),
-        }))
+        college_tokens.add(int(college.id))
     return False, class_tokens, college_tokens
 
 
-def _scope_condition(model, tenant_all: bool, class_tokens: set[str], college_tokens: set[str]):
+def _scope_condition(model, tenant_all: bool, class_tokens: set[int], college_tokens: set[int]):
+    from app.services.affairs_activity_scope import scope_condition
     if tenant_all:
         return None
     return or_(
         model.scope_type.is_(None),
         model.scope_type == "SCHOOL",
-        (model.scope_type == "CLASS") & model.scope_ref.in_(class_tokens or {"__NONE__"}),
-        (model.scope_type == "COLLEGE") & model.scope_ref.in_(college_tokens or {"__NONE__"}),
+        (model.scope_type == "CLASS") & scope_condition(model, "CLASS", class_tokens),
+        (model.scope_type == "COLLEGE") & scope_condition(model, "COLLEGE", college_tokens),
     )
 
 
@@ -184,7 +176,7 @@ def install() -> None:
             ).with_for_update()).first()
             if not row:
                 raise AppException("DATA_NOT_FOUND", "活动不存在")
-            if not _activity_matches(row, class_tokens, college_tokens):
+            if not _activity_matches(row, class_tokens, college_tokens, db=db):
                 raise AppException("NO_DATA_SCOPE", "该活动不在你的适用范围内")
             if row.status != "PUBLISHED":
                 raise AppException("DATA_CONFLICT", "活动未在报名中")
@@ -276,7 +268,9 @@ def install() -> None:
                 AffairsActivitySignup.is_deleted.is_(False),
             ]
             mine_total = int(db.scalar(
-                select(func.count()).select_from(AffairsActivitySignup).where(*mine_base)
+                select(func.count()).select_from(AffairsActivitySignup)
+                .join(AffairsActivity, AffairsActivity.id == AffairsActivitySignup.activity_id)
+                .where(*mine_base, AffairsActivity.tenant_id == _tid(), AffairsActivity.is_deleted.is_(False))
             ) or 0)
             mine_rows = db.execute(
                 select(AffairsActivitySignup, AffairsActivity)

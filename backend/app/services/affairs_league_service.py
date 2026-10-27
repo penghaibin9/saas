@@ -14,6 +14,8 @@ from sqlalchemy import and_, func, select
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
+from app.core import affairs_security
+from app.services.affairs_organization_scope import student_condition
 
 DEV_TYPES = ("PARTY", "LEAGUE")
 PARTY_STAGES = ("APPLICANT", "ACTIVIST", "DEVELOPMENT_TARGET", "PROBATIONARY", "FULL_MEMBER")
@@ -43,13 +45,14 @@ def _audit(db, biz_id, action, detail=""):
                              operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
 
 
-def _load(db, dev_id):
+def _load(db, dev_id, user):
     from app.models import AffairsLeagueDev
     d = db.scalars(select(AffairsLeagueDev).where(
         AffairsLeagueDev.id == int(dev_id), AffairsLeagueDev.tenant_id == _tid(),
         AffairsLeagueDev.is_deleted.is_(False))).first()
     if not d:
         raise not_found("发展台账不存在")
+    affairs_security.build_affairs_context(user, db).require_student(db, d.student_id)
     return d
 
 
@@ -66,10 +69,9 @@ def _dev_row(d, s=None) -> dict:
 def list_dev(user, dev_type=None, stage=None, status=None, page=1, page_size=50):
     """发展台账列表（数据范围过滤；不含材料明文）。"""
     from app.models import AffairsLeagueDev, StudentProfile
-    from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
-        allowed, _ = _allowed_class_ids(db, user)
-        conds = [AffairsLeagueDev.tenant_id == _tid(), AffairsLeagueDev.is_deleted.is_(False)]
+        conds = [AffairsLeagueDev.tenant_id == _tid(), AffairsLeagueDev.is_deleted.is_(False),
+                 student_condition(user, StudentProfile)]
         if dev_type:
             conds.append(AffairsLeagueDev.dev_type == dev_type)
         if stage:
@@ -81,8 +83,6 @@ def list_dev(user, dev_type=None, stage=None, status=None, page=1, page_size=50)
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
         )
-        if allowed is not None:
-            conds.append(StudentProfile.class_id.in_(allowed))
         page = max(1, int(page or 1))
         page_size = max(1, min(200, int(page_size or 50)))
         total = int(db.scalar(select(func.count()).select_from(AffairsLeagueDev)
@@ -106,6 +106,7 @@ def create_dev(body, user) -> dict:
             StudentProfile.is_deleted.is_(False))).first() if sid else None
         if not s:
             raise not_found("学生不存在")
+        affairs_security.build_affairs_context(user, db).require_student(db, sid)
         dup = db.scalars(select(AffairsLeagueDev).where(
             AffairsLeagueDev.tenant_id == _tid(), AffairsLeagueDev.student_id == sid,
             AffairsLeagueDev.dev_type == dev_type, AffairsLeagueDev.is_deleted.is_(False))).first()
@@ -130,7 +131,7 @@ def advance_stage(dev_id, body, user) -> dict:
     if to_stage not in PARTY_STAGES:
         raise AppException("VALIDATION_ERROR", "目标阶段码非法")
     with session() as db:
-        d = _load(db, dev_id)
+        d = _load(db, dev_id, user)
         if d.status != "ONGOING":
             raise AppException("DATA_CONFLICT", "该台账非发展中，不可推进")
         atomic_claim_version(db, d, getattr(body, "version", None))
@@ -160,7 +161,7 @@ def terminate_dev(dev_id, user, reason="", expected_version=None) -> dict:
     if len((reason or "").strip()) < 5:
         raise AppException("VALIDATION_ERROR", "终止原因至少 5 字")
     with session() as db:
-        d = _load(db, dev_id)
+        d = _load(db, dev_id, user)
         if d.status != "ONGOING":
             raise AppException("DATA_CONFLICT", "仅发展中台账可终止")
         atomic_claim_version(db, d, expected_version)
@@ -181,7 +182,7 @@ def list_stages(dev_id, user):
     """阶段时间线（材料仅返回是否有附件，不含明文/下载链，下载另走授权+审计后续接入）。"""
     from app.models import AffairsLeagueDevStage
     with session() as db:
-        _load(db, dev_id)
+        _load(db, dev_id, user)
         rows = db.scalars(select(AffairsLeagueDevStage).where(
             AffairsLeagueDevStage.tenant_id == _tid(), AffairsLeagueDevStage.dev_id == int(dev_id),
             AffairsLeagueDevStage.is_deleted.is_(False)).order_by(AffairsLeagueDevStage.id.asc())).all()

@@ -45,11 +45,23 @@ def test_org_full_flow(client, db_mode):
 
 
 def test_org_validation(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import College
     hdr = _hdr(client, "school_admin01")
     r = client.post(f"{BASE}/organizations", headers=hdr, json={"orgName": ""})
     assert r.status_code == 422 or r.json().get("code") not in (0, None)
-    oid = client.post(f"{BASE}/organizations", headers=hdr,
-                      json={"orgName": "院学生会", "level": "COLLEGE"}).json()["data"]["orgId"]
+    missing_college = client.post(f"{BASE}/organizations", headers=hdr,
+                                 json={"orgName": "院学生会", "level": "COLLEGE"})
+    assert missing_college.status_code == 400, missing_college.text
+    with get_sessionmaker()() as db:
+        college = College(tenant_id=1000000000000000001, college_name="组织测试学院", status="ACTIVE")
+        db.add(college); db.flush()
+        college_id = college.id
+        db.commit()
+    created = client.post(f"{BASE}/organizations", headers=hdr,
+                          json={"orgName": "院学生会", "level": "COLLEGE", "collegeId": college_id})
+    assert created.status_code == 200, created.text
+    oid = created.json()["data"]["orgId"]
     # 空职务 → 拒绝
     r2 = client.post(f"{BASE}/organizations/{oid}/positions", headers=hdr,
                      json={"studentId": db_mode["student"], "position": ""})

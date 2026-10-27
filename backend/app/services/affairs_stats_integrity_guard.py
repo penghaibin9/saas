@@ -195,7 +195,7 @@ def install() -> None:
                 for status, count, _amount in rows
             ],
         }
-        if (user or {}).get("currentRoleCode") in funding._AMOUNT_ROLES:
+        if funding._can_view_amount(user):
             result["issuedAmountTotal"] = format(issued_total.quantize(Decimal("0.01")), ".2f")
         return result
 

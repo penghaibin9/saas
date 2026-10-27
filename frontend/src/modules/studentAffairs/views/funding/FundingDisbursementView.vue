@@ -20,16 +20,16 @@
         <div class="fd-kpis"><span v-for="card in metricCards" :key="card.key"><span>{{ card.label }}</span><strong>{{ card.value }}</strong></span></div>
         <div class="fd-gen">
           <AppPermissionButton
-            :allowed="canBtn('studentAffairs.funding.disburse.manage')"
-            code="studentAffairs.funding.disburse.manage"
+            :allowed="canBtn('studentAffairs.export')"
+            code="studentAffairs.export"
             variant="secondary"
             :disabled="!!errorMessage"
             @click="openExport"
           >导出 Excel 台账</AppPermissionButton>
           <AppFundingBatchPicker v-model="genBatchId" class="fd-genpick" :options="batchOptions" placeholder="选择批次查看与办理" @change="onBatchContextChange" />
           <AppPermissionButton
-            :allowed="canBtn('studentAffairs.funding.disburse.manage')"
-            code="studentAffairs.funding.disburse.manage"
+            :allowed="canGenerate"
+            code="studentAffairs.funding.project.manage"
             :loading="acting === 'gen'"
             :disabled="!genBatchId || !!batchError || !!acting"
             @click="openGenerate"
@@ -229,6 +229,7 @@ export default {
     }
   },
   computed: {
+    canGenerate() { return this.canBtn('studentAffairs.funding.project.manage') && this.batches.some(batch => String(batch.batchId) === String(this.genBatchId) && batch.canGenerateDisbursements === true) },
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
     secondaryError() { return [this.batchError, this.statsError].filter(Boolean).join('；') },
     exportStatusText() {
@@ -329,7 +330,7 @@ export default {
     async loadStats() {
       const seq = ++this.statsSeq
       this.statsError = ''; this.stats = null
-      if (!this.canBtn('studentAffairs.stats.view')) return
+      if (!this.canBtn('studentAffairs.funding.view')) return
       const response = await studentAffairsApi.getDisbursementStats(this.genBatchId || undefined)
       if (seq !== this.statsSeq) return
       if (response.code === 0 && response.data) this.stats = response.data
@@ -341,7 +342,7 @@ export default {
       this.pagination.page = 1
       this.loadRecords()
     },
-    openGenerate() { if (!this.acting && this.genBatchId && !this.batchError) this.genDlg = { visible: true, batchId: this.genBatchId, label: this.batchOptions.find(b => String(b.value) === String(this.genBatchId))?.label || this.genBatchId } },
+    openGenerate() { if (this.canGenerate && !this.acting && this.genBatchId && !this.batchError) this.genDlg = { visible: true, batchId: this.genBatchId, label: this.batchOptions.find(b => String(b.value) === String(this.genBatchId))?.label || this.genBatchId } },
     async generate() {
       if (this.acting || !this.genDlg.visible) return
       this.acting = 'gen'

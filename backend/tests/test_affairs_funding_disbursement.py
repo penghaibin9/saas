@@ -60,12 +60,28 @@ def _seed_granted(sid, n=2):
 
 
 def test_disbursement_full_flow(client, db_mode):
-    # 发放属于学工/资助真实业务职责，禁止用 SCHOOL_ADMIN 通配权限冒充业务经办人；
-    # 也禁止 mock-login 对未知登录名按 userType 回退成演示教师。这里直接签发已落库的
-    # STUDENT_AFFAIRS_ADMIN 角色上下文，走与生产 SYSTEM RoleTemplate 相同的权限解析器。
+    # 发放、金额明文和导出分别明确授予资助职责，不借基础学工岗位通配。
+    from datetime import datetime, timedelta
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import Permission, Role, RoleAssignmentScope, RolePermission, UserRole
+    from app.services.system_role_shadow_service import published_system_role_permissions
+    from affairs_contract_test_support import ensure_role_user
+    uid = ensure_role_user("FUNDING_TEACHER", login_name="fund_disbursement_operator", real_name="资助发放测试人员")
+    with get_sessionmaker()() as db:
+        role = db.scalar(select(Role).where(Role.tenant_id == TID, Role.role_code == "FUNDING_TEACHER"))
+        codes = set(published_system_role_permissions(db, role.role_code)) | {
+            "studentAffairs.funding.disburse.manage", "studentAffairs.funding.sensitiveView", "studentAffairs.export"}
+        role.role_type = "CUSTOM"; role.version += 1
+        for permission in db.scalars(select(Permission).where(Permission.permission_code.in_(codes))).all():
+            db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
+        member = db.scalar(select(UserRole).where(UserRole.user_id == uid, UserRole.role_id == role.id))
+        db.add(RoleAssignmentScope(tenant_id=TID, user_id=uid, user_role_id=member.id,
+            role_code="FUNDING_TEACHER", scope_type="SCHOOL", scope_id=0, status="ACTIVE",
+            effective_at=datetime.utcnow() - timedelta(days=1)))
+        db.commit()
     hdr = role_headers(
-        "STUDENT_AFFAIRS_ADMIN", login_name="sa_disbursement_admin",
-        real_name="资助发放测试学工管理员",
+        "FUNDING_TEACHER", login_name="fund_disbursement_operator", real_name="资助发放测试人员",
     )
     bid = _seed_granted(db_mode["student"], n=2)
     # 生成发放台账

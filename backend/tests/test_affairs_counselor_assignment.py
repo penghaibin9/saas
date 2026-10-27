@@ -15,7 +15,7 @@ def _hdr(client, login_name):
 
 def _seed(db_mode):
     from app.db.session import get_sessionmaker
-    from app.models import College, Major, SchoolClass, StudentProfile, TeacherStudentScope, User
+    from app.models import College, Major, Role, SchoolClass, StudentProfile, TeacherStudentScope, User, UserRole
     db = get_sessionmaker()()
     college = College(tenant_id=TID, college_name="责任关系学院", status="ACTIVE")
     db.add(college); db.flush()
@@ -39,12 +39,20 @@ def _seed(db_mode):
                  user_type="TEACHER", status="ACTIVE")
         db.add(u); users.append(u)
     db.flush()
+    role = db.query(Role).filter_by(tenant_id=TID, role_code="COUNSELOR").first()
+    if role is None:
+        role = Role(tenant_id=TID, role_code="COUNSELOR", role_name="辅导员", role_type="SYSTEM", status="ACTIVE")
+        db.add(role); db.flush()
+    for staff in users:
+        db.add(UserRole(tenant_id=TID, user_id=staff.id, role_id=role.id, status="ACTIVE"))
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", teacher_name="王莉",
                                role_code="COUNSELOR", scope_type="CLASS", ref_value="责任2601",
                                status="ACTIVE"))
     db.commit()
     result = {"a": a.id, "b": b.id, "u1": users[0].id, "u2": users[1].id, "u3": users[2].id}
     db.close()
+    from app.services.permission_bundle_service import bootstrap_from_code
+    bootstrap_from_code(tenant_id=TID)
     return result
 
 
@@ -113,13 +121,19 @@ def test_handover_migrates_pending_todos_and_risk_owner(client, db_mode):
     from sqlalchemy import select
 
     from app.db.session import get_sessionmaker
-    from app.models import AffairsRiskRecord, StudentProfile, UnifiedTodo
+    from app.models import AffairsRiskRecord, CsLeave, StudentProfile, UnifiedTodo, WorkflowInstance, WorkflowTask
 
     ids, hdr = _seed(db_mode), _hdr(client, "school_admin01")
     original = _assign(client, hdr, ids["a"], ids["u1"]).json()["data"]
     db = get_sessionmaker()()
     student_id = db.scalars(select(StudentProfile.id).where(
         StudentProfile.tenant_id == TID, StudentProfile.class_id == ids["a"])).first()
+    leave = CsLeave(id=900001, tenant_id=TID, student_id=student_id, affairs_status="COUNSELOR_REVIEW", status="PENDING_REVIEW")
+    db.add(leave); db.flush()
+    flow = WorkflowInstance(tenant_id=TID, workflow_code="AFFAIRS_LEAVE", source_module="student-affairs",
+        source_biz_type="LEAVE", source_biz_id=leave.id, applicant_id=ids["u1"], status="RUNNING", current_node="COUNSELOR_REVIEW")
+    db.add(flow); db.flush(); leave.workflow_instance_id = flow.id
+    db.add(WorkflowTask(tenant_id=TID, instance_id=flow.id, node_code="COUNSELOR_REVIEW", assignee_id=ids["u1"], status="PENDING"))
     db.add(UnifiedTodo(
         tenant_id=TID, source_module="student-affairs", source_biz_type="LEAVE",
         source_biz_id=900001, todo_type="LEAVE_APPROVAL", assignee_id=ids["u1"],
@@ -184,7 +198,7 @@ def test_temp_expired_auto_ends_on_list_and_scan(client, db_mode):
 def test_counselor_cannot_change_out_of_scope_class_and_stale_version_conflicts(client, db_mode):
     ids, admin = _seed(db_mode), _hdr(client, "school_admin01")
     denied = _assign(client, _hdr(client, "counselor01"), ids["b"], ids["u1"])
-    assert denied.status_code == 403 and denied.json()["bizCode"] == "NO_DATA_SCOPE"
+    assert denied.status_code == 403 and denied.json()["bizCode"] == "NO_PERMISSION"
     created = _assign(client, admin, ids["a"], ids["u1"]).json()["data"]
     stale = client.post(f"{BASE}/counselor-assignments/{created['id']}/end", headers=admin,
                         json={"reason": "并发旧版本", "version": created["version"] + 1})

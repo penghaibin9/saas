@@ -103,7 +103,17 @@ def _ensure_todo(db, todo_type: str, row) -> None:
     ).with_for_update()).first()
 
     if status in spec["pending"]:
-        assignee_id = _assignee(db, spec, student_id)
+        if todo_type == "DISCIPLINE_APPEAL_REVIEW":
+            from app.models import DisciplineCase
+            from app.services import affairs_discipline_service as discipline
+            case = db.get(DisciplineCase, int(row.case_id))
+            if not case or case.tenant_id != _tid() or case.is_deleted:
+                raise AppException("DATA_CONFLICT", "原处分记录缺失，请先核验交接")
+            if existing and existing.status != "PENDING":
+                raise AppException("DATA_CONFLICT", "原申诉待办已有办结历史，拒绝重新打开，请先核验")
+            assignee_id = discipline._appeal_assignee(db, case, preferred_id=existing.assignee_id if existing else None)
+        else:
+            assignee_id = _assignee(db, spec, student_id)
         if existing:
             changed = (
                 int(existing.assignee_id or 0) != int(assignee_id)

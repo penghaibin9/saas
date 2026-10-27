@@ -26,10 +26,12 @@ def test_adjustment_assignment_versions_and_four_client_result(client, db_mode):
     pc = _login(client, 'school_admin01', 'PC')
     phone = _login(client, 'school_admin01', 'TEACHER_MINI')
     counselor = _login(client, 'counselor01', 'TEACHER_MINI')
+    college = _login(client, 'college_admin01', 'PC')
     students = [_login(client, 'aid_adjust_student', kind) for kind in ['PC', 'STUDENT_MINI']]
     batch = _open_batch(client, pc)
     row = data(_apply(client, pc, batch, ids['sa']))
-    for _ in range(4): row = _review(client, pc, row)
+    for reviewer in (counselor, counselor, college, pc):
+        row = _review(client, reviewer, row)
     aid_id = row['applyId']
     base = f'{BASE}/aid/applications/{aid_id}'
     _expire_publicity(aid_id)

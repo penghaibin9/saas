@@ -776,10 +776,7 @@ def material_requirement_resolver(db, file_obj, bindings: list[Any], user: dict,
         # 强敏感不接受 systemAdmin.file.manage 之类通用文件管理员越权。
         if not center._has_biz_permission(user or {}, requirement.biz_type):
             return False
-        if requirement.material_scope == "PSY_STUDENT":
-            return center._psy_scope_allows(db, requirement.student_id, user or {})
-        center._require_student_scope(db, requirement.student_id, user or {}, hide=True)
-        return True
+        return center._staff_can_read_content(db, requirement, user or {})
     except Exception:
         return False
 

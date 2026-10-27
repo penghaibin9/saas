@@ -366,10 +366,10 @@ def activities(user: dict, page: int = 1, page_size: int = 20) -> dict:
     return res
 
 
-def activities_my(user: dict) -> dict:
+def activities_my(user: dict, page: int = 1, page_size: int = 20) -> dict:
     _require_student(user)
     from app.services import affairs_activity_service as act
-    return act.my_activities(user)
+    return act.my_activities(user, page=page, page_size=page_size)
 
 
 def activity_enroll(user: dict, activity_id) -> dict:

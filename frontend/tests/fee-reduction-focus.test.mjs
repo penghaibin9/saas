@@ -5,11 +5,24 @@ function mount(api, id = '') {
   const source = fs.readFileSync(new URL('../src/modules/studentAffairs/views/funding/FeeReductionView.vue', import.meta.url), 'utf8')
   const imports = []
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/import\s+\{([^}]+)\}\s+from\s+['"][^'"]+['"]/g, (_, names) => { imports.push(...names.split(',').map(x=>x.trim())); return '' }).replace(/import\s+(\w+)\s+from\s+['"][^'"]+['"]/g, (_, name) => { imports.push(name); return '' }).replace('export default', 'return')
-  const c = new Function(...imports, script)(...imports.map(n=>n==='studentAffairsApi'?api:{}))
+  const c = new Function(...imports, script)(...imports.map(n=>n==='studentAffairsApi'?api:n==='toast'?{success(){},error(){}}:{}))
   const vm = {...c.data(), $route:{query:{recordId:id}}, ...c.methods}
   for (const [k,v] of Object.entries(c.computed)) Object.defineProperty(vm,k,{get:()=>v.call(vm)})
   return vm
 }
+
+test('fee conflict refreshes the original row without clearing the opinion', async () => {
+  let query
+  const vm = mount({ actionFeeReduction: async () => ({ code: 409001, bizCode: 'APPROVAL_VERSION_CONFLICT', message: '记录已更新' }),
+    getFeeReductions: async q => { query = q; return { code: 0, data: { items: [{ feeId: '1', version: 4, allowedActions: ['RETURN'] }] } } } })
+  vm.openAction({ feeId: '1', version: 3, allowedActions: ['RETURN'] }, 'RETURN')
+  vm.actionDrawer.form.opinion = '请补齐申请所需的证明材料'
+  await vm.submitAction()
+  assert.equal(query.recordId, '1')
+  assert.equal(vm.actionDrawer.row.version, 4)
+  assert.equal(vm.actionDrawer.form.opinion, '请补齐申请所需的证明材料')
+  assert.equal(vm.actionDrawer.visible, true)
+})
 test('deep link queries the exact string ID without the default pending filter',async()=>{
   let query
   const vm=mount({getFeeReductions:async q=>{query=q;return {code:0,data:{items:[{feeId:q.recordId,status:'ISSUED'}],total:1}}}},'9007199254740993')

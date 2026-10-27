@@ -29,6 +29,7 @@
             <div><dt>电子回执</dt><dd>{{ loans[0].receiptCodeMasked || '待补充' }}</dd></div>
             <div><dt>回执材料</dt><dd><button v-if="loans[0].receiptFile" class="ln-file" type="button" :disabled="!!fileBusy" @click="openReceipt(loans[0])">{{ loans[0].receiptFile.fileName || '查看回执材料' }}</button><span v-else>未附材料</span></dd></div>
           </dl>
+          <p v-if="loans[0].actionBlockReason" class="ln-focused-note">{{ loans[0].actionBlockReason }}</p>
           <p v-if="loans[0].reviewOpinion" class="ln-focused-note"><strong>{{ loans[0].status === 'RETURNED' ? '需修改' : '核验意见' }}</strong>{{ loans[0].reviewOpinion }}</p>
           <p v-if="loans[0].status === 'CONFIRMED'" class="ln-focused-note"><strong>校内回执台账已确认</strong>{{ loans[0].confirmedAt ? new Date(loans[0].confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}<span>银行放款请以经办银行结果为准。</span></p>
           <footer><AppPermissionButton v-for="action in availableActions(loans[0])" :key="action.code" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" :variant="action.code === 'RETURN' ? 'secondary' : 'primary'" :disabled="saving" @click="openAction(loans[0], action.code)">{{ action.label }}</AppPermissionButton></footer>
@@ -57,7 +58,7 @@
               <AppPermissionButton v-if="allows(row, 'VERIFY')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" @click="openAction(row, 'VERIFY')">核验通过</AppPermissionButton>
               <AppPermissionButton v-if="allows(row, 'RETURN')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" variant="secondary" @click="openAction(row, 'RETURN')">退回</AppPermissionButton>
               <AppPermissionButton v-if="allows(row, 'CONFIRM')" code="studentAffairs.funding.loan.manage" :allowed="canBtn('studentAffairs.funding.loan.manage')" size="sm" @click="openAction(row, 'CONFIRM')">确认台账</AppPermissionButton>
-              <div v-if="row.status === 'CONFIRMED'" class="ln-muted"><span>台账已确认</span><small>{{ row.confirmedAt ? new Date(row.confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}</small></div><span v-else-if="!row.allowedActions?.length" class="ln-muted">只读</span>
+              <div v-if="row.status === 'CONFIRMED'" class="ln-muted"><span>台账已确认</span><small>{{ row.confirmedAt ? new Date(row.confirmedAt).toLocaleString('zh-CN', { hour12: false }) : '时间待核对' }}</small></div><span v-else-if="!row.allowedActions?.length" class="ln-muted">{{ row.actionBlockReason || '只读' }}</span>
             </div>
           </template>
         </DataTable>
@@ -96,12 +97,15 @@
           <div><span>学生</span><strong>{{ actionDrawer.row.realName }} · {{ actionDrawer.row.studentNo }}</strong></div>
           <div><span>贷款</span><strong>{{ typeLabel(actionDrawer.row.loanType) }} · {{ actionDrawer.row.yearCode }} · {{ amountText(actionDrawer.row.amount) }}</strong></div>
           <div><span>回执</span><strong>{{ actionDrawer.row.receiptCodeMasked || '尚未填写' }}</strong></div>
+          <div><span>当前状态</span><strong>{{ actionDrawer.row.statusLabel || '状态待核对' }}</strong></div>
         </div>
+        <p v-if="actionDrawer.row.reviewOpinion" class="ln-focused-note">最新核验意见：{{ actionDrawer.row.reviewOpinion }}</p>
         <template v-if="actionDrawer.action === 'SUBMIT_RECEIPT'">
           <div class="ln-form-grid">
             <AppFormItem label="贷款类型" required><AppSelect v-model="actionDrawer.form.loanType" :options="typeOptions.slice(1)" :disabled="saving" /></AppFormItem>
             <AppFormItem label="贷款学年" required><AppTextInput v-model="actionDrawer.form.yearCode" :maxlength="9" :disabled="saving" /></AppFormItem>
-            <AppFormItem label="贷款金额（元）" required><AppNumberInput v-model="actionDrawer.form.amount" :min="1000" :max="20000" :precision="2" :disabled="saving" /></AppFormItem>
+            <AppFormItem v-if="actionDrawer.form.amount !== null" label="贷款金额（元）" required><AppNumberInput v-model="actionDrawer.form.amount" :min="1000" :max="20000" :precision="2" :disabled="saving" /></AppFormItem>
+            <AppFormItem v-else label="贷款金额"><span>{{ amountText(actionDrawer.row.amount) }}；补回执时保留原登记金额。</span></AppFormItem>
             <AppFormItem label="经办银行"><AppTextInput v-model="actionDrawer.form.bankName" :maxlength="100" :disabled="saving" /></AppFormItem>
             <AppFormItem label="银行卡后4位"><AppTextInput v-model="actionDrawer.form.bankLast4" :maxlength="4" :disabled="saving" /></AppFormItem>
             <AppFormItem label="电子回执编号" required><AppTextInput v-model="actionDrawer.form.receiptCode" :maxlength="64" :placeholder="actionDrawer.row.receiptCodeMasked ? '留空则沿用原回执编号' : '请输入完整回执编号'" :disabled="saving" /></AppFormItem>
@@ -201,10 +205,10 @@ export default {
     applyFilters() { this.page = 1; this.load() },
     setStatus(status) { this.filters.status = status; this.applyFilters() },
     openRegister() { this.registerDrawer = { visible: true, form: freshRegister(), errorMessage: '' } },
-    validateFields(form, { requireReceipt = false } = {}) {
+    validateFields(form, { requireReceipt = false, preserveAmount = false } = {}) {
       const year = String(form.yearCode || '').trim(); const last4 = String(form.bankLast4 || '').trim(); const amount = Number(form.amount)
       if (!/^\d{4}-\d{4}$/.test(year) || Number(year.slice(5)) !== Number(year.slice(0, 4)) + 1) return '贷款学年应为连续的 YYYY-YYYY'
-      if (!Number.isFinite(amount) || amount < 1000 || amount > 20000) return '高职学生年度贷款金额应在1000至20000元之间'
+      if (!(preserveAmount && form.amount === null) && (!Number.isFinite(amount) || amount < 1000 || amount > 20000)) return '高职学生年度贷款金额应在1000至20000元之间'
       if (last4 && !/^\d{4}$/.test(last4)) return '银行卡后4位必须为4位数字'
       const code = String(form.receiptCode || '').replace(/\s+/g, '')
       if (requireReceipt && !code && !this.actionDrawer.row?.receiptCodeMasked) return '请填写电子回执编号'
@@ -213,7 +217,7 @@ export default {
       return ''
     },
     buildPayload(form) {
-      return { loanType: form.loanType, yearCode: String(form.yearCode || '').trim(), amount: String(form.amount), bankName: String(form.bankName || '').trim() || undefined, bankLast4: String(form.bankLast4 || '').trim() || undefined, receiptCode: String(form.receiptCode || '').replace(/\s+/g, '') || undefined, receiptFileId: form.receiptFile?.fileId || undefined }
+      return { loanType: form.loanType, yearCode: String(form.yearCode || '').trim(), ...(form.amount === null ? {} : { amount: String(form.amount) }), bankName: String(form.bankName || '').trim() || undefined, bankLast4: String(form.bankLast4 || '').trim() || undefined, receiptCode: String(form.receiptCode || '').replace(/\s+/g, '') || undefined, receiptFileId: form.receiptFile?.fileId || undefined }
     },
     async submitRegister() {
       if (this.saving) return
@@ -231,22 +235,33 @@ export default {
       finally { this.saving = false }
     },
     openAction(row, action) {
-      this.actionDrawer = { visible: true, row, action, errorMessage: '', form: { loanType: row.loanType, yearCode: row.yearCode, amount: Number(row.amount), bankName: row.bankName || '', bankLast4: row.bankLast4 || '', receiptCode: '', receiptFile: null, reason: '' } }
+      this.actionDrawer = { visible: true, row, action, errorMessage: '', form: { loanType: row.loanType, yearCode: row.yearCode, amount: row.amount !== null && row.amount !== '' && Number.isFinite(Number(row.amount)) ? Number(row.amount) : null, bankName: row.bankName || '', bankLast4: row.bankLast4 || '', receiptCode: '', receiptFile: null, reason: '' } }
     },
     async submitAction() {
       if (this.saving || !this.actionDrawer.row) return
       const { row, action, form } = this.actionDrawer
       if (!this.allows(row, action)) { this.actionDrawer.errorMessage = '当前状态已变化，请刷新后重试'; return }
-      if (action === 'SUBMIT_RECEIPT') { const error = this.validateFields(form, { requireReceipt: true }); if (error) { this.actionDrawer.errorMessage = error; return } }
+      if (action === 'SUBMIT_RECEIPT') { const error = this.validateFields(form, { requireReceipt: true, preserveAmount: true }); if (error) { this.actionDrawer.errorMessage = error; return } }
       if (action === 'RETURN' && String(form.reason || '').trim().length < 5) { this.actionDrawer.errorMessage = '请填写至少5字的具体退回原因'; return }
       this.saving = true; this.actionDrawer.errorMessage = ''
       try {
         const body = { action, version: row.version, reason: String(form.reason || '').trim() || undefined, ...(action === 'SUBMIT_RECEIPT' ? this.buildPayload(form) : {}) }
         const response = await studentAffairsApi.actionLoan(row.loanId, body)
-        if (response.code !== 0) throw new Error(response.message || '贷款记录处理失败')
+        if (response.code !== 0) throw Object.assign(new Error(response.message || '贷款记录处理失败'), { bizCode: response.bizCode })
         toast.success(({ SUBMIT_RECEIPT: '回执已提交待核验', VERIFY: '回执已核验', RETURN: '已退回学生修改', CONFIRM: '贷款台账已确认' })[action])
         this.actionDrawer.visible = false; await this.load()
-      } catch (error) { this.actionDrawer.errorMessage = error.message || '贷款记录处理失败'; if (error.bizCode === 'APPROVAL_VERSION_CONFLICT') await this.load() }
+      } catch (error) {
+        this.actionDrawer.errorMessage = error.message || '贷款记录处理失败'
+        if (error.bizCode === 'APPROVAL_VERSION_CONFLICT') {
+          await this.load()
+          const latest = await studentAffairsApi.getLoans({ recordId: row.loanId, page: 1, pageSize: 1 })
+          if (this.actionDrawer.row === row) {
+            const current = latest.data?.items?.find(item => String(item.loanId) === String(row.loanId))
+            this.actionDrawer.row = current || { ...row, allowedActions: [] }
+            this.actionDrawer.errorMessage = current ? '记录已更新，上方显示最新状态；已保留填写内容，请核对后重新确认。' : '当前记录无法重新核验，已保留填写内容，请关闭后刷新台账。'
+          }
+        }
+      }
       finally { this.saving = false }
     },
     onUploaded(target, file) { const drawer = target === 'register' ? this.registerDrawer : this.actionDrawer; drawer.form.receiptFile = file; drawer.errorMessage = '' },

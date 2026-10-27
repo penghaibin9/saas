@@ -23,7 +23,7 @@
         </div>
         <div class="loan-state"><StatusTag :text="item.statusLabel || statusLabel(item.status)" :tone="statusTone(item.status)" /><small v-if="item.reviewOpinion">{{ item.reviewOpinion }}</small></div>
         <div class="loan-actions">
-          <button v-if="allows(item, 'RESUBMIT')" class="sp-btn" type="button" :disabled="!!busy" @click="openEdit(item)">{{ item.status === 'REGISTERED' ? '补充回执' : '修改后重提' }}</button>
+          <button v-if="allows(item, 'SUBMIT_RECEIPT') || allows(item, 'RESUBMIT')" class="sp-btn" type="button" :disabled="!!busy" @click="openEdit(item)">{{ item.status === 'REGISTERED' ? '补充回执' : '修改后重提' }}</button>
           <button v-if="allows(item, 'WITHDRAW')" class="sp-btn sp-btn--ghost" type="button" :disabled="!!busy" @click="withdrawTarget = item">撤回</button>
           <span v-if="!item.allowedActions?.length">{{ nextHint(item.status) }}</span>
         </div>

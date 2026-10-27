@@ -13,9 +13,8 @@ BASE = "/api/v1/student-affairs"
 
 
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
-    return {"Authorization": f"Bearer {data['accessToken']}"}
+    from test_affairs_leave import _real_hdr
+    return _real_hdr(client, login_name)
 
 
 def _seed(db_mode):
@@ -25,6 +24,8 @@ def _seed(db_mode):
     就假装存在辅导员/学院/学校审批人。
     """
     from app.db.session import get_sessionmaker
+    from app.core.security import hash_password
+    from test_affairs_leave import TEST_LOGIN_PASSWORD
     from app.models import (
         AffairsCounselorAssignment, College, Major, Role, SchoolClass,
         StudentProfile, TeacherStudentScope, User, UserRole,
@@ -56,6 +57,8 @@ def _seed(db_mode):
         tenant_id=TID, login_name="school_admin01", real_name="学校管理员",
         password_hash="test-only", user_type="SCHOOL_ADMIN", status="ACTIVE",
     )
+    for account in (counselor_user, counselor_b_user, college_user, school_user):
+        account.password_hash = hash_password(TEST_LOGIN_PASSWORD)
     db.add_all([counselor_user, counselor_b_user, college_user, school_user]); db.flush()
 
     roles = {}
@@ -118,6 +121,22 @@ def _open_batch(client, hdr, publicity_days=1):
     return result["data"]["batchId"]
 
 
+def _grant_counselor_sensitive_view():
+    """仅为隔离测试明确配置明文权，正常账号仍经正式权限解析。"""
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import Permission, Role, RolePermission
+    from app.services.system_role_shadow_service import published_system_role_permissions
+    with get_sessionmaker()() as db:
+        role = db.scalar(select(Role).where(Role.tenant_id == TID, Role.role_code == "COUNSELOR"))
+        codes = set(published_system_role_permissions(db, role.role_code)) | {"studentAffairs.aid.sensitiveView"}
+        role.role_type = "CUSTOM"
+        role.version = int(role.version or 0) + 1
+        for permission in db.scalars(select(Permission).where(Permission.permission_code.in_(codes))).all():
+            db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
+        db.commit()
+
+
 def _apply(client, hdr, batch_id, sid, level="DIFFICULT"):
     return client.post(f"{BASE}/aid/applications", headers=hdr, json={
         "batchId": str(batch_id), "studentId": str(sid), "applyLevel": level,
@@ -148,9 +167,13 @@ def _expire_publicity(apply_id):
 
 def _approve_to_publicity(client, hdr, aid_id):
     current = client.get(f"{BASE}/aid/applications/{aid_id}", headers=hdr).json()["data"]
-    for _ in range(3):
-        current = _review(client, hdr, current)
-    current = _review(client, hdr, current, level="DIFFICULT")
+    counselor = _hdr(client, "counselor01")
+    college = _hdr(client, "college_admin01")
+    school = _hdr(client, "school_admin01")
+    current = _review(client, counselor, current)
+    current = _review(client, counselor, current)
+    current = _review(client, college, current)
+    current = _review(client, school, current, level="DIFFICULT")
     assert current["status"] == "PUBLICITY"
     _expire_publicity(aid_id)
     return current
@@ -203,6 +226,7 @@ def test_a3_reject_reason_required(client, db_mode):
     hdr = _hdr(client, "school_admin01")
     bid = _open_batch(client, hdr)
     item = _apply(client, hdr, bid, ids["sa"]).json()["data"]
+    hdr = _hdr(client, "counselor01")
     assert client.post(f"{BASE}/aid/applications/{item['applyId']}/review", headers=hdr,
                        json={"action": "REJECT", "reason": "不行", "version": item["version"]}).status_code == 400
     r = client.post(f"{BASE}/aid/applications/{item['applyId']}/review", headers=hdr,
@@ -233,10 +257,21 @@ def test_a5_sensitive_family_economy(client, db_mode):
     lst = client.get(f"{BASE}/aid/applications", headers=admin).json()["data"]["items"]
     fe = next(a["familyEconomy"] for a in lst if a["applyId"] == aid_id)
     assert fe["annualIncomeRange"] == "2-4万" and "annualIncome" not in fe
+    denied = client.post(f"{BASE}/aid/applications/{aid_id}/reveal",
+                         headers=_hdr(client, "counselor01"), json={"reason": "未单独授予明文权限"})
+    assert denied.status_code == 403, denied.text
+    _grant_counselor_sensitive_view()
+    counselor = _hdr(client, "counselor01")
     ok_c = client.post(f"{BASE}/aid/applications/{aid_id}/reveal",
-                       headers=_hdr(client, "counselor01"), json={"reason": "核实家庭情况"})
+                       headers=counselor, json={"reason": "核实家庭情况"})
     assert ok_c.status_code == 200
     assert ok_c.json()["data"]["familyEconomy"]["annualIncome"] == "25000"
+    not_current_owner = client.post(f"{BASE}/aid/applications/{aid_id}/reveal", headers=admin,
+                                   json={"reason": "未轮到学校终审节点"})
+    assert not_current_owner.status_code == 403, not_current_owner.text
+    current = client.get(f"{BASE}/aid/applications/{aid_id}", headers=counselor).json()["data"]
+    for actor in (counselor, counselor, _hdr(client, "college_admin01")):
+        current = _review(client, actor, current)
     ok = client.post(f"{BASE}/aid/applications/{aid_id}/reveal", headers=admin,
                      json={"reason": "评审需核实家庭经济"}).json()
     assert ok["data"]["familyEconomy"]["annualIncome"] == "25000"
@@ -269,6 +304,7 @@ def test_a7_cross_class_403(client, db_mode):
 
 def test_a8_counselor_review_scoped_to_counselor_review_node(client, db_mode):
     ids = _seed(db_mode)
+    _grant_counselor_sensitive_view()
     admin = _hdr(client, "school_admin01")
     counselor = _hdr(client, "counselor01")
     bid = _open_batch(client, admin)
@@ -296,7 +332,7 @@ def test_a8_counselor_review_scoped_to_counselor_review_node(client, db_mode):
                      json={"action": "APPROVE", "version": current["version"]})
     assert r3.status_code == 403
     r4 = client.post(f"{BASE}/aid/applications/{current['applyId']}/reveal", headers=counselor,
-                     json={"reason": "复核"})
+                     json={"reason": "当前已不是本人的审核节点"})
     assert r4.status_code == 403
 
 

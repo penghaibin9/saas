@@ -17,7 +17,8 @@ from sqlalchemy.exc import IntegrityError
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field, hash_sensitive
-from app.services.affairs_funding_service import _amount_view
+from app.services.affairs_funding_service import _amount_view, _uid_int
+from app.services.affairs_funding_todo_service import project_staff_actions, require_current_receiver
 from app.services.db_service import _iso, _tid, session
 
 
@@ -62,10 +63,8 @@ def _op():
 
 
 def _uid(user):
-    try:
-        return int((user or {}).get("userId") or 0) or None
-    except (TypeError, ValueError):
-        return None
+    uid = _uid_int(user)
+    return uid if uid > 0 else None
 
 
 def _audit(db, biz_id, action, detail=""):
@@ -73,7 +72,8 @@ def _audit(db, biz_id, action, detail=""):
     n, r, _ = _op()
     db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="FUNDING_EXT",
                              biz_id=int(biz_id) if biz_id else None, action=action,
-                             operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
+                             operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow(),
+                             created_by=_uid(get_current_user_ctx())))
 
 
 def _scoped_out(db, rows, user, sid_getter, row_fn):
@@ -313,8 +313,8 @@ def list_ws_records(user, post_id=None, status=None, page=1, page_size=50, keywo
             WorkStudyPost, WorkStudyPost.id == WorkStudyRecord.post_id
         ).where(*conds).order_by(WorkStudyRecord.id.desc()).offset(
             (page - 1) * page_size).limit(page_size)).all()
-        return [{**_ws_row(row, student, user), "post": _post_row(post)}
-                for row, student, post in rows], total, status_counts
+        items = [{**_ws_row(row, student, user), "post": _post_row(post)} for row, student, post in rows]
+        return project_staff_actions(db, user, "WORK_STUDY", items), total, status_counts
 
 
 def apply_work_study(post_id, body, user, *, skip_scope_check=False) -> dict:
@@ -349,7 +349,11 @@ def apply_work_study(post_id, body, user, *, skip_scope_check=False) -> dict:
         from app.services.affairs_funding_todo_service import sync_work_study_todos
         sync_work_study_todos(db, r)
         db.commit(); db.refresh(r)
-        return _ws_row(r, s, user)
+        result = _ws_row(r, s, user)
+        if skip_scope_check:
+            result["allowedActions"] = ["WITHDRAW"]
+            return result
+        return project_staff_actions(db, user, "WORK_STUDY", [result])[0]
 
 
 def student_posts(user, keyword="", page=1, page_size=20) -> dict:
@@ -484,6 +488,7 @@ def act_work_study(record_id, action, user, reason="", *, expected_version=None,
         if not record:
             raise not_found("上岗记录不存在")
         _scope_or_403(db, record.student_id, user)
+        require_current_receiver(db, record, user, "WORK_STUDY")
         atomic_claim_version(db, record, expected_version)
         before = record.status
         if action == "APPROVE":
@@ -540,7 +545,7 @@ def act_work_study(record_id, action, user, reason="", *, expected_version=None,
         sync_work_study_todos(db, record)
         db.commit(); db.refresh(record)
         student = tenant_get(db, StudentProfile, int(record.student_id))
-        return _ws_row(record, student, user)
+        return project_staff_actions(db, user, "WORK_STUDY", [_ws_row(record, student, user)])[0]
 
 
 def _loan_body(body, key, default=None):
@@ -654,7 +659,7 @@ def list_loans(user, status=None, page=1, page_size=50, keyword="", year_code=""
             StudentProfile, StudentProfile.id == StudentLoan.student_id
         ).where(*conds).order_by(StudentLoan.id.desc()).offset(
             (page - 1) * page_size).limit(page_size)).all()
-        return [_loan_row(row, student, user) for row, student in rows], total, status_counts
+        return project_staff_actions(db, user, "STUDENT_LOAN", [_loan_row(row, student, user) for row, student in rows]), total, status_counts
 
 
 def _assert_loan_unique(db, student_id: int, year_code: str, *, exclude_id: int | None = None):
@@ -736,7 +741,8 @@ def register_loan(body, user, *, student_self: bool = False) -> dict:
         from app.services.affairs_funding_todo_service import sync_loan_todos
         sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
-        return _loan_row(row, student, user, student_view=student_self)
+        result = _loan_row(row, student, user, student_view=student_self)
+        return result if student_self else project_staff_actions(db, user, "STUDENT_LOAN", [result])[0]
 
 
 def loan_action(loan_id, body, user) -> dict:
@@ -751,6 +757,7 @@ def loan_action(loan_id, body, user) -> dict:
         if not row:
             raise not_found("贷款记录不存在")
         _scope_or_403(db, row.student_id, user)
+        require_current_receiver(db, row, user, "STUDENT_LOAN")
         atomic_claim_version(db, row, expected_version)
         before = row.status
         now = datetime.utcnow()
@@ -817,7 +824,7 @@ def loan_action(loan_id, body, user) -> dict:
         sync_loan_todos(db, row)
         db.commit(); db.refresh(row)
         student = tenant_get(db, StudentProfile, int(row.student_id))
-        return _loan_row(row, student, user)
+        return project_staff_actions(db, user, "STUDENT_LOAN", [_loan_row(row, student, user)])[0]
 
 
 def advance_loan(loan_id, user, *, expected_version=None) -> dict:
@@ -1094,7 +1101,7 @@ def list_reductions(user, itemType=None, status=None, page=1, page_size=50,
             StudentProfile, StudentProfile.id == FeeReduction.student_id
         ).where(*conds).order_by(FeeReduction.id.desc()).offset(
             (page - 1) * page_size).limit(page_size)).all()
-        return [_fee_row(row, student, user, db=db) for row, student in rows], total, status_counts
+        return project_staff_actions(db, user, "FEE_REDUCTION", [_fee_row(row, student, user, db=db) for row, student in rows]), total, status_counts
 
 
 def _assert_fee_unique(db, student_id: int, item_type: str, year_code: str, *, exclude_id=None):
@@ -1151,7 +1158,8 @@ def submit_reduction(body, user, *, student_self: bool = False) -> dict:
         from app.services.affairs_funding_todo_service import sync_reduction_todos
         sync_reduction_todos(db, row)
         db.commit(); db.refresh(row)
-        return _fee_row(row, student, user, student_view=student_self, db=db)
+        result = _fee_row(row, student, user, student_view=student_self, db=db)
+        return result if student_self else project_staff_actions(db, user, "FEE_REDUCTION", [result])[0]
 
 
 def fee_action(fee_id, body, user) -> dict:
@@ -1167,6 +1175,7 @@ def fee_action(fee_id, body, user) -> dict:
         if not x:
             raise not_found("记录不存在")
         _scope_or_403(db, x.student_id, user)
+        require_current_receiver(db, x, user, "FEE_REDUCTION")
         atomic_claim_version(db, x, _loan_body(body, "version"))
         before, now = x.status, datetime.utcnow()
         if action == "APPROVE":
@@ -1206,7 +1215,7 @@ def fee_action(fee_id, body, user) -> dict:
         sync_reduction_todos(db, x)
         db.commit(); db.refresh(x)
         s = tenant_get(db, StudentProfile, int(x.student_id))
-        return _fee_row(x, s, user, db=db)
+        return project_staff_actions(db, user, "FEE_REDUCTION", [_fee_row(x, s, user, db=db)])[0]
 
 
 def review_reduction(fee_id, body, user) -> dict:
@@ -1331,7 +1340,7 @@ def _monthly_row(m, user=None, *, exact_amount: bool = False) -> dict:
 
 def add_monthly(record_id, body, user) -> dict:
     """仅在岗记录可写入；同月唯一，金额与累计值均采用锁和定点数。"""
-    from app.models import WorkStudyMonthly, WorkStudyPost, WorkStudyRecord
+    from app.models import StudentProfile, WorkStudyMonthly, WorkStudyPost, WorkStudyRecord
     month = str(getattr(body, "monthCode", None) or "").strip()
     if not re.fullmatch(r"\d{4}-(0[1-9]|1[0-2])", month):
         raise AppException("VALIDATION_ERROR", "考核月格式应为YYYY-MM")
@@ -1355,6 +1364,7 @@ def add_monthly(record_id, body, user) -> dict:
         if not record:
             raise not_found("上岗记录不存在")
         _scope_or_403(db, record.student_id, user)
+        require_current_receiver(db, record, user, "WORK_STUDY")
         if record.status != "ONBOARD":
             raise AppException("DATA_CONFLICT", "仅在岗记录可录月度考核")
         post = db.scalars(select(WorkStudyPost).where(
@@ -1363,10 +1373,17 @@ def add_monthly(record_id, body, user) -> dict:
         ).with_for_update()).first()
         if not post:
             raise AppException("DATA_CONFLICT", "岗位不存在")
-        recorded_hours = Decimal(str(db.scalar(select(func.coalesce(func.sum(WorkStudyMonthly.work_hours), 0)).where(
+        # 不同岗位共享学生锁；当前读避免可重复读事务继续使用锁前的旧快照。
+        student = db.scalar(select(StudentProfile.id).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.id == record.student_id,
+            StudentProfile.is_deleted.is_(False),
+        ).with_for_update())
+        if student is None:
+            raise not_found("学生不存在")
+        recorded_hours = sum((Decimal(str(value or 0)) for value in db.scalars(select(WorkStudyMonthly.work_hours).where(
             WorkStudyMonthly.tenant_id == _tid(), WorkStudyMonthly.student_id == record.student_id,
             WorkStudyMonthly.month_code == month, WorkStudyMonthly.is_deleted.is_(False),
-        )) or 0))
+        ).with_for_update()).all()), Decimal(0))
         limit = min(Decimal("40"), Decimal(str(post.monthly_hours_limit or 40)))
         if recorded_hours + hours > limit:
             raise AppException("DATA_CONFLICT", f"该生本月累计工时不能超过{format(limit, '.2f')}小时")

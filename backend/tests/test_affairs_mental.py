@@ -31,6 +31,10 @@ def _seed(db_mode):
     db.add(TeacherStudentScope(tenant_id=TID, teacher_key="psych01", teacher_name="心理·孙",
                                role_code="PSYCHOLOGY_TEACHER", scope_type="PSY_STUDENT",
                                ref_value="P001", status="ACTIVE"))
+    # 此测试管理员有明确的两名学生专项授权，不能依赖管理员身份全校放行。
+    for student_no in ("P001", "P002"):
+        db.add(TeacherStudentScope(tenant_id=TID, teacher_key="school_admin01",
+            role_code="SCHOOL_ADMIN", scope_type="PSY_STUDENT", ref_value=student_no, status="ACTIVE"))
     db.commit()
     ids = {"sa": sa.id, "sb": sb.id}
     db.close()
@@ -132,10 +136,10 @@ def test_m6_sec2_student_affairs_admin_denied(client, db_mode):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     rid = _refer(client, admin, ids["sa"]).json()["data"]["referralId"]
-    # SEC-2：学工处管理员无 PSY_STUDENT 专项授权 → 心理明细数据范围拒绝（403 NO_DATA_SCOPE）
+    # 校学工基础岗位不再默认获得心理办理或原文能力，先在能力门拒绝；逐生边界另由M7验证。
     sa = _hdr(client, "sa_admin01")
     r = client.get(f"{BASE}/mental/referrals/{rid}", params={"reason": "学工处例行检查"}, headers=sa)
-    assert r.status_code == 403 and r.json()["bizCode"] == "NO_DATA_SCOPE"
+    assert r.status_code == 403 and r.json()["bizCode"] == "NO_PERMISSION"
 
 
 def test_m7_psy_student_scope(client, db_mode):

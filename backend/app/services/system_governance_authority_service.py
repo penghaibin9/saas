@@ -76,7 +76,7 @@ def create_delegation(user: dict, body: dict) -> dict:
         "effective": True,
         "version": 1,
         "docVersion": current_version + 1,
-        "note": "临时授权固定为创建时的显式权限快照；过期或回收后立即失效",
+        "note": "临时授权固定为创建时的权限快照；学工职责须在对应已授身份及范围内使用，过期或回收后失效",
     }
     items.insert(0, row)
     _legacy._save(
@@ -129,12 +129,9 @@ def active_delegation_permission_patterns(user: dict) -> set[str]:
             for code in (item.get("permissionCodes") or [])
             if str(code).strip()
         }
-        if snapshot:
-            permissions.update(snapshot)
-            continue
-
         role_code = str(item.get("roleCode") or "").strip().upper()
-        permissions.update(ROLE_PERMISSIONS.get(role_code) or set())
+        delegated = snapshot or set(ROLE_PERMISSIONS.get(role_code) or set())
+        permissions.update(_legacy.bound_delegation_patterns_to_context(user, role_code, delegated))
     return permissions
 
 

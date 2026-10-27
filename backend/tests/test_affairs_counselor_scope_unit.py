@@ -55,7 +55,42 @@ def _seed_entities(db_mode):
     db.add_all([s, u1, u2]); db.commit()
     out = {"class_id": c.id, "student_id": s.id, "u1": u1.id, "u2": u2.id}
     db.close()
+    from affairs_contract_test_support import ensure_role_user
+    from app.services.permission_bundle_service import bootstrap_from_code
+    bootstrap_from_code(tenant_id=TID)
+    ensure_role_user("COUNSELOR", login_name="ty_c1", real_name="辅导甲")
+    ensure_role_user("COUNSELOR", login_name="ty_c2", real_name="辅导乙")
     return out
+
+
+def test_immediate_assignment_and_handoff_do_not_round_start_into_the_future(db_mode, monkeypatch):
+    from app.core.context import get_tenant, set_tenant
+    from app.core import affairs_security
+    from app.db.session import get_sessionmaker
+    from app.services import affairs_counselor_service as svc
+    ids = _seed_entities(db_mode)
+    fixed = datetime.utcnow().replace(microsecond=900000)
+    class ReadClock(datetime):
+        @classmethod
+        def utcnow(cls):
+            return fixed.replace(microsecond=100000)
+    class WriteClock(datetime):
+        @classmethod
+        def utcnow(cls):
+            return fixed
+    monkeypatch.setattr(svc, "datetime", WriteClock)
+    monkeypatch.setattr(svc, "utc_now_naive", lambda: fixed)
+    monkeypatch.setattr(affairs_security, "datetime", ReadClock)
+    previous = get_tenant(); set_tenant(TID)
+    try:
+        row = svc.assign(_admin(), ids["class_id"], ids["u1"], "PRIMARY", reason="即刻生效核验")
+        svc.handover(_admin(), ids["class_id"], ids["u1"], ids["u2"], "即刻交接核验", row["version"])
+        with get_sessionmaker()() as db:
+            ctx = affairs_security.build_affairs_context({"userId": f"db-{ids['u2']}",
+                "currentRoleCode": "COUNSELOR"}, db)
+            assert ctx.class_ids == {ids["class_id"]}
+    finally:
+        set_tenant(previous)
 
 
 def test_primary_scope_sync_temp_expire_and_todo_migrate(db_mode):
@@ -78,6 +113,13 @@ def test_primary_scope_sync_temp_expire_and_todo_migrate(db_mode):
             TeacherStudentScope.status == "ACTIVE",
             TeacherStudentScope.is_deleted.is_(False))).all()
         assert {x.teacher_key for x in scopes} == {"ty_c1"}
+        from app.models import CsLeave, WorkflowInstance, WorkflowTask
+        leave = CsLeave(id=8001, tenant_id=TID, student_id=ids["student_id"], affairs_status="COUNSELOR_REVIEW", status="PENDING_REVIEW")
+        db.add(leave); db.flush()
+        flow = WorkflowInstance(tenant_id=TID, workflow_code="AFFAIRS_LEAVE", source_module="student-affairs",
+            source_biz_type="LEAVE", source_biz_id=leave.id, applicant_id=ids["u1"], status="RUNNING", current_node="COUNSELOR_REVIEW")
+        db.add(flow); db.flush(); leave.workflow_instance_id = flow.id
+        db.add(WorkflowTask(tenant_id=TID, instance_id=flow.id, node_code="COUNSELOR_REVIEW", assignee_id=ids["u1"], status="PENDING"))
         db.add(UnifiedTodo(
             tenant_id=TID, source_module="student-affairs", source_biz_type="LEAVE",
             source_biz_id=8001, todo_type="LEAVE_APPROVAL", assignee_id=ids["u1"],

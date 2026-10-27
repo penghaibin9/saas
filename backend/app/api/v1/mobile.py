@@ -1169,8 +1169,10 @@ def teacher_affairs_fee_reduction_action(
 
 
 @router.get("/teacher/affairs/discipline/pending", summary="辅导员·处分/解除待审")
-def teacher_affairs_discipline_pending(user=Depends(get_current_user)):
-    return success(tea.affairs_discipline_pending(user))
+def teacher_affairs_discipline_pending(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                                      kind: str = Query("ALL", pattern="^(ALL|DISCIPLINE_APPROVAL|DISCIPLINE_REMOVE)$"),
+                                      user=Depends(get_current_user)):
+    return success(tea.affairs_discipline_pending(user, page, pageSize, kind))
 
 
 @router.get("/teacher/affairs/discipline/{case_id}", summary="辅导员·处分详情")

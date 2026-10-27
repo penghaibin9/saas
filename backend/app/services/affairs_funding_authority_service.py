@@ -34,37 +34,14 @@ def _user_name(user) -> str:
     return str((user or {}).get("realName") or (user or {}).get("name") or (user or {}).get("loginName") or "系统")
 
 
-def _roles(user) -> set[str]:
-    values = {
-        str((user or {}).get("currentRoleCode") or "").upper(),
-        str((user or {}).get("roleCode") or "").upper(),
-    }
-    for key in ("roleCodes", "roles"):
-        raw = (user or {}).get(key) or []
-        if isinstance(raw, str):
-            raw = [item.strip() for item in raw.split(",")]
-        for item in raw:
-            if isinstance(item, dict):
-                item = item.get("roleCode") or item.get("code")
-            values.add(str(item or "").upper())
-    return {item for item in values if item}
-
-
-def _permissions(user) -> set[str]:
-    raw = (user or {}).get("permissions") or (user or {}).get("permissionCodes") or []
-    if isinstance(raw, str):
-        raw = [item.strip() for item in raw.split(",")]
-    return {str(item or "") for item in raw if item}
-
-
 def _require_amount_role(user) -> None:
-    permissions = _permissions(user)
-    if (_roles(user) & _ALLOWED_ROLES) or {
-        "studentAffairs.funding.approve",
-        "studentAffairs.funding.publicity.manage",
-    } & permissions:
+    from app.core.permissions import has_permission
+    role = str((user or {}).get("currentRoleCode") or "").upper()
+    if legacy._can_view_amount(user) and has_permission(user, "studentAffairs.funding.approve") and (
+        role in _ALLOWED_ROLES or has_permission(user, "studentAffairs.funding.publicity.manage")
+    ):
         return
-    raise AppException("NO_PERMISSION", "仅持有资助审批权限的人员可调整批准金额")
+    raise AppException("NO_PERMISSION", "金额调整需要当前职责的资助审批和明细金额查看授权")
 
 
 def _money(value, field="金额") -> Decimal:
@@ -381,6 +358,7 @@ def review_adjustment(adjustment_id: int, user, action: str, reason: str,
 
 
 def list_adjustments(application_id: int, user) -> list[dict]:
+    can_view_amount = legacy._can_view_amount(user)
     with session() as db:
         application, _ = legacy._load(db, application_id)
         legacy._scope_or_403(db, application.student_id, user)
@@ -396,14 +374,14 @@ def list_adjustments(application_id: int, user) -> list[dict]:
         """), {"tenant_id": _tid(), "application_id": int(application_id)}).mappings().all()
         return [{
             "adjustmentId": str(row["id"]),
-            "requestedAmount": format(row["requested_amount"], ".2f"),
-            "reason": row["reason"],
-            "requesterId": str(row["requester_id"]),
-            "requesterName": row["requester_name"],
+            "requestedAmount": legacy._amount_view(row["requested_amount"], user),
+            "reason": row["reason"] if can_view_amount else "调整说明已隐藏",
+            "requesterId": str(row["requester_id"]) if can_view_amount else None,
+            "requesterName": row["requester_name"] if can_view_amount else None,
             "status": row["status"],
-            "reviewerId": str(row["reviewer_id"]) if row["reviewer_id"] else None,
-            "reviewerName": row["reviewer_name"],
-            "reviewReason": row["review_reason"],
+            "reviewerId": str(row["reviewer_id"]) if can_view_amount and row["reviewer_id"] else None,
+            "reviewerName": row["reviewer_name"] if can_view_amount else None,
+            "reviewReason": row["review_reason"] if can_view_amount else "复核说明已隐藏",
             "reviewedAt": row["reviewed_at"].isoformat() if row["reviewed_at"] else None,
             "createdAt": row["created_at"].isoformat() if row["created_at"] else None,
             "version": int(row["version"] or 0),

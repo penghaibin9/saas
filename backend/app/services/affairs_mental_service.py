@@ -13,7 +13,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -21,10 +21,7 @@ from app.core.optimistic_lock import atomic_claim_version
 from app.core.pagination import normalize_page
 from app.services.db_service import _iso, _tid, session
 
-# 明细可见角色（按角色）：心理老师 + 校/平台超管（超管查看仍须原因+审计）。
-# STUDENT_AFFAIRS_ADMIN 不在此列（SEC-2）；辅导员/班主任须经 PSY_STUDENT 逐生授权。
-_PSY_DETAIL_ROLES = {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"}
-_PSY_SCOPE_ROLES = {"COUNSELOR", "CLASS_ADVISOR", "PSYCHOLOGY_TEACHER"}
+# 原文权限与逐生范围分别检查，管理员身份不代替专项授权。
 L_REF = {"REFERRED": "已转介", "FOLLOWING": "回访中", "ESCALATED": "已升级危机", "CLOSED": "已关闭"}
 L_LEVEL = {"GENERAL": "一般关注", "FOCUS": "重点关注", "CRISIS": "危机"}
 
@@ -76,43 +73,51 @@ def _sensitive_view_audit(student_id, reason: str, resource: str) -> None:
 
 
 def psy_scope_ids(db, user):
-    """PSY_STUDENT 逐生授权学生 ID 集。None=按角色全可见；set()=无授权学生。"""
-    from app.core.permissions import is_super_admin
-    from app.models import StudentProfile, TeacherStudentScope
+    """新任职学生主键与明确旧心理授权同源；任何身份都不自动获得全校心理范围。"""
+    from app.core.permissions import has_permission
+    from app.core.affairs_security import _derive_keys
+    from app.models import StudentProfile
+    from app.services.role_assignment_scope_service import active_assignment_scopes, legacy_assignment_scopes
 
     u = user or {}
-    role = u.get("currentRoleCode") or ""
-    if is_super_admin(user) or role in ("SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"):
-        return None
+    role = (u.get("currentRoleCode") or "").upper()
+    keys = _derive_keys(u)
     uid = str(u.get("userId") or "")
-    ctx = str(u.get("activeContextId") or "")
-    name = u.get("realName") or ""
-    keys = {k for k in (uid, uid[2:] if uid.startswith("u_") else "", ctx[4:] if ctx.startswith("ctx_") else "", name) if k}
-    rows = db.scalars(select(TeacherStudentScope).where(
-        TeacherStudentScope.tenant_id == _tid(),
-        TeacherStudentScope.scope_type == "PSY_STUDENT",
-        TeacherStudentScope.status == "ACTIVE",
-        TeacherStudentScope.is_deleted.is_(False),
-        (TeacherStudentScope.teacher_key.in_(keys)) | (TeacherStudentScope.teacher_name.in_(keys)),
-    )).all()
-    rows = [r for r in rows if not r.role_code or (r.role_code or "").upper() == role.upper()]
-    nos = {r.ref_value for r in rows if r.ref_value}
-    if not nos:
+    if uid.startswith("db-"):
+        uid = uid[3:]
+    rows = legacy_assignment_scopes(db, tenant_id=_tid(), role_code=role, identity_keys=keys,
+                                    user_id=int(uid) if uid.isdigit() else None)
+    nos = {r.ref_value for r in rows if r.ref_value and r.scope_type == "PSY_STUDENT"}
+    student_ids = set()
+    if uid.isdigit() and (role == "PSYCHOLOGY_TEACHER" or has_permission(u, "studentAffairs.mental.manage")
+                         or can_view_psychology_files(u)):
+        assigned = active_assignment_scopes(db, tenant_id=_tid(), user_id=int(uid), role_code=role,
+                                            context_id=str(u.get("activeContextId") or ""))
+        student_ids = {int(row.scope_id) for row in assigned if row.scope_type == "STUDENT"}
+    if not nos and not student_ids:
         return set()
     studs = db.scalars(select(StudentProfile).where(
-        StudentProfile.tenant_id == _tid(), StudentProfile.student_no.in_(nos),
+        StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+        or_(StudentProfile.student_no.in_(nos), StudentProfile.id.in_(student_ids)),
     )).all()
     return {s.id for s in studs}
 
 
+def can_view_psychology_detail(user) -> bool:
+    from app.core.permissions import get_base_permission_patterns
+    patterns = set(get_base_permission_patterns(user))
+    return "studentAffairs.risk.psyDetail.view" in patterns
+
+
+def can_view_psychology_files(user) -> bool:
+    from app.core.permissions import get_base_permission_patterns
+    return bool(set(get_base_permission_patterns(user or {})) & {
+        "studentAffairs.risk.psyDetail.view", "studentAffairs.archive.psySensitive"})
+
+
 def _can_view_detail(user, student_id, scope_ids) -> bool:
-    """能否查看该生心理明细。"""
-    role = (user or {}).get("currentRoleCode") or ""
-    if role in ("SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"):
-        return True
-    if scope_ids is None:
-        return role in _PSY_DETAIL_ROLES
-    return int(student_id) in scope_ids
+    """原文须明确权限与逐生范围同时成立，域通配不充当敏感授权。"""
+    return bool(scope_ids and int(student_id) in scope_ids and can_view_psychology_detail(user))
 
 
 def _load(db, ref_id):
@@ -148,7 +153,7 @@ def _allowed_actions(x) -> list[str]:
     return []
 
 
-def _ref_row(x, s, reveal) -> dict:
+def _ref_row(x, s, reveal, *, can_reveal=False, can_manage=False) -> dict:
     return {
         "referralId": str(x.id), "studentId": str(x.student_id),
         "studentNo": s.student_no if s else "", "realName": s.real_name if s else "",
@@ -156,9 +161,10 @@ def _ref_row(x, s, reveal) -> dict:
         "channel": x.channel or "", "reasonSummary": x.reason_summary or "",
         "note": (x.note or "") if reveal else "[心理明细·受限，需授权+原因查看]",
         "noteMasked": not reveal,
+        "canReveal": can_reveal,
         "referrer": x.referrer or "", "status": x.status, "statusLabel": L_REF.get(x.status, x.status),
         "lastFollowTime": _iso(x.last_follow_time) or "", "riskId": str(x.risk_id or ""),
-        "version": int(x.version or 0), "allowedActions": _allowed_actions(x),
+        "version": int(x.version or 0), "allowedActions": _allowed_actions(x) if can_manage else [],
     }
 
 
@@ -182,7 +188,11 @@ def list_attention(user, reason=None, level=None, page=1, page_size=20):
         students = {s.id: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.id.in_({int(x.student_id) for x in rows if x.student_id})
         )).all()} if rows else {}
-        return [_ref_row(x, students.get(int(x.student_id)), reveal=False) for x in rows], total
+        from app.core.permissions import has_permission
+        can_reveal = can_view_psychology_detail(user)
+        can_manage = has_permission(user, "studentAffairs.mental.manage")
+        return [_ref_row(x, students.get(int(x.student_id)), reveal=False,
+                         can_reveal=can_reveal, can_manage=can_manage) for x in rows], total
 
 
 def get_referral(user, ref_id, reason=None) -> dict:
@@ -195,7 +205,10 @@ def get_referral(user, ref_id, reason=None) -> dict:
         if _can_view_detail(user, x.student_id, scope) and reason and len(str(reason).strip()) >= 5:
             reveal = True
             _sensitive_view_audit(x.student_id, reason.strip(), f"psy_referral:{x.id}")
-        return _ref_row(x, _stu(db, x.student_id), reveal=reveal)
+        from app.core.permissions import has_permission
+        return _ref_row(x, _stu(db, x.student_id), reveal=reveal,
+                        can_reveal=_can_view_detail(user, x.student_id, scope),
+                        can_manage=has_permission(user, "studentAffairs.mental.manage"))
 
 
 def student_summary(user, student_id) -> dict:
@@ -256,7 +269,7 @@ def create_referral(user, body) -> dict:
         _biz_audit(db, x.id, "REFER", f"level={level}")
         db.commit()
         db.refresh(x)
-        return _ref_row(x, s, reveal=True)
+        return _ref_row(x, s, reveal=False, can_reveal=can_view_psychology_detail(user), can_manage=True)
 
 
 def follow_referral(user, ref_id, content="", expected_version=None) -> dict:
@@ -274,7 +287,7 @@ def follow_referral(user, ref_id, content="", expected_version=None) -> dict:
         _biz_audit(db, x.id, "FOLLOW", text[:100])
         db.commit()
         db.refresh(x)
-        return _ref_row(x, _stu(db, x.student_id), reveal=True)
+        return _ref_row(x, _stu(db, x.student_id), reveal=False, can_reveal=can_view_psychology_detail(user), can_manage=True)
 
 
 def escalate_crisis(user, ref_id, content="", expected_version=None) -> dict:
@@ -289,7 +302,7 @@ def escalate_crisis(user, ref_id, content="", expected_version=None) -> dict:
         _scope_or_403(user, psy_scope_ids(db, user), x.student_id)
         if x.risk_id:
             db.refresh(x)
-            return _ref_row(x, _stu(db, x.student_id), reveal=True)
+            return _ref_row(x, _stu(db, x.student_id), reveal=False, can_reveal=can_view_psychology_detail(user), can_manage=True)
         if "ESCALATE" not in _allowed_actions(x):
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可升级危机")
         atomic_claim_version(db, x, expected_version)
@@ -304,7 +317,7 @@ def escalate_crisis(user, ref_id, content="", expected_version=None) -> dict:
         _biz_audit(db, x.id, "ESCALATE_CRISIS", f"risk_id={risk.id}; {text[:80]}")
         db.commit()
         db.refresh(x)
-        return _ref_row(x, _stu(db, x.student_id), reveal=True)
+        return _ref_row(x, _stu(db, x.student_id), reveal=False, can_reveal=can_view_psychology_detail(user), can_manage=True)
 
 
 def close_referral(user, ref_id, conclusion="", expected_version=None) -> dict:
@@ -322,7 +335,7 @@ def close_referral(user, ref_id, conclusion="", expected_version=None) -> dict:
         _biz_audit(db, x.id, "CLOSE", text[:100])
         db.commit()
         db.refresh(x)
-        return _ref_row(x, _stu(db, x.student_id), reveal=True)
+        return _ref_row(x, _stu(db, x.student_id), reveal=False, can_reveal=can_view_psychology_detail(user), can_manage=True)
 
 
 # ═══════════ 统计（仅聚合，禁个体明细外泄） ═══════════

@@ -147,7 +147,7 @@ export const NAV_PLAN = [
       I('公示待办', '/admin/student-affairs/aid/publicity', 'studentAffairs.aid.view'),
       I('认定台账', '/admin/student-affairs/aid/ledger', 'studentAffairs.aid.view'),
       I('困难学生库', '/admin/student-affairs/aid/difficult-students', 'studentAffairs.aid.view'),
-      I('认定统计', '/admin/student-affairs/aid/stats', 'studentAffairs.stats.view'),
+      I('认定统计', '/admin/student-affairs/aid/stats', 'studentAffairs.aid.view'),
       I('异议复核', '/admin/student-affairs/aid/objections', 'studentAffairs.aid.view')
     ]),
     // 奖助勤贷补
@@ -158,7 +158,7 @@ export const NAV_PLAN = [
       I('公示待办', '/admin/student-affairs/funding/publicity', 'studentAffairs.funding.view'),
       I('公示申诉', '/admin/student-affairs/funding/appeals', 'studentAffairs.funding.view'),
       I('发放台账', '/admin/student-affairs/funding/disbursements', 'studentAffairs.funding.view'),
-      I('资助统计', '/admin/student-affairs/funding/stats', 'studentAffairs.stats.view'),
+      I('资助统计', '/admin/student-affairs/funding/stats', 'studentAffairs.funding.view'),
       I('助学金管理', '/admin/campus-service/grants', 'studentAffairs.funding.view'),
       I('勤工助学', '/admin/student-affairs/funding/work-study', 'studentAffairs.funding.workstudy.manage'),
       I('助学贷款', '/admin/student-affairs/funding/loans', 'studentAffairs.funding.loan.manage'),
@@ -169,7 +169,7 @@ export const NAV_PLAN = [
       I('处分工作台（登记/审批/生效/解除）', '/admin/student-affairs/discipline', 'studentAffairs.discipline.view'),
       I('送达与申诉复核', '/admin/student-affairs/discipline/appeals', 'studentAffairs.discipline.view'),
       I('违纪台账（含投影对账）', '/admin/student-affairs/discipline/ledger', 'studentAffairs.discipline.view'),
-      I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.stats.view')
+      I('处分统计', '/admin/student-affairs/discipline/stats', 'studentAffairs.discipline.view')
     ]),
     // 谈心家校
     mod('sa-talks', '谈心家校', null, [
@@ -182,11 +182,11 @@ export const NAV_PLAN = [
     ]),
     // 心理关注
     mod('sa-mental', '心理关注', null, [
-      I('心理关注名单', '/admin/student-affairs/mental', 'studentAffairs.risk.psyDetail.view'),
-      I('心理预警摘要', '/admin/student-affairs/mental/summary', 'studentAffairs.risk.view'),
-      I('谈话转介与回访', '/admin/student-affairs/mental/referrals', 'studentAffairs.risk.psyDetail.view'),
-      I('危机升级', '/admin/student-affairs/mental/crisis', 'studentAffairs.risk.psyDetail.view'),
-      I('心理统计', '/admin/student-affairs/mental/stats', 'studentAffairs.stats.view')
+      I('心理关注名单', '/admin/student-affairs/mental', null, null, { permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }),
+      I('心理预警摘要', '/admin/student-affairs/mental/summary', null, null, { permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }),
+      I('谈话转介与回访', '/admin/student-affairs/mental/referrals', null, null, { permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }),
+      I('危机升级', '/admin/student-affairs/mental/crisis', null, null, { permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] }),
+      I('心理统计', '/admin/student-affairs/mental/stats', null, null, { permissionAny: ['studentAffairs.mental.manage', 'studentAffairs.risk.psyDetail.view'] })
     ]),
     // 活动二课与社团
     mod('sa-activities', '活动二课与社团', null, [
@@ -194,7 +194,7 @@ export const NAV_PLAN = [
       I('志愿服务时长', '/admin/student-affairs/activity/volunteer', 'studentAffairs.activity.view'),
       I('第二课堂积分', '/admin/student-affairs/activity/second-class', 'studentAffairs.activity.view'),
       I('第二课堂积分申诉', '/admin/student-affairs/activity/credit-appeals', 'studentAffairs.activity.view'),
-      I('活动统计', '/admin/student-affairs/activity/stats', 'studentAffairs.stats.view'),
+      I('活动统计', '/admin/student-affairs/activity/stats', 'studentAffairs.activity.view'),
       I('社团管理', '/admin/student-affairs/activity/clubs', 'studentAffairs.club.view'),
       I('学生干部与组织', '/admin/student-affairs/activity/organizations', 'studentAffairs.org.view'),
       I('党团建设', '/admin/student-affairs/activity/party-league', 'studentAffairs.league.view')

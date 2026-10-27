@@ -222,7 +222,7 @@ def _funding_attachment_counts(db, application_ids: list[int]) -> dict[int, int]
 
 
 def discipline_my(user) -> dict:
-    """学生端返回本人当前处分与已解除结果，不回完整卷宗细节。"""
+    """学生端保留本人已解除、已撤销结果，不回完整卷宗细节。"""
     from app.models import DisciplineAppeal, DisciplineCase
     L_DISC_TYPE = {"WARNING": "警告", "SERIOUS_WARNING": "严重警告", "DEMERIT": "记过",
                    "PROBATION": "留校察看", "EXPEL": "开除学籍"}
@@ -230,7 +230,7 @@ def discipline_my(user) -> dict:
         stu = _me(db, user)
         rows = db.scalars(select(DisciplineCase).where(
             DisciplineCase.tenant_id == _tid(), DisciplineCase.student_id == stu.id,
-            DisciplineCase.status.in_(["EFFECTIVE", "REMOVED"]),
+            DisciplineCase.status.in_(["EFFECTIVE", "REMOVED", "REVOKED"]),
             DisciplineCase.is_deleted.is_(False))
             .order_by(DisciplineCase.id.desc())).all()
         appeals = db.scalars(select(DisciplineAppeal).where(
@@ -246,7 +246,7 @@ def discipline_my(user) -> dict:
                 "caseId": str(x.id), "discType": x.disc_type,
                 "discTypeLabel": L_DISC_TYPE.get(x.disc_type, x.disc_type),
                 "caseStatus": x.status,
-                "caseStatusLabel": "已解除" if x.status == "REMOVED" else "已生效",
+                "caseStatusLabel": {"REMOVED": "已解除", "REVOKED": "已撤销"}.get(x.status, "已生效"),
                 "effectiveAt": _iso(x.effective_at),
                 "removedAt": _iso(x.removed_at),
                 "appealStatus": ap.status if ap else None,

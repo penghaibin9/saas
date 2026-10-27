@@ -92,7 +92,7 @@
         <div class="presence-card">
           <div><span>归寝状态</span><strong>{{ dorm.presence?.statusLabel || '未知' }}</strong></div>
           <div><span>最近可靠事件</span><strong>{{ fmtTime(dorm.presence?.lastEventAt) }}</strong></div>
-          <div><span>Provider</span><strong>{{ dorm.presenceProvider?.providerLabel || '未配置' }} · {{ dorm.presenceProvider?.healthStatus || 'DISABLED' }}</strong></div>
+          <div><span>归寝数据来源</span><strong>{{ dorm.presenceProvider?.providerLabel || '未接入' }}</strong></div>
           <p>{{ dorm.presence?.summary || '暂无可靠归寝数据' }}<template v-if="dorm.presence?.status === 'UNKNOWN'">。“未知”不等同于“未归”。</template></p>
         </div>
         <div v-if="!dorm.hasBed && dorm.hasAllocation" class="allocation-card">
@@ -133,7 +133,7 @@
       <section v-else-if="tab === 'discipline'" class="sp-card">
         <div class="sp-panel__head">处分申诉</div><p class="sp-muted">本入口用于处分生效后的申诉，不冒充处分决定前的陈述申辩。具体期限以学校处分决定书与规章为准。</p>
         <StateBlock v-if="!(discipline.items || []).length" type="empty" text="暂无处分记录" />
-        <article v-for="item in (discipline.items || [])" :key="item.caseId" class="record"><div class="record-head"><div><strong>{{ enumText(item.discTypeLabel || item.discType) }}</strong><div class="sp-muted">{{ fmt(item.effectiveAt) }} 生效</div><div v-if="item.removedAt" class="sp-muted">{{ fmt(item.removedAt) }} 解除</div><div v-if="item.appealReviewOpinion" class="sp-muted">复核意见：{{ item.appealReviewOpinion }}</div></div><StatusTag :text="disciplineStatusLabel(item)" :tone="item.caseStatus === 'REMOVED' ? 'success' : 'default'" /></div><div v-if="allows(item, 'SUBMIT_APPEAL')" class="inline-form"><textarea v-model.trim="disciplineAppeals[item.caseId]" maxlength="1000" class="sp-inp" placeholder="处分申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(disciplineAppeals[item.caseId], 5, 1000)" @click="submitDisciplineAppeal(item)">提交处分申诉</button></div></article>
+        <article v-for="item in (discipline.items || [])" :key="item.caseId" class="record"><div class="record-head"><div><strong>{{ enumText(item.discTypeLabel || item.discType) }}</strong><div class="sp-muted">{{ fmt(item.effectiveAt) }} 生效</div><div v-if="item.removedAt" class="sp-muted">{{ fmt(item.removedAt) }} {{ item.caseStatus === 'REVOKED' ? '撤销' : '解除' }}</div><div v-if="item.appealReviewOpinion" class="sp-muted">复核意见：{{ item.appealReviewOpinion }}</div></div><StatusTag :text="disciplineStatusLabel(item)" :tone="['REMOVED', 'REVOKED'].includes(item.caseStatus) ? 'success' : 'default'" /></div><div v-if="allows(item, 'SUBMIT_APPEAL')" class="inline-form"><textarea v-model.trim="disciplineAppeals[item.caseId]" maxlength="1000" class="sp-inp" placeholder="处分申诉理由（5-1000字）" /><button class="sp-btn" :disabled="busy || !validReason(disciplineAppeals[item.caseId], 5, 1000)" @click="submitDisciplineAppeal(item)">提交处分申诉</button></div></article>
       </section>
 
       <section v-else-if="tab === 'psy'" class="sp-card psy-workspace">
@@ -163,7 +163,26 @@
 
       <section v-else-if="tab === 'activity'">
         <div class="score-card sp-card"><div><strong>正式第二课堂成绩单</strong><p class="sp-muted">仅统计老师确认后已入账流水，不使用活动配置值自行估算。</p></div><div class="score"><span>原始 {{ secondClass.rawTotal || 0 }}</span><span>加权 {{ secondClass.weightedTotal || 0 }}</span></div></div>
-        <div class="two"><section class="sp-card"><div class="sp-panel__head">可报名活动</div><StateBlock v-if="!(activities.available || []).length" type="empty" text="暂无可报名活动" /><article v-for="item in (activities.available || [])" :key="item.activityId" class="record"><div class="record-head"><div><strong>{{ item.activityName }}</strong><div class="sp-muted">{{ fmt(item.startAt) }} · {{ item.location || '未填写地点' }}</div></div><button v-if="!item.mySignupStatus || item.mySignupStatus === 'CANCELLED'" class="sp-btn" :disabled="busy" @click="enroll(item)">报名</button><StatusTag v-else :text="item.mySignupStatus" tone="default" /></div></article></section><section class="sp-card"><div class="sp-panel__head">入账明细</div><StateBlock v-if="!(secondClass.items || []).length" type="empty" text="暂无已确认入账记录" /><article v-for="item in (secondClass.items || [])" :key="`${item.activityId}-${item.grantedAt}`" class="record"><div class="record-head"><div><strong>{{ item.remark || '第二课堂记录' }}</strong><div class="sp-muted">{{ creditLabel(item.creditType) }} · {{ fmt(item.grantedAt) }}</div></div><div><strong>+{{ item.creditValue }}</strong><button class="link" @click="openCreditAppeal(item)">记错申诉</button></div></div></article><button class="sp-btn sp-btn--ghost" @click="openCreditAppeal(null)">有活动缺记？提交缺记申诉</button></section></div>
+        <div class="two">
+          <section v-for="kind in ['available', 'mine']" :key="kind" class="sp-card">
+            <div class="sp-panel__head">{{ kind === 'mine' ? '我的活动' : '可报名活动' }}</div>
+            <p v-if="activityPageErrors[kind]" class="field-error" role="alert">{{ activityPageErrors[kind] }} <button class="link" @click="loadActivityPage(kind, activityPages[kind])">重试</button></p>
+            <StateBlock v-else-if="!(activities[kind] || []).length" type="empty" :text="kind === 'mine' ? '暂无已报名活动' : '暂无可报名活动'" />
+            <article v-for="item in (activities[kind] || [])" :key="item.activityId" class="record">
+              <div class="record-head"><div><strong>{{ item.activityName }}</strong><div class="sp-muted">{{ fmt(item.startAt) }} · {{ item.location || '未填写地点' }}</div></div>
+                <button v-if="kind === 'available' && (!item.mySignupStatus || item.mySignupStatus === 'CANCELLED')" class="sp-btn" :disabled="busy" @click="enroll(item)">报名</button>
+                <StatusTag v-else :text="activitySignupLabel(item.mySignupStatus)" tone="default" />
+              </div>
+              <p v-if="kind === 'mine'" class="sp-muted">{{ item.statusLabel || '活动状态待确认' }} · {{ activityNextStep(item) }}</p>
+            </article>
+            <div class="record-head" :aria-label="kind === 'mine' ? '我的活动翻页' : '可报名活动翻页'">
+              <button class="sp-btn sp-btn--ghost" :disabled="activityPageLoading[kind] || activityPages[kind] <= 1" @click="loadActivityPage(kind, activityPages[kind] - 1)">上一页</button>
+              <span>第 {{ activityPages[kind] }} 页，共 {{ activities[`${kind}Total`] || 0 }} 条</span>
+              <button class="sp-btn sp-btn--ghost" :disabled="activityPageLoading[kind] || !activities[`${kind}HasMore`]" @click="loadActivityPage(kind, activityPages[kind] + 1)">下一页</button>
+            </div>
+          </section>
+        </div>
+        <section class="sp-card" style="margin-top:16px"><div class="sp-panel__head">入账明细</div><StateBlock v-if="!(secondClass.items || []).length" type="empty" text="暂无已确认入账记录" /><article v-for="item in (secondClass.items || [])" :key="`${item.activityId}-${item.grantedAt}`" class="record"><div class="record-head"><div><strong>{{ item.remark || '第二课堂记录' }}</strong><div class="sp-muted">{{ creditLabel(item.creditType) }} · {{ fmt(item.grantedAt) }}</div></div><div><strong>+{{ item.creditValue }}</strong><button class="link" @click="openCreditAppeal(item)">记错申诉</button></div></div></article><button class="sp-btn sp-btn--ghost" @click="openCreditAppeal(null)">有活动缺记？提交缺记申诉</button></section>
         <section class="sp-card" style="margin-top:16px"><div class="sp-panel__head">我的积分申诉</div><AutoTable :rows="creditAppeals" :columns="CREDIT_APPEAL_COLS" empty="暂无积分申诉" /></section>
       </section>
 
@@ -224,8 +243,8 @@ const DORM_STAY_STATUS = {
   CANCELLED: '已取消'
 }
 const DORM_STAY_COLS = [
-  { key: 'bedLabel', label: '楼 / 房 / 床' }, { key: 'checkinAt', label: '入住时间' },
-  { key: 'checkoutAt', label: '退宿时间' },
+  { key: 'bedLabel', label: '楼 / 房 / 床' }, { key: 'checkinAt', label: '入住时间', formatter: (value) => fmtTime(value) },
+  { key: 'checkoutAt', label: '退宿时间', formatter: (value) => fmtTime(value) },
   { key: 'status', label: '状态', formatter: (value) => DORM_STAY_STATUS[String(value || '').toUpperCase()] || '状态待确认' }
 ]
 const CREDIT_APPEAL_COLS = [
@@ -272,12 +291,41 @@ const talkItems = computed(() => {
   const index = rows.findIndex((item) => String(item.talkId) === focusedTalkId.value)
   return index > 0 ? [rows[index], ...rows.slice(0, index), ...rows.slice(index + 1)] : rows
 })
+const activityPages = reactive({ available: 1, mine: 1 })
+const activityPageLoading = reactive({ available: false, mine: false })
+const activityPageErrors = reactive({ available: '', mine: '' })
+const activityPageSeq = { available: 0, mine: 0 }
+const activitySignupLabel = value => ({ ENROLLED: '已报名', WAITLIST: '候补中', CHECKED_IN: '已签到', CONFIRMED: '已确认入账', CANCELLED: '已取消' }[value] || '报名状态待确认')
+const activityNextStep = item => item.mySignupStatus === 'CANCELLED' ? '本次报名已取消' : ({ PUBLISHED: '等待活动开始', ENROLL_CLOSED: '报名已结束，等待活动开始', ONGOING: '请按活动现场指引完成签到', FINISHED: '等待负责老师确认名单', CONFIRMED: '请查看入账明细', ARCHIVED: '活动已归档，历史记录保留' }[item.status] || '请联系活动负责人核对安排')
+function applyActivityFirstPage(value) {
+  activityPageSeq.available++; activityPageSeq.mine++
+  activityPages.available = 1; activityPages.mine = 1
+  activityPageLoading.available = false; activityPageLoading.mine = false
+  activityPageErrors.available = ''; activityPageErrors.mine = ''
+  activities.value = value || { available: [], mine: [] }
+}
+async function loadActivityPage(kind, page) {
+  const seq = ++activityPageSeq[kind]
+  activityPageLoading[kind] = true; activityPageErrors[kind] = ''
+  try {
+    const data = await portalApi.affairsActivitiesMy({ page, pageSize: 20 })
+    if (!viewActive || seq !== activityPageSeq[kind]) return
+    activities.value[kind] = data?.[kind] || []
+    activities.value[`${kind}Total`] = data?.[`${kind}Total`] || 0
+    activities.value[`${kind}HasMore`] = !!data?.[`${kind}HasMore`]
+    activityPages[kind] = page
+  } catch (error) {
+    if (viewActive && seq === activityPageSeq[kind]) activityPageErrors[kind] = error?.message || '活动记录加载失败，请重试'
+  } finally {
+    if (seq === activityPageSeq[kind]) activityPageLoading[kind] = false
+  }
+}
 const leaveForm = reactive({ leaveType: 'PERSONAL', startTime: '', endTime: '', reason: '' }); const extendId = ref(''); const extendForm = reactive({ newEndTime: '', reason: '' }); const aidForm = reactive({ batchId: '', applyLevel: 'GENERAL', memberCount: null, annualIncome: null, debt: null, specialTags: '', statement: '', confirm: false }); const fundForm = reactive({ projectType: 'SCHOLARSHIP', batchId: '', statement: '', confirm: false }); const aidObjections = reactive({}); const fundAppeals = reactive({}); const disciplineAppeals = reactive({}); const psyAnswers = reactive({}); const psyWantsContact = ref(false); const psyResult = ref(null); const dormBuildings = ref([]); const dormRooms = ref([]); const dormBeds = ref([]); const dormForm = reactive({ visible: false, buildingId: '', roomId: '', bedId: '', reason: '' }); const modal = reactive({ type: '', title: '', notice: '', item: null, form: {} })
 
 const dateText = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 const today = dateText()
 const fmt = (value) => tab.value === 'leave' ? leaveDate(value) : (value || '').slice(0, 10)
-const fmtTime = (value) => String(value || '').slice(0, 16).replace('T', ' ') || '—'
+const fmtTime = (value) => leaveDate(value, true)
 const enumText = (value) => localizeVisibleEnumText(value)
 const dayAfter = (value) => { if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) return ''; const d = new Date(`${value}T00:00:00`); if (Number.isNaN(d.getTime())) return ''; d.setDate(d.getDate() + 1); return dateText(d) }
 const validReason = (value, min, max) => { const n = String(value || '').trim().length; return n >= min && n <= max }
@@ -322,7 +370,7 @@ async function loadAidBatches(more = false) {
 
 const fundingLabel = (type) => ({ SCHOLARSHIP: '奖学金', GRANT: '助学金', WORK_STUDY: '勤工助学', LOAN: '助学贷款', TUITION_REDUCTION: '学费减免', TEMPORARY_AID: '临时补助' }[type] || type)
 const appealLabel = (status) => ({ SUBMITTED: '申诉已提交', REVIEWING: '复核中', UPHELD: '维持原处分', REVISED: '处分已变更', REVOKED: '处分已撤销' }[status] || status || '未申诉')
-const disciplineStatusLabel = (item) => item?.caseStatus === 'REMOVED' ? '处分已解除' : appealLabel(item?.appealStatus)
+const disciplineStatusLabel = (item) => ({ REMOVED: '处分已解除', REVOKED: '处分已撤销' }[item?.caseStatus] || appealLabel(item?.appealStatus))
 const creditLabel = (type) => ({ SECOND_CLASS: '第二课堂', MORAL: '德育积分', VOLUNTEER_HOUR: '志愿时长' }[type] || type)
 const severityText = (value) => ({ LOW: '低风险', MEDIUM: '中风险', HIGH: '高风险', CRITICAL: '重大风险' }[value] || value)
 const rectStatusText = (value) => ({ OPEN: '待整改', RECTIFYING: '整改中', WAITING_RECHECK: '待复检', CLOSED: '已关闭', ESCALATED: '已升级' }[value] || value)
@@ -363,7 +411,7 @@ const TAB_LOADERS = {
   dorm: [{ load: () => portalApi.affairsDorm(), apply: (value) => { dorm.value = value || {} } }, { load: () => affairsFourEndApi.myDormTransfers(), optional: true, apply: (value) => { dormTransferError.value = ''; dormTransfers.value = value?.items || [] }, fail: () => { dormTransfers.value = []; dormTransferError.value = '调宿申请记录暂时无法读取，当前宿舍与床位信息仍可正常查看。' } }, { load: () => affairsFourEndApi.myDormStays(), apply: (value) => { dormStays.value = value?.items || [] } }, { load: () => affairsFourEndApi.myDormRectifications({ pageSize: 200 }), apply: (value) => { dormRectifications.value = value?.items || [] } }],
   discipline: [{ load: () => portalApi.affairsDiscipline(), apply: (value) => { discipline.value = value || { items: [] } } }],
   psy: [{ load: () => portalApi.affairsPsyQuestions(), apply: (value) => { psy.value = value || { questions: [] } } }, { load: () => portalApi.affairsPsyHistory(), apply: (value) => { psyHistory.value = value || { items: [] } } }],
-  activity: [{ load: () => portalApi.affairsActivitiesMy(), apply: (value) => { activities.value = value || { available: [], mine: [] } } }, { load: () => affairsFourEndApi.secondClassReport(), apply: (value) => { secondClass.value = { items: [], byType: [], ...(value || {}) } } }, { load: () => affairsFourEndApi.myCreditAppeals(), apply: (value) => { creditAppeals.value = value?.items || [] } }],
+  activity: [{ load: () => portalApi.affairsActivitiesMy(), apply: applyActivityFirstPage }, { load: () => affairsFourEndApi.secondClassReport(), apply: (value) => { secondClass.value = { items: [], byType: [], ...(value || {}) } } }, { load: () => affairsFourEndApi.myCreditAppeals(), apply: (value) => { creditAppeals.value = value?.items || [] } }],
   talk: [{ load: () => portalApi.affairsTalk(), apply: (value) => { talk.value = value || { items: [] } } }]
 }
 

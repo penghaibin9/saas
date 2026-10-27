@@ -102,6 +102,13 @@ export const useSessionStore = defineStore('session', {
       return cfg.homeRoute
     },
     applyRealUser(d) {
+      const role = d?.currentRole || {}
+      const currentRoleKey = roleKeyFromBackendRole(role.roleCode || role.contextType)
+      if (d && !currentRoleKey) {
+        this.logout()
+        this.currentRole = ROLE.STUDENT
+        throw { code: 'UNSUPPORTED_CONTEXT', biz: true, message: '当前职责尚未接入移动端，请在电脑端处理或重新选择已支持的身份' }
+      }
       // /auth/me omits the school name. Retain the verified login name only
       // within the same tenant; never carry it into a different school's session.
       const tenantName = d?.tenantName || (d?.tenantId != null &&
@@ -109,13 +116,11 @@ export const useSessionStore = defineStore('session', {
         ? this.mockUser?.tenantName || '' : '')
       this.realUser = d || null
       if (!d) return
-      const role = d.currentRole || {}
       this.availableContexts = d.availableContexts || d.contexts || []
       this.availableRoles = [...new Set(this.availableContexts
         .map((item) => roleKeyFromBackendRole(item.roleCode || item.contextType))
         .filter(Boolean))]
-      const currentRoleKey = roleKeyFromBackendRole(role.roleCode || role.contextType)
-      if (currentRoleKey) this.currentRole = currentRoleKey
+      this.currentRole = currentRoleKey
       this.mustChangePassword = !!(d.user && d.user.mustChangePassword)
       setForcePasswordChange(this.mustChangePassword)
       this.identity = {
@@ -168,6 +173,7 @@ export const useSessionStore = defineStore('session', {
     async switchRole(roleKey) {
       const previousRole = this.currentRole
       const previousIdentity = { ...this.identity }
+      let serverSwitched = false
       try {
         if (shouldTryReal()) {
           const ctx = this.availableContexts.find((item) =>
@@ -177,6 +183,7 @@ export const useSessionStore = defineStore('session', {
           // 等服务端确认新会话后才清除旧业务投影；失败时原身份及其正在办理的草稿仍可继续。
           // 成功路径由新 token 的 session generation 阻止一切旧请求写回。
           const d = await switchRoleReal(ctx.contextId || ctx.id, clientType)
+          serverSwitched = true
           this.clearBusinessContexts()
           this.currentRole = roleKey
           this.applyRealUser(d)
@@ -188,6 +195,11 @@ export const useSessionStore = defineStore('session', {
         }
         this.persist()
       } catch (e) {
+        if (serverSwitched) {
+          this.logout()
+          this.currentRole = ROLE.STUDENT
+          throw e
+        }
         this.currentRole = previousRole
         this.identity = previousIdentity
         this.persist()
