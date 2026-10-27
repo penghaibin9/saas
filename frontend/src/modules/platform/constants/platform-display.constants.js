@@ -19,6 +19,7 @@ const PLATFORM_STATUS_LABELS = Object.freeze({
 })
 
 const PLATFORM_ENUM_LABELS = Object.freeze({
+  STAFF_PC: '教职工电脑端', STUDENT_PC: '学生电脑端', TEACHER_MINIAPP: '教师小程序', STUDENT_MINIAPP: '学生小程序',
   PLATFORM: '平台端', TENANT: '学校端',
   HIGH: '高', MEDIUM: '中', LOW: '低', CRITICAL: '严重', NORMAL: '正常',
   PRODUCTION: '生产环境', PROD: '生产环境', DEMO: '演示环境', TEST: '测试环境',

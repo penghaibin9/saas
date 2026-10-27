@@ -5,6 +5,7 @@
     :ctx="ctx"
     @menu-select="onMenuSelect"
   >
+    <div v-if="ctx?.dictionaryUnavailable" class="dictionary-read-warning" role="status">学校字典读取不完整，当前暂用业务内置名称；不代表本校配置已生效。<button type="button" @click="loadContext">重新读取</button></div>
     <router-view v-if="ctx" :key="ctxVersion" :ctx="ctx" />
     <LoadingState v-else text="正在加载学生中心…" />
   </BasePortalLayout>
@@ -51,3 +52,7 @@ export default {
   }
 }
 </script>
+<style scoped>
+.dictionary-read-warning { margin: 12px; padding: 12px; border: 1px solid var(--warning-500, #d97706); border-radius: 8px; }
+.dictionary-read-warning button { margin-left: 12px; }
+</style>

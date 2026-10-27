@@ -9,9 +9,9 @@
     <div v-else class="sw-role-grid" data-testid="capability-grid">
       <article v-for="item in items" :key="item.capabilityKey" class="sw-card sw-pad sw-stack sw-capability-card" :data-capability="item.capabilityKey">
         <div class="sw-capability-head"><span class="sw-symbol"><AppIcon name="workbench" :size="22" /></span><h2>{{ item.label }}</h2><span class="sw-tag" :class="item.allowed ? 'sw-tag--green' : 'sw-tag--orange'">{{ item.allowed ? '当前可用' : '当前不可用' }}</span></div>
-        <p class="sw-code">{{ item.capabilityKey }} · 版本 {{ countLabel(item.version) }}</p>
+        <details><summary>实施人员使用</summary><p class="sw-code">能力标识 {{ item.capabilityKey }} · 版本 {{ countLabel(item.version) }}</p><p class="sw-code">状态依据 {{ item.reasonCode || '未返回' }}</p></details>
         <dl class="cap-state-grid"><div><dt>平台授权</dt><dd>{{ boolLabel(item.entitled) }}</dd></div><div><dt>学校开关</dt><dd>{{ boolLabel(item.schoolEnabled, '已启用', '已关闭') }}</dd></div><div><dt>准备就绪</dt><dd>{{ boolLabel(item.ready) }}</dd></div><div><dt>当前可用</dt><dd>{{ boolLabel(item.allowed) }}</dd></div></dl>
-        <p class="sw-muted" :title="item.reasonCode || ''">{{ item.reasonText || (item.expiresAt ? `启用至 ${item.expiresAt}` : item.reasonCode === 'OK' ? '各项状态正常' : '状态说明未取得，请刷新核对') }}</p>
+        <p class="sw-muted">{{ item.reasonText || (item.expiresAt ? `启用至 ${item.expiresAt}` : item.reasonCode === 'OK' ? '各项状态正常' : '状态说明未取得，请刷新核对') }}</p>
         <div class="sw-between cap-footer"><span class="sw-muted">学校开关</span><button type="button" class="cap-switch" role="switch" :aria-checked="item.schoolEnabled === true"
           :aria-label="`${item.label}学校开关`" :disabled="!canWrite || submitting || uncertain || !validItem(item) || (!item.schoolEnabled && (!item.entitled || (item.dependencyUnmet || []).length > 0))"
           :title="!canWrite ? '只读身份' : !item.entitled ? '未授权，不能由学校开通' : ''" @click="prepare(item)"><span /></button></div>

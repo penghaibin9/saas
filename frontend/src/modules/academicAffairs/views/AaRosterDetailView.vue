@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.back()">返回</AppButton>
+      <AppButton @click="systemReturnTo ? $router.push(systemReturnTo) : $router.back()">{{ systemReturnTo ? '返回系统管理' : '返回' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -67,6 +67,7 @@ import { AppSectionCard, AppTimeline, AppConfirmDialog } from '@/components/comm
 import AppDescriptionList from '@/components/common/display/AppDescriptionList.vue'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import { systemRelationshipReturnTo } from '@/utils/systemRelationshipNavigation'
 
 const STATUS_LABEL = {
   NORMAL: '正常', MERGED: '已合并', RECYCLED: '已回收', PENDING_REGISTER: '待注册',
@@ -92,6 +93,7 @@ export default {
     }
   },
   computed: {
+    systemReturnTo() { return systemRelationshipReturnTo(this.$route.query.returnTo) },
     studentId() {
       return this.$route.params.studentId
     },

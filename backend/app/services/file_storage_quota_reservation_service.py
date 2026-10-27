@@ -1,6 +1,6 @@
 """阶段 9：并发安全的文件存储配额预留、消费、释放与对账。
 
-所有容量判定都在 ``TenantStorageQuota`` 行锁内完成。真实 FileObject 与仍处于 HELD 的预留
+所有入口先锁学校行，再锁学校配额；跨模块也共同受平台总上限约束。真实 FileObject 与仍处于 HELD 的预留
 共同占用配额，避免两个并发请求都看到旧用量后同时写入。服务器物理写入以 object key 为
 source_id；后续 FileObject 出现时会自动消费对应预留，进程崩溃则由过期回收释放。
 """
@@ -18,6 +18,24 @@ from app.models.file_quota import FileStorageQuotaReservation
 ACTIVE = "HELD"
 FINAL = {"CONSUMED", "RELEASED", "EXPIRED"}
 DEFAULT_TTL_SECONDS = 60 * 60
+
+
+def effective_total_limit(commercial_bytes: int, school_bytes: int | None, hard_limit_enabled: bool):
+    limits = {}
+    if int(commercial_bytes or 0) > 0:
+        limits["PLATFORM_COMMERCIAL"] = int(commercial_bytes)
+    if hard_limit_enabled and int(school_bytes or 0) > 0:
+        limits["SCHOOL_HARD_QUOTA"] = int(school_bytes)
+    if not limits:
+        return None, []
+    lowest = min(limits.values())
+    return lowest, [source for source, limit in limits.items() if limit == lowest]
+
+
+def _lock_tenant_storage(db, tenant_id: int):
+    from app.models import Tenant
+    if db.scalar(select(Tenant.id).where(Tenant.id == tenant_id, Tenant.is_deleted.is_(False)).with_for_update()) is None:
+        raise AppException("DATA_NOT_FOUND", "学校存储范围不存在", http_status=404)
 
 
 def _tenant_id(value: int | None = None) -> int:
@@ -146,7 +164,7 @@ def reserve_quota(
     ttl_seconds: int = DEFAULT_TTL_SECONDS,
     db=None,
 ) -> FileStorageQuotaReservation | None:
-    """原子占用容量；未配置硬配额时返回 None。"""
+    """原子占用容量；平台总上限与学校硬配额均未配置时返回 None。"""
     if not db_enabled():
         return None
     from app.models.file import TenantStorageQuota
@@ -163,11 +181,15 @@ def reserve_quota(
     owns = db is None
     working = db or get_sessionmaker()()
     try:
+        _lock_tenant_storage(working, tenant_id)
+        from app.services.entitlement_reconciliation_service import commercial_storage_limit_bytes
+        commercial = commercial_storage_limit_bytes(tenant_id)
         quota = working.scalars(select(TenantStorageQuota).where(
             TenantStorageQuota.tenant_id == tenant_id,
             TenantStorageQuota.is_deleted.is_(False),
         ).with_for_update()).first()
-        if not quota or not quota.hard_limit_enabled:
+        school_hard_limit = bool(quota and quota.hard_limit_enabled)
+        if not commercial and not school_hard_limit:
             if owns:
                 working.rollback()
             return None
@@ -199,21 +221,22 @@ def reserve_quota(
 
         actual = _actual_usage(working, tenant_id)
         held = _held_usage(working, tenant_id, now)
-        total_limit = int(quota.total_quota_bytes or 0)
-        if total_limit > 0 and actual + held + requested > total_limit:
+        total_limit, limit_sources = effective_total_limit(commercial, quota.total_quota_bytes if quota else None, school_hard_limit)
+        if total_limit is not None and actual + held + requested > total_limit:
             raise AppException(
-                "TENANT_STORAGE_QUOTA_EXCEEDED",
-                "学校文件存储空间已满，请清理过期文件或联系学校管理员扩容",
+                "COMMERCIAL_STORAGE_QUOTA_EXCEEDED" if "PLATFORM_COMMERCIAL" in limit_sources else "TENANT_STORAGE_QUOTA_EXCEEDED",
+                "已达到当前有效存储总上限，不能新增文件占用，请核对容量与授权来源",
                 http_status=409,
                 details={
                     "usedBytes": actual,
                     "reservedBytes": held,
                     "quotaBytes": total_limit,
                     "requestedBytes": requested,
+                    "limitSources": limit_sources,
                 },
             )
 
-        module_limits = dict(quota.module_quota_json or {})
+        module_limits = dict(quota.module_quota_json or {}) if school_hard_limit else {}
         module_limit = int(module_limits.get(module) or 0)
         if module_limit > 0:
             module_actual = _actual_module_usage(working, tenant_id, module)

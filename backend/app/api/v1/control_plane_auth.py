@@ -55,15 +55,13 @@ def login(body: PasswordLoginRequest):
     result = p0.login_with_password(
         identifier, body.password, body.tenantCode, body.clientType, identifier_type=identifier_type,
     )
-    audit.record("登录", method="POST", path="/api/v1/auth/login",
-                 status_code=200, target_type="auth", target_id=result["userId"])
+    audit.record_authenticated_event(result, path="/api/v1/auth/login")
     return success(result, message="登录成功")
 
 
 @router.post("/refresh", summary="刷新令牌（按当前有效安全策略重新签发）")
 def refresh(body: RefreshRequest):
     result = p0.refresh(body.refreshToken)
-    audit.record("TOKEN_REFRESH", target_type="auth", target_id="policy-bound")
     return success(result, message="已刷新")
 
 
@@ -84,8 +82,7 @@ def wx_bind(body: WxBindRequest):
     )
     result = p0.wx_bind(body.wxToken, body.loginName.strip(), body.password, body.tenantCode,
                         binding_approval_token=body.bindingApprovalToken, client_type=body.clientType)
-    audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
-                 status_code=200, target_type="auth", target_id=result.get("userId", "-"))
+    audit.record_authenticated_event(result, action="微信绑定", path="/api/v1/auth/wx-bind")
     return success(result, message="绑定成功")
 
 

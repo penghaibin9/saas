@@ -226,7 +226,7 @@ function taskRow(t = {}) {
     taskId: String(t.taskId || ''),
     instanceId: String(t.instanceId || ''),
     bizType: t.sourceBizType || 'GENERAL',
-    bizTypeLabel: BIZ_LABEL[t.sourceBizType] || '审批事项',
+    bizTypeLabel: t.sourceBizTypeLabel || BIZ_LABEL[t.sourceBizType] || '审批事项',
     title: t.title || '',
     applicant: {
       name: t.applicantName || '—',

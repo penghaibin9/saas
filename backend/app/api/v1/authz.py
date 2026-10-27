@@ -69,7 +69,8 @@ def login(body: LoginBody):
     if db_enabled():
         result = auth_service_db.login_with_password(
             body.loginName.strip(), body.password, body.tenantCode, body.clientType)
-        audit_log.record("LOGIN", f"user:{result['userId']}", {"clientType": body.clientType})
+        from app.services.operation_audit_service import record_authenticated_event
+        record_authenticated_event(result, action="LOGIN", path="/api/v1/authz/login")
         return success(result)
     if not settings.mock_login_enabled:
         raise AppException("NO_PERMISSION", "演示登录已关闭，请启用数据库并使用正式账号登录")

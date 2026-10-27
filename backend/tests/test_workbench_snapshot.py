@@ -174,6 +174,10 @@ def test_workbench_summary_matches_approval_authority(client, db_mode):
     assert summary["overdue"] == approval_summary["overdue"] == 1
     assert summary["nearDeadline"] == approval_summary["nearDeadline"] == 1
     assert summary["doneToday"] == approval_summary["doneToday"] == 1
-    # The grade-entry todo is real and must still show up in the UnifiedTodo-authority count
-    # that the inline "最近待办" widget and its own typeCue use — just not in this summary.
-    assert payload["data"]["count"]["byType"].get("AA_GRADE_ENTRY") == 1
+    # 同账号辅导员身份不能录成绩；切回任课教师后仍保留该业务待办，且不混入请假审批。
+    assert payload["data"]["count"]["byType"].get("AA_GRADE_ENTRY", 0) == 0
+    teacher = client.get("/api/v1/admin/workbench-snapshot?pageSize=8",
+                         headers=_headers("TEACHER", "ACADEMIC_TEACHER")).json()
+    assert teacher["code"] == 0, teacher
+    assert teacher["data"]["count"]["byType"].get("AA_GRADE_ENTRY") == 1
+    assert teacher["data"]["summary"]["pending"] == 0

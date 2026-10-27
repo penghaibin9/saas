@@ -224,6 +224,7 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { teachingTaskWorkbenchApi } from '@/modules/academicAffairs/api/teaching-task-workbench.api'
 import { TASK_STATUS, TASK_BATCH_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { toast } from '@/utils/toast'
+import { systemRelationshipReturnTo } from '@/utils/systemRelationshipNavigation'
 import { matchPermission } from '@/config/navPlan'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
 import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
@@ -327,6 +328,7 @@ export default {
     },
     returnToSource() {
       const target = this.$route.query.returnTo
+      if (systemRelationshipReturnTo(target)) return this.$router.push(systemRelationshipReturnTo(target))
       this.$router.push(typeof target === 'string' && /^\/admin\/academic-affairs\/teaching-tasks(?:[/?]|$)/.test(target) ? target : '/admin/academic-affairs/teaching-tasks')
     },
     onTeacherPicked(value, items) {

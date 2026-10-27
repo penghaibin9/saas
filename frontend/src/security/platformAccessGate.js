@@ -64,6 +64,7 @@ export function resolvePlatformHome(context = cachedContext) {
   if (duties.has('customerSuccess.manage')) return '/admin/platform/customer-success'
   if (duties.has('incident.manage')) return '/admin/platform/incidents'
   if (duties.has('audit.view')) return '/admin/platform/audit'
+  if (duties.has('businessForms.view')) return '/admin/platform/business-forms'
   if (duties.has('tenant.view')) return '/admin/platform/tenants'
   return '/security/403'
 }
@@ -80,10 +81,10 @@ export function toPlatformUiContext(context = cachedContext) {
       tenantId: '0', operatorName, schoolName: '', platformDisplayName: '高校学生全生命周期管理平台',
       schoolLogo: '', schoolBadge: '', brandColor: '#2563eb', watermarkText: '平台运营数据 · 严禁外传'
     },
-    currentRole: { userId: String(context.subjectId || user.userId), userName: operatorName, roleCode, roleName: roleCode },
+    currentRole: { userId: String(context.subjectId || user.userId), userName: operatorName, roleCode, roleName: ({ PLATFORM_OWNER: '平台负责人', PLATFORM_SUPER_ADMIN: '平台超级管理员', PLATFORM_COMMERCIAL: '平台商务人员', PLATFORM_DELIVERY: '平台交付人员', PLATFORM_CUSTOMER_SUCCESS: '平台客户服务人员', PLATFORM_OPERATIONS: '平台运维人员', PLATFORM_SECURITY_AUDITOR: '平台安全审计员' })[roleCode] || '平台操作员' },
     dataScope: {
       scopeCode: root ? 'PLATFORM_ALL' : 'PLATFORM_CAPABILITY',
-      scopeName: root ? '全平台控制面' : `平台主管职责：${duties.join('、') || '无已授权能力'}`
+      scopeName: root ? '全平台控制面' : duties.length ? '按已授权平台职责' : '无已授权平台能力'
     },
     platformAccessContext: context,
     permissionPatterns: platformDutyPatterns(duties)

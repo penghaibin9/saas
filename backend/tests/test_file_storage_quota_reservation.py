@@ -27,6 +27,9 @@ def _context_and_cleanup(db_mode):
     set_current_user({"userId": "919", "userType": "STAFF", "realName": "配额预留测试"})
     db = get_sessionmaker()()
     try:
+        from app.models import Tenant
+        if db.get(Tenant, TENANT_ID) is None:
+            db.add(Tenant(id=TENANT_ID, tenant_code="quota-reservation-test", school_name="独立配额预留测试学校"))
         db.execute(delete(FileStorageQuotaReservation).where(
             FileStorageQuotaReservation.tenant_id == TENANT_ID
         ))
@@ -228,3 +231,53 @@ def test_direct_session_and_physical_storage_paths_use_reservations():
     assert "PHYSICAL_PERSIST_FAILED" in governed
     assert "COS_UPLOAD_SESSION_EXPIRED" in cleanup
     assert "expire_reservations" in worker
+
+
+def _commercial_limit_one_mib():
+    from app.models import PlatformConfig
+    with get_sessionmaker()() as db:
+        db.add(PlatformConfig(tenant_id=TENANT_ID, config_type="TENANT_META", config_key="-",
+                              config_json={"packageCode": "professional", "storageLimitMb": 1},
+                              enabled=True, status="ACTIVE"))
+        db.commit()
+
+
+@pytest.mark.parametrize("school_quota", ["missing", "soft", "higher"])
+def test_commercial_total_caps_missing_soft_and_legacy_higher_school_quota(school_quota):
+    _commercial_limit_one_mib()
+    if school_quota != "missing":
+        _quota(2 * 1024 * 1024)
+        if school_quota == "soft":
+            with get_sessionmaker()() as db:
+                row = db.scalar(select(TenantStorageQuota).where(TenantStorageQuota.tenant_id == TENANT_ID))
+                row.hard_limit_enabled = False
+                db.commit()
+    first = reserve_quota(reservation_key="commercial-first", source_type="TEST", source_id="first", size_bytes=700_000)
+    assert first.status == "HELD"
+    with pytest.raises(AppException) as exc:
+        reserve_quota(reservation_key="commercial-over", source_type="TEST", source_id="over", size_bytes=400_000)
+    assert exc.value.code == "COMMERCIAL_STORAGE_QUOTA_EXCEEDED"
+    allowed = reserve_quota(reservation_key="commercial-allowed", source_type="TEST", source_id="allowed", size_bytes=100_000)
+    assert allowed.status == "HELD"
+    assert held_bytes() == 800_000
+
+
+def test_concurrent_different_modules_share_the_same_commercial_total():
+    from concurrent.futures import ThreadPoolExecutor
+    from threading import Barrier
+    _commercial_limit_one_mib()
+    barrier = Barrier(2)
+
+    def reserve(module):
+        barrier.wait(timeout=10)
+        try:
+            reserve_quota(tenant_id=TENANT_ID, reservation_key=f"parallel-{module}", source_type="TEST",
+                          source_id=module, size_bytes=600_000, module_code=module)
+            return "HELD"
+        except AppException as error:
+            return error.code
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        results = list(pool.map(reserve, ["INTERNSHIP", "GRADUATION"]))
+    assert sorted(results) == ["COMMERCIAL_STORAGE_QUOTA_EXCEEDED", "HELD"]
+    assert held_bytes() == 600_000

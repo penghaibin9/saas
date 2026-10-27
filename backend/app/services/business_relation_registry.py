@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 
 from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
+from app.core.timeutil import iso_utc, utc_now
 from app.db.session import get_sessionmaker
 
 _ROOT = Path(__file__).resolve().parents[3]
@@ -214,8 +215,20 @@ def inspect_relation(relation_type: str, *, tenant_id: int | None = None,
     try:
         base = select(model).where(model.tenant_id == tid, model.is_deleted.is_(False))
         total = int(db.scalar(select(func.count()).select_from(base.subquery())) or 0)
-        rows = db.scalars(base.limit(2000)).all()
+        rows = db.scalars(base.order_by(model.id).limit(2000)).all()
         active_users = _active_user_ids(db, tid)
+        active_keys = set()
+        if item.get('subjectKeyKind') == 'ACCOUNT_KEY':
+            from app.models import User
+            for account in db.execute(select(User.id, User.login_name).where(User.tenant_id == tid,
+                    User.is_deleted.is_(False), User.status == 'ACTIVE')).all():
+                active_keys.update((str(account.id), f'db-{account.id}', account.login_name))
+        domain_subjects = None
+        if item.get('subjectKeyKind') == 'DOMAIN_ID':
+            domain_model = _import_attr(item.get('subjectDomainModel') or '')
+            if domain_model is not None:
+                domain_subjects = set(db.scalars(select(domain_model.id).where(domain_model.tenant_id == tid,
+                    domain_model.is_deleted.is_(False))).all())
 
         issues: dict[str, list[dict]] = {k: [] for k in _ISSUE_TEXT}
         active_total = 0
@@ -236,8 +249,29 @@ def inspect_relation(relation_type: str, *, tenant_id: int | None = None,
                 continue
             if item.get("subjectKeyKind") == "USER_ID" and str(subject) not in active_users:
                 issues[ISSUE_DANGLING_SUBJECT].append({"id": str(row.id), "subject": str(subject)})
+            elif item.get('subjectKeyKind') == 'ACCOUNT_KEY' and str(subject) not in active_keys:
+                issues[ISSUE_DANGLING_SUBJECT].append({'id': str(row.id), 'subject': str(subject)})
+            elif domain_subjects is not None and subject not in domain_subjects:
+                issues[ISSUE_DANGLING_SUBJECT].append({'id': str(row.id), 'subject': str(subject)})
             elif item.get("subjectKeyKind") == "NAME_TEXT":
                 issues[ISSUE_UNSTABLE_KEY_ONLY].append({"id": str(row.id), "legacy": str(subject)})
+        prefixes = {'COUNSELOR_CLASS': 'class', 'HEAD_TEACHER_CLASS': 'class', 'GD_MENTOR_STUDENT': 'gdStudent',
+                    'INTERNSHIP_ADVISOR_STUDENT': 'internship', 'TEACHING_CLASS_TEACHER': 'teachingClass'}
+        if relation_type in prefixes:
+            from app.services.business_identity_objects import describe_objects
+            by_id = {str(row.id): row for row in rows}
+            samples = [sample for group in issues.values() for sample in group[:sample_limit]]
+            for sample in samples:
+                source = by_id[sample['id']]
+                identifier = source.teaching_class_id if relation_type == 'TEACHING_CLASS_TEACHER' else source.id
+                sample['objectReference'] = f'{prefixes[relation_type]}:{identifier}'
+            descriptions = describe_objects(db, tid, {sample['objectReference'] for sample in samples})
+            for sample in samples:
+                sample['object'] = descriptions[sample['objectReference']]
+    except AppException:
+        raise
+    except Exception as exc:
+        raise AppException('SERVER_ERROR', '本类型业务数据读取失败，请重试或联系实施人员', http_status=503) from exc
     finally:
         db.close()
 
@@ -247,6 +281,7 @@ def inspect_relation(relation_type: str, *, tenant_id: int | None = None,
         "ownerModule": item.get("ownerModule"),
         "sourceModel": item.get("sourceModel"),
         "scanned": len(rows),
+        "checkedAt": iso_utc(utc_now()),
         "total": total,
         "truncated": total > len(rows),
         "activeObjects": active_total,

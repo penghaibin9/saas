@@ -1,7 +1,7 @@
 /**
  * 学校级系统管理能力目录（唯一业务口径）。
  *
- * 收口为 8 个二级工作区；既有真实能力归入对应工作区，不删除。
+ * 9个日常工作区及独立实施空间；能力标识、路径和授权口径保持稳定。
  * 平台运营的租户、套餐、全局权限点维护不在这里。
  */
 const action = (key, label, risk = 'NORMAL') => ({ key, label, risk })
@@ -86,7 +86,6 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
       { key: 'sys-dictionaries-fields', label: '数据字典', path: '/admin/system/dictionaries-fields', permissionKey: 'system.config.view', view: 'dictionaries', actions: [action('config:dictionary:manage', '维护本校字典', 'HIGH')] },
       { key: 'sys-module-entitlements', label: '模块授权与业务开关', path: '/admin/system/module-entitlements', permissionKey: 'system.config.feature.view', view: 'module-entitlements', actions: [action('config:feature:toggle', '调整业务开关', 'HIGH')] },
       { key: 'sys-master-data', label: '主数据责任与数据质量', path: '/admin/system/master-data', permissionKey: 'system.config.view', view: 'master-data', actions: [] },
-      { key: 'sys-business-forms', label: '合规与业务表单', path: '/admin/system/business-forms', permissionKey: 'systemAdmin.config.view', view: 'business-forms', actions: [action('systemAdmin.config.manage', '发布或停用表单版本', 'HIGH')] },
       { key: 'sys-academic-calendar', label: '学年学期与业务日历', path: '/admin/system/academic-calendar', permissionKey: 'systemAdmin.academicCalendar.view', view: 'academic-calendar', actions: [action('systemAdmin.academicCalendar.manage', '切换全校学期', 'HIGH'), action('systemAdmin.academicCalendar.manage', '维护业务窗口')] }
     ]
   },
@@ -144,10 +143,37 @@ const RAW_SYSTEM_MANAGEMENT_CATALOG = [
  */
 const normalizePermissionKey = (permissionKey) => String(permissionKey || '').replace(/^system\./, 'systemAdmin.')
 
-export const SYSTEM_MANAGEMENT_CATALOG = RAW_SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
-  ...group,
-  items: group.items.map((item) => ({ ...item, permissionKey: normalizePermissionKey(item.permissionKey) }))
-}))
+const WORKSPACE_LAYOUT = [
+  ['sys-overview', '管理概览'], ['sys-identity', '账号管理'], ['sys-org', '组织与任职'],
+  ['sys-access', '角色与权限'], ['sys-data-tasks', '数据任务'], ['sys-modules', '学校设置'],
+  ['sys-workflow', '流程管理'], ['sys-security-audit', '安全与审计'],
+  ['sys-integration-migration', '第三方对接'], ['sys-implementation', '实施与交付']
+]
+const DATA_TASK_KEYS = new Set(['sys-teacher-import', 'sys-student-import', 'sys-data-exchange', 'sys-master-data', 'sys-jobs'])
+const SECONDARY_KEYS = new Set(['sys-iam-overview', 'sys-role-templates', 'sys-role-permissions', 'sys-login-audit'])
+const ENTRY_LABELS = { 'sys-role-members': '本校角色', 'sys-operation-audit': '日志中心', 'sys-integration-connections': '接口连接与凭证' }
+function workspaceFor(group, item) {
+  if (item.key.startsWith('sys-implementation-') || item.key === 'sys-migration-workbench') return 'sys-implementation'
+  if (DATA_TASK_KEYS.has(item.key)) return 'sys-data-tasks'
+  if (item.key === 'sys-login-policy') return 'sys-security-audit'
+  if (['sys-file-storage-governance', 'sys-communications'].includes(item.key)) return 'sys-modules'
+  return group.key
+}
+export const SYSTEM_MANAGEMENT_CATALOG = WORKSPACE_LAYOUT.map(([key, label]) => {
+  const original = RAW_SYSTEM_MANAGEMENT_CATALOG.find(group => group.key === key)
+  return {
+    ...original, key, label,
+    icon: original?.icon || (key === 'sys-data-tasks' ? '⇄' : '◇'),
+    description: key === 'sys-data-tasks' ? '开户导入、任务记录与数据质量，按本人、模块和全校范围授权。'
+      : key === 'sys-implementation' ? '开局、安装版本、实施变更、历史迁移与验收记录。' : original.description,
+    items: RAW_SYSTEM_MANAGEMENT_CATALOG.flatMap(group => group.items
+      .filter(item => workspaceFor(group, item) === key)
+      .map(item => ({ ...item, label: ENTRY_LABELS[item.key] || item.label,
+        searchAliases: [group.label, item.label], menuSecondary: SECONDARY_KEYS.has(item.key),
+        permissionKey: normalizePermissionKey(item.permissionKey) })))
+      .sort((a, b) => Number(['sys-role-members', 'sys-operation-audit'].includes(b.key)) - Number(['sys-role-members', 'sys-operation-audit'].includes(a.key)))
+  }
+})
 
 export const SYSTEM_MANAGEMENT_ITEMS = SYSTEM_MANAGEMENT_CATALOG.flatMap((group) =>
   group.items.map((item) => ({ ...item, groupKey: group.key, groupLabel: group.label, groupDescription: group.description }))

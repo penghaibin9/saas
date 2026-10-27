@@ -1,8 +1,8 @@
 {
-  "generatedAt": "2026-10-24T07:19:13.554Z",
-  "exactCount": 456,
+  "generatedAt": "2026-10-27T04:41:30.629Z",
+  "exactCount": 454,
   "patternCount": 76,
-  "redirectCount": 20,
+  "redirectCount": 19,
   "aliasCount": 0,
   "exact": [
     "/",
@@ -284,6 +284,7 @@
     "/admin/platform/api-access",
     "/admin/platform/audit",
     "/admin/platform/brands",
+    "/admin/platform/business-forms",
     "/admin/platform/changes",
     "/admin/platform/commercial-control",
     "/admin/platform/customer-success",
@@ -409,7 +410,6 @@
     "/admin/system/accounts/staff",
     "/admin/system/accounts/students",
     "/admin/system/audit-evidence",
-    "/admin/system/business-forms",
     "/admin/system/business-relations",
     "/admin/system/communications",
     "/admin/system/config",
@@ -418,7 +418,6 @@
     "/admin/system/dictionaries-fields",
     "/admin/system/file-storage-governance",
     "/admin/system/iam",
-    "/admin/system/identity-import",
     "/admin/system/identity-import/students",
     "/admin/system/identity-import/teachers",
     "/admin/system/implementation/acceptance",
@@ -440,7 +439,6 @@
     "/admin/system/overview",
     "/admin/system/platform-integrity",
     "/admin/system/role-assignments",
-    "/admin/system/roles",
     "/admin/system/scopes",
     "/admin/system/security-changes",
     "/admin/system/sensitive-audit",
@@ -616,10 +614,6 @@
     {
       "from": "/admin/system",
       "to": "/admin/system/overview"
-    },
-    {
-      "from": "/admin/system/identity-import",
-      "to": "/admin/system/identity-import/students"
     }
   ],
   "aliases": []

@@ -1,5 +1,12 @@
 /** UI-only contracts. Authorization and business state remain server-owned. */
 import { permissionDisplayLabel } from './permissionLabels.js'
+import { getVisibleNavPlan } from '../../../config/navPlan.js'
+import permissionCatalog from '../../../../../shared/contracts/permission-catalog.json' with { type: 'json' }
+import concreteCatalog from '../../../../../shared/contracts/permission-catalog-b8-concrete.json' with { type: 'json' }
+import compatibilityCatalog from '../../../../../shared/contracts/permission-catalog-b8-compatibility.json' with { type: 'json' }
+
+const knownRoleCodes = new Set([...permissionCatalog.entries.filter(item => item.plane === 'TENANT'
+  && item.lifecycle === 'ACTIVE').map(item => item.permissionCode), ...concreteCatalog.entries, ...compatibilityCatalog.entries])
 export function actionAllowed(ctx, key) {
   const value = ctx?.permissionActions?.[key]
   return value?.visible === true && value?.allowed === true
@@ -161,6 +168,36 @@ export function visibleMenuPreview(groups, menuKeys) {
     && !node.advanced && node.path && menuKeys.includes(node.key))
 }
 
+export function rolePermissionSummary(detail, draft, editable) {
+  const granted = concreteCodes(detail.permissionCodes)
+  const writable = new Set(editable ? draft.groups.flatMap(group => group.rows.map(node => node.key)) : [])
+  const preserved = granted.filter(code => !writable.has(code))
+  const selected = editable ? concreteCodes([...draft.menuKeys, ...draft.buttonKeys]) : []
+  return {
+    currentTotal: granted.length,
+    editableAssigned: granted.length - preserved.length,
+    preserved: preserved.length,
+    selected: selected.length,
+    projectedTotal: new Set([...preserved, ...selected]).size
+  }
+}
+
+export function roleMenuPreview(detail, draft, editable) {
+  const granted = concreteCodes(detail.permissionCodes)
+  const writable = new Set(editable ? draft.groups.flatMap(group => group.rows.map(node => node.key)) : [])
+  const codes = editable
+    ? [...granted.filter(code => !writable.has(code)), ...draft.menuKeys, ...draft.buttonKeys]
+    : granted
+  const unmappedCount = concreteCodes(codes).filter(code => !knownRoleCodes.has(code)).length
+  // Reuse live navigation semantics: one permission can expose several distinct entries.
+  const nodes = getVisibleNavPlan({ permissionPatterns: codes, ctxKey: `role-preview:${detail.id}` })
+    .filter(group => !group.platformOnly)
+    .flatMap(group => group.children.flatMap(mod => mod.children.length ? mod.children : [mod]))
+    .filter(node => node.path && !node.disabled)
+  const items = [...new Map(nodes.map(node => [node.path, { ...node, key: node.path }])).values()]
+  return { items, available: true, complete: unmappedCount === 0, unmappedCount }
+}
+
 /** Account IDs and student-profile IDs are different domains. */
 export function accessResource(row, resourceType) {
   if (['STUDENT', 'INTERN_STUDENT', 'GRADUATION_STUDENT'].includes(resourceType)) {
@@ -198,6 +235,6 @@ export function makeReadOnlyDraft(detail, roleId) {
 }
 
 export function isRoleWorkspaceRoute(route) {
-  return route.path === '/admin/system/roles' || (route.path === '/admin/system/iam'
-    && ['roles', 'templates', 'permissions', 'members'].includes(String(route.query?.surface || '')))
+  return route.path === '/admin/system/iam'
+    && ['roles', 'templates', 'permissions', 'members'].includes(String(route.query?.surface || ''))
 }

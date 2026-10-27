@@ -132,17 +132,18 @@ export const SYSTEM_EXPORT_OPTIONS = {
   logs: {
     scopes: [
       { value: 'FILTERED', label: '当前筛选结果' },
-      { value: 'RANGE_30D', label: '近 30 天' }
+      { value: 'RANGE_30D', label: '近30个自然日（含今天，保留其他已查询条件）' }
     ],
     fields: [
       { key: 'time', label: '时间', sensitive: false, defaultChecked: true },
       { key: 'who', label: '操作人', sensitive: false, defaultChecked: true },
       { key: 'action', label: '动作', sensitive: false, defaultChecked: true },
       { key: 'target', label: '对象', sensitive: false, defaultChecked: true },
-      { key: 'ip', label: 'IP（脱敏）', sensitive: true, defaultChecked: true, maskNote: '固定脱敏' },
+      { key: 'result', label: '结果', sensitive: false, defaultChecked: true },
+      { key: 'ip', label: '网络地址（脱敏）', sensitive: true, defaultChecked: true, maskNote: '固定脱敏' },
       { key: 'detail', label: '详情', sensitive: false, defaultChecked: false }
     ],
     watermark: true,
-    note: '审计日志仅支持导出；导出动作本身也会写入审计日志。'
+    note: '当前筛选结果以最近一次查询为准；修改条件后请先查询。导出动作本身也会写入审计日志。'
   }
 }

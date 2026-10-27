@@ -745,7 +745,7 @@ export const NAV_PLAN = [
   ]),
 
   /* ═══════════ 一级⑥：系统管理 ═══════════
-     学校级收口为 8 个二级工作区。平台租户、套餐、全局菜单及权限点目录
+     学校级9个日常工作区及独立实施空间。平台租户、套餐、全局菜单及权限点目录
      一律留在 PLATFORM_PLAN，避免学校管理员越权和两套角色权限重复维护。 */
   grp('system', '系统管理', 'systemAdmin', SYSTEM_MANAGEMENT_CATALOG.map((group) =>
     mod(group.key, group.label, group.items[0].path, group.items.map((item) => {
@@ -753,6 +753,8 @@ export const NAV_PLAN = [
       return leafFactory(item.label, item.path, item.permissionKey, 'CONFIG_VIEW', {
         systemCapabilityKey: item.key,
         systemCapabilityGroup: group.key,
+        searchAliases: item.searchAliases || [],
+        menuSecondary: !!item.menuSecondary,
         description: item.description
       })
     }))
@@ -1041,6 +1043,7 @@ export function searchNavPlan(query, permissionPatterns = null) {
     if (applyPerm && row.permissionAny?.length && !row.permissionAny.some((key) => matchPermission(permissionPatterns, key))) continue
     if (![row.label, ...(row.searchAliases || [])].some((label) => label.toLowerCase().includes(q))) continue
     out.push({
+      groupKey: row.groupKey,
       label: row.label,
       path: row.path,
       status: row.status,

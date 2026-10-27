@@ -18,9 +18,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
-from sqlalchemy import select
+from sqlalchemy import func, literal, select, union_all
 
 from app.core.exceptions import AppException
+from app.core.timeutil import iso_utc, tenant_tz, utc_now_naive
 from app.services.db_service import _tid
 
 REGISTRY_PATH = Path(__file__).resolve().parents[3] / "docs" / "architecture" / "job-registry.yaml"
@@ -56,46 +57,80 @@ def _model_for(kind_meta: dict):
     return getattr(mod, kind_meta["model"])
 
 
-def _row_to_dto(kind: str, kind_meta: dict, row) -> dict:
+def available_actions(kind_meta: dict, row, *, can_manage: bool) -> dict:
+    status = str(getattr(row, kind_meta["statusField"]))
+    expired = bool(getattr(row, "expires_at", None) and row.expires_at <= utc_now_naive())
+    revision_field = kind_meta.get("revisionField")
+    stale = bool(revision_field and kind_meta.get("currentRevision")
+                 and getattr(row, revision_field, None) != kind_meta["currentRevision"])
+    result = {}
+    for action, statuses in (("retry", kind_meta.get("retryableFrom") or []),
+                             ("cancel", kind_meta.get("cancellableFrom") or [])):
+        reason = ("当前身份没有任务管理权限" if not can_manage else "任务已过期，请回所属业务核对" if expired
+                  else "任务版本已变化，请回所属业务重新校验" if action == "retry" and stale
+                  else "此类任务不支持在此办理" if not statuses
+                  else "当前状态不可执行此操作" if status not in statuses else "")
+        result[action] = {"allowed": not reason, "reason": reason}
+    return result
+
+
+def _row_to_dto(kind: str, kind_meta: dict, row, *, can_manage: bool = False) -> dict:
     scope_field = kind_meta.get("scopeSnapshotField")
     revision_field = kind_meta.get("revisionField")
     return {
         "jobId": f"{kind}:{row.id}",
         "kind": kind,
-        "ownerModule": kind_meta.get("ownerModule"),
+        "ownerModule": getattr(row, "module_code", None) or kind_meta.get("ownerModule"),
         "tenantId": str(row.tenant_id),
-        "initiator": str(row.created_by) if row.created_by is not None else None,
+        "initiator": str(getattr(row, "operator_id", None) or row.created_by) if (getattr(row, "operator_id", None) or row.created_by) is not None else None,
         "status": getattr(row, kind_meta["statusField"]),
         "scopeSnapshot": getattr(row, scope_field, None) if scope_field else None,
         "revision": getattr(row, revision_field, None) if revision_field else None,
         "idempotency": getattr(row, "idempotency_key", None) or getattr(row, "dedupe_key", None),
         "version": int(row.version or 0),
-        "createdAt": row.created_at.isoformat() if row.created_at else None,
-        "updatedAt": row.updated_at.isoformat() if getattr(row, "updated_at", None) else None,
+        "createdAt": iso_utc(row.created_at), "timeZone": str(tenant_tz()),
+        "updatedAt": iso_utc(getattr(row, "updated_at", None)),
+        "availableActions": available_actions(kind_meta, row, can_manage=can_manage),
     }
 
 
 def list_jobs(db, *, kind: str | None = None, status: str | None = None,
-             page: int = 1, page_size: int = 50) -> tuple[list[dict], int]:
+             page: int = 1, page_size: int = 50, actor=None) -> tuple[list[dict], int]:
     tid = _tid()
     kinds = _kinds()
+    from app.services import job_authorization_service as jauth
+    can_manage = jauth.classify(actor, "systemAdmin.job.manage") is not None
     target_kinds = [kind] if kind and kind in kinds else (list(kinds.keys()) if not kind else [])
-    items: list[dict] = []
+    page = max(1, int(page))
+    page_size = min(200, max(1, int(page_size)))
+    queries = []
+    sources = {}
+    total = 0
     for k in target_kinds:
         meta = kinds[k]
         model = _model_for(meta)
         conds = [model.tenant_id == tid, model.is_deleted.is_(False)]
         if status:
             conds.append(getattr(model, meta["statusField"]) == status)
-        rows = db.scalars(select(model).where(*conds).order_by(model.id.desc()).limit(500)).all()
-        items.extend(_row_to_dto(k, meta, r) for r in rows)
-    items.sort(key=lambda x: x["createdAt"] or "", reverse=True)
-    total = len(items)
-    start = (page - 1) * page_size
-    return items[start:start + page_size], total
+        total += int(db.scalar(select(func.count()).select_from(model).where(*conds)) or 0)
+        queries.append(select(literal(k).label('kind'), model.id.label('id'), model.created_at.label('created_at')).where(*conds))
+        sources[k] = (meta, model, conds)
+    if not queries or not total or (page - 1) * page_size >= total:
+        return [], total
+    combined = union_all(*queries).subquery()
+    selected = db.execute(select(combined.c.kind, combined.c.id).order_by(
+        combined.c.created_at.desc(), combined.c.kind, combined.c.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+    items = {}
+    for k, (meta, model, conds) in sources.items():
+        ids = [pk for selected_kind, pk in selected if selected_kind == k]
+        if not ids:
+            continue
+        for row in db.scalars(select(model).where(*conds, model.id.in_(ids))).all():
+            items[(k, row.id)] = _row_to_dto(k, meta, row, can_manage=can_manage)
+    return [items[(k, pk)] for k, pk in selected if (k, pk) in items], total
 
 
-def get_job(db, job_id: str):
+def get_job(db, job_id: str, *, for_update: bool = False):
     """按 jobId=kind:id 定位，永远带 tenant_id 过滤；找不到或跨租户一律 404。"""
     kinds = _kinds()
     try:
@@ -107,8 +142,10 @@ def get_job(db, job_id: str):
     if not meta:
         raise AppException("DATA_NOT_FOUND", "任务不存在", http_status=404)
     model = _model_for(meta)
-    row = db.scalars(select(model).where(
-        model.id == pk, model.tenant_id == _tid(), model.is_deleted.is_(False))).first()
+    query = select(model).where(model.id == pk, model.tenant_id == _tid(), model.is_deleted.is_(False))
+    if for_update:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    row = db.scalars(query).first()
     if not row:
         raise AppException("DATA_NOT_FOUND", "任务不存在", http_status=404)
     return kind, meta, row
@@ -130,18 +167,15 @@ def job_overview(db=None) -> dict[str, Any]:
     for k, meta in kinds.items():
         model = _model_for(meta)
         status_field = getattr(model, meta["statusField"])
-        rows = db.scalars(select(model).where(
-            model.tenant_id == tid, model.is_deleted.is_(False))).all()
-        k_failed = sum(1 for r in rows if str(getattr(r, meta["statusField"])) in
-                      ("FAILED", "DEAD", "TIMEOUT"))
-        k_running = sum(1 for r in rows if str(getattr(r, meta["statusField"])) in
-                        ("RUNNING", "PROCESSING", "VALIDATING", "CONFIRMING"))
-        k_backlog = sum(1 for r in rows if str(getattr(r, meta["statusField"])) in
-                        ("PENDING", "CREATED", "UPLOADED", "VALIDATED"))
+        counts = dict(db.execute(select(status_field, func.count()).where(
+            model.tenant_id == tid, model.is_deleted.is_(False)).group_by(status_field)).all())
+        k_failed = sum(counts.get(value, 0) for value in ("FAILED", "DEAD", "TIMEOUT"))
+        k_running = sum(counts.get(value, 0) for value in ("RUNNING", "PROCESSING", "VALIDATING", "CONFIRMING"))
+        k_backlog = sum(counts.get(value, 0) for value in ("PENDING", "CREATED", "UPLOADED", "VALIDATED"))
         running += k_running
         failed += k_failed
         backlog += k_backlog
-        per_kind.append({"kind": k, "total": len(rows), "running": k_running,
+        per_kind.append({"kind": k, "total": sum(counts.values()), "running": k_running,
                          "failed": k_failed, "backlog": k_backlog})
     return {
         "running": running, "failed": failed, "backlog": backlog,
@@ -154,27 +188,33 @@ def _require_action_permission(actor):
     return jauth.classify_and_authorize(actor, "systemAdmin.job.manage")
 
 
-def retry_job(db, job_id: str, *, actor) -> dict:
+def _check_command(row, expected_version, reason: str) -> str:
+    from app.core.optimistic_lock import require_expected_version
+    if type(expected_version) is not int or expected_version < 0:
+        raise AppException("VALIDATION_ERROR", "任务版本无效，请重新读取", http_status=422)
+    version = require_expected_version(expected_version)
+    if version != int(row.version or 0):
+        raise AppException("DATA_CONFLICT", "任务已被其他操作更新，请重新读取后核对", http_status=409)
+    if not isinstance(reason, str):
+        raise AppException("VALIDATION_ERROR", "操作原因必须是文字说明", http_status=422)
+    reason = reason.strip()
+    if len(reason) < 5:
+        raise AppException("VALIDATION_ERROR", "请填写至少5个字的具体操作原因", http_status=422)
+    return reason
+
+
+def retry_job(db, job_id: str, *, actor, expected_version, reason: str) -> dict:
     from app.services import audit_log
 
     evidence = _require_action_permission(actor)
-    kind, meta, row = get_job(db, job_id)
+    kind, meta, row = get_job(db, job_id, for_update=True)
+    reason = _check_command(row, expected_version, reason)
     retryable_from = meta.get("retryableFrom") or []
+    action = available_actions(meta, row, can_manage=True)["retry"]
+    if not action["allowed"]:
+        raise AppException("DATA_CONFLICT" if retryable_from else "VALIDATION_ERROR",
+                           action["reason"], http_status=409 if retryable_from else 422)
     current_status = getattr(row, meta["statusField"])
-    if current_status not in retryable_from:
-        if not retryable_from:
-            raise AppException("VALIDATION_ERROR",
-                               f"{kind} 类型任务不支持在本页重试，请到所属模块处理", http_status=422)
-        raise AppException("DATA_CONFLICT",
-                           f"仅 {retryable_from} 状态可重试，当前状态为 {current_status}", http_status=409)
-
-    revision_field = meta.get("revisionField")
-    current_revision = meta.get("currentRevision")
-    if revision_field and current_revision and getattr(row, revision_field, None) != current_revision:
-        raise AppException(
-            "DATA_CONFLICT",
-            f"任务基于旧版本（{getattr(row, revision_field)}，当前为 {current_revision}），"
-            "拒绝直接重试，请回所属模块重新校验后再执行", http_status=409)
 
     setattr(row, meta["statusField"], meta.get("initialStatus") or "PENDING")
     if hasattr(row, "locked_by"):
@@ -183,35 +223,34 @@ def retry_job(db, job_id: str, *, actor) -> dict:
         row.locked_at = None
     row.version = int(row.version or 0) + 1
     row.updated_at = datetime.utcnow()
+    audit_log.record_critical_in_session(db, "JOB_RETRY", f"job:{job_id}",
+        detail={"kind": kind, "fromStatus": current_status, "toStatus": getattr(row, meta["statusField"]),
+         "reason": reason, "expectedVersion": expected_version, "version": row.version, "authorization": evidence},
+        tenant_id=row.tenant_id, resource_id=job_id)
     db.commit()
-
-    audit_log.record("JOB_RETRY", f"job:{job_id}",
-                     {"kind": kind, "fromStatus": current_status, "authorization": evidence})
-    return {"jobId": job_id, "status": getattr(row, meta["statusField"]), "authorization": evidence}
+    return {"jobId": job_id, "status": getattr(row, meta["statusField"]), "version": row.version, "authorization": evidence}
 
 
-def cancel_job(db, job_id: str, *, actor, reason: str = "") -> dict:
+def cancel_job(db, job_id: str, *, actor, expected_version, reason: str) -> dict:
     from app.services import audit_log
 
     evidence = _require_action_permission(actor)
-    kind, meta, row = get_job(db, job_id)
-    cancellable_from = meta.get("cancellableFrom") or []
+    kind, meta, row = get_job(db, job_id, for_update=True)
+    reason = _check_command(row, expected_version, reason)
+    action = available_actions(meta, row, can_manage=True)["cancel"]
+    if not action["allowed"]:
+        raise AppException("DATA_CONFLICT", action["reason"], http_status=409)
     current_status = getattr(row, meta["statusField"])
-    if current_status not in cancellable_from:
-        raise AppException(
-            "DATA_CONFLICT",
-            f"任务已开始处理（当前状态 {current_status}），无法在本页取消，请到所属模块处理",
-            http_status=409)
 
     setattr(row, meta["statusField"], "CANCELLED")
     row.version = int(row.version or 0) + 1
     row.updated_at = datetime.utcnow()
+    audit_log.record_critical_in_session(db, "JOB_CANCEL", f"job:{job_id}",
+        detail={"kind": kind, "fromStatus": current_status, "toStatus": "CANCELLED", "reason": reason,
+         "expectedVersion": expected_version, "version": row.version, "authorization": evidence},
+        tenant_id=row.tenant_id, resource_id=job_id)
     db.commit()
-
-    audit_log.record("JOB_CANCEL", f"job:{job_id}",
-                     {"kind": kind, "fromStatus": current_status, "reason": reason,
-                      "authorization": evidence})
-    return {"jobId": job_id, "status": "CANCELLED", "authorization": evidence}
+    return {"jobId": job_id, "status": "CANCELLED", "version": row.version, "authorization": evidence}
 
 
 def authorization_evidence(db, job_id: str, *, actor) -> dict:
@@ -221,6 +260,6 @@ def authorization_evidence(db, job_id: str, *, actor) -> dict:
     from app.services import job_authorization_service as jauth
 
     kind, meta, row = get_job(db, job_id)
-    dto = _row_to_dto(kind, meta, row)
     live_policy = jauth.classify(actor, "systemAdmin.job.manage")
+    dto = _row_to_dto(kind, meta, row, can_manage=live_policy is not None)
     return {**dto, "currentActorAuthorization": live_policy, "checkedAt": datetime.utcnow().isoformat()}

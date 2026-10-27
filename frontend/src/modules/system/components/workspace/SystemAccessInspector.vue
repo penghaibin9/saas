@@ -40,7 +40,7 @@
             <p>身份权限：{{ role.decision?.iamAllowed === true ? '通过' : '未通过' }} · 数据范围：{{ role.decision?.dataScope || '未取得' }}</p>
             <p class="sw-code">{{ role.decision?.reasonCode }}</p>
             <details><summary>展开判定依据</summary><pre class="sw-evidence">{{ evidence(role.decision) }}</pre></details>
-            <button type="button" class="sw-link" @click="$router.push({ path: '/admin/system/roles', query: { roleId: String(role.roleId), tab: 'permissions' } })">核对这个角色的权限 →</button>
+            <button type="button" class="sw-link" @click="$router.push({ path: '/admin/system/iam', query: { surface: 'roles', roleId: String(role.roleId), tab: 'permissions' } })">核对这个角色的权限 →</button>
           </div>
         </template>
       </section>

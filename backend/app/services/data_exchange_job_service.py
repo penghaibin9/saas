@@ -22,6 +22,7 @@ from sqlalchemy import and_, case, false, func, literal, or_, select, union_all
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.permissions import has_permission
+from app.core.timeutil import iso_utc, tenant_tz
 from app.db.session import db_enabled, get_sessionmaker
 from app.services.message_identity import resolve_message_user_id
 from app.services.storage import get_backend
@@ -253,6 +254,7 @@ def _import_row(row) -> dict[str, Any]:
     return {
         "id": str(row.id),
         "jobType": "IMPORT",
+        "timeZone": str(tenant_tz()),
         "moduleCode": row.module_code,
         "importType": row.import_type,
         "sourceFileId": str(row.source_file_id or ""),
@@ -266,8 +268,8 @@ def _import_row(row) -> dict[str, Any]:
         "confirmedRows": int(row.confirmed_rows or 0),
         "errorReceiptFileId": str(row.error_receipt_file_id or ""),
         "credentialReceiptFileId": str(row.credential_receipt_file_id or ""),
-        "expiresAt": row.expires_at.isoformat(timespec="seconds") if row.expires_at else None,
-        "confirmedAt": row.confirmed_at.isoformat(timespec="seconds") if row.confirmed_at else None,
+        "expiresAt": iso_utc(row.expires_at),
+        "confirmedAt": iso_utc(row.confirmed_at),
         "operatorName": row.operator_name or "",
         "result": result,
         "phoneSummary": {key: phone_summary[key] for key in ('phoneEmpty', 'phonePending',
@@ -277,8 +279,8 @@ def _import_row(row) -> dict[str, Any]:
             for warning in (snapshot.get('warnings') or [])[:200] if isinstance(warning, dict)],
         "errorMessage": row.error_message or "",
         "version": int(row.version or 0),
-        "createdAt": row.created_at.isoformat(timespec="seconds") if row.created_at else None,
-        "updatedAt": row.updated_at.isoformat(timespec="seconds") if row.updated_at else None,
+        "createdAt": iso_utc(row.created_at),
+        "updatedAt": iso_utc(row.updated_at),
         "cancellable": status in {"SCANNING", "PARSING", "VALIDATED", "VALIDATION_FAILED", "FAILED"},
         "retryable": row.adapter_type == PENDING_IDENTITY_ADAPTER and status in {"VALIDATION_FAILED", "FAILED"},
     }
@@ -296,6 +298,7 @@ def _export_row(row) -> dict[str, Any]:
     return {
         "id": str(row.id),
         "jobType": "EXPORT",
+        "timeZone": str(tenant_tz()),
         "moduleCode": row.module_code,
         "exportType": row.export_type,
         "purpose": row.purpose or "",
@@ -305,14 +308,14 @@ def _export_row(row) -> dict[str, Any]:
         "progress": int(row.progress or 0),
         "rowCount": int(row.row_count or 0),
         "fileObjectId": str(row.file_object_id or ""),
-        "expiresAt": row.expires_at.isoformat(timespec="seconds") if row.expires_at else None,
+        "expiresAt": iso_utc(row.expires_at),
         "downloadedCount": int(row.downloaded_count or 0),
-        "revokedAt": row.revoked_at.isoformat(timespec="seconds") if row.revoked_at else None,
+        "revokedAt": iso_utc(row.revoked_at),
         "revokeReason": row.revoke_reason or "",
         "errorMessage": row.error_message or "",
         "version": int(row.version or 0),
-        "createdAt": row.created_at.isoformat(timespec="seconds") if row.created_at else None,
-        "updatedAt": row.updated_at.isoformat(timespec="seconds") if row.updated_at else None,
+        "createdAt": iso_utc(row.created_at),
+        "updatedAt": iso_utc(row.updated_at),
         "downloadable": downloadable,
         "strongSensitive": strong_sensitive,
         "oneTimeTicket": True,
@@ -1209,7 +1212,7 @@ def get_export_job(
         data = _export_row(row)
         data["timeline"] = [
             {"event": "CREATED", "at": data["createdAt"]},
-            {"event": "FINISHED", "at": row.finished_at.isoformat(timespec="seconds") if row.finished_at else None},
+            {"event": "FINISHED", "at": iso_utc(row.finished_at)},
             {"event": "REVOKED", "at": data["revokedAt"]} if data["revokedAt"] else None,
         ]
         data["timeline"] = [item for item in data["timeline"] if item and item.get("at")]

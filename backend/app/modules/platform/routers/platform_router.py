@@ -13,6 +13,7 @@ from app.core.platform_principal import require_platform_principal
 from app.core.response import paginate, success
 from app.modules.platform.routers import platform_bundle as _bundle
 from app.modules.platform.routers import product_iam_router as _product_iam
+from app.modules.platform.routers import business_forms_control as _forms
 
 _routes = APIRouter(prefix="/platform", tags=["16·平台控制面"])
 
@@ -46,7 +47,11 @@ def platform_context(user=Depends(require_platform_principal)):
         if str(item.get("operatorUserId")) == uid and str(item.get("status") or "ACTIVE").upper() == "ACTIVE"
     ]
     state = assurance_state(user)
-    duties = sorted(pam.effective_platform_duties(user))
+    duties = set(pam.effective_platform_duties(user))
+    if "*" not in duties:
+        from app.core.permissions import has_permission
+        duties.update(code.removeprefix("platform.") for code in (_forms.VIEW, _forms.MANAGE) if has_permission(user, code))
+    duties = sorted(duties)
     return success({
         "principalPlane": "PLATFORM",
         "subjectId": uid,
@@ -474,6 +479,10 @@ def _compose_router() -> APIRouter:
     if collisions:
         raise RuntimeError(f"Product IAM route collision: {collisions}")
     routes.extend(_product_iam.router.routes)
+    form_keys = {_route_key(route) for route in _forms.router.routes}
+    if form_keys & {_route_key(route) for route in routes}:
+        raise RuntimeError("Platform business form route collision")
+    routes.extend(_forms.router.routes)
     composed.routes = routes
     return composed
 

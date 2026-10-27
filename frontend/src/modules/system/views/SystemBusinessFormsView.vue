@@ -1,14 +1,17 @@
 <template>
   <section class="forms-page">
     <header class="page-head">
-      <div><p class="eyebrow">PLAT-B</p><h1>合规与业务表单</h1><p>发布版本不可变；提交只调用原业务的正式提交。</p></div>
+      <div><h1>合规与业务表单</h1><p>发布版本不可变；提交只调用原业务的正式提交。</p></div>
       <button type="button" :disabled="loading" @click="loadDefinitions">刷新</button>
     </header>
 
     <p v-if="error" class="state error">{{ error }}</p>
     <p v-if="notice" class="state notice">{{ notice }}</p>
 
-    <div class="layout">
+    <section v-if="loadDenied" class="card" role="alert"><h2>当前学校身份不能访问此管理入口</h2><p>表单定义尚未读取，不能据此判断没有定义。请由平台管理人员核验维护入口；实际业务仍从学工、教务、毕业设计、岗位实习各自入口办理。</p></section>
+    <ErrorState v-else-if="loadError" :description="loadError" @retry="loadDefinitions" />
+    <LoadingState v-else-if="loading" />
+    <div v-else class="layout">
       <aside class="card definitions">
         <h2>表单定义</h2>
         <button v-for="item in definitions" :key="item.id" type="button" :class="{ active: selected?.id === item.id }" @click="selectDefinition(item)">
@@ -37,18 +40,18 @@
 
         <section v-if="impact" class="card"><h2>影响分析</h2><pre>{{ JSON.stringify(impact, null, 2) }}</pre></section>
 
-        <section class="card compliance">
-          <h2>来源合规评估</h2>
+        <details class="card compliance">
+          <summary>实施人员使用：来源合规评估</summary>
           <div class="fields">
-            <input v-model.trim="compliance.providerCode" placeholder="Provider，如 INTERNSHIP_NATIVE" />
-            <input v-model.trim="compliance.domain" placeholder="Domain，如 INTERNSHIP" />
-            <input v-model.trim="compliance.subjectType" placeholder="Subject type" />
-            <input v-model.trim="compliance.subjectId" placeholder="Subject ID" />
-            <input v-model.trim="compliance.operation" placeholder="Operation" />
+            <input v-model.trim="compliance.providerCode" aria-label="来源标识" placeholder="来源标识" />
+            <input v-model.trim="compliance.domain" aria-label="业务模块标识" placeholder="业务模块标识" />
+            <input v-model.trim="compliance.subjectType" aria-label="业务对象类型" placeholder="业务对象类型" />
+            <input v-model.trim="compliance.subjectId" aria-label="业务对象编号" placeholder="业务对象编号" />
+            <input v-model.trim="compliance.operation" aria-label="业务操作标识" placeholder="业务操作标识" />
             <button type="button" @click="evaluate">评估</button>
           </div>
           <CompliancePanel v-if="assessment" :assessment="assessment" />
-        </section>
+        </details>
       </main>
     </div>
   </section>
@@ -56,6 +59,7 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { ErrorState, LoadingState } from '@/components/business'
 import { businessFormsApi } from '@/modules/system/api/businessForms.api'
 import BusinessFormVersionWorkbench from '@/modules/platform/businessForms/components/BusinessFormVersionWorkbench.vue'
 import CompliancePanel from '@/modules/platform/businessForms/components/CompliancePanel.vue'
@@ -68,21 +72,29 @@ const selected = ref(null)
 const previewVersion = ref(null)
 const impact = ref(null)
 const assessment = ref(null)
-const loading = ref(false)
+const loading = ref(true)
+const loadError = ref('')
+const loadDenied = ref(false)
 const error = ref('')
 const notice = ref('')
 const compliance = reactive({ providerCode: 'INTERNSHIP_NATIVE', domain: 'INTERNSHIP', subjectType: 'INTERNSHIP', subjectId: '', operation: 'ONBOARD' })
 
 function messageOf(e, fallback) { return e?.message || fallback }
 async function loadDefinitions() {
-  loading.value = true; error.value = ''
+  loading.value = true; loadError.value = ''; loadDenied.value = false; error.value = ''; notice.value = ''
   try {
     definitions.value = await businessFormsApi.definitions({ limit: 200 })
+    if (!Array.isArray(definitions.value)) throw new Error('表单定义列表返回不完整，请重新读取')
     if (selected.value) {
       const current = definitions.value.find(item => item.id === selected.value.id)
       if (current) await selectDefinition(current)
+      else { selected.value = null; versions.value = []; previewVersion.value = null; impact.value = null }
     }
-  } catch (e) { error.value = messageOf(e, '表单定义加载失败') }
+  } catch (e) {
+    loadError.value = messageOf(e, '表单定义加载失败')
+    loadDenied.value = Number(e?.httpStatus || e?.status) === 403 || ['NO_PERMISSION', 'FORBIDDEN'].includes(e?.bizCode)
+    definitions.value = []; selected.value = null; versions.value = []; previewVersion.value = null; impact.value = null; assessment.value = null
+  }
   finally { loading.value = false }
 }
 async function selectDefinition(item) {

@@ -8,15 +8,17 @@ import re
 import secrets
 from urllib.parse import quote
 
-from fastapi import APIRouter, Body, Depends, File, UploadFile
+from fastapi import APIRouter, Body, Depends, File, UploadFile, Query
 from fastapi.responses import StreamingResponse
-from sqlalchemy import func, select
+from sqlalchemy import case, func, or_, select
 
 from app.core.config import settings
 from app.core.context import current_tenant_id
+from app.core.timeutil import iso_utc, local_day_bounds_utc, tenant_tz
 from app.core.response import success
 from app.core.permissions import require_any_permission, require_permission
 from app.db.session import db_enabled, get_sessionmaker
+from app.services.operation_audit_service import ACTION_LABELS as _ACTION_LABELS, EVENT_RESULTS as _RESULT_BY_ACTION, RESULT_BUCKETS as _RESULT_TO_BUCKET, present_result, present_target
 
 router = APIRouter()
 
@@ -280,7 +282,8 @@ def _user_org_hint(db, account, account_type: str | None = None) -> tuple[str, s
             TeacherStudentScope.tenant_id == account.tenant_id,
             TeacherStudentScope.teacher_key == account.login_name).limit(1)).first()
         if scope is not None:
-            return (str(scope.ref_value or ""), f"{scope.scope_type}:{scope.ref_value}" if scope.ref_value else "按岗位范围")
+            label = {"CLASS": "班级", "COLLEGE": "学院", "MAJOR": "专业", "STUDENT": "学生", "ADVISOR": "业务指导关系"}.get(scope.scope_type, "范围待核对")
+            return (str(scope.ref_value or ""), f"{label}：{scope.ref_value}" if scope.ref_value else label)
     except Exception:
         pass
     return ("", "未设置")
@@ -309,7 +312,7 @@ def _user_row(account, roles: list, db=None) -> dict:
         "status": "ACTIVE" if status == "ACTIVE" else status,
         "statusLabel": {"ACTIVE": "启用中", "DISABLED": "已停用", "LOCKED": "已锁定"}.get(status, "待激活"),
         "source": "统一师生导入" if account.user_type in ("TEACHER", "STUDENT") else "系统创建",
-        "lastLoginAt": str(account.last_login_at or "")[:19], "createdAt": str(account.created_at or "")[:10],
+        "lastLoginAt": iso_utc(account.last_login_at), "timeZone": str(tenant_tz()), "createdAt": str(account.created_at or "")[:10],
     }
     if db is not None and row["accountType"] == "STUDENT":
         row.update(_student_account_meta(db, account))
@@ -431,6 +434,25 @@ def list_system_roles(
         db.close()
 
 
+@router.get("/system/authorization-candidates", summary="授权办理的本校在用人员候选")
+def authorization_candidates(keyword: str = "", page: int = 1, page_size: int = 10,
+        user=Depends(require_any_permission("systemAdmin.user.assign", "systemAdmin.role.config", "systemAdmin.delegation.manage"))):
+    from app.models import User
+    tid = current_tenant_id()
+    page, page_size = max(1, page), min(20, max(1, page_size))
+    with get_sessionmaker()() as db:
+        query = select(User).where(User.tenant_id == tid, User.is_deleted.is_(False),
+            User.status == "ACTIVE", ~User.user_type.like("PLATFORM%"))
+        if keyword.strip():
+            like = f"%{keyword.strip()[:100]}%"
+            query = query.where(User.login_name.like(like) | User.real_name.like(like))
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        rows = db.scalars(query.order_by(User.id).offset((page - 1) * page_size).limit(page_size)).all()
+        return success({"list": [{"id": str(row.id), "name": row.real_name,
+            "userNo": row.login_name, "loginName": row.login_name} for row in rows],
+            "total": total, "page": page, "pageSize": page_size})
+
+
 @router.get("/system/users", summary="学校账号列表（真实库）")
 def list_system_users(
         keyword: str = "", role: str = "", status: str = "", account_type: str = "",
@@ -507,11 +529,15 @@ def get_system_user(user_id: int, user=Depends(require_permission("systemAdmin.u
             SecurityAuditLog.tenant_id == tenant_id,
             SecurityAuditLog.resource.like(f"%{account.login_name}%")
         ).order_by(SecurityAuditLog.id.desc()).limit(20)).all()
+        login_history = db.scalars(select(SecurityAuditLog).where(
+            SecurityAuditLog.tenant_id == tenant_id, SecurityAuditLog.operator_id == user_id,
+            SecurityAuditLog.action.in_(("登录", "LOGIN", "微信登录", "微信登录-选择学校", "微信绑定")),
+        ).order_by(SecurityAuditLog.id.desc()).limit(20)).all()
         row.update({
             "roles": [{"code": r.role_code, "name": r.role_name, "scopeName": _role_scope(r)} for r in roles],
             "contexts": [r.role_name for r in roles],
-            "loginHistory": [],
-            "auditTrail": [{"who": a.operator_name or "系统", "time": str(a.created_at or "")[:19],
+            "loginHistory": [_login_log_row(entry, {user_id: account.login_name}) for entry in login_history],
+            "auditTrail": [{"who": a.operator_name or "未记录操作人", "time": iso_utc(a.created_at),
                             "action": a.action, "affected": a.resource or ""} for a in audits],
         })
         return success(row)
@@ -821,14 +847,24 @@ def api_simulate_workflow_policy(body: dict = Body(...), user=Depends(require_an
         task_assignee_id=payload.get("taskAssigneeId") or ""))
 
 
-@router.post("/system/workflow-tasks/{task_id}/force-advance", summary="人工推进卡住的审批任务（须留理由与审计）")
+@router.get("/system/workflow-governance/tasks", summary="当前身份可查看的在途审批任务")
+def api_workflow_governance_tasks(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=50),
+                                  user=Depends(require_permission("systemAdmin.workflow.view"))):
+    from app.services import approval_runtime_service as approval
+    rows, total = approval.list_tasks(page, pageSize, user=user)
+    return success({"items": rows, "total": total, "page": page, "pageSize": pageSize})
+
+
+@router.post("/system/workflow-tasks/{task_id}/force-advance", summary="按原审批权限办理任务（兼容入口）")
 def api_force_advance_workflow_task(task_id: int, body: dict = Body(...),
                                     user=Depends(require_permission("systemAdmin.workflow.manage"))):
     from app.services import workflow_security_policy_service as wsp
     payload = body or {}
     return success(wsp.force_advance_task(
         task_id, action=payload.get("action") or "", reason=payload.get("reason") or "",
-        user=user), message="已人工推进")
+        expected_version=payload.get("expectedVersion"),
+        expected_source_version=payload.get("expectedSourceVersion"),
+        user=user), message="已按原审批流程办理")
 
 
 # ── SYS-15 统一消息、待办与通知治理 ──────────────────────────────────────────
@@ -863,7 +899,8 @@ def api_close_todo(todo_id: int, body: dict = Body(...), user=Depends(
     db = get_sessionmaker()()
     try:
         row = tts.close_todo_with_evidence(
-            db, todo_id=todo_id, evidence=payload.get("evidence") or "", actor=user)
+            db, todo_id=todo_id, evidence=payload.get("evidence") or "",
+            expected_version=payload.get("expectedVersion"), actor=user)
         db.commit()
         return success({"todoId": row.id, "status": row.status}, message="待办已关闭")
     except Exception:
@@ -909,10 +946,11 @@ def api_list_jobs(kind: str = "", status: str = "", page: int = 1, pageSize: int
                       "systemAdmin.job.view", "systemAdmin.dashboard.view"))):
     from app.db.session import get_sessionmaker
     from app.services import job_registry as jr
+    page, pageSize = max(1, page), min(200, max(1, pageSize))
     db = get_sessionmaker()()
     try:
         items, total = jr.list_jobs(db, kind=kind or None, status=status or None,
-                                    page=page, page_size=pageSize)
+                                    page=page, page_size=pageSize, actor=user)
         return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
     finally:
         db.close()
@@ -931,12 +969,13 @@ def api_job_authorization_evidence(job_id: str, user=Depends(require_any_permiss
 
 
 @router.post("/system/jobs/{job_id}/retry", summary="重试任务（仅注册表登记为可重试的类型）")
-def api_retry_job(job_id: str, user=Depends(require_permission("systemAdmin.job.manage"))):
+def api_retry_job(job_id: str, body: dict = Body(...), user=Depends(require_permission("systemAdmin.job.manage"))):
     from app.db.session import get_sessionmaker
     from app.services import job_registry as jr
     db = get_sessionmaker()()
     try:
-        return success(jr.retry_job(db, job_id, actor=user), message="已重新排队")
+        return success(jr.retry_job(db, job_id, actor=user, expected_version=body.get("expectedVersion"),
+                                    reason=body.get("reason") or ""), message="已重新排队")
     except Exception:
         db.rollback()
         raise
@@ -952,7 +991,7 @@ def api_cancel_job(job_id: str, body: dict | None = Body(default=None),
     payload = body if isinstance(body, dict) else {}
     db = get_sessionmaker()()
     try:
-        return success(jr.cancel_job(db, job_id, actor=user, reason=payload.get("reason") or ""),
+        return success(jr.cancel_job(db, job_id, actor=user, expected_version=payload.get("expectedVersion"), reason=payload.get("reason") or ""),
                        message="已取消")
     except Exception:
         db.rollback()
@@ -1095,12 +1134,12 @@ def api_master_data_merge_events(domain_code: str = "", user=Depends(require_any
 # ── SYS-07 角色成员有效期与自动业务身份 ──────────────────────────────────────
 @router.get("/system/role-assignments", summary="角色成员与有效期（进页面先跑一次到期回收）")
 def api_list_role_assignments(role_code: str = "", bucket: str = "", page: int = 1,
-                              page_size: int = 50,
+                              page_size: int = 50, user_id: int | None = None,
                               user=Depends(require_any_permission(
                                   "systemAdmin.role.view", "systemAdmin.user.view"))):
     from app.services import role_assignment_service as ras
     return success(ras.list_assignments(role_code=role_code, bucket=bucket,
-                                        page=page, page_size=page_size))
+                                        page=page, page_size=page_size, user_id=user_id))
 
 
 @router.post("/system/role-assignments", summary="授予角色并登记有效期与来源")
@@ -1117,6 +1156,25 @@ def api_grant_role_assignment(body: dict = Body(...),
         int(user_id), payload.get("roleCode") or "", reason=payload.get("reason") or "",
         effective_at=payload.get("effectiveAt"), expires_at=payload.get("expiresAt"),
         source_type=payload.get("sourceType") or "MANUAL", user=user), message="角色已授予")
+
+
+@router.get("/system/role-assignment-options", summary="当前经办人可正式授予的本校角色")
+def role_assignment_options(user=Depends(require_any_permission("systemAdmin.user.assign", "systemAdmin.role.config"))):
+    from app.models import Role
+    from app.core.exceptions import AppException
+    from app.services.role_assignment_service import _assert_role_delegation_allowed
+    tid = current_tenant_id()
+    with get_sessionmaker()() as db:
+        roles = db.scalars(select(Role).where(Role.tenant_id == tid, Role.is_deleted.is_(False),
+            Role.status.in_(("ACTIVE", "ENABLED"))).order_by(Role.id)).all()
+        allowed = []
+        for role in roles:
+            try:
+                _assert_role_delegation_allowed(db, actor=user, role=role, tenant_id=tid)
+            except AppException:
+                continue
+            allowed.append({"id": str(role.id), "code": role.role_code, "name": role.role_name})
+    return success({"list": allowed})
 
 
 @router.post("/system/role-assignments/{assignment_id}/revoke", summary="回收角色授权")
@@ -1172,6 +1230,33 @@ def api_list_business_identities(identity_type: str = "", user_id: str = "",
     return success(bis.list_business_identities(
         identity_type=identity_type,
         user_id=int(user_id) if str(user_id).isdigit() else None))
+
+
+@router.get("/system/business-identities/objects", summary="分页查看同一业务关系的真实对象")
+def api_business_identity_objects(identity_type: str, subject_key: str,
+        user_id: int | None = None, page: int = Query(1, ge=1), page_size: int = Query(20, ge=1, le=100),
+        user=Depends(require_any_permission("systemAdmin.role.view", "systemAdmin.user.view"))):
+    from app.services import business_identity_service as bis
+    return success(bis.list_identity_objects(identity_type=identity_type, subject_key=subject_key,
+        user_id=user_id, page=page, page_size=page_size))
+
+
+@router.get("/system/business-identities/people", summary="查询本校业务关系人员，不返回联系方式")
+def api_business_identity_people(keyword: str = '', user_id: int | None = None,
+        page: int = Query(1, ge=1), page_size: int = Query(10, ge=1, le=100),
+        user=Depends(require_any_permission("systemAdmin.role.view", "systemAdmin.user.view"))):
+    from app.models import User
+    with get_sessionmaker()() as db:
+        stmt = select(User.id, User.real_name, User.login_name).where(User.tenant_id == current_tenant_id(),
+            User.is_deleted.is_(False), User.status == 'ACTIVE', User.user_type != 'STUDENT')
+        if user_id is not None:
+            stmt = stmt.where(User.id == user_id)
+        if keyword.strip():
+            stmt = stmt.where(or_(User.real_name.like('%' + keyword.strip() + '%'), User.login_name.like('%' + keyword.strip() + '%')))
+        total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        rows = db.execute(stmt.order_by(User.real_name, User.id).offset((page - 1) * page_size).limit(page_size)).all()
+    return success({'list': [{'id': str(row.id), 'name': row.real_name or '姓名未登记', 'userNo': row.login_name,
+        'orgName': '组织归属见关系清单'} for row in rows], 'total': int(total)})
 
 
 @router.post("/system/business-identities/request", summary="申请应急业务身份（只生成安全变更，不授权）")
@@ -1269,7 +1354,7 @@ def api_batch_repair_binding(body: dict = Body(...),
 @router.get("/system/staff-affiliations", summary="教职工岗位与归属（班级辅导员/班主任 + 教师范围）")
 def list_staff_affiliations(user=Depends(require_any_permission(
         "systemAdmin.org.affiliation.manage", "systemAdmin.org.view"))):
-    from app.models import College, SchoolClass, TeacherStudentScope
+    from app.models import College, SchoolClass, TeacherStudentScope, User
     tenant_id = current_tenant_id()
     db = get_sessionmaker()()
     try:
@@ -1293,6 +1378,15 @@ def list_staff_affiliations(user=Depends(require_any_permission(
                          "orgType": scope.scope_type, "roleLabel": scope.role_code or "岗位范围",
                          "staffKey": scope.teacher_key, "staffName": scope.teacher_name or "",
                          "status": getattr(scope, "status", None) or "ACTIVE"})
+        account_ids = {int(row['staffKey']) for row in rows if row['id'].startswith(('class-', 'college-'))
+                       and str(row['staffKey']).isdigit()}
+        people = {str(person.id): person.real_name for person in db.scalars(select(User).where(
+            User.tenant_id == tenant_id, User.is_deleted.is_(False), User.id.in_(account_ids))).all()} if account_ids else {}
+        for row in rows:
+            if row['id'].startswith(('class-', 'college-')):
+                row['staffName'] = people.get(row['staffKey']) or '姓名未解析'
+            elif not row.get('staffName'):
+                row['staffName'] = '姓名未解析'
         return success({"list": rows, "total": len(rows)})
     finally:
         db.close()
@@ -1409,6 +1503,10 @@ def get_system_context(user=Depends(require_any_permission(
         "moduleStates": access.get("moduleStates") or {},
         "permissionVersion": access.get("permissionVersion"),
         "statusOptions": {
+            "loginResult": [{"value": key, "label": _RESULT_TO_BUCKET[key][1]}
+                            for key in ("SUCCESS", "FAILED", "DENIED", "BLOCKED", "UNKNOWN")],
+            "opResult": [{"value": key, "label": _RESULT_TO_BUCKET[key][1]}
+                         for key in ("SUCCESS", "FAILED", "DENIED", "BLOCKED", "UNKNOWN")],
             "userStatus": [{"value": "ACTIVE", "label": "启用中"}, {"value": "DISABLED", "label": "已停用"},
                            {"value": "LOCKED", "label": "已锁定"}],
             "scopeTypes": [{"value": k, "label": v} for k, v in _SCOPE_LABELS.items()],
@@ -1421,7 +1519,9 @@ def get_system_context(user=Depends(require_any_permission(
         },
         "filterOptions": {"roles": role_options, "colleges": college_options,
                           "classes": class_options, "grades": grade_options,
-                          "logModules": [], "logActions": []},
+                          "logModules": [{"value": key, "label": label} for key, label in _MODULE_LABELS.items()],
+                          "logActions": [{"value": key, "label": label} for label, key in
+                                         {label: key for key, label in _ACTION_LABELS.items() if key not in _LOGIN_ACTIONS}.items()]},
         "fieldColumns": {}, "batchActions": [], "importTemplates": {}, "exportOptions": {},
     })
 
@@ -2073,21 +2173,9 @@ def reset_system_user_password(user_id: int, body: dict | None = Body(default=No
 # 登录/安全类动作归「登录日志」，其余归「操作日志」。二者同源一张审计表，只按 action 分流。
 # 注意：真实登录流记的是中文动作「登录」（auth.py），authz.py 的英文 "LOGIN" 为兼容入口未使用；
 # 二者及门户监护人登录、令牌刷新、限流等安全事件都归登录/安全审计，PERMISSION_DENIED 归操作/权限审计。
-_LOGIN_ACTIONS = ("登录", "登出", "LOGIN", "LOGOUT", "LOGIN_FAIL", "LOGIN_LOCKED",
-                  "TOKEN_REFRESH", "RATE_LIMITED", "PORTAL_GUARDIAN_LOGIN", "PORTAL_GUARDIAN_OTP")
-_RESULT_TO_BUCKET = {"SUCCESS": ("SUCCESS", "成功"), "FAIL": ("FAILED", "失败"),
-                     "FAILED": ("FAILED", "失败"), "DENIED": ("DENIED", "越权拦截"),
-                     "BLOCKED": ("BLOCKED", "已拦截")}
-_ACTION_LABELS = {
-    "LOGIN": "登录", "LOGIN_FAIL": "登录失败", "LOGIN_LOCKED": "账号锁定", "LOGOUT": "登出",
-    "EXPORT": "导出", "IMPORT": "导入", "IDENTITY_IMPORT": "师生导入", "GRANT": "授权变更",
-    "CONFIG": "配置变更", "CONFIG_CHANGE": "配置变更", "BRAND_CONFIG": "品牌配置",
-    "DISABLE": "停用/作废", "ENABLE": "启用", "USER_DISABLE": "停用/作废", "USER_ENABLE": "启用",
-    "USER_ROLE_ASSIGN": "分配角色", "RESET_PASSWORD": "重置密码", "PERMISSION_DENIED": "越权拦截",
-    "MODULE_DENIED": "模块越权", "SENSITIVE_VIEW": "敏感查看", "FILE_UPLOAD": "文件上传",
-    "ROLE_CREATE": "新建角色", "ROLE_UPDATE": "编辑角色", "ROLE_PERMISSION_SAVE": "保存角色权限",
-    "ORG_NODE_SAVE": "组织维护",
-}
+_LOGIN_ACTIONS = ("登录", "登出", "LOGIN", "LOGOUT", "LOGIN_FAIL", "LOGIN_LOCKED", "LOGIN_NO_ACTIVE_ROLE",
+                  "TOKEN_REFRESH", "RATE_LIMITED", "PORTAL_GUARDIAN_LOGIN", "PORTAL_GUARDIAN_OTP",
+                  "微信登录", "微信登录-选择学校", "微信登录-待选择学校", "微信登录-待绑定", "微信绑定")
 
 
 def _mask_ip(ip: str | None) -> str:
@@ -2100,25 +2188,55 @@ def _mask_ip(ip: str | None) -> str:
     return s[:6] + "…" if len(s) > 8 else s
 
 
+def _export_local_time(value) -> str:
+    if value is None:
+        return "未记录时间"
+    return datetime.fromisoformat(iso_utc(value).replace("Z", "+00:00")).astimezone(tenant_tz()).strftime("%Y-%m-%d %H:%M:%S")
+
+
 def _resolve_login_names(db, operator_ids: set[int]) -> dict[int, str]:
     from app.models import User
     ids = {i for i in operator_ids if i}
     if not ids:
         return {}
-    rows = db.execute(select(User.id, User.login_name).where(User.id.in_(ids))).all()
+    rows = db.execute(select(User.id, User.login_name).where(
+        User.id.in_(ids), User.tenant_id == current_tenant_id())).all()
     return {row[0]: row[1] for row in rows}
+
+
+def _audit_result(r) -> tuple[str, str]:
+    outcome = present_result(r.action, r.result)
+    return outcome['result'], outcome['resultLabel']
+
+
+def _audit_result_expr():
+    from app.models import SecurityAuditLog as Log
+    return case(*[(func.upper(Log.action) == action, bucket) for action, bucket in _RESULT_BY_ACTION.items()],
+        else_=case(*[(func.upper(Log.result) == raw, value[0]) for raw, value in _RESULT_TO_BUCKET.items()], else_="UNKNOWN"))
+
+
+def _audit_module_expr():
+    from app.models import SecurityAuditLog as Log
+    declared = func.coalesce(func.nullif(func.trim(Log.detail_json['moduleCode'].as_string()), ''),
+                             func.nullif(func.trim(Log.detail_json['module'].as_string()), ''))
+    inferred = case(*[(or_(Log.request_path.contains(key), Log.resource.contains(key)), code)
+                     for key, code in _MODULE_PATH_KEYS], else_="systemAdmin")
+    return func.coalesce(declared, case(*[(func.upper(Log.action) == action, module)
+                                        for action, module in _MODULE_BY_ACTION.items()], else_=inferred))
 
 
 def _audit_page(login_only: bool, keyword: str, result: str, action: str, module: str,
                 page: int, page_size: int, date_from: str = "", date_to: str = "",
-                sensitive_only: bool = False) -> dict:
-    from app.models import SecurityAuditLog
+                sensitive_only: bool = False, max_id: int | None = None) -> dict:
+    from app.models import SecurityAuditLog, User
     tenant_id = current_tenant_id()
     page = max(1, int(page or 1))
     page_size = min(200, max(1, int(page_size or 20)))
     db = get_sessionmaker()()
     try:
         stmt = select(SecurityAuditLog).where(SecurityAuditLog.tenant_id == tenant_id)
+        if max_id is not None:
+            stmt = stmt.where(SecurityAuditLog.id <= max_id)
         if login_only:
             stmt = stmt.where(SecurityAuditLog.action.in_(_LOGIN_ACTIONS))
         else:
@@ -2128,34 +2246,35 @@ def _audit_page(login_only: bool, keyword: str, result: str, action: str, module
                 ("SENSITIVE_VIEW", "SENSITIVE_EXPORT", "EXPORT", "IMPORT", "IDENTITY_IMPORT")))
         if keyword.strip():
             like = f"%{keyword.strip()}%"
-            stmt = stmt.where(SecurityAuditLog.operator_name.like(like) | SecurityAuditLog.resource.like(like))
+            matching_account = select(User.id).where(User.tenant_id == tenant_id, User.login_name.like(like))
+            stmt = stmt.where(or_(SecurityAuditLog.operator_name.like(like), SecurityAuditLog.resource.like(like),
+                                  SecurityAuditLog.operator_id.in_(matching_account)))
         if result.strip():
             want = result.strip().upper()
-            equivalents = {"FAILED": ("FAIL", "FAILED"), "FAIL": ("FAIL", "FAILED")}.get(want, (want,))
-            stmt = stmt.where(SecurityAuditLog.result.in_(equivalents))
+            stmt = stmt.where(_audit_result_expr() == ("FAILED" if want == "FAIL" else want))
         if action.strip():
-            stmt = stmt.where(SecurityAuditLog.action == action.strip().upper())
-        if date_from.strip():
-            stmt = stmt.where(SecurityAuditLog.created_at >= date_from.strip()[:10] + " 00:00:00")
-        if date_to.strip():
-            stmt = stmt.where(SecurityAuditLog.created_at <= date_to.strip()[:10] + " 23:59:59")
-        # module 筛选：优先 detail.moduleCode，再按 action/path 归类后过滤
+            selected_action = action.strip().upper()
+            label = _ACTION_LABELS.get(selected_action)
+            equivalent_actions = [code for code, name in _ACTION_LABELS.items() if label and name == label]
+            stmt = stmt.where(SecurityAuditLog.action.in_(equivalent_actions or [selected_action]))
+        try:
+            start_day = local_day_bounds_utc(date_from.strip())[0] if date_from.strip() else None
+            end_day = local_day_bounds_utc(date_to.strip())[1] if date_to.strip() else None
+            if start_day is not None and end_day is not None and start_day >= end_day:
+                raise ValueError("reversed date range")
+        except ValueError:
+            from app.core.exceptions import AppException
+            raise AppException("VALIDATION_ERROR", "请选择有效的开始和结束日期", http_status=422) from None
+        if start_day is not None:
+            stmt = stmt.where(SecurityAuditLog.created_at >= start_day)
+        if end_day is not None:
+            stmt = stmt.where(SecurityAuditLog.created_at < end_day)
+        if module.strip():
+            wanted = "systemAdmin" if module.strip().upper() == "SYSTEM" else module.strip()
+            stmt = stmt.where(func.lower(_audit_module_expr()) == wanted.lower())
         total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
         rows = db.scalars(stmt.order_by(SecurityAuditLog.id.desc())
-                          .offset(0).limit(min(2000, max(page_size * page, page_size)))).all()
-        if module.strip():
-            want = module.strip()
-            rows = [r for r in rows if _audit_module_of(r)[0] == want
-                    or _audit_module_of(r)[0].lower() == want.lower()
-                    or want.upper() in (_audit_module_of(r)[0].upper(), "SYSTEM" if _audit_module_of(r)[0] == "systemAdmin" else "")]
-            total = len(rows)
-            start = (page - 1) * page_size
-            rows = rows[start:start + page_size]
-        else:
-            start = (page - 1) * page_size
-            # 重新按分页取（无 module 时走 SQL 分页）
-            rows = db.scalars(stmt.order_by(SecurityAuditLog.id.desc())
-                              .offset(start).limit(page_size)).all()
+                          .offset((page - 1) * page_size).limit(page_size)).all()
         name_map = _resolve_login_names(db, {r.operator_id for r in rows})
         items = [_login_log_row(r, name_map) if login_only else _operation_log_row(r) for r in rows]
         return {"list": items, "total": int(total), "page": page, "pageSize": page_size}
@@ -2165,21 +2284,29 @@ def _audit_page(login_only: bool, keyword: str, result: str, action: str, module
 
 def _login_log_row(r, name_map: dict) -> dict:
     detail = r.detail_json if isinstance(r.detail_json, dict) else {}
-    if r.action in ("LOGIN_LOCKED", "RATE_LIMITED"):
-        bucket, label = "BLOCKED", "已拦截"
-    elif r.action == "LOGIN_FAIL":
-        bucket, label = "FAILED", "失败"
-    else:
-        bucket, label = _RESULT_TO_BUCKET.get(str(r.result or "SUCCESS").upper(), ("SUCCESS", "成功"))
+    bucket, label = _audit_result(r)
     return {
         "id": str(r.id), "userName": r.operator_name or "—",
-        "userNo": name_map.get(r.operator_id, "") or (str(r.operator_id) if r.operator_id else ""),
-        "roleName": r.current_role or "—", "time": str(r.created_at or "")[:16],
+        "userNo": name_map.get(r.operator_id, ""),
+        "roleName": r.current_role or "—", "time": iso_utc(r.created_at), "timeZone": str(tenant_tz()),
+        "eventLabel": _ACTION_LABELS.get(r.action, r.action if re.search(r"[\u3400-\u9fff]", r.action) else "其他安全事件"),
         "result": bucket, "resultLabel": label,
         "reason": detail.get("reason") or detail.get("summary") or ("" if bucket == "SUCCESS" else _ACTION_LABELS.get(r.action, "")),
         "ip": _mask_ip(r.ip), "location": detail.get("location", "") or "",
-        "device": r.user_agent or "",
+        "device": _audit_device_label(r.user_agent), "deviceDetail": r.user_agent or "",
     }
+
+
+def _audit_device_label(value: str | None) -> str:
+    agent = str(value or "").lower()
+    if not agent:
+        return "未记录设备"
+    for marker, label in (("micromessenger", "微信客户端"), ("android", "安卓移动浏览器"),
+                          ("iphone", "苹果移动浏览器"), ("ipad", "苹果平板浏览器"),
+                          ("mozilla", "电脑浏览器"), ("python-requests", "接口客户端"), ("curl", "接口客户端")):
+        if marker in agent:
+            return label
+    return "设备类型未识别"
 
 
 _MODULE_BY_ACTION = {
@@ -2204,6 +2331,13 @@ _MODULE_LABELS = {
     "platform": "平台运营",
 }
 
+_MODULE_PATH_KEYS = (
+    ("student-affairs", "studentAffairs"), ("academic-affairs", "academicAffairs"),
+    ("graduation", "graduationDesign"), ("internship", "internship"),
+    ("employment", "employment"), ("orientation", "orientation"),
+    ("campus-service", "campusService"), ("system", "systemAdmin"), ("platform", "platform"),
+)
+
 
 def _audit_module_of(r) -> tuple[str, str]:
     detail = r.detail_json if isinstance(r.detail_json, dict) else {}
@@ -2214,31 +2348,27 @@ def _audit_module_of(r) -> tuple[str, str]:
         # 从 resource / path 启发式
         path = str(r.request_path or "")
         resource = str(r.resource or "")
-        for key, label_key in (
-            ("student-affairs", "studentAffairs"), ("academic-affairs", "academicAffairs"),
-            ("graduation", "graduationDesign"), ("internship", "internship"),
-            ("employment", "employment"), ("orientation", "orientation"),
-            ("campus-service", "campusService"), ("system", "systemAdmin"),
-            ("platform", "platform"),
-        ):
+        for key, label_key in _MODULE_PATH_KEYS:
             if key in path or key in resource:
                 code = label_key
                 break
     if not code:
         code = "systemAdmin"
-    return code, _MODULE_LABELS.get(code, code)
+    return code, _MODULE_LABELS.get(code, "其他模块")
 
 
 def _operation_log_row(r) -> dict:
     detail = r.detail_json if isinstance(r.detail_json, dict) else {}
-    bucket, label = _RESULT_TO_BUCKET.get(str(r.result or "SUCCESS").upper(), ("SUCCESS", "成功"))
+    bucket, label = _audit_result(r)
+    recorded_bucket = _RESULT_TO_BUCKET.get(str(r.result or "").upper(), ("UNKNOWN", ""))[0]
     module_code, module_label = _audit_module_of(r)
     return {
-        "id": str(r.id), "time": str(r.created_at or "")[:16], "who": r.operator_name or "—",
+        "id": str(r.id), "time": iso_utc(r.created_at), "timeZone": str(tenant_tz()), "who": r.operator_name or "—",
         "roleName": r.current_role or "—", "module": module_code, "moduleLabel": module_label,
-        "action": r.action, "actionLabel": _ACTION_LABELS.get(r.action, r.action),
-        "target": r.resource or "", "result": bucket, "resultLabel": label, "ip": _mask_ip(r.ip),
-        "detail": {"summary": detail.get("summary", ""), "before": detail.get("before", ""),
+        "action": r.action, "actionLabel": present_result(r.action, r.result)['actionLabel'],
+        "target": r.resource or "", "targetLabel": present_target(r.resource, r.action), "result": bucket, "resultLabel": label, "ip": _mask_ip(r.ip),
+        "detail": {"recordedResult": r.result, "resultNote": "事件与原记录结果不一致；按事件展示，原记录未修改" if bucket != recorded_bucket else "",
+                   "summary": detail.get("summary") or detail.get("message") or "", "before": detail.get("before", ""),
                    "after": detail.get("after", ""), "reason": detail.get("reason", ""),
                    "path": r.request_path or "", "method": r.request_method or "",
                    "traceId": r.trace_id or "", "dataScope": r.data_scope or detail.get("dataScope", "")},
@@ -2357,7 +2487,7 @@ def export_system_users(keyword: str = "", role: str = "", status: str = "", acc
                     meta["grade"] or "—", meta["className"] or "—",
                     meta["studentStatusLabel"],
                     status_label.get(str(account.status or "").upper(), account.status or ""),
-                    str(account.last_login_at or "")[:19] or "—",
+                    _export_local_time(account.last_login_at),
                     str(account.created_at or "")[:10],
                 ])
             title = "学生账号台账"
@@ -2367,7 +2497,7 @@ def export_system_users(keyword: str = "", role: str = "", status: str = "", acc
                 account.login_name, account.real_name, _user_org_hint(db, account)[1],
                 "、".join(r.role_name for r in by_user.get(account.id, [])) or "—",
                 status_label.get(str(account.status or "").upper(), account.status or ""),
-                str(account.last_login_at or "")[:19] or "—",
+                _export_local_time(account.last_login_at),
                 str(account.created_at or "")[:10],
             ] for account in users]
             title = "教职工账号台账"
@@ -2377,7 +2507,7 @@ def export_system_users(keyword: str = "", role: str = "", status: str = "", acc
                 account.login_name, account.real_name,
                 "、".join(r.role_name for r in by_user.get(account.id, [])) or "—",
                 status_label.get(str(account.status or "").upper(), account.status or ""),
-                str(account.last_login_at or "")[:19] or "—",
+                _export_local_time(account.last_login_at),
                 str(account.created_at or "")[:10],
             ] for account in users]
             title = "账号台账"
@@ -2388,19 +2518,51 @@ def export_system_users(keyword: str = "", role: str = "", status: str = "", acc
 
 @router.get("/system/export/logs", summary="导出登录/操作审计（真实 xlsx）")
 def export_system_logs(tab: str = "operation", keyword: str = "", result: str = "",
+                       action: str = "", module: str = "", dateFrom: str = "", dateTo: str = "",
+                       scope: str = "FILTERED", fields: str = "",
                        user=Depends(require_permission("systemAdmin.audit.view"))):
+    from app.core.exceptions import AppException
+    from app.models import SecurityAuditLog
+    if tab not in ("login", "operation") or scope not in ("FILTERED", "RANGE_30D"):
+        raise AppException("VALIDATION_ERROR", "请选择有效的日志类型和导出范围", http_status=422)
+    selected = fields.split(",") if fields else []
+    labels = {"time": "时间", "who": "操作人", "action": "动作", "target": "对象",
+              "result": "结果", "ip": "网络地址（脱敏）", "detail": "详情"}
+    if any(key not in labels for key in selected) or len(selected) != len(set(selected)):
+        raise AppException("VALIDATION_ERROR", "请选择有效且不重复的导出字段", http_status=422)
+    if scope == "RANGE_30D":
+        today = datetime.now(tenant_tz()).date()
+        dateFrom, dateTo = (today - timedelta(days=29)).isoformat(), today.isoformat()
     login_only = tab == "login"
-    data = _audit_page(login_only, keyword, result, "", "", 1, 100000)
+    with get_sessionmaker()() as db:
+        snapshot_id = db.scalar(select(func.max(SecurityAuditLog.id)).where(
+            SecurityAuditLog.tenant_id == current_tenant_id())) or 0
+    data = _audit_page(login_only, keyword, result, action, module, 1, 200, dateFrom, dateTo, max_id=snapshot_id)
+    # shortcut: 同步导出最多十万行；更大范围需改为现有后台导出任务。
+    if data["total"] > 100000:
+        raise AppException("VALIDATION_ERROR", "导出超过十万条，请缩小日期或筛选范围后重试", http_status=422)
+    for page in range(2, (data["total"] + 199) // 200 + 1):
+        data["list"].extend(_audit_page(login_only, keyword, result, action, module,
+            page, 200, dateFrom, dateTo, max_id=snapshot_id)["list"])
     if login_only:
         headers = ["时间", "用户", "工号", "角色", "结果", "原因", "IP", "设备"]
-        rows = [[r["time"], r["userName"], r["userNo"], r["roleName"], r["resultLabel"],
+        rows = [[_export_local_time(r["time"]), r["userName"], r["userNo"], r["roleName"], r["resultLabel"],
                  r["reason"], r["ip"], r["device"]] for r in data["list"]]
         title, fn, target = "登录审计", f"登录审计_{datetime.now():%Y%m%d}.xlsx", "登录审计"
     else:
         headers = ["时间", "操作人", "角色", "动作", "对象", "结果", "IP", "摘要"]
-        rows = [[r["time"], r["who"], r["roleName"], r["actionLabel"], r["target"], r["resultLabel"],
+        rows = [[_export_local_time(r["time"]), r["who"], r["roleName"], r["actionLabel"], r["target"], r["resultLabel"],
                  r["ip"], r["detail"].get("summary", "")] for r in data["list"]]
         title, fn, target = "操作审计", f"操作审计_{datetime.now():%Y%m%d}.xlsx", "操作审计"
+    if selected:
+        headers = [labels[key] for key in selected]
+        rows = []
+        for r in data["list"]:
+            values = {"time": _export_local_time(r["time"]), "who": r.get("userName") if login_only else r["who"],
+                      "action": r.get("eventLabel") if login_only else r["actionLabel"],
+                      "target": "登录账号" if login_only else r["targetLabel"], "result": r["resultLabel"],
+                      "ip": r["ip"], "detail": r.get("reason", "") if login_only else r["detail"].get("summary", "")}
+            rows.append([values[key] for key in selected])
     return _xlsx_response(title, headers, rows, fn, user, target)
 
 
@@ -2824,8 +2986,27 @@ def system_info(user=Depends(require_any_permission(
 @router.get("/system/delegations", summary="临时授权列表")
 def api_list_delegations(user=Depends(require_permission("systemAdmin.delegation.manage"))):
     from app.services import system_governance_service as gov
+    from app.services.system_governance_authority_service import _delegated_permission_snapshot
+    from app.core.permissions import assert_delegable_permission_codes
+    from app.core.exceptions import AppException
+    from app.models import Role
     items = gov.list_delegations()
-    return success({"list": items, "total": len(items)})
+    with get_sessionmaker()() as db:
+        roles = db.scalars(select(Role).where(Role.tenant_id == current_tenant_id(),
+            Role.is_deleted.is_(False))).all()
+        names = {role.role_code: role.role_name for role in roles}
+        assignable = []
+        for role in roles:
+            if role.status not in ("ACTIVE", "ENABLED"):
+                continue
+            try:
+                codes = _delegated_permission_snapshot(role.role_code)
+                assert_delegable_permission_codes(user, codes)
+            except AppException:
+                continue
+            assignable.append({"code": role.role_code, "name": role.role_name, "permissionCount": len(codes)})
+    return success({"list": [{**item, "roleName": names.get(item.get("roleCode"), "角色名称待核对")} for item in items],
+                    "total": len(items), "assignableRoles": assignable})
 
 
 @router.post("/system/delegations", summary="创建临时授权")
@@ -3195,13 +3376,16 @@ def list_staff_assignments(
     orgType: str | None = None,
     orgNodeId: int | None = None,
     includeExpired: bool = False,
+    page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=200),
     user=Depends(require_any_permission("systemAdmin.org.affiliation.manage", "systemAdmin.org.view")),
 ):
     from app.services import organization_version_service as svc
 
     return success(
         svc.list_assignments(
-            user_id=userId, org_type=orgType, org_node_id=orgNodeId, include_expired=includeExpired
+            user_id=userId, org_type=orgType, org_node_id=orgNodeId, include_expired=includeExpired,
+            page=page, page_size=pageSize
         )
     )
 

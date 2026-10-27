@@ -12,6 +12,12 @@ const platformRoutes = {
   meta: { moduleCode: 'PLATFORM' },
   children: [
     {
+      path: 'business-forms',
+      name: 'platform-business-forms',
+      component: () => import('@/modules/platform/views/control/PlatformBusinessFormsView.vue'),
+      meta: { moduleCode: 'PLATFORM', title: '学校表单配置与版本', requiresAuth: true, permissionKey: 'platform.businessForms.view' }
+    },
+    {
       path: 'website-news', name: 'platform-website-news',
       component: () => import('@/modules/platform/views/control/PlatformWebsiteNewsView.vue'),
       meta: { moduleCode: 'PLATFORM', title: '新闻资源包发布', requiresAuth: true, permissionKey: 'platform.websiteNews.manage' }

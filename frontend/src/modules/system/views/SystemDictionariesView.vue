@@ -49,6 +49,7 @@
             <p class="dict-usage">
               {{ selected.consumers?.length ? `已用于：${consumerLabels(selected.consumers)}` : '尚未接入业务页面，当前配置仅作预留' }}
             </p>
+            <p v-if="selected.consumers?.length" class="sw-muted">已接入页面使用这里的显示名称；业务状态由所属模块决定，必需状态不会因字典停用标记而被隐藏。</p>
           </div>
           <button v-if="selected.editable" type="button" class="sw-btn" :disabled="!canWriteSelected || saving" @click="addItem">新增字典项</button>
         </header>
@@ -56,7 +57,7 @@
         <div class="sw-table-wrap">
           <table class="sw-table dict-table">
             <thead>
-              <tr><th>编码</th><th>显示名称</th><th>状态</th><th>操作</th></tr>
+              <tr><th>编码</th><th>显示名称</th><th>配置标记</th><th>操作</th></tr>
             </thead>
             <tbody>
               <tr v-for="(item, index) in selected.items" :key="item._key">
@@ -74,7 +75,7 @@
                 </td>
                 <td>
                   <button v-if="selected.editable && item._new" type="button" class="sw-link" :disabled="saving" @click="removeItem(index)">移除</button>
-                  <span v-else-if="selected.editable" class="sw-muted">停用后不再作为可选项</span>
+                  <span v-else-if="selected.editable" class="sw-muted">{{ selected.consumers?.length ? '不改变业务必需状态' : '尚未接入业务页面' }}</span>
                   <span v-else class="sw-muted">平台统一</span>
                 </td>
               </tr>
@@ -82,7 +83,7 @@
           </table>
         </div>
         <div class="dict-footer">
-          <span class="sw-muted">{{ selected.editable ? '已有编码保持不变；需要下线时关闭“启用”。' : '该类口径由平台统一维护，学校端只读。' }}</span>
+          <span class="sw-muted">{{ selected.editable ? '已有编码保持不变；字典标记不代替业务模块的状态规则。' : '该类口径由平台统一维护，学校端只读。' }}</span>
           <button v-if="selected.editable" type="button" class="sw-btn sw-btn--primary" :disabled="!canWriteSelected || saving" @click="save">
             {{ saving ? '保存中…' : '保存' }}
           </button>
@@ -126,7 +127,7 @@ export default {
       return dictionary.source === 'SCHOOL' ? '本校配置' : '平台默认'
     },
     consumerLabels(consumers = []) {
-      const labels = { studentCenter: '学工中心' }
+      const labels = { studentCenter: '学生中心状态显示与筛选' }
       return consumers.map((code) => labels[code] || '其他业务页面').join('、')
     },
     select(code) { this.selectedCode = code; this.message = ''; this.error = '' },
@@ -164,17 +165,18 @@ export default {
       const validationError = this.validate()
       if (validationError) { this.error = validationError; return }
       this.saving = true; this.error = ''; this.message = ''
-      const code = this.selected.code
+      const dictionary = this.selected
+      const code = dictionary.code
       const result = await systemApi.saveDictionary(code, {
         expectedVersion: this.version,
-        items: this.selected.items.map(({ code: itemCode, label, enabled }) => ({ code: itemCode, label, enabled }))
+        items: dictionary.items.map(({ code: itemCode, label, enabled }) => ({ code: itemCode, label, enabled }))
       })
       this.saving = false
       if (result.code !== 0) { this.error = result.message || '字典保存失败'; return }
       this.version = Number(result.data?.version || this.version)
-      this.selected.items = decorateItems(result.data?.items || [])
-      this.selected.source = 'SCHOOL'
-      this.message = `“${this.selected.label}”已保存到本校数据字典。`
+      dictionary.items = decorateItems(result.data?.items || [])
+      dictionary.source = 'SCHOOL'
+      this.message = `“${dictionary.label}”已保存到本校数据字典。`
     }
   }
 }

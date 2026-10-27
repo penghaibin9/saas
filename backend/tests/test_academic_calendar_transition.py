@@ -104,6 +104,9 @@ def test_t01_only_one_active_calendar_per_tenant(db_mode):
 
     activated = _activate(first, tenant_id=TENANT)
     assert activated["governanceStatus"] == "ACTIVE"
+    assert activated["activatedAt"].endswith("Z")
+    assert svc.resolve_current(tenant_id=TENANT)["resolvedAt"].endswith("Z")
+    assert svc.get_calendar(first, tenant_id=TENANT)["transitions"][-1]["occurredAt"].endswith("Z")
 
     # 第二个学期在旧学期未结期前不得激活
     _to(second, "VALIDATED", tenant_id=TENANT)

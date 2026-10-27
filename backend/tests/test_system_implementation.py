@@ -4,6 +4,32 @@ from __future__ import annotations
 from io import BytesIO
 
 from openpyxl import load_workbook
+import pytest
+
+
+@pytest.fixture
+def auth_headers(client, db_mode):
+    from system_admin_test_auth import school_admin_headers
+    return school_admin_headers(client)
+
+
+def test_relation_rollback_requires_complete_historical_evidence():
+    from types import SimpleNamespace
+    from app.services.business_relation_install_service import _rollback_evidence_issues
+    row = SimpleNamespace(summary_json={"installed": 1})
+    item = SimpleNamespace(relation_type="COUNSELOR_CLASS", target_table="t_class", target_row_id=1,
+                           before_json={"counselor_id": None},
+                           after_json={"counselor_id": 2, "scope_id": None, "scope_created": False})
+    assert not _rollback_evidence_issues(row, [item])
+    assert _rollback_evidence_issues(row, [])
+    item.target_row_id = None
+    assert _rollback_evidence_issues(row, [item])
+    item.target_row_id = 1
+    item.before_json = {}
+    assert _rollback_evidence_issues(row, [item])
+    item.before_json = {"counselor_id": None}
+    row.summary_json = {}
+    assert _rollback_evidence_issues(row, [item])
 
 
 def test_implementation_snapshot_and_readiness_blocker(client, auth_headers, db_mode):
@@ -154,7 +180,8 @@ def test_implementation_rejects_sensitive_snapshot_keys(client, auth_headers, db
     assert response["code"] != 0
 
 
-def test_acceptance_freezes_summary_and_cannot_be_reaccepted(client, auth_headers, db_mode):
+@pytest.mark.parametrize("legacy_status", [None, "APPLIED"])
+def test_acceptance_freezes_summary_and_cannot_be_reaccepted(client, auth_headers, db_mode, legacy_status):
     created = client.post("/api/v1/system/implementation/projects", headers=auth_headers,
                           json={"projectName": "验收摘要测试", "profileCode": "DEMO"}).json()["data"]
     from app.db.session import get_sessionmaker
@@ -174,6 +201,19 @@ def test_acceptance_freezes_summary_and_cannot_be_reaccepted(client, auth_header
     assert accepted["code"] == 0
     assert len(accepted["data"]["acceptanceDigest"]) == 64
     assert len(accepted["data"]["acceptanceSummary"]["checks"]) == 12
+    if legacy_status:
+        with get_sessionmaker()() as db:
+            project = db.get(SystemImplementationProject, int(created["id"]))
+            project.status = legacy_status
+            db.commit()
+    for method, suffix, payload in (
+        ("put", "relations/decisions", {"batchNo": "historical"}),
+        ("post", "relations/apply", {"batchNo": "historical", "reason": "封存保护验证", "confirmText": "确认安装业务关系"}),
+        ("post", "relations/historical/rollback", {"reason": "封存保护验证", "confirmText": "确认回滚业务关系"}),
+    ):
+        response = getattr(client, method)(f"/api/v1/system/implementation/projects/{created['id']}/{suffix}",
+                                          headers=auth_headers, json=payload).json()
+        assert response["code"] != 0 and "封存" in response["message"]
     repeat = client.post(f"/api/v1/system/implementation/projects/{created['id']}/accept",
                          headers=auth_headers,
                          json={"comment": "重复验收", "confirmText": "确认验收"}).json()
@@ -194,6 +234,19 @@ def test_acceptance_freezes_summary_and_cannot_be_reaccepted(client, auth_header
                                      headers=auth_headers,
                                      json={"title": "封板后修改", "content": "{batchNo}"}).json()
     assert frozen_notification["code"] != 0
+    for suffix, payload in (
+        ("preview", {}),
+        ("apply", {"reason": "封板后修改", "confirmText": "确认应用"}),
+        ("checks/run", {}),
+        ("runtime-presets/workflows/confirm-policy", {"reason": "封板后修改", "confirmText": "确认启用学校流程政策"}),
+    ):
+        response = client.post(f"/api/v1/system/implementation/projects/{created['id']}/{suffix}",
+                               headers=auth_headers, json=payload).json()
+        assert response["code"] != 0 and "封板" in response["message"]
+    with get_sessionmaker()() as db:
+        project = db.get(SystemImplementationProject, int(created["id"]))
+        assert project.acceptance_digest == accepted["data"]["acceptanceDigest"]
+        assert project.acceptance_summary == accepted["data"]["acceptanceSummary"]
 
 
 def test_implementation_permission_is_fail_closed(client):
@@ -223,6 +276,10 @@ def test_change_project_inherits_installed_snapshot(client, auth_headers, db_mod
     db.commit()
     installation = db.scalars(select(SystemPresetInstallation).where(
         SystemPresetInstallation.project_id == int(created["id"]))).first()
+    from copy import deepcopy
+    original_snapshot = deepcopy(installation.snapshot_json)
+    original_hash = installation.snapshot_hash
+    original_version = installation.source_version
     db.close()
     change = client.post(f"/api/v1/system/implementation/installations/{installation.id}/changes",
                          headers=auth_headers, json={"projectName": "演示版变更项目"}).json()
@@ -245,6 +302,14 @@ def test_change_project_inherits_installed_snapshot(client, auth_headers, db_mod
     assert changed["code"] == 0
     assert changed["data"]["riskLevel"] == "HIGH"
     assert "security_audit" in changed["data"]["changedSections"]
+    with get_sessionmaker()() as db:
+        original = db.get(SystemImplementationProject, int(created["id"]))
+        installed = db.get(SystemPresetInstallation, installation.id)
+        assert original.status == "ACCEPTED"
+        assert str(original.id) != change["data"]["id"]
+        assert installed.snapshot_json == original_snapshot
+        assert installed.snapshot_hash == original_hash
+        assert installed.source_version == original_version
 
 
 def test_identity_file_discovers_and_installs_org_role_mapping(client, auth_headers, db_mode):
@@ -409,12 +474,32 @@ def test_business_relation_installs_real_class_relation_and_rolls_back(client, a
     assert school_class.counselor_id == teacher.id
     assert db.scalars(select(SystemBusinessRelationInstallItem).where(
         SystemBusinessRelationInstallItem.status == "APPLIED")).one().target_table == "t_class"
+    ledger = db.scalars(select(SystemBusinessRelationInstallItem).where(
+        SystemBusinessRelationInstallItem.status == "APPLIED")).one()
+    before = ledger.before_json
+    ledger.before_json = {}
+    db.commit()
     db.close()
+
+    rollback_url = f"/api/v1/system/implementation/projects/{created['id']}/relations/{relation_data['batchNo']}/rollback"
+    rollback_body = {"projectVersion": installed["data"]["projectVersion"],
+                     "reason": "验收测试回滚", "confirmText": "确认回滚业务关系"}
+    blocked = client.post(rollback_url, headers=auth_headers, json=rollback_body).json()
+    assert blocked["code"] != 0 and "不完整" in blocked["message"]
+    with get_sessionmaker()() as db:
+        ledger = db.scalars(select(SystemBusinessRelationInstallItem).where(
+            SystemBusinessRelationInstallItem.status == "APPLIED")).one()
+        assert db.scalars(select(SchoolClass).where(SchoolClass.class_name == "智造2601")).one().counselor_id is not None
+        ledger.before_json = before
+        db.commit()
+    blocked = client.post(rollback_url, headers=auth_headers,
+                          json={**rollback_body, "projectVersion": -1}).json()
+    assert blocked["code"] != 0 and "版本" in blocked["message"]
 
     rolled_back = client.post(
         f"/api/v1/system/implementation/projects/{created['id']}/relations/{relation_data['batchNo']}/rollback",
         headers=auth_headers,
-        json={"reason": "验收测试回滚", "confirmText": "确认回滚业务关系"}).json()
+        json={"projectVersion": installed["data"]["projectVersion"], "reason": "验收测试回滚", "confirmText": "确认回滚业务关系"}).json()
     assert rolled_back["code"] == 0
     db = get_sessionmaker()()
     assert db.scalars(select(SchoolClass).where(SchoolClass.class_name == "智造2601")).one().counselor_id is None

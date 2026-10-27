@@ -778,6 +778,7 @@ async function deprecate({ reason }) {
 }
 .org-table {
   width: 100%;
+  min-width: 600px;
   border-collapse: collapse;
   text-align: left;
 }

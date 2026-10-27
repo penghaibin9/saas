@@ -1,5 +1,5 @@
 <template>
-  <BasePortalLayout :ctx="ctx" workspace @menu-select="selectMenu">
+  <BasePortalLayout :title="ctx?.tenantBrandConfig?.schoolName || '高校学生全生命周期管理平台'" :ctx="ctx" workspace @menu-select="selectMenu">
     <section class="route-access-notice" role="status" aria-live="polite">
       <p class="route-access-notice__page">{{ $route.meta.title || '业务办理' }}</p>
       <h1>{{ notice.title }}</h1>

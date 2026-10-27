@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="流程安全与运行治理"
-    subtitle="启用流程 · 无审批人 · 节点动作策略 · 版本变更策略 · 在途异常人工推进"
+    subtitle="核对配置缺口与在途任务；业务审批由原经办身份按原流程办理"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -22,7 +22,7 @@
             </div>
             <div class="wg-stat">
               <span class="wg-stat__num">{{ (overview.noApproverNodes || []).length }}</span>
-              <span class="wg-stat__label">无审批人节点</span>
+              <span class="wg-stat__label">配置缺少候选角色的节点</span>
             </div>
             <div class="wg-stat">
               <span class="wg-stat__num">{{ overview.runningInstances }}</span>
@@ -41,11 +41,13 @@
               <span class="wg-stat__label">生效中版本策略</span>
             </div>
           </div>
-          <div v-if="(overview.noApproverNodes || []).length" class="mp-card__body">
+          <details v-if="(overview.noApproverNodes || []).length" class="mp-card__body">
+            <summary>查看 {{ overview.noApproverNodes.length }} 项配置缺口（含未启用模板）</summary>
+            <p class="mp-note">包含未启用模板的配置检查，不代表这些节点都有在途单据。先由所属业务负责人核对岗位和成员。</p>
             <p v-for="n in overview.noApproverNodes" :key="n.workflowCode + n.nodeCode" class="wg-warn">
-              {{ workflowLabel(n.workflowCode) }} · {{ nodeLabel(n.nodeCode) }}：责任角色“{{ roleDisplayLabel(n.roleCode) }}”不存在或没有启用成员
+              {{ n.workflowName || workflowLabel(n.workflowCode) }} · {{ n.nodeName || nodeLabel(n.nodeCode) }}：责任角色“{{ roleDisplayLabel(n.roleCode) }}”不存在或没有启用成员<span v-if="n.definitionEnabled === false">（模板未启用）</span>
             </p>
-          </div>
+          </details>
         </section>
 
         <section class="mp-card">
@@ -53,7 +55,10 @@
             <span class="mp-card__title">节点动作与版本策略</span>
             <span class="mp-note">页面权限 ≠ 流程动作权限；激活须两人复核</span>
           </header>
-          <div class="mp-card__body wg-new">
+          <details class="mp-card__body">
+            <summary>实施人员使用：维护节点动作与版本策略</summary>
+            <p v-if="!canManage" class="mp-note">当前身份仅可查看策略。</p>
+          <fieldset class="wg-new" :disabled="!canManage || submitting">
             <input v-model.trim="newWorkflowCode" class="wg-input" placeholder="流程编码" aria-label="流程编码" />
             <input v-model.trim="newNodeCode" class="wg-input" placeholder="节点编码（版本策略留空）" aria-label="节点编码" />
             <select v-model="newPolicyType" class="wg-input">
@@ -68,7 +73,8 @@
               <option value="MIGRATE">允许变更并记录受影响单据</option>
             </select>
             <button class="mp-link" @click="askSaveDraft">保存草稿</button>
-          </div>
+          </fieldset>
+          </details>
           <div class="mp-card__body">
             <EmptyState v-if="!policies.length" title="还没有策略" description="填写上方表单保存一条草稿" />
             <DataTable v-else :columns="policyColumns" :rows="policies" row-key="policyId">
@@ -90,9 +96,9 @@
                 <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />
               </template>
               <template #cell-ops="{ row }">
-                <button v-if="row.status === 'DRAFT'" class="mp-link" @click="submit(row)">提交复核</button>
-                <button v-if="row.status === 'PENDING_REVIEW'" class="mp-link" @click="askActivate(row)">激活</button>
-                <button v-if="row.status === 'ACTIVE'" class="mp-link" @click="askRetire(row)">下线</button>
+                <button v-if="row.status === 'DRAFT'" class="mp-link" :disabled="!canManage || submitting" @click="submit(row)">提交复核</button>
+                <button v-if="row.status === 'PENDING_REVIEW'" class="mp-link" :disabled="!canManage || submitting" @click="askActivate(row)">激活</button>
+                <button v-if="row.status === 'ACTIVE'" class="mp-link" :disabled="!canManage || submitting" @click="askRetire(row)">下线</button>
               </template>
             </DataTable>
           </div>
@@ -100,17 +106,21 @@
 
         <section class="mp-card">
           <header class="mp-card__head">
-            <span class="mp-card__title">人工推进（解卡异常任务）</span>
-            <span class="mp-note">必须填写理由，全程留痕，不代替业务判断</span>
+            <span class="mp-card__title">当前身份可查看的在途任务</span>
+            <span class="mp-note">流程配置权限不授予业务审批权</span>
           </header>
-          <div class="mp-card__body wg-new">
-            <input v-model.trim="forceTaskId" class="wg-input" placeholder="审批任务编号" />
-            <select v-model="forceAction" class="wg-input">
-              <option value="APPROVED">强制通过</option>
-              <option value="REJECTED">强制驳回</option>
-              <option value="CANCELLED">强制作废</option>
-            </select>
-            <button class="mp-link" @click="askForceAdvance">人工推进</button>
+          <div class="mp-card__body">
+            <ErrorState v-if="taskError" :description="taskError" @retry="loadTasks" />
+            <LoadingState v-else-if="tasksLoading" />
+            <template v-else>
+              <EmptyState v-if="!tasks.length" title="当前身份没有可查看的在途任务" description="这不代表全校没有异常。缺少责任人时先由所属业务模块维护关系；业务通过、驳回和撤销仍按原权限办理。" />
+              <DataTable v-else :columns="taskColumns" :rows="tasks" row-key="taskId">
+                <template #cell-title="{ row }"><div>{{ row.title || '审批事项' }}</div><small>任务版本 {{ row.version }}</small></template>
+                <template #cell-node="{ row }">{{ nodeDisplayLabel(row.nodeName, row.nodeCode) }}</template>
+                <template #cell-ops="{ row }"><button class="mp-link" @click="openTask(row)">查看原审批详情</button></template>
+              </DataTable>
+              <div class="wg-new"><span>共 {{ taskTotal }} 项 · 第 {{ taskPage }} 页</span><button class="mp-btn" :disabled="taskPage <= 1" @click="loadTasks(taskPage - 1)">上一页</button><button class="mp-btn" :disabled="taskPage * 20 >= taskTotal" @click="loadTasks(taskPage + 1)">下一页</button></div>
+            </template>
           </div>
         </section>
       </template>
@@ -118,7 +128,7 @@
 
     <AppConfirmDialog
       v-model:visible="dialogOpen"
-      :type="pendingAction === 'retire' ? 'warning' : 'info'"
+      :type="pendingAction === 'retire' ? 'warning' : 'primary'"
       :title="dialogTitle"
       :message="dialogMessage"
       :confirm-text="dialogTitle"
@@ -127,15 +137,14 @@
       :submitting="submitting"
       @confirm="submitDialog"
     >
-      <label v-if="pendingAction === 'activate'" class="wg-field">
-        自复核确认（提交人与激活人相同时必填）
-        <input v-model.trim="selfReviewAck" class="wg-input" placeholder='填写"自复核通过，已确认影响面"' />
-      </label>
+      <p v-if="pendingAction === 'activate'">请由另一位具有流程维护权限的人员复核；服务端会校验提交人与复核人。</p>
     </AppConfirmDialog>
   </ModulePageShell>
 </template>
 
 <script>
+import { contextFingerprint } from '@/modules/system/utils/workspaceContract'
+import { matchPermission } from '@/config/navPlan'
 import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
@@ -175,8 +184,8 @@ export default {
       newPolicyType: 'NODE_ACTION',
       newActionPermission: '',
       newVersionStrategy: 'DYNAMIC',
-      forceTaskId: '',
-      forceAction: 'APPROVED',
+      tasks: [], taskTotal: 0, taskPage: 1, tasksLoading: false, taskError: '', taskSequence: 0,
+      taskColumns: [{ key: 'title', title: '审批事项与版本' }, { key: 'node', title: '当前节点' }, { key: 'ops', title: '处理入口' }],
       dialogOpen: false,
       submitting: false,
       pendingAction: '',
@@ -191,21 +200,25 @@ export default {
     }
   },
   computed: {
+    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'systemAdmin.workflow.manage') },
+    contextKey() { return contextFingerprint(this.ctx) },
     dialogTitle() {
       return { draft: '保存草稿', submit: '提交复核', activate: '激活策略',
-        retire: '下线策略', force: '人工推进' }[this.pendingAction] || '确认'
+        retire: '下线策略' }[this.pendingAction] || '确认'
     },
     dialogMessage() {
       if (this.pendingAction === 'draft') return '保存这条策略草稿，此时不生效。'
-      if (this.pendingAction === 'activate') return '激活后立即生效；提交人与激活人相同时需要额外自复核确认。'
+      if (this.pendingAction === 'activate') return '激活后立即生效；请核对影响范围，提交人不能通过此页面自复核。'
       if (this.pendingAction === 'retire') return '下线后该范围恢复为未激活状态（不受节点策略约束）。'
-      if (this.pendingAction === 'force') return `将审批任务 ${this.forceTaskId} 强制设为“${{ APPROVED: '已通过', REJECTED: '已驳回', CANCELLED: '已作废' }[this.forceAction] || '待确认状态'}”，不触发原审批的业务联动。`
       return ''
     }
   },
   created() { this.load() },
+  watch: { contextKey() { this.taskSequence++; this.tasks = []; this.dialogOpen = false; this.pendingRow = null; this.load() } },
+  beforeUnmount() { this.taskSequence++ },
   methods: {
     roleDisplayLabel,
+    nodeDisplayLabel(name, code) { return name && /[\u3400-\u9fff]/u.test(name) ? name : this.nodeLabel(code || name) },
     workflowLabel(code) {
       const base = String(code || '').split(/__ARCHIVE_|__DRAFT_/u)[0]
       const name = workflowNames[base] || '流程名称待维护'
@@ -241,6 +254,7 @@ export default {
       return { DRAFT: 'default', PENDING_REVIEW: 'warning', ACTIVE: 'success', RETIRED: 'default' }[s] || 'default'
     },
     askSaveDraft() {
+      if (!this.canManage || this.submitting) return
       if (!this.newWorkflowCode) return toast.error('请填写流程编码')
       if (this.newPolicyType === 'NODE_ACTION' && !this.newActionPermission) {
         return toast.error('节点动作策略必须填写动作权限')
@@ -250,28 +264,37 @@ export default {
       this.dialogOpen = true
     },
     submit(row) {
+      if (!this.canManage || this.submitting) return
       this.pendingAction = 'submit'
       this.pendingRow = row
       this.dialogOpen = true
     },
     askActivate(row) {
+      if (!this.canManage || this.submitting) return
       this.pendingAction = 'activate'
       this.pendingRow = row
       this.selfReviewAck = ''
       this.dialogOpen = true
     },
     askRetire(row) {
+      if (!this.canManage || this.submitting) return
       this.pendingAction = 'retire'
       this.pendingRow = row
       this.dialogOpen = true
     },
-    askForceAdvance() {
-      if (!/^\d+$/.test(this.forceTaskId)) return toast.error('请填写任务编号（纯数字）')
-      this.pendingAction = 'force'
-      this.pendingRow = null
-      this.dialogOpen = true
+    openTask(row) { this.$router.push({ name: 'approval-detail', params: { taskId: row.taskId } }) },
+    async loadTasks(page = 1) {
+      const sequence = ++this.taskSequence
+      this.tasksLoading = true; this.taskError = ''
+      const result = await systemApi.listWorkflowGovernanceTasks(Number.isInteger(page) ? page : 1)
+      if (sequence !== this.taskSequence) return
+      if (result.code === 0 && Array.isArray(result.data?.items)) {
+        this.tasks = result.data.items; this.taskTotal = result.data.total; this.taskPage = result.data.page
+      } else { this.tasks = []; this.taskError = result.message || '审批任务返回不完整' }
+      this.tasksLoading = false
     },
     async submitDialog({ reason }) {
+      if (!this.canManage || this.submitting || !['draft', 'submit', 'activate', 'retire'].includes(this.pendingAction)) return
       this.submitting = true
       let res
       if (this.pendingAction === 'draft') {
@@ -294,10 +317,6 @@ export default {
         res = await systemApi.retireWorkflowPolicy(this.pendingRow.policyId, {
           reason, expectedVersion: this.pendingRow.version
         })
-      } else {
-        res = await systemApi.forceAdvanceWorkflowTask(this.forceTaskId, {
-          action: this.forceAction, reason
-        })
       }
       this.submitting = false
       if (res.code === 0) {
@@ -307,19 +326,21 @@ export default {
         if (this.pendingAction === 'draft') {
           this.newWorkflowCode = ''; this.newNodeCode = ''; this.newActionPermission = ''
         }
-        if (this.pendingAction === 'force') this.forceTaskId = ''
         await this.load()
       } else {
         toast.error(res.message)
       }
     },
     async load() {
+      const context = this.contextKey
+      this.loadTasks()
       this.loading = true
       this.error = ''
       const [overview, policies] = await Promise.all([
         systemApi.getWorkflowGovernanceOverview(),
         systemApi.listWorkflowPolicies()
       ])
+      if (context !== this.contextKey) return
       if (overview.code === 0) this.overview = overview.data || {}
       else this.error = overview.message
       if (policies.code === 0) this.policies = policies.data.list || []

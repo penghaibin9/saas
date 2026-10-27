@@ -190,7 +190,9 @@ def test_t03_scope_dies_when_relation_is_removed(db_mode):
 
 
 # ── 接口层 ───────────────────────────────────────────────────────────────────
-def test_http_endpoints(client, auth_headers, db_mode):
+def test_http_endpoints(client, db_mode):
+    from system_admin_test_auth import school_admin_headers
+    auth_headers = school_admin_headers(client)
     types = client.get("/api/v1/system/business-relations/types", headers=auth_headers).json()
     assert types["code"] == 0
     assert types["data"]["total"] >= 5

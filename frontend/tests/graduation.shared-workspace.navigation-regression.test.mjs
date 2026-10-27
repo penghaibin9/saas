@@ -3,6 +3,19 @@ import fs from 'node:fs'
 import test from 'node:test'
 import vm from 'node:vm'
 import { setImmediate as flushTasks } from 'node:timers/promises'
+import { workspaceRouteOwner, workspacePageMatches, activeWorkspacePage } from '../src/components/workspace/workspaceRouting.js'
+import { getVisibleNavPlan } from '../src/config/navPlan.js'
+import { workspacePages } from '../src/components/workspace/teacherWorkspace.js'
+
+test('mentor assignment keeps the preparation workspace without adding an entry or widening permissions',()=>{
+  const fullPath='/admin/graduation/mentors?panel=assign&batchId=1'
+  assert.equal(workspaceRouteOwner('/admin/graduation/mentors',fullPath).modKey,'gd-batch-impl')
+  const group=getVisibleNavPlan({permissionPatterns:['graduationDesign.student.manage']}).find(x=>x.key==='graduation')
+  const pages=workspacePages(group.children)
+  assert.equal(activeWorkspacePage(pages,{path:'/admin/graduation/mentors',fullPath,query:{panel:'assign',batchId:'1'}})?.moduleKey,'gd-batch-impl')
+  assert.equal(activeWorkspacePage([],{path:'/admin/graduation/mentors',fullPath,query:{panel:'assign'}}),undefined)
+  assert.equal(workspacePageMatches('/admin/graduation/mentors?panel=unknown','/admin/graduation/mentors?panel=list'),false)
+})
 
 const source = fs.readFileSync(new URL('../src/modules/graduation/views/AdminGraduationLayout.vue', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
 const script = source.match(/<script>([\s\S]*?)<\/script>/)?.[1]

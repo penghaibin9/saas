@@ -86,8 +86,8 @@
         <section class="sp-card sp-completion">
           <div>
             <span class="sp-preparation__eyebrow">结项与就业衔接</span>
-            <h2>{{ my.status === 'ARCHIVED' || my.historyMode ? '实习结果已归档' : ['ASSESSING','ENDED'].includes(my.status) ? '实习进入结项考核' : '结项进度与就业去向' }}</h2>
-            <p class="sp-muted">{{ my.status === 'ARCHIVED' || my.historyMode ? '实习档案已形成历史记录；就业去向、材料核验与后续跟进在就业中心继续办理。' : ['ASSESSING','ENDED'].includes(my.status) ? '请完成实习总结、自评和评价，等待学校核算并发布正式成绩。' : '可提前查看结项要求和就业服务；正式成绩与归档结果将在完成实习考核后显示。' }}</p>
+            <h2>{{ my.status === 'ARCHIVED' ? '实习结果已归档' : ['ASSESSING','ENDED'].includes(my.status) ? '实习进入结项考核' : '结项进度与就业去向' }}</h2>
+            <p class="sp-muted">{{ my.status === 'ARCHIVED' ? '实习档案已形成历史记录；就业去向、材料核验与后续跟进在就业中心继续办理。' : ['ASSESSING','ENDED'].includes(my.status) ? '请完成实习总结、自评和评价，等待学校核算并发布正式成绩。' : '可提前查看结项要求和就业服务；正式成绩与归档结果将在完成实习考核后显示。' }}</p>
           </div>
           <div class="sp-completion__actions">
             <button type="button" class="sp-btn sp-btn--ghost" @click="selectTab('eval')">查看鉴定与成绩</button>
@@ -178,8 +178,8 @@
                   <StatusTag :text="lv.statusLabel || '待确认'" :tone="lv.status==='APPROVED'||lv.status==='RETURNED'?'success':lv.status==='REJECTED'?'danger':'warn'" />
                 </div>
                 <div style="display:flex;gap:8px">
-                  <button v-if="lv.status==='PENDING'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="withdrawLeave(lv)">撤回</button>
-                  <button v-if="['APPROVED','OVERDUE'].includes(lv.status)" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy" @click="openReturnLeave(lv)">办理销假</button>
+                  <button v-if="lv.status==='PENDING'" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy || my.historyMode" @click="withdrawLeave(lv)">撤回</button>
+                  <button v-if="['APPROVED','OVERDUE'].includes(lv.status)" class="sp-btn sp-btn--ghost" style="align-self:flex-start" :disabled="busy || my.historyMode" @click="openReturnLeave(lv)">办理销假</button>
                 </div>
                 <div v-if="returnDraft.id === String(lv.id)" class="leave-return-editor">
                   <strong>确认已经返岗</strong>
@@ -720,8 +720,8 @@ const qualificationHint = computed(() => ({
 const currentAction = computed(() => {
   if (my.value.historyMode) return {
     tab: 'overview', title: '查看本次实习记录', action: '查看实习概况',
-    reason: '该实习已进入历史记录，可查看本次安排与已保存结果。',
-    recentChange: '当前为历史实习', nextActor: '如需核对资料，请联系指导教师'
+    reason: my.value.status === 'ARCHIVED' ? '该实习已归档，可查看本次安排与已保存结果。' : '当前记录仅可查看，是否开放办理以学校批次安排和实际状态为准。',
+    recentChange: `当前状态：${statusText(my.value.status)}（只读）`, nextActor: '如需核对资料，请联系指导教师'
   }
   if (['PENDING', 'UNQUALIFIED', 'UNKNOWN'].includes(qualification.value.status)) return {
     tab: 'overview', title: qualification.value.status === 'UNQUALIFIED' ? '查看资格认定说明' : '关注实习资格认定', action: '查看资格结果',
@@ -1237,7 +1237,7 @@ async function uploadLeaveEvidence(event) {
   }
 }
 async function withdrawLeave(item) {
-  if (busy.value) return
+  if (busy.value || my.value.historyMode) return
   busy.value = true
   try {
     const result = await internshipCoreApi.withdrawLeave(item.id, {
@@ -1255,7 +1255,7 @@ async function withdrawLeave(item) {
   } finally { busy.value = false }
 }
 function openReturnLeave(item) {
-  if (busy.value) return
+  if (busy.value || my.value.historyMode) return
   Object.assign(returnDraft, { id: String(item.id), note: '', version: item.version })
   leaveError.value = ''
 }
@@ -1264,7 +1264,7 @@ function closeReturnLeave() {
   Object.assign(returnDraft, { id: '', note: '', version: null })
 }
 async function confirmReturnLeave() {
-  if (busy.value || !returnDraft.id || returnDraft.note.trim().length < 2) return
+  if (busy.value || my.value.historyMode || !returnDraft.id || returnDraft.note.trim().length < 2) return
   const id = returnDraft.id
   const note = returnDraft.note.trim()
   busy.value = true

@@ -353,11 +353,26 @@ def test_t04_assignments_are_tenant_isolated(db_mode):
     assert len(theirs_rows) == 1 and theirs_rows[0]["orgNodeId"] == str(theirs)
 
 
-def test_school_academic_reviewer_http_boundary(client, auth_headers, db_mode):
+def test_school_academic_reviewer_http_boundary(client, db_mode):
     """正式任职入口只接收本校有效账号的校级教务责任岗位。"""
-    from app.models import StaffAssignment, User, UserRole
+    from app.models import StaffAssignment, User, UserRole, Role
+    from app.core.security import hash_password
+    from sqlalchemy import select
 
     school_id = 1000000000000000001
+    with _session() as db:
+        actor = User(tenant_id=school_id, login_name='d604-assignment-admin', real_name='任职验收管理员',
+                     password_hash=hash_password('D604-isolated-test-only!'), user_type='ADMIN', status='ACTIVE')
+        role = db.scalar(select(Role).where(Role.tenant_id == school_id, Role.role_code == 'SCHOOL_ADMIN'))
+        if role is None:
+            role = Role(tenant_id=school_id, role_code='SCHOOL_ADMIN', role_name='学校管理员', role_type='SYSTEM', status='ACTIVE')
+            db.add(role)
+        db.add(actor); db.flush()
+        db.add(UserRole(tenant_id=school_id, user_id=actor.id, role_id=role.id, status='ACTIVE'))
+        db.commit()
+    signed_in = client.post('/api/v1/auth/login', json={'tenantCode':'demo', 'loginName':'d604-assignment-admin', 'password':'D604-isolated-test-only!'})
+    assert signed_in.status_code == 200, signed_in.text
+    auth_headers = {'Authorization': 'Bearer ' + signed_in.json()['data']['accessToken']}
     with _session() as db:
         mine = User(tenant_id=school_id, login_name="school-reviewer-test",
                     real_name="本校教务", password_hash="unused", user_type="TEACHER", status="ACTIVE")

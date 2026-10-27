@@ -138,7 +138,7 @@ def teacher_todos_page(user, group="all", page=1, page_size=20):
                       UnifiedTodo.due_at.asc(), UnifiedTodo.id.desc())
             .offset((page - 1) * size).limit(size)
         ).all()
-        items = [_todo_item(todo_svc._todo_dict(row)) for row in todo_rows]
+        items = [_todo_item(item) for item in todo_svc._project_todo_rows(db, todo_rows)]
 
     return {
         "filters": [{"key": k, "label": label, "badge": counts[k]} for k, label in FILTERS],

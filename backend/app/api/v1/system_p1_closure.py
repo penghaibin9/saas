@@ -21,6 +21,7 @@ from app.core.context import current_tenant_id
 from app.core.exceptions import AppException
 from app.core.permissions import has_permission, require_any_permission
 from app.core.response import success
+from app.core.timeutil import iso_utc
 from app.db.session import get_sessionmaker
 from app.models import College, Major, SchoolClass, StudentProfile
 from app.models.config_governance import (
@@ -239,8 +240,8 @@ def list_effective_config_overrides(
             chain = [{
                 "overrideId": str(row.id),
                 "version": int(row.version or 0),
-                "effectiveAt": row.effective_at.isoformat() if row.effective_at else None,
-                "expiresAt": row.expires_at.isoformat() if row.expires_at else None,
+                "effectiveAt": iso_utc(row.effective_at),
+                "expiresAt": iso_utc(row.expires_at),
                 "value": (row.value_json or {}).get("value"),
                 "reason": row.reason or "",
                 "scheduled": bool(row.effective_at and row.effective_at > now),
@@ -250,8 +251,8 @@ def list_effective_config_overrides(
                 "configKey": config_key, "configName": definition.config_name,
                 "domain": definition.domain_code, "scopeType": SCOPE_TENANT, "scopeId": None,
                 "value": (display.value_json or {}).get("value"),
-                "effectiveAt": display.effective_at.isoformat() if display.effective_at else None,
-                "expiresAt": display.expires_at.isoformat() if display.expires_at else None,
+                "effectiveAt": iso_utc(display.effective_at),
+                "expiresAt": iso_utc(display.expires_at),
                 "reason": display.reason or "", "isScheduledOnly": current is None,
                 "overrideChain": chain, "overrideCount": len(chain),
                 "scheduledCount": sum(1 for row in chain if row["scheduled"]),

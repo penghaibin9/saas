@@ -57,6 +57,8 @@ def test_t01_tenant_override_wins_and_shows_in_chain(db_mode):
     assert result["value"] == 7
     assert result["sourceLayer"] == "TENANT"
     assert [c["layer"] for c in result["chain"]][-1] == "TENANT"
+    assert result["chain"][-1]["effectiveAt"].endswith("Z")
+    assert result["resolvedAt"].endswith("Z")
 
 
 def test_t01_org_unit_and_term_layers_take_precedence(db_mode):

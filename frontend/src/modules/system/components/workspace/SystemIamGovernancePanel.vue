@@ -97,7 +97,7 @@
           <AppButton v-if="sections.templates.error" @click="loadSection('templates')">重试角色模板</AppButton>
         </div>
         <section v-else class="card template-catalog">
-          <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">已发布模板不可修改；自定义角色始终固定到来源版本，升级前需先查看本校影响。</p></div><button class="link" @click="go('/admin/system/roles?tab=templates')">进入模板管理</button></header>
+          <header class="section-head"><div><h3>学校角色模板</h3><p class="muted">已发布模板不可修改；自定义角色始终固定到来源版本，升级前需先查看本校影响。</p></div><button class="link" @click="go('/admin/system/iam?surface=templates')">查看已发布模板</button></header>
           <div class="template-grid">
             <article v-for="item in templates" :key="`${item.templateCode}-${item.templateVersion}`" class="template-item">
               <header><strong>{{ roleLabel(item.templateCode, item.templateName) }}</strong><span class="muted">第 {{ item.templateVersion }} 版</span></header>
@@ -275,10 +275,10 @@ export default {
       scopeTargetType: 'COLLEGE', scopeTargetId: '', resourceType: 'STUDENT', resourceId: ''
     },
     surfaces: [
-      { key: 'roles', label: '角色', description: '统一管理角色与角色权限', path: '/admin/system/iam?surface=roles', targetPath: '/admin/system/roles?tab=members' },
-      { key: 'templates', label: '角色模板', description: '管理不可变版本、来源、配置偏移与升级影响', path: '/admin/system/iam?surface=templates', targetPath: '/admin/system/roles?tab=templates' },
+      { key: 'roles', label: '角色', description: '统一管理角色与角色权限', path: '/admin/system/iam?surface=roles', targetPath: '/admin/system/iam?surface=roles' },
+      { key: 'templates', label: '角色模板', description: '管理不可变版本、来源、配置偏移与升级影响', path: '/admin/system/iam?surface=templates', targetPath: '/admin/system/iam?surface=templates' },
       { key: 'members', label: '成员与业务身份', description: '角色成员、来源与复核', path: '/admin/system/role-assignments' },
-      { key: 'permissions', label: '菜单与操作权限', description: '只从权威权限目录分配', path: '/admin/system/iam?surface=permissions', targetPath: '/admin/system/roles?tab=permissions' },
+      { key: 'permissions', label: '菜单与操作权限', description: '只从权威权限目录分配', path: '/admin/system/iam?surface=permissions', targetPath: '/admin/system/iam?surface=permissions' },
       { key: 'dataScopes', label: '数据范围', description: '使用结构化范围，不根据角色名称猜测范围', path: '/admin/system/scopes' },
       { key: 'delegations', label: '委托', description: '临时授权与工作移交', path: '/admin/system/delegations' },
       { key: 'securityChanges', label: '安全变更', description: '草稿、激活、回滚与审计', path: '/admin/system/security-changes' },

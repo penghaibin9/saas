@@ -55,13 +55,16 @@ def _hash(value: object) -> str:
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
 
 
-def _project(db, project_id: int, tenant_id: int):
-    row = db.scalars(select(SystemImplementationProject).where(
+def _project(db, project_id: int, tenant_id: int, *, writable: bool = False):
+    statement = select(SystemImplementationProject).where(
         SystemImplementationProject.id == project_id,
         SystemImplementationProject.tenant_id == tenant_id,
-        SystemImplementationProject.is_deleted.is_(False))).first()
+        SystemImplementationProject.is_deleted.is_(False))
+    row = db.scalars(statement.with_for_update() if writable else statement).first()
     if row is None:
         raise AppException("DATA_NOT_FOUND", "实施项目不存在")
+    if writable and (row.status == "ACCEPTED" or row.acceptance_digest):
+        raise AppException("DATA_CONFLICT", "项目已验收封存，请通过变更项目处理")
     return row
 
 
@@ -295,7 +298,7 @@ def discover(user: dict, project_id: int, import_batch_no: str) -> dict:
         raise AppException("VALIDATION_ERROR", "导入文件没有可安装的业务关系")
     db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _project(db, project_id, tenant_id, writable=True)
         existing = db.scalars(select(SystemBusinessRelationBatch).where(
             SystemBusinessRelationBatch.tenant_id == tenant_id,
             SystemBusinessRelationBatch.project_id == project_id,
@@ -359,7 +362,7 @@ def confirm(user: dict, project_id: int, body: dict) -> dict:
                 for x in body.get("decisions") or []}
     db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _project(db, project_id, tenant_id, writable=True)
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
             raise AppException("DATA_CONFLICT", "项目版本已变化，请刷新")
         row = _batch(db, tenant_id, project_id, batch_no)
@@ -492,9 +495,7 @@ def apply(user: dict, project_id: int, body: dict) -> dict:
     tenant_id = _tid(); batch_no = str(body.get("batchNo") or "").strip(); actor = _actor(user)
     db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
-        if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
-            raise AppException("DATA_CONFLICT", "项目版本已变化，请刷新后再回滚")
+        project = _project(db, project_id, tenant_id, writable=True)
         row = _batch(db, tenant_id, project_id, batch_no)
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
             raise AppException("DATA_CONFLICT", "项目版本已变化，请刷新")
@@ -554,6 +555,34 @@ def apply(user: dict, project_id: int, body: dict) -> dict:
         db.close()
 
 
+def _rollback_evidence_issues(row, items) -> list[str]:
+    if not items:
+        return ["缺少已安装关系明细，无法确定回滚对象和影响范围"]
+    if (row.summary_json or {}).get("installed") != len(items):
+        return ["安装数量与回滚明细不一致，无法确认完整影响范围"]
+    for item in items:
+        spec = _TARGETS.get(item.relation_type)
+        if not spec or item.target_table != spec[0] or not item.target_row_id:
+            return ["缺少有效的业务对象定位记录"]
+        fields = {
+            "TEACHER_TEACHING_TASK": {"teacher_id", "teacher_key", "teacher_name"},
+            "INTERNSHIP_ADVISOR_STUDENT": {"advisor_user_id", "advisor_name"},
+            "GRADUATION_MENTOR_STUDENT": {"mentor_id", "advisor_name"},
+        }.get(item.relation_type, {spec[1]})
+        before, after = item.before_json, item.after_json
+        if not isinstance(before, dict) or not isinstance(after, dict):
+            return ["缺少安装前后值，不能安全恢复"]
+        if not fields.issubset(before) or not (fields | {"scope_id", "scope_created"}).issubset(after):
+            return ["安装前后值或授权范围记录不完整，不能安全恢复"]
+        if set(before) - fields - {"active_assignment_ids"} or set(after) - fields - {"scope_id", "scope_created", "assignment_id"}:
+            return ["安装记录包含无法识别的恢复字段，请人工核查历史记录"]
+        if item.relation_type == "GRADUATION_MENTOR_STUDENT" and (
+            not isinstance(before.get("active_assignment_ids"), list) or not after.get("assignment_id")
+        ):
+            return ["缺少毕业设计导师分配历史，不能安全恢复"]
+    return []
+
+
 def list_batches(project_id: int) -> list[dict]:
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
@@ -563,7 +592,22 @@ def list_batches(project_id: int) -> list[dict]:
             SystemBusinessRelationBatch.project_id == project_id,
             SystemBusinessRelationBatch.is_deleted.is_(False)).order_by(
                 SystemBusinessRelationBatch.id.desc())).all()
-        return [_batch_row(x, project.version) for x in rows]
+        items = db.scalars(select(SystemBusinessRelationInstallItem).where(
+            SystemBusinessRelationInstallItem.tenant_id == tenant_id,
+            SystemBusinessRelationInstallItem.project_id == project_id,
+            SystemBusinessRelationInstallItem.status == "APPLIED",
+            SystemBusinessRelationInstallItem.is_deleted.is_(False))).all()
+        grouped = {}
+        for item in items:
+            grouped.setdefault(item.relation_batch_id, []).append(item)
+        result = []
+        for row in rows:
+            issues = _rollback_evidence_issues(row, grouped.get(row.id, [])) if row.status == "APPLIED" else []
+            if project.status == "ACCEPTED" or project.acceptance_digest:
+                issues.append("项目已验收封存，请通过变更项目处理")
+            result.append({**_batch_row(row, project.version), "rollbackAvailable": row.status == "APPLIED" and not issues,
+                           "rollbackBlockedReasons": issues})
+        return result
     finally:
         db.close()
 
@@ -575,7 +619,10 @@ def rollback(user: dict, project_id: int, batch_no: str, body: dict) -> dict:
     if len(reason) < 2: raise AppException("VALIDATION_ERROR", "请填写回滚原因")
     tenant_id = _tid(); actor = _actor(user); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id); row = _batch(db, tenant_id, project_id, batch_no)
+        project = _project(db, project_id, tenant_id, writable=True); row = _batch(db, tenant_id, project_id, batch_no)
+        db.refresh(row, with_for_update=True)
+        if body.get("projectVersion") != project.version:
+            raise AppException("DATA_CONFLICT", "项目版本缺失或已变化，请刷新后再回滚")
         if row.status == "ROLLED_BACK": return {**_batch_row(row, project.version), "idempotent": True}
         if row.status != "APPLIED": raise AppException("DATA_CONFLICT", "只有已安装的业务关系批次可以回滚")
         items = db.scalars(select(SystemBusinessRelationInstallItem).where(
@@ -584,6 +631,9 @@ def rollback(user: dict, project_id: int, batch_no: str, body: dict) -> dict:
             SystemBusinessRelationInstallItem.status == "APPLIED",
             SystemBusinessRelationInstallItem.is_deleted.is_(False)).order_by(
                 SystemBusinessRelationInstallItem.id.desc())).all()
+        issues = _rollback_evidence_issues(row, items)
+        if issues:
+            raise AppException("DATA_CONFLICT", "；".join(issues))
         # 先做漂移检查，保证整批回滚不会覆盖安装后的人工作业。
         targets = []
         for item in items:
@@ -591,8 +641,20 @@ def rollback(user: dict, project_id: int, batch_no: str, body: dict) -> dict:
                      "t_gd_student": GraduationStudent, "t_internship_record": InternshipRecord,
                      "t_affairs_dorm_building": DormBuilding}[item.target_table]
             target = db.scalars(select(model).where(model.id == item.target_row_id,
-                model.tenant_id == tenant_id, model.is_deleted.is_(False))).first()
+                model.tenant_id == tenant_id, model.is_deleted.is_(False)).with_for_update()).first()
             if target is None: raise AppException("DATA_CONFLICT", f"关系目标已删除，不能自动回滚：{item.object_ref}")
+            if item.relation_type == "GRADUATION_MENTOR_STUDENT":
+                assignment_ids = [item.after_json["assignment_id"], *item.before_json["active_assignment_ids"]]
+                assignments = db.scalars(select(GraduationMentorAssignment).where(
+                    GraduationMentorAssignment.id.in_(assignment_ids),
+                    GraduationMentorAssignment.tenant_id == tenant_id,
+                    GraduationMentorAssignment.gd_student_id == target.id,
+                    GraduationMentorAssignment.is_deleted.is_(False)).with_for_update()).all()
+                states = {assignment.id: assignment.status for assignment in assignments}
+                if states.get(item.after_json["assignment_id"]) != "ACTIVE" or any(
+                    states.get(old_id) != "CHANGED" for old_id in item.before_json["active_assignment_ids"]
+                ):
+                    raise AppException("DATA_CONFLICT", "导师分配历史已缺失或变化，不能自动回滚")
             for field, expected in (item.after_json or {}).items():
                 if field in {"scope_id", "scope_created", "assignment_id"}: continue
                 if getattr(target, field) != expected:

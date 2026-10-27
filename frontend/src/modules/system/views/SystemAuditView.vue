@@ -14,7 +14,8 @@
       <LoadingState v-else-if="loading" />
       <template v-else>
         <section class="mp-card">
-          <header class="mp-card__head"><span class="mp-card__title">首屏结论</span></header>
+          <header class="mp-card__head"><span class="mp-card__title">最近记录概况</span></header>
+          <p class="mp-note">以下统计基于最近 {{ overview.sampledCount }} 条记录；当前共有 {{ overview.totalRecent }} 条。完整性判断仅覆盖这些记录，不代表全量历史已验收。</p>
           <div class="mp-card__body sav-summary">
             <div class="sav-stat"><span class="sav-stat__num">{{ overview.loginRiskCount }}</span><span class="sav-stat__label">登录风险</span></div>
             <div class="sav-stat"><span class="sav-stat__num">{{ overview.highRiskChangeCount }}</span><span class="sav-stat__label">高危变更</span></div>
@@ -45,11 +46,12 @@
             <DataTable v-else :columns="evidenceColumns" :rows="evidence" row-key="auditId">
               <template #cell-scope="{ row }">
                 <div class="mp-cell-main">{{ auditActionLabel(row) }}</div>
-                <div class="mp-cell-sub">{{ resourceLabel(row.resource) }} · 请求编号 {{ row.requestId }}</div>
+                <div class="mp-cell-sub">{{ row.targetLabel || resourceLabel(row.resource) }} · 请求编号 {{ row.requestId }}</div>
               </template>
               <template #cell-actor="{ row }">{{ row.actorName || row.actorId || '—' }}</template>
               <template #cell-result="{ row }">
                 <StatusTag :type="row.result === 'SUCCESS' ? 'success' : 'danger'" :label="auditResultLabel(row)" dot />
+                <p v-if="row.resultNote" class="mp-note">{{ row.resultNote }}</p>
               </template>
             </DataTable>
           </div>
@@ -87,7 +89,7 @@ import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 import { presentAuditRecord, safeLocalizedText } from '@/utils/presentationSafety'
 
-const FIELD_LABELS = { actor_id: '操作人', action: '动作', resource: '业务对象', occurred_at: '操作时间', request_id: '请求编号', result: '结果', tenant_id: '学校范围', ip_address: '网络地址' }
+const FIELD_LABELS = { actor_id: '操作人', actorId: '操作人', action: '动作', resource: '业务对象', object: '业务对象', occurred_at: '操作时间', request_id: '请求编号', traceId: '请求编号', result: '结果', tenant_id: '学校范围', tenantId: '学校范围', ip_address: '网络地址', reason: '操作原因', version: '版本信息' }
 const RESOURCE_LABELS = { USER: '用户', ROLE: '角色', PERMISSION: '权限', ORGANIZATION: '组织', FILE: '文件', TENANT: '学校', CONFIG: '系统配置', WORKFLOW: '审批流程' }
 
 export default {

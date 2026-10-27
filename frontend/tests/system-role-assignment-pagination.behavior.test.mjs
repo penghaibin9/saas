@@ -6,7 +6,7 @@ import { parse, compileTemplate } from '@vue/compiler-sfc'
 
 const { descriptor } = parse(readFileSync(new URL('../src/modules/system/views/SystemRoleAssignmentView.vue', import.meta.url), 'utf8'))
 function view(read, mutations = {}, candidates = async () => ({ code: 0, data: { items: [], total: 0 } })) {
-  const env = { schoolIamApi: { roleMemberCandidates: candidates }, systemApi: { listRoleAssignments: read, ...mutations }, roleDisplayLabel: value => value, toast: { success() {}, error() {} },
+  const env = { AppDrawer: {}, AccountCandidatePicker: {}, contextFingerprint: ctx => JSON.stringify(ctx), schoolIamApi: { roleMemberCandidates: candidates }, systemApi: { listRoleAssignments: read, ...mutations }, roleDisplayLabel: value => value, toast: { success() {}, error() {} },
     ModulePageShell: {}, ModuleToolbar: {}, DataTable: {}, StatusTag: {}, LoadingState: {}, ErrorState: {}, EmptyState: {}, AppConfirmDialog: {} }
   vm.runInNewContext(descriptor.script.content.replace(/^import .*$/gm, '').replace('export default', 'globalThis.component ='), env)
   const component = env.component
@@ -17,6 +17,16 @@ function view(read, mutations = {}, candidates = async () => ({ code: 0, data: {
   return ctx
 }
 const result = (id, total = 102) => ({ code: 0, data: { list: [{ assignmentId: id }], total, summary: {} } })
+test('inactive grants never open mutation dialogs', () => {
+  const ctx = view(async () => result('history'))
+  ctx.ctx = { permissionPatterns: ['systemAdmin.user.assign'] }
+  for (const status of ['REVOKED','EXPIRED','UNKNOWN']) {
+    for (const action of ['review','transfer','revoke','register']) {
+      ctx.ask(action,{status,assignmentId:'18',version:3})
+      assert.equal(ctx.dialogOpen,false)
+    }
+  }
+})
 
 test('assignment pagination template compiles', () => {
   assert.deepEqual(compileTemplate({ source: descriptor.template.content, filename: 'Assignments.vue', id: 'assignments' }).errors, [])
@@ -68,7 +78,7 @@ test('legacy registration submits the exact link ID/version without granting per
     sent = { id, payload }; return { code: 0, data: { id: '81' } }
   } })
   ctx.ctx = { permissionPatterns: ['systemAdmin.user.assign'] }
-  ctx.ask('register', { userRoleId: '9007199254740999', version: 7, roleCode: 'STAFF' })
+  ctx.ask('register', { status: 'ACTIVE', userRoleId: '9007199254740999', version: 7, roleCode: 'STAFF' })
   await ctx.submit({ reason: '核对既有职责后补登记' })
   assert.equal(sent.id, '9007199254740999'); assert.equal(sent.payload.expectedVersion, 7)
   assert.equal(sent.payload.permissionCodes, undefined)
@@ -79,7 +89,7 @@ test('conflict retains the dialog, recipient and original version, and prevents 
   let calls = 0
   const ctx = view(async () => result('latest'), { transferRoleAssignment: async () => { calls++; return { code: 1, bizCode: 'DATA_CONFLICT' } } })
   ctx.ctx = { permissionPatterns: ['systemAdmin.user.assign'] }
-  ctx.ask('transfer', { assignmentId: '18', version: 3, realName: '测试老师' })
+  ctx.ask('transfer', { status: 'ACTIVE', assignmentId: '18', version: 3, realName: '测试老师' })
   await Promise.resolve(); await Promise.resolve()
   ctx.recipientsError = ''; ctx.recipientsLoading = false
   ctx.recipient = { id: '9007199254740999' }; ctx.transferTo = '9007199254740999'
@@ -95,7 +105,7 @@ test('request interruption releases busy state but requires a read before repeat
   let calls = 0
   const ctx = view(async () => result('latest'), { revokeRoleAssignment: async () => { calls++; throw new Error('连接中断') } })
   ctx.ctx = { permissionPatterns: ['systemAdmin.user.assign'] }
-  ctx.ask('revoke', { assignmentId: '18', version: 3 })
+  ctx.ask('revoke', { status: 'ACTIVE', assignmentId: '18', version: 3 })
   await ctx.submit({ reason: '本学期职责结束' })
   assert.equal(ctx.submitting, false); assert.equal(ctx.dialogOpen, true)
   assert.equal(ctx.requiresRecheck, true); assert.match(ctx.mutationError, /连接中断/)
@@ -105,7 +115,7 @@ test('request interruption releases busy state but requires a read before repeat
 test('in-flight operation blocks cancel and duplicate submission; validation rejection keeps editable draft', async () => {
   let finish, calls = 0
   const ctx = view(async () => result('latest'), { reviewRoleAssignment: () => { calls++; return new Promise(resolve => { finish = resolve }) } })
-  ctx.ask('review', { assignmentId: '18', version: 3 }); ctx.reviewTerm = '2026-2027-1'
+  ctx.ask('review', { status: 'ACTIVE', assignmentId: '18', version: 3 }); ctx.reviewTerm = '2026-2027-1'
   const running = ctx.submit({ reason: '继续承担相应工作' })
   ctx.setDialogVisible(false); await ctx.submit({ reason: '继续承担相应工作' })
   assert.equal(ctx.dialogOpen, true); assert.equal(calls, 1)
@@ -122,7 +132,7 @@ test('recipient search uses paged role candidates and selected string ID in the 
     query = { roleId, params }; return { code: 0, data: { items: [person], total: 1 } }
   })
   ctx.ctx = { permissionPatterns: ['systemAdmin.user.assign'] }
-  ctx.ask('transfer', { assignmentId: '18', roleId: '109', userId: '21', version: 3 })
+  ctx.ask('transfer', { status: 'ACTIVE', assignmentId: '18', roleId: '109', userId: '21', version: 3 })
   ctx.recipientKeyword = 'test_teacher'; await ctx.searchRecipients()
   assert.equal(query.roleId, '109'); assert.equal(query.params.keyword, 'test_teacher'); assert.equal(query.params.pageSize, 10)
   ctx.selectRecipient(ctx.recipients[0]); await ctx.submit({ reason: '职责交接测试原因' })

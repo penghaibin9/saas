@@ -415,55 +415,29 @@ def guard_definition_change(db, tenant_id: int, workflow_code: str, *, reason: s
 
 # ── 人工推进（异常处理）───────────────────────────────────────────────────────
 def force_advance_task(task_id: int, *, action: str, reason: str,
+                       expected_version: int | None = None,
+                       expected_source_version: int | None = None,
                        tenant_id: int | None = None, user: dict | None = None) -> dict:
-    """管理员强制推进一个卡住的审批任务。必须有理由，必须留审计——这是 SYS14-T04 的落点。
-
-    不复制审批服务的业务副作用（消息联动等），只做状态机本身的强制推进；
-    真实业务副作用仍由原审批服务负责，管理员人工推进只解卡，不代替业务判断。
-    """
+    """旧治理入口复用正式审批事务，不再直接修改任务或业务终态。"""
     action = str(action or "").strip().upper()
     if action not in ("APPROVED", "REJECTED", "CANCELLED"):
-        raise AppException("VALIDATION_ERROR", "action 必须是 APPROVED/REJECTED/CANCELLED")
+        raise AppException("VALIDATION_ERROR", "请选择有效的审批动作")
     if len(str(reason or "").strip()) < 5:
-        raise AppException("VALIDATION_ERROR", "人工推进必须填写理由（不少于 5 个字）")
-    tid = _tid(tenant_id)
-    actor = _actor(user)
-    from app.models import WorkflowInstance, WorkflowTask
+        raise AppException("VALIDATION_ERROR", "办理原因不少于5个字")
+    if _tid(tenant_id) != int(current_tenant_id() or 0):
+        raise AppException("NO_PERMISSION", "当前学校与审批任务范围不一致", http_status=403)
+    if action == "CANCELLED":
+        raise AppException("NO_PERMISSION", "请由来源业务按原撤销规则办理，流程配置不能直接作废业务", http_status=403)
+    from app.core.optimistic_lock import require_expected_version
+    from app.services import approval_runtime_service as approval
 
-    db = get_sessionmaker()()
-    try:
-        task = db.scalars(select(WorkflowTask).where(
-            WorkflowTask.id == int(task_id), WorkflowTask.tenant_id == tid,
-            WorkflowTask.is_deleted.is_(False))).first()
-        if task is None:
-            raise AppException("DATA_NOT_FOUND", "审批任务不存在")
-        if task.status != "PENDING":
-            raise AppException("DATA_CONFLICT", "任务已不是待处理状态，无需人工推进")
-        before_status = task.status
-        task.status = action
-        task.action_reason = f"[人工推进] {reason}"
-        task.acted_at = _now()
-        task.version = int(task.version or 0) + 1
-        instance = db.scalars(select(WorkflowInstance).where(
-            WorkflowInstance.id == task.instance_id, WorkflowInstance.tenant_id == tid,
-            WorkflowInstance.is_deleted.is_(False))).first()
-        if instance is not None and action in ("APPROVED", "REJECTED"):
-            instance.status = action
-            instance.version = int(instance.version or 0) + 1
-        db.commit()
-        out = {"taskId": str(task.id), "beforeStatus": before_status, "afterStatus": action,
-              "instanceId": str(task.instance_id)}
-    except AppException:
-        db.rollback()
-        raise
-    finally:
-        db.close()
-    from app.services import audit_log
-
-    audit_log.record("WORKFLOW_TASK_FORCE_ADVANCED", f"workflow-task:{task_id}",
-                     detail={"reason": reason, "action": action, "beforeStatus": before_status,
-                             "moduleCode": "systemAdmin"})
-    return out
+    require_expected_version(expected_version)
+    # 与正式审批共用对象权限、节点策略、源业务版本、业务回写和同事务审计。
+    handler = approval.approve if action == "APPROVED" else approval.reject
+    result = handler(str(task_id), reason.strip(), user=user,
+                     version=expected_version, expected_source_version=expected_source_version)
+    return {**result, "taskId": str(task_id), "beforeStatus": "PENDING",
+            "afterStatus": result["status"]}
 
 
 # ── 首屏结论 ─────────────────────────────────────────────────────────────────
@@ -498,7 +472,9 @@ def governance_overview(*, tenant_id: int | None = None) -> dict:
                         UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE")) or 0)
                 if role is None or members == 0:
                     no_approver.append({"workflowCode": d.workflow_code, "nodeCode": node.node_code,
-                                        "roleCode": node.approver_role_code})
+                                        "roleCode": node.approver_role_code,
+                                        "workflowName": d.workflow_name, "nodeName": node.node_name,
+                                        "definitionEnabled": d.status == "ENABLED" and bool(d.policy_confirmed)})
         running = db.scalars(select(WorkflowInstance).where(
             WorkflowInstance.tenant_id == tid, WorkflowInstance.status == "RUNNING",
             WorkflowInstance.is_deleted.is_(False))).all()

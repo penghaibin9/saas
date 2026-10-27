@@ -31,12 +31,13 @@
         <template v-else-if="state.detail.item">
           <div class="dx-detail-layout">
             <div class="sw-stack">
-              <div class="dx-task-heading"><span class="sw-symbol"><AppIcon :name="state.detail.item.jobType === 'IMPORT' ? 'records' : 'reports'" :size="23" /></span><div><h3>{{ taskLabel(state.detail.item) }}</h3><p class="sw-code">{{ state.detail.item.jobType }} #{{ state.detail.item.id }} · 版本 {{ state.detail.item.version }}</p></div><span class="sw-tag" :class="tone(state.detail.item)">{{ taskStatus(state.detail.item) }}</span></div>
+              <div class="dx-task-heading"><span class="sw-symbol"><AppIcon :name="state.detail.item.jobType === 'IMPORT' ? 'records' : 'reports'" :size="23" /></span><div><h3>{{ taskLabel(state.detail.item) }}</h3><p class="sw-code">{{ state.detail.item.jobType === 'IMPORT' ? '导入' : '导出' }} #{{ state.detail.item.id }} · 版本 {{ state.detail.item.version }}</p></div><span class="sw-tag" :class="tone(state.detail.item)">{{ taskStatus(state.detail.item) }}</span></div>
               <div v-if="unresolved(state.detail.item)" class="sw-alert sw-alert--warning"><b>上次请求结果尚未核实</b><p>只允许重新读取；不会因关闭确认框或再次点击而重复执行。</p></div>
               <div v-if="state.detail.item.strongSensitive" class="sw-alert sw-alert--warning"><b>强敏感、24 小时有效、一次性下载</b><p>下载前请核对交接对象；具体截止时间以服务器返回值为准，一次性票据只能消费一次，文件内容不在页面预览。</p></div>
-              <dl class="dx-facts"><div><dt>业务模块</dt><dd>{{ moduleLabel(state.detail.item.moduleCode) }}</dd></div><div><dt>创建时间</dt><dd>{{ formatTime(state.detail.item.createdAt) }}</dd></div><div><dt>当前版本</dt><dd>{{ state.detail.item.version }}</dd></div><div><dt>有效截止时间</dt><dd>{{ formatTime(state.detail.item.expiresAt) }}</dd></div></dl>
+              <dl class="dx-facts"><div><dt>业务模块</dt><dd>{{ moduleLabel(state.detail.item.moduleCode) }}</dd></div><div><dt>创建时间</dt><dd>{{ formatTime(state.detail.item.createdAt, state.detail.item.timeZone) }}</dd></div><div><dt>当前版本</dt><dd>{{ state.detail.item.version }}</dd></div><div><dt>有效截止时间</dt><dd>{{ formatTime(state.detail.item.expiresAt, state.detail.item.timeZone) }}</dd></div></dl>
               <template v-if="state.detail.item.jobType === 'IMPORT'">
                 <div class="dx-counts"><div v-for="(label, key) in countLabels" :key="key"><small class="sw-muted">{{ label }}</small><strong>{{ taskCount(taskCounts(state.detail.item)[key]) }}</strong></div></div>
+                <p>实际确认 {{ taskCount(state.detail.item.confirmedRows) }} 行；预检有效行不代表已经写入。</p>
                 <div v-if="isProcessing(state.detail.item)" class="sw-alert"><b>文件已登记，尚未形成最终预检结果</b><p>扫描、领取、解析阶段的行数显示“未取得”；后台继续处理，不需要重新上传。</p></div>
                 <div v-if="state.detail.item.sourceFile" class="dx-source"><h3>源文件与安全状态</h3><p>{{ state.detail.item.sourceFile.fileName || '文件名称未取得' }}</p><p class="sw-muted">{{ fileState(state.detail.item.sourceFile.status) }} · {{ fileState(state.detail.item.sourceFile.scanStatus) }}</p></div>
                 <section class="sw-stack" aria-label="错误条目">
@@ -64,7 +65,7 @@
               </div></div>
             </div>
             <aside class="dx-timeline sw-stack"><h3>执行留痕</h3>
-              <div v-for="(event, i) in state.detail.item.timeline || []" :key="i"><b>{{ eventLabel(event.event) }}</b><p class="sw-muted">{{ formatTime(event.at) }}</p></div>
+              <div v-for="(event, i) in state.detail.item.timeline || []" :key="i"><b>{{ eventLabel(event.event) }}</b><p class="sw-muted">{{ formatTime(event.at, state.detail.item.timeZone) }}</p></div>
               <p v-if="!state.detail.item.timeline?.length" class="sw-muted">未返回更多执行事件。</p>
               <details v-if="state.detail.item.adapter || state.detail.item.adapterType"><summary>任务来源标识</summary><p class="sw-code">{{ state.detail.item.adapter?.type || state.detail.item.adapterType }}</p><p class="sw-code">{{ state.detail.item.adapter?.ref || state.detail.item.adapterRef }}</p></details>
             </aside>
@@ -85,10 +86,10 @@
         <div v-else class="sw-table-wrap dx-table" tabindex="0" role="region" aria-label="数据交换任务清单"><table class="sw-table"><thead><tr><th>任务与来源</th><th>当前状态</th><th>数据量</th><th>创建时间 / 有效期</th><th>下一步</th></tr></thead><tbody>
           <tr v-for="row in state.list.rows" :key="taskKey(row)" :data-testid="`task-row-${row.jobType}-${row.id}`"><td><div class="sw-person"><span class="sw-symbol"><AppIcon :name="row.jobType === 'IMPORT' ? 'records' : 'reports'" :size="21" /></span><span><b>{{ taskLabel(row) }}</b><small>{{ moduleLabel(row.moduleCode) }} · {{ row.jobType === 'IMPORT' ? '导入' : '导出' }} #{{ row.id }}</small></span></div><span v-if="row.strongSensitive" class="sw-tag sw-tag--orange dx-sensitive">强敏感回执 · 下载独立授权</span></td>
             <td><span class="sw-tag" :class="tone(row)">{{ taskStatus(row) }}</span><small v-if="unresolved(row)">上次操作结果待核对</small></td>
-            <td v-if="row.jobType === 'IMPORT'">总行数 {{ taskCount(taskCounts(row).totalRows) }}<small>有效 {{ taskCount(taskCounts(row).validRows) }} · 错误 {{ taskCount(taskCounts(row).invalidRows) }}</small></td>
+            <td v-if="row.jobType === 'IMPORT'">总行数 {{ taskCount(taskCounts(row).totalRows) }}<small>有效 {{ taskCount(taskCounts(row).validRows) }} · 错误 {{ taskCount(taskCounts(row).invalidRows) }}</small><small>实际确认 {{ taskCount(row.confirmedRows) }} 行</small></td>
             <td v-else>{{ taskCount(taskCounts(row).rowCount) }} 行<small>已下载 {{ taskCount(taskCounts(row).downloadedCount) }} 次</small></td>
-            <td>{{ formatTime(row.createdAt) }}<small>{{ row.expiresAt ? '有效至 ' + formatTime(row.expiresAt) : '未设置单独有效期' }}</small></td>
-            <td><button type="button" class="sw-link" :disabled="locked" @click="openDetail(row)">{{ row.jobType === 'EXPORT' ? '核对回执' : row.status === 'VALIDATION_FAILED' ? '查看错误' : isProcessing(row) ? '查看进度' : '继续办理' }} →</button></td>
+            <td>{{ formatTime(row.createdAt, row.timeZone) }}<small>{{ row.expiresAt ? '有效至 ' + formatTime(row.expiresAt, row.timeZone) : '未设置单独有效期' }}</small></td>
+            <td><button type="button" class="sw-link" :disabled="locked" @click="openDetail(row)">{{ row.jobType === 'EXPORT' ? '核对回执' : row.status === 'SUCCEEDED' ? '查看结果' : row.status === 'VALIDATION_FAILED' ? '查看错误' : isProcessing(row) ? '查看进度' : '继续办理' }} →</button></td>
           </tr></tbody></table></div>
         <footer v-if="state.list.total !== null && !state.list.error" class="sw-pager dx-pager"><span>共 {{ state.list.total }} 个任务 · 每页 {{ state.list.pageSize }} 项 · 第 {{ state.list.page }} 页</span><div class="sw-row"><button type="button" class="sw-btn" :disabled="locked || state.list.loading || state.list.page <= 1" @click="controller.loadList(state.list.page - 1)">上一页</button><button type="button" class="sw-btn" :disabled="locked || state.list.loading || state.list.page * state.list.pageSize >= state.list.total" @click="controller.loadList(state.list.page + 1)">下一页</button></div></footer>
       </section>
@@ -107,6 +108,7 @@
 </template>
 <script>
 import { markRaw } from 'vue'
+import { formatDateTime } from '@/utils/dateUtils'
 import AppIcon from '@/components/ui/AppIcon.vue'
 import SystemWorkspaceFrame from '../components/workspace/SystemWorkspaceFrame.vue'
 import WorkspaceConfirmDialog from '../components/workspace/WorkspaceConfirmDialog.vue'
@@ -137,7 +139,7 @@ export default {
   methods: {
     taskKey, taskCount, taskCounts, taskLabel, taskStatus,
     moduleLabel(code) { return { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心', GRADUATION: '毕业设计', INTERNSHIP: '岗位实习', STUDENT_AFFAIRS: '学工中心' }[code] || '其他授权模块' },
-    formatTime(value) { return value ? String(value).replace('T', ' ').replace(/Z$/, ' UTC') : '未返回' },
+    formatTime(value, timeZone) { return value ? formatDateTime(value, '', timeZone) : '未返回' },
     fieldLabel(code) { return { name: '姓名', userNo: '工号', studentNo: '学号', collegeName: '学院', className: '班级', roleCode: '角色', scopeType: '数据范围' }[code] || (/[\u4e00-\u9fff]/.test(code || '') ? code : '其他字段') },
     fileState(code) { return { AVAILABLE: '文件可用', PENDING: '等待扫描', CLEAN: '扫描通过', PASSED: '扫描通过', ERROR: '扫描异常', INFECTED: '安全检查未通过', REJECTED: '文件已拒绝', SCANNING: '扫描中' }[code] || '安全状态待核对' },
     eventLabel(code) { return { CREATED: '任务创建', PARSING_STARTED: '开始预检', PARSING_FINISHED: '预检完成', CONFIRMED: '确认完成', FINISHED: '文件生成完成', REVOKED: '回执已撤销' }[code] || '后台处理事件' },

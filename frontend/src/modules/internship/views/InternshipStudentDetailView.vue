@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell class="isd" :title="detail ? detail.name + ' · 实习档案' : '实习档案'" :subtitle="pageSubtitle">
-    <template #actions><button class="mp-btn" @click="goBack">{{ graduationReturnTo ? '返回毕业审核' : volunteerReturnTo ? '返回岗位确认' : /^\/admin\/internship\/insurance(?:\/\d+)?(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回保险材料' : /^\/admin\/internship\/assignment-logs(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回分配记录' : /^\/admin\/internship\/compliance(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回上岗核验' : '返回名单' }}</button></template>
+    <template #actions><button class="mp-btn" @click="goBack">{{ systemReturnTo ? '返回系统管理' : graduationReturnTo ? '返回毕业审核' : volunteerReturnTo ? '返回岗位确认' : /^\/admin\/internship\/insurance(?:\/\d+)?(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回保险材料' : /^\/admin\/internship\/assignment-logs(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回分配记录' : /^\/admin\/internship\/compliance(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回上岗核验' : '返回名单' }}</button></template>
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="detail">
@@ -162,6 +162,7 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { systemRelationshipReturnTo } from '@/utils/systemRelationshipNavigation'
 import { formatDateTime } from '@/utils/dateUtils'
 
 const STATUS_NEXT = {
@@ -186,6 +187,7 @@ export default {
     }
   },
   computed: {
+    systemReturnTo() { return systemRelationshipReturnTo(this.$route.query.returnTo) },
     graduationReturnTo() {
       const value = this.$route.query.returnTo
       return this.detail && typeof value === 'string' && /^\/admin\/academic-affairs\/graduation\/(?:audit-console|\d+\/results)(?:\?[^#]*)?$/.test(value) ? value : ''
@@ -281,6 +283,7 @@ export default {
       })
     },
     goBack() {
+      if (this.systemReturnTo) return this.$router.push(this.systemReturnTo)
       if (this.graduationReturnTo) return this.$router.push(this.graduationReturnTo)
       if (this.volunteerReturnTo) return this.$router.push(this.volunteerReturnTo)
       const target = String(this.$route.query.returnTo || '')

@@ -7,7 +7,7 @@ import { StaffLoginPage } from '../pages/login.page.mjs'
 const FIXTURE = JSON.parse(fs.readFileSync(path.resolve(process.cwd(), 'runtime-fixtures/control-plane-school-iam.json'), 'utf8'))
 const captureDir = path.resolve(process.cwd(), 'test-results/official-site-marketing-captures')
 const surfaces = [
-  { path: '/admin/system/roles?tab=permissions', file: 'platform-role-permissions.png', text: /角色|权限/ },
+  { path: '/admin/system/iam?surface=permissions', file: 'platform-role-permissions.png', text: /角色|权限/ },
   { path: '/admin/system/scopes', file: 'platform-data-scopes.png', text: /数据范围/ },
   { path: '/admin/system/config?tab=brand', file: 'platform-school-brand.png', text: /品牌|学校信息/ },
   { path: '/admin/system/logs?tab=operation', file: 'platform-operation-audit.png', text: /审计|日志/ },

@@ -128,6 +128,8 @@ def install(quota_service):
             owns = db is None
             working = db or get_sessionmaker()()
             try:
+                # 所有模块先锁同一学校，再建立用量读取快照，避免跨模块总量超卖。
+                quota_service._lock_tenant_storage(working, tid)
                 limit = _commercial_storage_limit(working, tid, canonical_key)
                 if limit is not None:
                     now = datetime.utcnow()

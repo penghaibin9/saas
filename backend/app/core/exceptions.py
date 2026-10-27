@@ -110,7 +110,8 @@ def register_exception_handlers(app: FastAPI) -> None:
             try:  # 越权/限流写审计，失败不影响响应
                 from app.services import audit_log
                 audit_log.record("PERMISSION_DENIED" if exc.code != "RATE_LIMITED" else "RATE_LIMITED",
-                                 request.url.path, detail={"message": exc.message})
+                                 request.url.path, detail={"message": exc.message},
+                                 result="BLOCKED" if exc.code == "RATE_LIMITED" else "DENIED")
             except Exception:  # noqa: BLE001
                 pass
         body = fail(exc.code, exc.message, exc.details)

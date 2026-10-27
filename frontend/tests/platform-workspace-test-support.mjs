@@ -13,6 +13,7 @@ export function optionsInstance(relativePath, supplied = {}, dependencies = {}) 
   const match = source.match(/<script>([\s\S]*?)<\/script>/)
   if (!match) throw new Error('Missing options script')
   const script = match[1].replace(/^import\s+[\s\S]*?\sfrom\s+['"][^'"]+['"]\s*;?/gm, '')
+    .replace(/^import\s+['"][^'"]+['"]\s*;?/gm, '')
     .replace('export default', 'globalThis.definition =')
   const notices = [], calls = []
   const context = vm.createContext({

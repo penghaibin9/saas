@@ -394,7 +394,9 @@ def test_unknown_rule_and_version_conflict(tenant_ctx):
 
 
 # ── 接口层 ───────────────────────────────────────────────────────────────────
-def test_http_endpoints(client, auth_headers, tenant_ctx):
+def test_http_endpoints(client, tenant_ctx):
+    from system_admin_test_auth import school_admin_headers
+    auth_headers = school_admin_headers(client)
     owner_id = _make_user("md_http_owner")
     client.post("/api/v1/system/master-data/bootstrap", headers=auth_headers)
 

@@ -11,14 +11,16 @@
           <h3>先看结论，再处理异常</h3>
           <p>{{ conclusion }}</p>
         </div>
-        <button :disabled="loading" @click="load">刷新治理数据</button>
+        <button :disabled="loading || !!busy" @click="load">刷新治理数据</button>
       </section>
 
-      <section class="metric-grid">
+      <section v-if="!loading && !error" class="metric-grid">
         <article><strong>{{ formatGiB(usage.totalBytes) }}</strong><span>已用容量</span></article>
-        <article><strong>{{ usage.commercialStorageLimitBytes ? formatGiB(usage.commercialStorageLimitBytes) : '未授权' }}</strong><span>平台商业上限</span></article>
+        <article><strong>{{ usage.commercialStorageLimitBytes == null ? '未取得' : usage.commercialStorageLimitBytes > 0 ? formatGiB(usage.commercialStorageLimitBytes) : '未设置数值上限' }}</strong><span>平台商业上限</span></article>
         <article><strong>{{ usage.quotaBytes ? formatGiB(usage.quotaBytes) : '未配置' }}</strong><span>学校治理配额</span></article>
-        <article><strong>{{ usage.usagePercent == null ? '—' : `${usage.usagePercent}%` }}</strong><span>配额使用率</span></article>
+        <article><strong>{{ effectiveLimitText }}</strong><span>有效总容量上限</span></article>
+        <article><strong>{{ usage.remainingTotalBytes == null ? '未取得' : formatGiB(usage.remainingTotalBytes) }}</strong><span>剩余总容量（已计入预留）</span></article>
+        <article><strong>{{ usage.usagePercent == null ? '—' : `${usage.usagePercent}%` }}</strong><span>学校配额使用率</span></article>
         <article><strong>{{ formatGiB(usage.estimatedNext30DaysGrowthBytes) }}</strong><span>近 30 天增长</span></article>
         <article><strong>{{ usage.totalFiles || 0 }}</strong><span>文件对象</span></article>
         <article><strong>{{ anomalyTotal }}</strong><span>待处理异常</span></article>
@@ -32,19 +34,22 @@
       <template v-else>
         <section class="panel">
           <header><div><h3>容量与配额</h3><p>硬限额在所有物理写入和对象存储直传签发前统一执行。</p></div></header>
+          <p>有效总上限来源：{{ effectiveLimitSourceText }}。平台总上限与启用的学校硬配额取较小值；对应模块额度还会单独校验。</p>
+          <p v-if="usage.schoolQuotaWithinCommercialLimit === false" class="state error-state">学校历史配额高于平台商业上限；该历史配置不能扩大平台允许的新增文件容量。</p>
+          <p v-if="!canAction('quota.manage')" class="muted">当前身份仅可查看配额，调整需要存储配额管理权限。</p>
           <div class="form-grid">
-            <label>总配额（吉比字节）<input v-model.number="quota.totalQuotaGiB" type="number" min="1" step="1"></label>
-            <label>预警阈值（%）<input v-model.number="quota.warningPercent" type="number" min="1" max="100"></label>
-            <label class="check"><input v-model="quota.hardLimitEnabled" type="checkbox">达到配额后拒绝新文件</label>
-            <label class="wide">说明<input v-model.trim="quota.description" maxlength="500" placeholder="例如：本学年学校文件总配额"></label>
+            <label>总配额（吉比字节）<input v-model.number="quota.totalQuotaGiB" type="number" min="1" step="1" :disabled="!canAction('quota.manage') || !!busy"></label>
+            <label>预警阈值（%）<input v-model.number="quota.warningPercent" type="number" min="1" max="100" :disabled="!canAction('quota.manage') || !!busy"></label>
+            <label class="check"><input v-model="quota.hardLimitEnabled" type="checkbox" :disabled="!canAction('quota.manage') || !!busy">达到配额后拒绝新文件</label>
+            <label class="wide">说明<input v-model.trim="quota.description" maxlength="500" placeholder="例如：本学年学校文件总配额" :disabled="!canAction('quota.manage') || !!busy"></label>
           </div>
           <div class="module-quota-grid">
             <label v-for="item in moduleQuotaRows" :key="item.moduleCode">
               {{ moduleLabel(item.moduleCode) }}（吉比字节）
-              <input v-model.number="item.gib" type="number" min="0" step="1">
+              <input v-model.number="item.gib" :disabled="!canAction('quota.manage') || !!busy" type="number" min="0" step="1">
             </label>
           </div>
-          <div class="actions"><button class="primary" :disabled="busy === 'quota'" @click="saveQuota">保存配额</button></div>
+          <div class="actions"><button class="primary" :disabled="!canAction('quota.manage') || busy === 'quota'" @click="saveQuota">保存配额</button></div>
           <div class="table-wrap">
             <table><thead><tr><th>业务类型</th><th>文件数</th><th>容量</th></tr></thead>
               <tbody><tr v-for="item in usage.byBizType || []" :key="`${item.moduleCode}-${item.bizType}`">
@@ -66,12 +71,12 @@
         <section class="panel">
           <header><div><h3>保留策略</h3><p>优先级越小越先匹配；法律保留始终覆盖自动清理。</p></div></header>
           <div class="policy-form">
-            <input v-model.trim="policy.policyCode" placeholder="策略编码，如 EXPORT_7D">
-            <select v-model="policy.storageZone"><option value="">全部分区</option><option v-for="zone in zones" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select>
-            <input v-model.trim="policy.bizType" placeholder="业务类型（可空）">
-            <input v-model.number="policy.retentionDays" type="number" min="0" max="36500" placeholder="保留天数">
-            <input v-model.number="policy.priority" type="number" min="0" max="10000" placeholder="优先级">
-            <button class="primary" :disabled="busy === 'policy'" @click="savePolicy">保存策略</button>
+            <input v-model.trim="policy.policyCode" placeholder="策略编码，如 EXPORT_7D" :disabled="!canAction('retention.manage') || !!busy">
+            <select v-model="policy.storageZone" :disabled="!canAction('retention.manage') || !!busy"><option value="">全部分区</option><option v-for="zone in zones" :key="zone.value" :value="zone.value">{{ zone.label }}</option></select>
+            <input v-model.trim="policy.bizType" placeholder="业务类型（可空）" :disabled="!canAction('retention.manage') || !!busy">
+            <input v-model.number="policy.retentionDays" type="number" min="0" max="36500" placeholder="保留天数" :disabled="!canAction('retention.manage') || !!busy">
+            <input v-model.number="policy.priority" type="number" min="0" max="10000" placeholder="优先级" :disabled="!canAction('retention.manage') || !!busy">
+            <button class="primary" :disabled="!canAction('retention.manage') || busy === 'policy'" @click="savePolicy">保存策略</button>
           </div>
           <div class="table-wrap">
             <table><thead><tr><th>策略</th><th>匹配范围</th><th>保留</th><th>动作</th><th>状态</th></tr></thead>
@@ -87,9 +92,9 @@
         <section class="panel danger-panel">
           <header><div><h3>安全清理与法律保留</h3><p>必须先预演；有当前版本、有效绑定、有效归档或法律保留的文件不会删除。</p></div></header>
           <div class="actions">
-            <button :disabled="busy" @click="backfill">补算历史保留期</button>
-            <button :disabled="busy" @click="runCleanup(true)">预演到期清理</button>
-            <button class="danger-button" :disabled="busy || !cleanupPreview" @click="runCleanup(false)">执行已预演清理</button>
+            <button :disabled="!canAction('retention.manage') || busy" @click="backfill">补算历史保留期</button>
+            <button :disabled="!canAction('cleanup.execute') || busy" @click="runCleanup(true)">预演到期清理</button>
+            <button class="danger-button" :disabled="!canAction('cleanup.execute') || busy || !cleanupPreview" @click="runCleanup(false)">执行已预演清理</button>
           </div>
           <div v-if="cleanupPreview" class="result-box">
             候选 {{ cleanupPreview.candidateCount || 0 }}，可删除 {{ cleanupPreview.items?.filter(i => i.decision === 'WOULD_DELETE').length || 0 }}，
@@ -97,11 +102,11 @@
             <div class="muted">预演 {{ cleanupPreview.previewId }} · {{ cleanupPreview.expiresAt }}</div>
           </div>
           <div class="hold-form">
-            <input v-model.trim="hold.fileId" placeholder="文件 ID">
-            <input v-model.number="hold.expectedVersion" type="number" min="1" placeholder="当前版本">
-            <input v-model.trim="hold.reason" placeholder="法律保留或解除原因（不少于 5 字）">
-            <button :disabled="busy === 'hold'" @click="setHold(true)">设置法律保留</button>
-            <button :disabled="busy === 'hold'" @click="setHold(false)">解除法律保留</button>
+            <input v-model.trim="hold.fileId" placeholder="文件 ID" :disabled="!canAction('legalHold.manage') || !!busy">
+            <input v-model.number="hold.expectedVersion" type="number" min="1" placeholder="当前版本" :disabled="!canAction('legalHold.manage') || !!busy">
+            <input v-model.trim="hold.reason" placeholder="法律保留或解除原因（不少于 5 字）" :disabled="!canAction('legalHold.manage') || !!busy">
+            <button :disabled="!canAction('legalHold.manage') || busy === 'hold'" @click="setHold(true)">设置法律保留</button>
+            <button :disabled="!canAction('legalHold.manage') || busy === 'hold'" @click="setHold(false)">解除法律保留</button>
           </div>
         </section>
       </template>
@@ -115,6 +120,7 @@ import { fileStorageGovernanceApi } from '@/modules/system/api/fileStorageGovern
 import { toast } from '@/utils/toast'
 import { safeLocalizedText } from '@/utils/presentationSafety'
 import { systemConfirm } from '@/services/systemDialog'
+import { matchPermission } from '@/config/navPlan'
 
 const GIB = 1024 ** 3
 const MODULE_LABELS = { PLATFORM: '平台管理', SYSTEM: '系统管理', STUDENT: '学生管理', ACADEMIC_AFFAIRS: '教务中心', STUDENT_AFFAIRS: '学工中心', INTERNSHIP: '实习管理', EMPLOYMENT: '就业管理', ORIENTATION: '迎新管理', GRADUATION: '毕业设计' }
@@ -126,7 +132,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      loading: false, error: '', busy: '', usage: {}, health: {}, anomalies: {}, policies: [], cleanupPreview: null,
+      loading: true, error: '', busy: '', usage: {}, health: {}, anomalies: {}, policies: [], cleanupPreview: null,
       quota: { totalQuotaGiB: 100, warningPercent: 80, hardLimitEnabled: true, description: '', expectedVersion: 0 },
       moduleQuotaRows: [],
       policy: { policyCode: '', storageZone: '', bizType: '', retentionDays: 7, priority: 100, expectedVersion: 0 },
@@ -140,6 +146,8 @@ export default {
     }
   },
   computed: {
+    effectiveLimitText() { return this.usage.effectiveTotalLimitBytes === undefined ? '未取得' : this.usage.effectiveTotalLimitBytes === null ? '未设置数值总上限' : this.formatGiB(this.usage.effectiveTotalLimitBytes) },
+    effectiveLimitSourceText() { const sources = this.usage.effectiveTotalLimitSources; if (!Array.isArray(sources)) return '服务未返回，请重新读取'; return sources.map(value => ({ PLATFORM_COMMERCIAL: '平台商业上限', SCHOOL_HARD_QUOTA: '学校硬配额' })[value] || '来源待确认').join('、') || '未设置数值总上限' },
     anomalyTotal() { return this.anomalyCards.reduce((sum, item) => sum + Number(item.value || 0), 0) },
     anomalyCards() {
       return [
@@ -153,13 +161,15 @@ export default {
     },
     conclusion() {
       if (this.loading) return '正在计算学校文件容量与异常。'
+      if (this.error) return '本次治理数据读取失败，暂不能判断容量与异常。'
       if (this.anomalyTotal) return `当前发现 ${this.anomalyTotal} 项治理信号，优先处理扫描失败、长期隔离和未核验对象存储文件。`
       if (this.usage.usagePercent >= Number(this.usage.warningPercent || 80)) return '容量已接近预警线，建议清理过期导出与预览文件或扩容。'
-      return '当前容量与安全治理未发现阻断项，系统会继续按策略自动清理。'
+      return '本次返回未发现上述治理异常；文件清理仍须满足既有保留、引用和审核条件。'
     }
   },
   created() { this.load() },
   methods: {
+    canAction(action) { const patterns = this.ctx.permissionPatterns || []; return matchPermission(patterns, `systemAdmin.fileGovernance.${action}`) || matchPermission(patterns, 'systemAdmin.file.manage') },
     moduleLabel(value) { return safeLocalizedText({ value, dictionary: MODULE_LABELS, unknownLabel: '其他业务模块' }) },
     bizTypeLabel(value) { return safeLocalizedText({ value, dictionary: BIZ_TYPE_LABELS, unknownLabel: '其他业务文件' }) },
     storageZoneLabel(value) {
@@ -176,6 +186,7 @@ export default {
       this.loading = true; this.error = ''
       try {
         const data = await fileStorageGovernanceApi.overview()
+        if (!data?.usage || typeof data.usage.totalBytes !== 'number' || typeof data.usage.totalFiles !== 'number' || !data.anomalies) throw new Error('文件治理数据返回不完整，暂不能判断容量与异常')
         this.usage = data.usage || {}; this.health = data.health || {}; this.anomalies = data.anomalies || {}; this.policies = data.policies || []
         this.quota.expectedVersion = Number(this.usage.quotaVersion || 0)
         const configured = this.usage.moduleQuotaBytes || {}
@@ -188,6 +199,7 @@ export default {
       finally { this.loading = false }
     },
     async saveQuota() {
+      if (!this.canAction('quota.manage') || this.busy) return
       if (Number(this.quota.totalQuotaGiB) <= 0) return toast.warning('总配额必须大于 0 吉比字节')
       this.busy = 'quota'
       try {
@@ -202,6 +214,7 @@ export default {
       finally { this.busy = '' }
     },
     async savePolicy() {
+      if (!this.canAction('retention.manage') || this.busy) return
       if (!this.policy.policyCode) return toast.warning('请填写策略编码')
       this.busy = 'policy'
       try {
@@ -211,12 +224,14 @@ export default {
       finally { this.busy = '' }
     },
     async backfill() {
+      if (!this.canAction('retention.manage') || this.busy) return
       this.busy = 'backfill'
       try { const data = await fileStorageGovernanceApi.backfill(1000); toast.success(`已为 ${data.updated || 0} 个历史文件补算保留期`); await this.load() }
       catch (error) { toast.error(error.message || '保留期补算失败') }
       finally { this.busy = '' }
     },
     async runCleanup(dryRun) {
+      if (!this.canAction('cleanup.execute') || this.busy) return
       if (!dryRun && !await systemConfirm({ title:'确认执行文件清理', message:'只会删除预演中无有效引用、已过保留期且未法律保留的文件。', confirmText:'确认执行清理', type:'danger' })) return
       this.busy = dryRun ? 'preview' : 'cleanup'
       try {
@@ -232,6 +247,7 @@ export default {
       finally { this.busy = '' }
     },
     async setHold(enabled) {
+      if (!this.canAction('legalHold.manage') || this.busy) return
       if (!this.hold.fileId || this.hold.reason.length < 5) return toast.warning('请填写文件 ID 和不少于 5 字的原因')
       this.busy = 'hold'
       try {
@@ -245,21 +261,23 @@ export default {
 </script>
 
 <style scoped>
-.governance-page { display: grid; gap: 16px; }
+.governance-page { display: grid; gap: 16px; min-width: 0; }
+.governance-page > *, .hero > div, .panel header > div { min-width: 0; }
+input, select { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .hero, .panel { border: 1px solid #e5e6eb; border-radius: 12px; background: #fff; padding: 18px; }
-.hero, .panel header, .actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.hero, .panel header, .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; }
 h3 { margin: 0 0 6px; } p { margin: 0; color: #646a73; }
 .metric-grid, .anomaly-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
 .metric-grid article, .anomaly-grid article { display: grid; gap: 5px; padding: 14px; border: 1px solid #e5e6eb; border-radius: 10px; background: #fafbfc; }
 .metric-grid strong, .anomaly-grid strong { font-size: 24px; }.metric-grid span, .anomaly-grid span { color: #4e5969; }
 .anomaly-grid small { color: #86909c; }.anomaly-grid .danger { border-color: #ffccc7; background: #fff2f0; }
-.form-grid, .module-quota-grid { display: grid; grid-template-columns: repeat(3, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
+.form-grid, .module-quota-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 12px; margin-top: 16px; }
 .form-grid label, .module-quota-grid label { display: grid; gap: 6px; font-size: 13px; }.form-grid .wide { grid-column: 1 / -1; }.form-grid .check { display: flex; align-items: center; }
 input, select, button { min-height: 36px; border: 1px solid #c9cdd4; border-radius: 7px; padding: 0 10px; background: #fff; }
 button { cursor: pointer; } button:disabled { opacity: .55; cursor: not-allowed; }.primary { background: #165dff; border-color: #165dff; color: #fff; }.danger-button { color: #b42318; border-color: #f04438; }
 .actions { justify-content: flex-start; margin-top: 14px; }.table-wrap { overflow: auto; margin-top: 14px; }table { width: 100%; border-collapse: collapse; }th, td { padding: 10px; text-align: left; border-bottom: 1px solid #e5e6eb; }th { background: #f7f8fa; }.muted { color: #86909c; font-size: 12px; }
 .module-quota-grid { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 14px; }
-.policy-form, .hold-form { display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 10px; margin-top: 16px; }.hold-form { grid-template-columns: 140px 110px 1fr auto auto; }
+.policy-form, .hold-form { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 10px; margin-top: 16px; }.hold-form { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
 .result-box, .state { margin-top: 14px; padding: 12px; border-radius: 8px; background: #f2f3f5; }.error-state { color: #b42318; background: #fff2f0; }.danger-panel { border-color: #ffd591; }
 @media (max-width: 900px) { .form-grid, .policy-form, .hold-form { grid-template-columns: 1fr; }.hero, .panel header { align-items: flex-start; flex-direction: column; } }
 </style>

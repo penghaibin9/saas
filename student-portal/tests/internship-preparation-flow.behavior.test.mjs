@@ -17,6 +17,24 @@ test('preparation shows the actual phase without completed agreement or training
   assert.equal(flow('ASSESSING').find(s => s.state === 'current').name, '考核评价')
   assert.ok(flow('UNKNOWN').every(s => s.state === 'todo'))
 })
+
+test('readonly preparation never claims historical completion or archive',()=>{
+  const result=action({my:{value:{status:'PREPARING',historyMode:true}}})
+  assert.equal(result.tab,'overview')
+  assert.match(result.reason,/仅可查看/)
+  assert.doesNotMatch(result.reason+result.recentChange,/已归档|历史实习|历史记录/)
+  assert.match(action({my:{value:{status:'ARCHIVED',historyMode:true}}}).reason,/已归档/)
+})
+
+test('readonly context cannot withdraw or confirm return even with a stale open draft',async()=>{
+  const body=source.slice(source.indexOf('async function withdrawLeave('),source.indexOf('async function confirmAgreement('))
+  const draft={id:'1',note:'已返岗',version:0}
+  const actions=new Function('my','busy','returnDraft',body+'; return {withdrawLeave,openReturnLeave,confirmReturnLeave}')({value:{historyMode:true}},{value:false},draft)
+  await actions.withdrawLeave({id:'2',version:0})
+  actions.openReturnLeave({id:'2',version:0})
+  await actions.confirmReturnLeave()
+  assert.deepEqual(draft,{id:'1',note:'已返岗',version:0})
+})
 test('qualification decisions precede downstream instructions and missing positions lead to selection', () => {
   assert.equal(action().tab, 'enterprises')
   for (const status of ['PENDING', 'UNQUALIFIED', 'UNKNOWN']) {

@@ -147,7 +147,7 @@ def test_t01c_create_todo_requires_assignee(tenant_ctx):
 
 
 # ── SYS15-T02：渠道失败可重试且不重复业务动作 ────────────────────────────────
-def test_t02_retry_dead_outbox_resets_status_without_duplicating_row(tenant_ctx):
+def test_t02_retry_dead_outbox_resets_status_without_duplicating_row(tenant_ctx, monkeypatch):
     from app.services.message_event_outbox_service import retry_dead_outbox
     from app.models import MessageEventOutbox
 
@@ -172,6 +172,26 @@ def test_t02_retry_dead_outbox_resets_status_without_duplicating_row(tenant_ctx)
         refreshed = db.get(MessageEventOutbox, outbox_id)
         assert refreshed.status == "PENDING"
         assert refreshed.attempt_count == 0
+        from app.models import SecurityAuditLog
+        assert db.scalar(select(SecurityAuditLog.id).where(
+            SecurityAuditLog.tenant_id == MAIN_TENANT_ID,
+            SecurityAuditLog.action == "MESSAGE_OUTBOX_RETRY",
+            SecurityAuditLog.resource_id == str(outbox_id))) is not None
+    from app.core.exceptions import AppException
+    with pytest.raises(AppException):
+        retry_dead_outbox(outbox_id)
+    with _session() as db:
+        failed = MessageEventOutbox(tenant_id=MAIN_TENANT_ID, event_code="LEAVE.APPROVED",
+            source_module="student-affairs", source_biz_type="LEAVE", source_biz_id=90003,
+            dedup_key="sys15-t02-audit-fail", status="DEAD", attempt_count=5)
+        db.add(failed); db.commit(); failed_id = failed.id
+    def fail_audit(*args, **kwargs): raise RuntimeError("独立投递审计故障")
+    monkeypatch.setattr("app.services.db_service.audit_insert_in_session", fail_audit)
+    with pytest.raises(RuntimeError, match="独立投递审计故障"):
+        retry_dead_outbox(failed_id)
+    with _session() as db:
+        assert db.get(MessageEventOutbox, failed_id).status == "DEAD"
+        assert db.get(MessageEventOutbox, failed_id).attempt_count == 5
 
 
 def test_t02b_retry_dead_outbox_rejects_non_dead_status(tenant_ctx):
@@ -193,33 +213,56 @@ def test_t02b_retry_dead_outbox_rejects_non_dead_status(tenant_ctx):
 
 
 # ── SYS15-T03：业务完成证据关闭待办 ──────────────────────────────────────────
-def test_t03_close_todo_requires_evidence_and_writes_audit(tenant_ctx):
-    from app.services import audit_log
+def test_t03_close_todo_requires_source_version_and_atomic_audit(tenant_ctx, monkeypatch):
     from app.services import todo_task_service as tts
+    from app.models import SecurityAuditLog, UnifiedTodo
+    from app.models.affairs_funding_ext import FeeReduction
+    from app.core.exceptions import AppException
+    from sqlalchemy import select
 
     assignee_id = _make_user("sys15_t03_assignee")
     with _session() as db:
-        todo = tts.create_todo_idempotent(
-            db, source_module="sys15-test", source_biz_type="TEST", source_biz_id=3,
-            todo_type="SYS15_TEST_TODO_CLOSE", assignee_id=assignee_id, title="待关闭事项")
+        source = FeeReduction(tenant_id=MAIN_TENANT_ID, student_id=1, status="ISSUED")
+        pending_source = FeeReduction(tenant_id=MAIN_TENANT_ID, student_id=1, status="SUBMITTED")
+        db.add_all([source, pending_source]); db.flush()
+        def make(bid, kind="FEE_REDUCTION"):
+            return tts.create_todo_idempotent(db, source_module="student-affairs",
+                source_biz_type=kind, source_biz_id=bid, todo_type="FEE_REDUCTION_REVIEW",
+                assignee_id=assignee_id, title="独立失效提醒核验")
+        todo = make(source.id); pending = make(pending_source.id); unknown = make(999999,"TEST")
         db.commit()
-        todo_id = todo.id
-
-        from app.core.exceptions import AppException
+        todo_id, version = todo.id, int(todo.version or 0)
+        for row, expected in [(todo, None), (todo, version + 1), (pending, int(pending.version or 0)), (unknown, int(unknown.version or 0))]:
+            with pytest.raises(AppException):
+                tts.close_todo_with_evidence(db, todo_id=row.id, evidence="这段文字不能替代真实业务完成",
+                    expected_version=expected, actor={"userId": f"db-{assignee_id}"})
+            db.rollback()
+            assert db.get(UnifiedTodo,row.id).status == "PENDING"
+        result = tts.close_todo_with_evidence(db, todo_id=todo_id, evidence="核验已发放业务的失效提醒",
+            expected_version=version, actor={"userId": f"db-{assignee_id}"})
+        db.commit()
+        assert result.status == "DONE" and result.version == version + 1 and result.completed_at
+        assert db.get(FeeReduction, source.id).status == "ISSUED"
+        audit = db.scalar(select(SecurityAuditLog).where(SecurityAuditLog.resource_id == str(todo_id),
+            SecurityAuditLog.action == "TODO_CLOSED_WITH_EVIDENCE", SecurityAuditLog.tenant_id == MAIN_TENANT_ID))
+        assert audit and audit.detail_json['sourceStatus'] == 'ISSUED'
         with pytest.raises(AppException):
-            tts.close_todo_with_evidence(db, todo_id=todo_id, evidence="")
-
-        row = tts.close_todo_with_evidence(
-            db, todo_id=todo_id, evidence="学生已完成材料补交，附件编号SYS15-EVD-01",
-            actor={"userId": "db-1"})
-        db.commit()
-        assert row.status == "DONE"
-        assert "SYS15-EVD-01" in row.remark
-
-    assert audit_log._LOGS
-    latest = audit_log._LOGS[0]
-    assert latest["action"] == "TODO_CLOSED_WITH_EVIDENCE"
-    assert latest["detail"]["evidence"].endswith("SYS15-EVD-01")
+            tts.close_todo_with_evidence(db, todo_id=todo_id, evidence="重复请求不得再关闭",
+                expected_version=version, actor={"userId": f"db-{assignee_id}"})
+        db.rollback()
+        # 已关闭行不能复用成新待办；另建同一完成业务的不同受理人历史提醒作为回滚夹具。
+        rollback = UnifiedTodo(tenant_id=MAIN_TENANT_ID, source_module="student-affairs",
+            source_biz_type="FEE_REDUCTION", source_biz_id=source.id, todo_type="FEE_REDUCTION_REVIEW",
+            assignee_id=assignee_id + 1000, title="独立审计回滚验证", status="PENDING")
+        db.add(rollback); db.commit(); rollback_id=rollback.id; rollback_version=int(rollback.version or 0)
+        def fail_audit(*args, **kwargs): raise RuntimeError("独立审计故障")
+        monkeypatch.setattr("app.services.db_service.audit_insert_in_session", fail_audit)
+        with pytest.raises(RuntimeError, match="独立审计故障"):
+            tts.close_todo_with_evidence(db, todo_id=rollback_id, evidence="验证提醒与审计一同回滚",
+                expected_version=rollback_version, actor={"userId": f"db-{assignee_id}"})
+        db.rollback()
+        assert db.get(UnifiedTodo,rollback_id).status == "PENDING"
+        assert db.get(UnifiedTodo,rollback_id).version == rollback_version
 
 
 def test_t03b_close_todo_not_found_raises(tenant_ctx):
@@ -228,7 +271,7 @@ def test_t03b_close_todo_not_found_raises(tenant_ctx):
 
     with _session() as db:
         with pytest.raises(AppException):
-            tts.close_todo_with_evidence(db, todo_id=999999999, evidence="不存在的待办")
+            tts.close_todo_with_evidence(db, todo_id=999999999, evidence="不存在的待办", expected_version=0)
 
 
 # ── SYS15-T04：无责任人进入异常队列 ──────────────────────────────────────────
@@ -297,5 +340,17 @@ def test_http_endpoints(client, tenant_ctx):
         todo_id = todo.id
 
     r = client.post(f"/api/v1/system/communication-governance/todos/{todo_id}/close",
-                    headers=headers, json={"evidence": "HTTP 路径关闭验证"})
+                    headers=headers, json={"evidence": "未知来源不能靠文字关闭", "expectedVersion": 0})
+    assert r.status_code == 409, r.json()
+    from app.models import UnifiedTodo
+    from app.models.affairs_funding_ext import FeeReduction
+    with _session() as db:
+        assert db.get(UnifiedTodo, todo_id).status == "PENDING"
+        source = FeeReduction(tenant_id=MAIN_TENANT_ID, student_id=1, status="ISSUED")
+        db.add(source); db.flush()
+        todo = tts.create_todo_idempotent(db, source_module="student-affairs", source_biz_type="FEE_REDUCTION",
+            source_biz_id=source.id, todo_type="FEE_REDUCTION_REVIEW", assignee_id=admin_id, title="接口核验失效提醒")
+        db.commit(); todo_id, version = todo.id, int(todo.version or 0)
+    r = client.post(f"/api/v1/system/communication-governance/todos/{todo_id}/close",
+                    headers=headers, json={"evidence": "核验已发放后的失效提醒", "expectedVersion": version})
     assert r.json()["code"] == 0, r.json()

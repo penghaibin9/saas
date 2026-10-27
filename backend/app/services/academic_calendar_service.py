@@ -19,6 +19,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from app.core.timeutil import iso_utc, utc_now_naive
+
 from sqlalchemy import func, select
 from sqlalchemy.exc import IntegrityError
 
@@ -72,7 +74,7 @@ def _floor_seconds(value: datetime | None) -> datetime | None:
 
 
 def _now() -> datetime:
-    return _floor_seconds(datetime.utcnow())
+    return _floor_seconds(utc_now_naive())
 
 
 def _tenant_id(value: int | None = None) -> int:
@@ -108,11 +110,11 @@ def _row(gov: AcademicCalendarGovernance, term: Any | None) -> dict:
         "calendarType": gov.calendar_type,
         "timezone": gov.timezone,
         "version": int(gov.version or 0),
-        "scheduledAt": gov.scheduled_at.isoformat() if gov.scheduled_at else None,
-        "activatedAt": gov.activated_at.isoformat() if gov.activated_at else None,
-        "closingStartedAt": gov.closing_started_at.isoformat() if gov.closing_started_at else None,
-        "closedAt": gov.closed_at.isoformat() if gov.closed_at else None,
-        "archivedAt": gov.archived_at.isoformat() if gov.archived_at else None,
+        "scheduledAt": iso_utc(gov.scheduled_at),
+        "activatedAt": iso_utc(gov.activated_at),
+        "closingStartedAt": iso_utc(gov.closing_started_at),
+        "closedAt": iso_utc(gov.closed_at),
+        "archivedAt": iso_utc(gov.archived_at),
         "lastTransitionReason": gov.last_transition_reason,
         "yearCode": getattr(term, "year_code", None),
         "termNo": getattr(term, "term_no", None),
@@ -180,7 +182,7 @@ def resolve_current(
             }
         term = _load_term(db, tid, gov.term_id)
         payload = _row(gov, term)
-        payload.update({"hasCurrent": True, "moduleCode": module_code, "resolvedAt": moment.isoformat()})
+        payload.update({"hasCurrent": True, "moduleCode": module_code, "resolvedAt": iso_utc(moment)})
 
         stmt = select(CalendarWindow).where(
             CalendarWindow.tenant_id == tid,
@@ -194,8 +196,8 @@ def resolve_current(
             {
                 "windowType": w.window_type,
                 "moduleCode": w.module_code,
-                "startAt": w.start_at.isoformat(),
-                "endAt": w.end_at.isoformat(),
+                "startAt": iso_utc(w.start_at),
+                "endAt": iso_utc(w.end_at),
                 "open": bool(w.start_at <= moment <= w.end_at),
                 "config": w.config_json or {},
             }
@@ -278,8 +280,8 @@ def get_calendar(term_id: int, *, tenant_id: int | None = None) -> dict:
             {
                 "windowType": w.window_type,
                 "moduleCode": w.module_code,
-                "startAt": w.start_at.isoformat(),
-                "endAt": w.end_at.isoformat(),
+                "startAt": iso_utc(w.start_at),
+                "endAt": iso_utc(w.end_at),
                 "config": w.config_json or {},
                 "version": int(w.version or 0),
             }
@@ -299,7 +301,7 @@ def get_calendar(term_id: int, *, tenant_id: int | None = None) -> dict:
                 "actorUserId": str(e.actor_user_id) if e.actor_user_id else None,
                 "blockers": e.blockers_json or {},
                 "traceId": e.trace_id,
-                "occurredAt": e.created_at.isoformat() if e.created_at else None,
+                "occurredAt": iso_utc(e.created_at),
             }
             for e in db.scalars(
                 select(CalendarTransitionEvent)
@@ -597,7 +599,7 @@ def activate_due_calendars(*, now: datetime | None = None) -> dict:
             activated.append({"tenantId": str(tenant_id), "termId": str(term_id)})
         except AppException as exc:
             skipped.append({"tenantId": str(tenant_id), "termId": str(term_id), "reason": exc.code})
-    return {"activated": activated, "skipped": skipped, "checkedAt": moment.isoformat()}
+    return {"activated": activated, "skipped": skipped, "checkedAt": iso_utc(moment)}
 
 
 # ── 业务窗口 ────────────────────────────────────────────────────────────────
@@ -663,8 +665,8 @@ def upsert_window(
         return {
             "windowType": row.window_type,
             "moduleCode": row.module_code,
-            "startAt": row.start_at.isoformat(),
-            "endAt": row.end_at.isoformat(),
+            "startAt": iso_utc(row.start_at),
+            "endAt": iso_utc(row.end_at),
             "config": row.config_json or {},
             "version": int(row.version or 0),
         }

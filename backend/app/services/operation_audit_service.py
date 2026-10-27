@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+import re
 import uuid
 
 from app.core.context import current_tenant_id, get_current_user_ctx, get_trace_id
@@ -17,6 +18,60 @@ from app.core.response import paginate
 
 _MAX = 500
 _BUFFER: list[dict] = []
+
+ACTION_LABELS = {
+    "JOB_RETRY": "重试后台任务", "JOB_CANCEL": "取消后台任务",
+    "LOGIN": "登录", "LOGIN_FAIL": "登录失败", "LOGIN_LOCKED": "账号锁定", "LOGOUT": "登出",
+    "TOKEN_REFRESH": "会话刷新", "RATE_LIMITED": "访问频率拦截", "LOGIN_NO_ACTIVE_ROLE": "没有有效岗位",
+    "ROLE_COPY": "复制本校角色", "ROLE_ADOPT": "转为本校维护",
+    "EXPORT": "导出", "IMPORT": "导入", "IDENTITY_IMPORT": "师生导入", "GRANT": "授权变更",
+    "CONFIG": "配置变更", "CONFIG_CHANGE": "配置变更", "BRAND_CONFIG": "品牌配置",
+    "DISABLE": "停用/作废", "ENABLE": "启用", "USER_DISABLE": "停用/作废", "USER_ENABLE": "启用",
+    "USER_ROLE_ASSIGN": "分配角色", "RESET_PASSWORD": "重置密码", "PERMISSION_DENIED": "越权拦截",
+    "MODULE_DENIED": "模块越权", "SENSITIVE_VIEW": "敏感查看", "FILE_UPLOAD": "文件上传",
+    "ROLE_CREATE": "新建角色", "ROLE_UPDATE": "编辑角色", "ROLE_PERMISSION_SAVE": "保存角色权限",
+    "ORG_NODE_SAVE": "组织维护",
+}
+
+
+RESULT_BUCKETS = {"SUCCESS": ("SUCCESS", "成功"), "FAIL": ("FAILED", "失败"),
+                  "FAILED": ("FAILED", "失败"), "DENIED": ("DENIED", "越权拦截"),
+                  "BLOCKED": ("BLOCKED", "已拦截"), "UNKNOWN": ("UNKNOWN", "结果未确认")}
+EVENT_RESULTS = {"PERMISSION_DENIED": "DENIED", "MODULE_DENIED": "DENIED",
+                 "LOGIN_NO_ACTIVE_ROLE": "DENIED", "LOGIN_FAIL": "FAILED",
+                 "LOGIN_LOCKED": "BLOCKED", "RATE_LIMITED": "BLOCKED"}
+
+
+def present_result(action: str, recorded_result: str | None) -> dict:
+    raw_bucket = RESULT_BUCKETS.get(str(recorded_result or "").upper(), ("UNKNOWN", ""))[0]
+    bucket = EVENT_RESULTS.get(str(action or "").upper(), raw_bucket)
+    label = ACTION_LABELS.get(action, action if re.search(r"[\u3400-\u9fff]", str(action or "")) else "未识别的历史操作")
+    return {"actionLabel": label, "result": bucket, "resultLabel": RESULT_BUCKETS[bucket][1], "recordedResult": recorded_result,
+            "resultNote": "事件与原记录结果不一致；按事件展示，原记录未修改" if bucket != raw_bucket else ""}
+
+
+def present_target(resource: str | None, action: str | None = None) -> str:
+    if action in {"LOGIN_FAIL", "LOGIN_LOCKED", "LOGIN_NO_ACTIVE_ROLE"}:
+        return "登录尝试（身份未确认）"
+    value = str(resource or "").strip()
+    if not value:
+        return "未记录对象"
+    if re.search(r"[\u3400-\u9fff]", value):
+        return value
+    if value in {"auth", "authz"}:
+        return "登录账号" if value == "auth" else "身份上下文"
+    for prefix, label in (("role:", "角色配置"), ("user:", "账号"), ("tenant:", "学校"), ("perm:", "权限校验"), ("job:", "后台任务"),
+                          ("/api/v1/academic-affairs", "教务中心接口访问"), ("/api/v1/student-affairs", "学工中心接口访问"),
+                          ("/api/v1/graduation", "毕业设计接口访问"), ("/api/v1/internship", "岗位实习接口访问"),
+                          ("/api/v1/system", "系统管理接口访问")):
+        if value.startswith(prefix):
+            return label
+    return "未识别的历史对象"
+
+
+def _event_result(action: str, status_code: int | None) -> str:
+    fallback = "DENIED" if status_code == 403 else "FAIL" if status_code and status_code >= 400 else "SUCCESS"
+    return EVENT_RESULTS.get(str(action or "").upper(), fallback)
 
 CRITICAL_ACTIONS = {
     "角色授权", "权限变更", "修改角色权限", "分配角色",
@@ -87,6 +142,40 @@ def record(action: str, *, method: str | None = None, path: str | None = None,
                  target_type=target_type, target_id=target_id, detail=detail)
 
 
+def record_authenticated_event(result: dict, *, path: str, action: str = "登录") -> None:
+    """Use verified login results or refresh claims, not submitted account identifiers."""
+    from sqlalchemy import select
+    from app.core.context import get_request_meta
+    from app.core.timeutil import utc_now_naive
+    from app.db.session import db_enabled, get_sessionmaker
+    from app.models import SecurityAuditLog, User
+
+    user_id = str(result.get("userId") or "")
+    if not db_enabled():
+        record(action, path=path, target_type="auth", target_id=user_id, status_code=200)
+        return
+    if not user_id.startswith("db-") or not user_id[3:].isdigit():
+        raise ValueError("登录审计缺少已认证账号")
+    tenant_id = int(result["tenantId"])
+    with get_sessionmaker()() as db:
+        account = db.scalar(select(User).where(User.id == int(user_id[3:]), User.tenant_id == tenant_id).with_for_update())
+        if account is None:
+            raise ValueError("登录审计账号与学校不一致")
+        occurred_at = utc_now_naive()
+        meta = get_request_meta()
+        if action in {"登录", "LOGIN", "微信登录", "微信登录-选择学校", "微信绑定"}:
+            account.last_login_at = occurred_at
+        db.add(SecurityAuditLog(
+            tenant_id=tenant_id, operator_id=account.id, operator_name=account.real_name,
+            current_role=result.get("currentRoleCode") or (result.get("currentRole") or {}).get("roleCode"),
+            action=action, resource="auth", resource_id=user_id, result="SUCCESS",
+            created_at=occurred_at, ip=meta.get("ip"), user_agent=meta.get("userAgent"),
+            request_method=meta.get("method") or "POST", request_path=meta.get("path") or path,
+            trace_id=get_trace_id(), detail_json={"moduleCode": "systemAdmin"},
+        ))
+        db.commit()
+
+
 def record_critical(action: str, *, method: str | None = None, path: str | None = None,
                     status_code: int | None = None, target_type: str | None = None,
                     target_id: str | None = None, detail: dict | None = None,
@@ -105,10 +194,10 @@ def record_critical(action: str, *, method: str | None = None, path: str | None 
     payload = {"method": method, "path": path, "targetId": target_id, **(detail or {})}
     if db is not None:
         db_service.audit_insert_in_session(
-            db, action, target_type or (path or ""), payload, "SUCCESS",
+            db, action, target_type or (path or ""), payload, _event_result(action, status_code),
             tenant_id=tenant_id, resource_id=target_id)
         return
-    db_service.audit_insert(action, target_type or (path or ""), payload, "SUCCESS",
+    db_service.audit_insert(action, target_type or (path or ""), payload, _event_result(action, status_code),
                             tenant_id=tenant_id, resource_id=target_id)
 
 
@@ -129,6 +218,7 @@ def _record_memory(action, *, method=None, path=None, status_code=None,
         "targetType": target_type,
         "targetId": target_id,
         "statusCode": status_code,
+        "result": _event_result(action, status_code),
         "detail": detail,
         "occurredAt": _now_iso(),
     }
@@ -149,7 +239,7 @@ def _record_soft(action: str, *, method=None, path=None, status_code=None,
             db_service.audit_insert(
                 action, target_type or (path or ""),
                 {"method": method, "path": path, "targetId": target_id, **(detail or {})},
-                "SUCCESS", tenant_id=tenant_id, resource_id=target_id,
+                _event_result(action, status_code), tenant_id=tenant_id, resource_id=target_id,
             )
     except Exception:  # noqa: BLE001
         pass

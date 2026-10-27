@@ -484,6 +484,12 @@ export async function loginWithPassword(loginName, password, tenantCode = '', ch
     body: { ...(challenge.identifierType ? { identifierType: challenge.identifierType, identifier: loginName } : { loginName }), password, tenantCode: tenantCode || undefined,
       clientType: challenge.clientType || 'PC', captchaId: challenge.captchaId || undefined,
       captchaCode: challenge.captchaCode || undefined, clientNonce: challenge.clientNonce || undefined }
+  }).catch(error => {
+    // A rejected sign-in is not an expired session; retain its safe business reason.
+    if (error.httpStatus === 401) error.message = normalizeUiError({
+      message: error.rawDeveloperDetail, bizCode: error.bizCode
+    }, { fallback: '登录未完成，请核对账号、学校编码、密码及验证码后重试' }).userMessage
+    throw error
   })
   _advanceSession(data.accessToken || '')
   return data
@@ -574,7 +580,7 @@ export async function requestUpload(path, file, fieldName = 'file', { timeoutMs 
   }
 }
 
-export async function requestBlob(path, { method = 'GET', params, body, auth = true } = {}) {
+export async function requestBlob(path, { method = 'GET', params, body, auth = true, timeoutMs = 15000 } = {}) {
   assertNoRoleSwitchTransition()
   await ensureToken()
   assertNoRoleSwitchTransition()
@@ -593,7 +599,7 @@ export async function requestBlob(path, { method = 'GET', params, body, auth = t
     if (auth && state.token) headers.Authorization = `Bearer ${state.token}`
     if (body) headers['Content-Type'] = 'application/json'
     const controller = new AbortController()
-    const timer = setTimeout(() => controller.abort(), 15000)
+    const timer = setTimeout(() => controller.abort(), timeoutMs)
     try {
       const res = await fetch(`${API_BASE_URL}${API_PREFIX}${path}${qs}`, {
         method,

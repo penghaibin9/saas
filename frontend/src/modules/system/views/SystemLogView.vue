@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="日志中心"
-    subtitle="操作日志 / 登录日志 · 审计日志只增不删，IP 与账号固定脱敏"
+    subtitle="操作日志 / 登录日志 · 审计日志只增不删，网络地址与账号固定脱敏"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -25,6 +25,7 @@
 
       <!-- 操作日志 -->
       <DataTable
+        class="lg-table"
         v-else-if="tab === 'operation'"
         :columns="opColumns"
         :rows="rows"
@@ -43,7 +44,7 @@
           <StatusTag :type="row.result === 'SUCCESS' ? 'success' : row.result === 'DENIED' ? 'danger' : 'warning'" :label="row.resultLabel" dot />
         </template>
         <template #cell-target="{ row }">
-          <span>{{ targetLabel(row.target) }}</span>
+          <span>{{ row.targetLabel || targetLabel(row.target) }}</span>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="openDetail(row)">详情</button>
@@ -52,6 +53,7 @@
 
       <!-- 登录日志 -->
       <DataTable
+        class="lg-table"
         v-else
         :columns="loginColumns"
         :rows="rows"
@@ -61,7 +63,7 @@
       >
         <template #cell-user="{ row }">
           <div class="mp-cell-main">{{ row.userName }}</div>
-          <div class="mp-cell-sub">{{ maskNo(row.userNo) }} · {{ row.roleName }}</div>
+          <div class="mp-cell-sub">{{ maskNo(row.userNo) || '未记录账号' }} · {{ roleLabel(row.roleName) }}</div>
         </template>
         <template #cell-result="{ row }">
           <StatusTag :type="row.result === 'SUCCESS' ? 'success' : row.result === 'BLOCKED' ? 'danger' : 'warning'" :label="row.resultLabel" dot />
@@ -69,10 +71,14 @@
         <template #cell-reason="{ row }">
           <span class="mp-cell-sub">{{ row.reason || '—' }}</span>
         </template>
+        <template #cell-device="{ row }">
+          <span>{{ row.device }}</span>
+          <details v-if="row.deviceDetail"><summary>实施人员使用</summary><code class="lg-device-detail">{{ row.deviceDetail }}</code></details>
+        </template>
       </DataTable>
 
       <p class="mp-note">
-        合规说明：审计日志不提供删除 / 修改入口（含系统管理员）；日志中的 IP、账号已固定脱敏，明文仅存于安全存储并需专项审计流程调取。
+        合规说明：审计日志不提供删除 / 修改入口（含系统管理员）；日志中的网络地址、账号已固定脱敏，明文仅存于安全存储并需专项审计流程调取。
       </p>
     </div>
 
@@ -82,9 +88,10 @@
         <div class="mp-kv"><span class="mp-kv__k">时间</span><span class="mp-kv__v">{{ detail.row.time }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">操作人</span><span class="mp-kv__v">{{ detail.row.who }} · {{ roleLabel(detail.row.roleName) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">模块 / 动作</span><span class="mp-kv__v">{{ detail.row.moduleLabel }} · {{ detail.row.actionLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">业务对象</span><span class="mp-kv__v">{{ targetLabel(detail.row.target) }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">业务对象</span><span class="mp-kv__v">{{ detail.row.targetLabel || targetLabel(detail.row.target) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">结果</span><span class="mp-kv__v">{{ detail.row.resultLabel }}</span></div>
-        <div class="mp-kv"><span class="mp-kv__k">IP（脱敏）</span><span class="mp-kv__v">{{ detail.row.ip }}</span></div>
+        <p v-if="detail.row.detail.resultNote" class="mp-note">{{ detail.row.detail.resultNote }}</p>
+        <div class="mp-kv"><span class="mp-kv__k">网络地址（脱敏）</span><span class="mp-kv__v">{{ detail.row.ip }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">摘要</span><span class="mp-kv__v">{{ detail.row.detail.summary }}</span></div>
 
         <template v-if="detail.row.detail.before || detail.row.detail.after">
@@ -95,6 +102,7 @@
           </div>
         </template>
         <div v-if="detail.row.detail.reason" class="mp-kv"><span class="mp-kv__k">操作原因</span><span class="mp-kv__v">{{ detail.row.detail.reason }}</span></div>
+        <details><summary>实施人员使用</summary><p>请求编号：{{ detail.row.detail.traceId || '未记录' }}</p><code class="lg-device-detail">{{ detail.row.detail.method }} {{ detail.row.detail.path }}</code></details>
       </template>
     </AppDrawer>
 
@@ -103,7 +111,7 @@
       :title="tab === 'login' ? '导出登录日志' : '导出操作日志'"
       :options="ctx.exportOptions.logs"
       :data-scope-name="ctx.dataScope.scopeName"
-      :run-export="(p) => api.exportLogs({ ...p, tab })"
+      :run-export="(p) => api.exportLogs({ ...p, tab, filters: appliedFilters })"
     />
   </ModulePageShell>
 </template>
@@ -120,14 +128,9 @@ import {
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import ExportDialog from '@/modules/system/components/ExportDialog.vue'
 import { systemApi } from '@/modules/system/api/system.api'
+import { roleDisplayLabel } from '@/modules/system/utils/permissionLabels'
 
 const EMPTY_FILTERS = () => ({ keyword: '', module: '', action: '', result: '', dateFrom: '', dateTo: '' })
-const ROLE_LABELS = {
-  SCHOOL_ADMIN: '学校管理员', TEACHER: '教师', COUNSELOR: '辅导员',
-  ACADEMIC_ADMIN: '教务管理员', STUDENT_AFFAIRS_ADMIN: '学工管理员',
-  PLATFORM_OPERATOR: '平台运营人员', PLATFORM_SECURITY_AUDITOR: '平台安全审计员'
-}
-
 export default {
   name: 'SystemLogView',
   components: {
@@ -140,9 +143,11 @@ export default {
       api: systemApi,
       tab: 'operation',
       loading: true,
+      loadVersion: 0,
       error: '',
       rows: [],
       filters: EMPTY_FILTERS(),
+      appliedFilters: EMPTY_FILTERS(),
       pagination: { page: 1, pageSize: 10, total: 0 },
       opColumns: [
         { key: 'time', title: '时间', width: '150px' },
@@ -151,15 +156,16 @@ export default {
         { key: 'action', title: '动作' },
         { key: 'target', title: '对象' },
         { key: 'result', title: '结果' },
-        { key: 'ip', title: 'IP（脱敏）' },
+        { key: 'ip', title: '网络地址（脱敏）' },
         { key: 'actions', title: '操作', width: '70px' }
       ],
       loginColumns: [
         { key: 'time', title: '时间', width: '150px' },
+        { key: 'eventLabel', title: '事件' },
         { key: 'user', title: '账号' },
         { key: 'result', title: '结果' },
         { key: 'reason', title: '说明' },
-        { key: 'ip', title: 'IP（脱敏）' },
+        { key: 'ip', title: '网络地址（脱敏）' },
         { key: 'location', title: '地点' },
         { key: 'device', title: '设备' }
       ],
@@ -190,13 +196,15 @@ export default {
       const pa = this.ctx.permissionActions
       return [{ key: 'exportLogs', label: '⇩ 导出日志' }]
         .filter((a) => pa[a.key] && pa[a.key].visible)
-        .map((a) => ({ ...a, disabled: !pa[a.key].allowed, disabledReason: pa[a.key].reason }))
+        .map((a) => ({ ...a, disabled: !pa[a.key].allowed || this.loading || !!this.error,
+          disabledReason: pa[a.key].reason || (this.loading ? '请等待查询完成' : this.error) }))
     }
   },
   created() {
     if (this.$route.query.tab === 'login') this.tab = 'login'
     this.load()
   },
+  beforeUnmount() { this.loadVersion += 1 },
   watch: {
     '$route.query.tab'(tab) {
       if (tab === 'login' || tab === 'operation') {
@@ -207,17 +215,17 @@ export default {
   },
   methods: {
     roleLabel(value) {
-      return ROLE_LABELS[value] || (/[㐀-鿿]/.test(String(value || '')) ? value : '业务经办人')
+      return !value || value === '—' ? '未记录身份' : roleDisplayLabel(value)
     },
     targetLabel(value) {
       const raw = String(value || '').trim()
-      if (!raw) return '相关业务对象'
+      if (!raw) return '未记录对象'
       if (/[㐀-鿿]/.test(raw)) return raw
       if (raw === 'module:apiAccess') return '接口访问权限'
       if (raw.includes('/system/sync-jobs')) return '同步任务与失败中心'
       if (raw.includes('/system/integrations')) return '接口连接配置'
       if (raw.startsWith('/api/')) return '系统接口访问'
-      return '相关业务对象'
+      return '未识别的历史对象'
     },
     maskNo(v) {
       return v && v.length > 4 ? v.slice(0, 4) + '****' + v.slice(-2) : v
@@ -232,7 +240,7 @@ export default {
       this.load()
     },
     onToolbar(key) {
-      if (key === 'exportLogs') this.exportOpen = true
+      if (key === 'exportLogs' && !this.loading && !this.error) this.exportOpen = true
     },
     onPageChange(page) {
       this.pagination.page = page
@@ -250,11 +258,14 @@ export default {
       this.detail = { open: true, row }
     },
     async load() {
+      const version = ++this.loadVersion
       this.loading = true
       this.error = ''
       const params = { ...this.filters, page: this.pagination.page, pageSize: this.pagination.pageSize }
       const res = this.tab === 'operation' ? await systemApi.getOperationLogs(params) : await systemApi.getLoginLogs(params)
+      if (version !== this.loadVersion) return
       if (res.code === 0) {
+        this.appliedFilters = { ...params }
         this.rows = res.data.list
         this.pagination.total = res.data.total
       } else {
@@ -268,6 +279,9 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.lg-device-detail { display: block; max-width: 320px; overflow-wrap: anywhere; white-space: normal; }
+.lg-table :deep(.dt__table) { min-width: 920px; }
+@media (max-width: 600px) { .lg-diff { grid-template-columns: 1fr; } }
 .lg-sec {
   margin: var(--space-4) 0 var(--space-2);
   font-size: var(--font-size-sm);

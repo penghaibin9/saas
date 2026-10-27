@@ -4,6 +4,14 @@ import { permissionDisplayLabel } from '../src/modules/system/utils/permissionLa
 import { makeReadOnlyDraft } from '../src/modules/system/utils/workspaceContract.js'
 import fs from 'node:fs'
 import { roleDisplayLabel } from '../src/modules/system/utils/permissionLabels.js'
+import { staffAffiliationDisplay } from '../src/modules/system/utils/permissionLabels.js'
+
+test('legacy affiliation labels translate known role and organization codes without mutating source',()=>{
+  const row={roleLabel:'COUNSELOR',orgType:'CLASS',orgName:'CLASS:验收班'}
+  assert.deepEqual(staffAffiliationDisplay(row),{roleLabel:'辅导员',orgType:'CLASS',orgName:'班级：验收班'})
+  assert.equal(row.orgName,'CLASS:验收班')
+  assert.equal(staffAffiliationDisplay({roleLabel:'教学秘书',orgName:'学院甲'}).roleLabel,'教学秘书')
+})
 
 test('concrete IAM catalog has Chinese display names for every entry', () => {
   for (const file of ['permission-catalog.json', 'permission-catalog-b8-concrete.json', 'permission-catalog-b8-compatibility.json']) {

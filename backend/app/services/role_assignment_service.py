@@ -637,6 +637,8 @@ def review_assignment(assignment_id: int, *, term: str, reason: str,
             RoleAssignmentValidity.is_deleted.is_(False)).with_for_update()).first()
         if row is None:
             raise AppException("DATA_NOT_FOUND", "角色授权记录不存在")
+        if row.status != VALIDITY_ACTIVE:
+            raise AppException("VALIDATION_ERROR", "该授权已失效，只能查看历史记录")
         row.last_reviewed_at = _now()
         row.last_reviewed_term = str(term or "").strip() or None
         row.version = int(row.version or 0) + 1
@@ -751,7 +753,7 @@ def effective_assignments(user_id: int, *, tenant_id: int | None = None) -> list
 
 
 def list_assignments(*, tenant_id: int | None = None, role_code: str = "",
-                     bucket: str = "", page: int = 1, page_size: int = 50) -> dict:
+                     bucket: str = "", page: int = 1, page_size: int = 50, user_id: int | None = None) -> dict:
     """Reclaim expired grants, then read the requested ledger page in MySQL."""
     from app.services.role_assignment_query_service import list_page
 
@@ -767,7 +769,7 @@ def list_assignments(*, tenant_id: int | None = None, role_code: str = "",
             _audit_expiry_in_session(db, tid, touched, source="READ_LIST_ASSIGNMENTS")
             db.commit()
         result = list_page(db, tenant_id=tid, now=now, role_code=role_code,
-                           bucket=bucket, page=page, page_size=page_size)
+                           bucket=bucket, page=page, page_size=page_size, user_id=user_id)
         return {**result, "reclaimedNow": len(touched)}
     finally:
         db.close()

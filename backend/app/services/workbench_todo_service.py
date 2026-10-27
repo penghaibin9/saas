@@ -47,6 +47,46 @@ _TODO_PENDING = "PENDING"
 # 只保证工作台不会把一个当前身份无论如何都打不开的毕设任务投给用户。按 source_module
 # 收敛而非维护零散 todo_type 名单，使以后新增的毕业设计待办默认同样安全。
 _GRADUATION_SOURCE_MODULE = "GRADUATION"
+# 与来源页面及办理接口一致的必要能力；不替代来源域的对象、关系和状态校验。
+_TODO_ACTION_PERMISSIONS = {
+    "INTERN_LEAVE_APPROVAL": ("internship.leave.view", "internship.leave.review"),
+    "AA_GRADE_ENTRY": ("academicAffairs.grade.input",),
+    "GD_PROPOSAL_REVIEW": ("graduationDesign.proposal.view", "graduationDesign.proposal.review"),
+    "GD_FINAL_REVIEW": ("graduationDesign.final.view", "graduationDesign.final.review"),
+    "LEAVE_APPROVAL": ("studentAffairs.leave.view", "studentAffairs.leave.approve"),
+    "LEAVE_CANCEL": ("studentAffairs.leave.view", "studentAffairs.leave.cancelLeaveConfirm"),
+    "LEAVE_OVERDUE": ("studentAffairs.leave.view", "studentAffairs.leave.overdue.handle"),
+    "LEAVE_EXTENSION": ("studentAffairs.leave.view", "studentAffairs.leave.extension.approve"),
+    "INTERN_WEEKLY_REVIEW": ("internship.report.view", "internship.report.review"),
+    "INTERN_EXCEPTION_HANDLE": ("internship.attendance.view", "internship.attendance.review"),
+    "INTERN_VISIT_RECTIFY": ("internship.visit.view", "internship.visit.manage"),
+    "GD_TOPIC_CHANGE_REVIEW": ("graduationDesign.topic.view", "graduationDesign.topic.review"),
+    "GD_DEFENSE_SCORE": ("graduationDesign.defense.score",),
+    "WORK_STUDY_REVIEW": ("studentAffairs.funding.view", "studentAffairs.funding.workstudy.manage"),
+    "WORK_STUDY_ONBOARD": ("studentAffairs.funding.view", "studentAffairs.funding.workstudy.manage"),
+    "STUDENT_LOAN_REVIEW": ("studentAffairs.funding.view", "studentAffairs.funding.loan.manage"),
+    "STUDENT_LOAN_CONFIRM": ("studentAffairs.funding.view", "studentAffairs.funding.loan.manage"),
+    "FEE_REDUCTION_REVIEW": ("studentAffairs.funding.view", "studentAffairs.funding.reduction.manage"),
+    "FEE_REDUCTION_FULFILL": ("studentAffairs.funding.view", "studentAffairs.funding.reduction.manage"),
+    "DISCIPLINE_APPROVAL": ("studentAffairs.discipline.view", "studentAffairs.discipline.approve"),
+    "DISCIPLINE_REMOVE": ("studentAffairs.discipline.view", "studentAffairs.discipline.remove.approve"),
+    "AID_APPROVAL": ("studentAffairs.aid.view", "studentAffairs.aid.approve"),
+    "AID_ADJUST": ("studentAffairs.aid.view", "studentAffairs.aid.approve"),
+    "FUNDING_APPROVAL": ("studentAffairs.funding.view", "studentAffairs.funding.approve"),
+    "RISK_HANDLE": ("studentAffairs.risk.view", "studentAffairs.risk.handle"),
+    "DORM_TRANSFER": ("studentAffairs.dorm.view", "studentAffairs.dorm.transfer.approve"),
+    "DORM_EXCEPTION": ("studentAffairs.dorm.view", "studentAffairs.dorm.exception.handle"),
+    "DORM_RECTIFICATION": ("studentAffairs.dorm.view", "studentAffairs.dorm.inspection.manage"),
+    "DORM_RECTIFICATION_RECHECK": ("studentAffairs.dorm.view", "studentAffairs.dorm.inspection.manage"),
+    "ACAD_WARNING_HANDLE": ("academicAffairs.warning.view", "academicAffairs.warning.handle"),
+    "EMPLOYMENT_FOLLOWUP": ("employment.followup.view", "employment.followup.manage"),
+    "AA_STATUS_APPROVAL": ("academicAffairs.statusChange.view",),
+    "AA_SCHEDULE_CHANGE_APPROVAL": ("academicAffairs.scheduleChange.view",),
+}
+_TODO_ANY_ACTION_PERMISSIONS = {
+    "AA_STATUS_APPROVAL": ("academicAffairs.statusChange.counselorReview", "academicAffairs.statusChange.collegeReview", "academicAffairs.statusChange.officeReview"),
+    "AA_SCHEDULE_CHANGE_APPROVAL": ("academicAffairs.scheduleChange.collegeReview", "academicAffairs.scheduleChange.academicReview"),
+}
 _GRADUATION_ACTIVE_ROLE_CODES: frozenset[str] = frozenset({
     "PLATFORM_SUPER_ADMIN", "SAAS_ADMIN", "SCHOOL_ADMIN",
     "GRADUATION_ADMIN", "GD_ADMIN", "GD_COLLEGE_ADMIN", "GD_MAJOR_ADMIN",
@@ -138,11 +178,29 @@ def _role_todo_visibility_cond(user: dict | None, UnifiedTodo):
     visibility.  It is exported for the teacher-mini keyset reader so offset and keyset
     endpoints cannot drift into different identity-context behavior.
     """
-    if _is_student(user) or _active_role_code(user) in _GRADUATION_ACTIVE_ROLE_CODES:
+    if _is_student(user):
+        return true()
+    from app.core.permissions import permission_decisions
+    from app.services.affairs_operations_service import _BIZ_PERMISSIONS as material_permissions
+    from app.models.affairs_operations import AffairsMaterialRequirement
+    decisions = permission_decisions(user or {}, (code for codes in [*_TODO_ACTION_PERMISSIONS.values(), *_TODO_ANY_ACTION_PERMISSIONS.values(), *material_permissions.values()] for code in codes))
+    blocked = [kind for kind, permissions in _TODO_ACTION_PERMISSIONS.items()
+               if not all(decisions.get(permission, False) for permission in permissions)
+               or (kind in _TODO_ANY_ACTION_PERMISSIONS and not any(decisions.get(code, False) for code in _TODO_ANY_ACTION_PERMISSIONS[kind]))]
+    capability_gate = ~func.upper(func.coalesce(UnifiedTodo.todo_type, "")).in_(blocked) if blocked else true()
+    material_types = [kind for kind, codes in material_permissions.items() if any(decisions.get(code, False) for code in codes)]
+    material_gate = or_(UnifiedTodo.todo_type != "MATERIAL_REVIEW", select(AffairsMaterialRequirement.id).where(
+        AffairsMaterialRequirement.tenant_id == UnifiedTodo.tenant_id,
+        AffairsMaterialRequirement.id == UnifiedTodo.source_biz_id,
+        AffairsMaterialRequirement.is_deleted.is_(False),
+        AffairsMaterialRequirement.biz_type.in_(material_types),
+    ).exists())
+    capability_gate = and_(capability_gate, material_gate)
+    if _active_role_code(user) in _GRADUATION_ACTIVE_ROLE_CODES:
         # ``source_module`` is non-null for newly written todos, but coalesce keeps
         # pre-existing legacy rows visible instead of silently disappearing.
-        return true()
-    return func.upper(func.coalesce(UnifiedTodo.source_module, "")) != _GRADUATION_SOURCE_MODULE
+        return capability_gate
+    return and_(capability_gate, func.upper(func.coalesce(UnifiedTodo.source_module, "")) != _GRADUATION_SOURCE_MODULE)
 
 
 def _self_student_id(db, user: dict | None) -> int:
@@ -219,9 +277,11 @@ def _priority(row) -> str:
     return "NORMAL"
 
 
-def _todo_dict(row, *, client: str = "pc") -> dict:
+def _todo_dict(row, *, client: str = "pc", batch_id=None) -> dict:
     record_id = str(row.source_biz_id) if row.source_biz_id else None
     route = resolve_todo_route(row.todo_type, record_id, client=client)
+    if route and client == "pc" and row.todo_type == "INTERN_LEAVE_APPROVAL" and batch_id is not None:
+        route["query"] = {**route.get("query", {}), "batchId": str(batch_id)}
     # TP-W12：COMPLETE 只在 generic complete 真的会被接受时才出现在 allowedActions
     # 里——DOMAIN_COMMAND 类型点了也会被 complete_todo() 拒绝，与其让前端露出一个
     # 注定失败的按钮，不如干脆不给这个动作；这类待办只能靠 OPEN 去业务页真实处理。
@@ -283,6 +343,21 @@ def _msg_dict(row) -> dict:
 
 # ────────────────────────── 待办 ──────────────────────────
 
+def _project_todo_rows(db, rows, *, client: str = "pc") -> list[dict]:
+    """批量补齐同校来源上下文；快照、分页与详情共用，不逐条查库。"""
+    batches = {}
+    leave_ids = [r.source_biz_id for r in rows if r.todo_type == "INTERN_LEAVE_APPROVAL"] if client == "pc" else []
+    if leave_ids:
+        from app.models import InternshipLeave, InternshipRecord
+        batches = dict(db.execute(select(InternshipLeave.id, InternshipRecord.batch_id).join(
+            InternshipRecord, InternshipRecord.id == InternshipLeave.internship_id).where(
+            InternshipLeave.tenant_id == _tid(), InternshipRecord.tenant_id == _tid(),
+            InternshipLeave.id.in_(leave_ids), InternshipLeave.is_deleted.is_(False),
+            InternshipRecord.is_deleted.is_(False),
+        )).all())
+    return [_todo_dict(r, client=client, batch_id=batches.get(r.source_biz_id) if r.todo_type == "INTERN_LEAVE_APPROVAL" else None) for r in rows]
+
+
 def list_todos(user: dict, status: Optional[str] = None, todo_type: Optional[str] = None,
                page: int = 1, page_size: int = 20, *, client: str = "pc") -> tuple[list[dict], int]:
     from app.models import UnifiedTodo
@@ -300,7 +375,7 @@ def list_todos(user: dict, status: Optional[str] = None, todo_type: Optional[str
                           .order_by(UnifiedTodo.status.asc(), UnifiedTodo.due_at.is_(None).asc(),
                                     UnifiedTodo.due_at.asc(), UnifiedTodo.id.desc())
                           .offset(max(0, (page - 1) * page_size)).limit(page_size)).all()
-        return [_todo_dict(r, client=client) for r in rows], int(total)
+        return _project_todo_rows(db, rows, client=client), int(total)
 
 
 def count_todos(user: dict) -> dict:
@@ -366,7 +441,7 @@ def get_todo(user: dict, todo_id: str, *, client: str = "pc") -> dict | None:
             UnifiedTodo.is_deleted.is_(False), vis))
         if not row:
             return None
-        d = _todo_dict(row, client=client)
+        d = _project_todo_rows(db, [row], client=client)[0]
         # TP-W12：与 _todo_dict() 的 allowedActions 同一口径，不能各算各的——
         # 否则详情页的 actions 字段又会把 DOMAIN_COMMAND 类型的 COMPLETE 露出来。
         d["actions"] = (

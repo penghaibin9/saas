@@ -468,6 +468,7 @@ export default {
     },
     workspaceStudentSearchEnabled() {
       return this.useWorkspace && !this.isPlatformMode && !isAcademicTeacherContext(this.ctx)
+        && ['student.profile.view', 'studentAffairs.student.view'].some(code => matchPermission(this.ctx?.permissionPatterns || [], code))
     },
     workspaceSearchPlaceholder() {
       if (!this.useWorkspace) return '搜功能、帮助文档、流程图'
@@ -509,7 +510,7 @@ export default {
       const out = this.workspaceStudentSearchEnabled
         ? this.stuResults.map(s => ({ kind: '学生', label: s.name, sub: [s.no, s.sub].filter(Boolean).join(' · '), to: '/admin/student/' + s.id, disabled: false, badge: '' }))
         : []
-      searchSearchAliases(this.fnQueryDebounced, { scopeGroupKeys: this.visibleGroupKeys }).forEach((a) => {
+      searchSearchAliases(this.fnQueryDebounced, { scopeGroupKeys: this.visibleGroupKeys, ctx: this.ctx }).forEach((a) => {
         out.push({ kind: '功能/页面', label: a.label, to: a.path, disabled: false, badge: '' })
       })
       // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳

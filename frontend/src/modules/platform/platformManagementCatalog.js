@@ -62,6 +62,7 @@ export const PLATFORM_MANAGEMENT_ROADMAP_CATALOG = [
   {
     key: 'plt-standards', label: '全局标准与发布', icon: '☲', description: '统一角色模板、全局规则和版本发布，学校只能在受控范围内使用。',
     items: [
+      { key: 'plt-business-forms', label: '学校表单配置与版本', path: '/admin/platform/business-forms', permissionKey: 'platform.businessForms.view', view: 'business-forms', actions: [action('platform.businessForms.manage', '维护选定学校的表单版本', 'HIGH')] },
       { key: 'plt-product-iam', label: '产品身份与权限', path: '/admin/platform/product-iam', permissionKey: 'platform.productIam.view', view: 'product-iam', actions: [action('platform.productIam.manage', '管理角色模板草稿', 'HIGH'), action('platform.productIam.publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-role-templates', label: '平台角色模板', path: '/admin/platform/role-templates', permissionKey: 'platform.role-template.manage', view: 'capability', actions: [action('role-template:publish', '发布角色模板', 'HIGH')] },
       { key: 'plt-global-rules', label: '全局字典与规则', path: '/admin/platform/dictionaries', permissionKey: 'platform.dict.view', view: 'dictionaries', actions: [action('rule:global:update', '更新全局规则', 'HIGH')] },

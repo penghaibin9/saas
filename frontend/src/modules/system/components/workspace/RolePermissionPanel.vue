@@ -21,6 +21,11 @@
         <button type="button" class="sw-btn sw-space" :disabled="saving" @click="load(true)">重新读取并保留我的选择</button>
       </div>
       <p v-if="reconcileNote" class="sw-alert sw-alert--warning" role="status">{{ reconcileNote }}</p>
+      <dl class="sw-permission-summary" aria-label="角色权限配置摘要">
+        <div><dt>角色当前权限</dt><dd>{{ permissionSummary.currentTotal }} 项</dd></div>
+        <div><dt>其中本身份可编辑</dt><dd>{{ permissionSummary.editableAssigned }} 项</dd></div>
+        <div><dt>只读保留</dt><dd>{{ permissionSummary.preserved }} 项</dd></div>
+      </dl>
       <template v-if="tab === 'scope'">
         <div class="sw-between"><h3>角色默认数据范围</h3><span class="sw-tag sw-tag--blue">{{ scopeLabel(draft.scopeCode) }}</span></div>
         <p class="sw-muted">调整默认口径不会替老师创建任职、负责班级或指导关系。</p>
@@ -38,7 +43,7 @@
           <label class="sw-field sw-permission-search">查找权限
             <input v-model="keyword" class="sw-input" placeholder="功能名称或权限编码" aria-label="查找权限" />
           </label>
-          <span class="sw-selection-count">{{ editable ? '已选' : '已生效' }} <b>{{ selection.length }}</b> 项权限</span>
+          <span v-if="editable" class="sw-selection-count">本次可编辑部分已选 <b>{{ permissionSummary.selected }}</b> 项</span>
         </div>
         <div class="sw-permission-layout">
           <div>
@@ -60,9 +65,16 @@
           </div>
           <aside class="sw-preview" aria-label="角色菜单样式预览">
             <h3 class="sw-preview-title"><AppIcon name="overview" :size="17" />角色菜单预览</h3>
+            <div v-if="rolePreview.available && editable" class="sw-preview-switch" role="group" aria-label="菜单预览范围">
+              <button type="button" class="sw-btn" :aria-pressed="previewMode === 'role'" @click="previewMode = 'role'">{{ rolePreview.complete ? '角色完整菜单' : '角色已识别菜单' }}</button>
+              <button type="button" class="sw-btn" :aria-pressed="previewMode === 'editable'" @click="previewMode = 'editable'">本次可编辑部分</button>
+            </div>
+            <p v-if="!rolePreview.available" class="sw-muted" role="status">完整菜单暂未取得，当前仅显示本身份可查看的部分，不能代表角色全部菜单。</p>
+            <p v-else-if="!rolePreview.complete" class="sw-muted" role="status">{{ rolePreview.unmappedCount }} 项权限尚未映射，以下只展示已识别菜单。</p>
+            <p v-else class="sw-muted">{{ previewMode === 'editable' && editable ? '仅展示本次可编辑的菜单部分。' : '包含只读保留权限对应的菜单。' }}{{ isDirty ? ' 按当前选择预览，保存后生效。' : ' 进入业务仍须满足数据范围与业务关系。' }}</p>
             <div class="sw-preview-menus" tabindex="0" role="region" aria-label="选中角色的菜单入口">
               <div v-for="node in previewMenus" :key="node.key" class="sw-preview-menu">{{ node.label }}</div>
-              <div v-if="!previewMenus.length" class="sw-preview-menu">未选择常规菜单入口</div>
+              <div v-if="!previewMenus.length" class="sw-preview-menu">{{ rolePreview.available ? '当前预览范围没有常规菜单入口' : '暂无可用的菜单预览' }}</div>
             </div>
           </aside>
         </div>
@@ -75,6 +87,7 @@
       </details>
       <div class="sw-savebar">
         <div><b>本次新增 {{ delta.added.length }} 项，移除 {{ delta.removed.length }} 项</b>
+          <p v-if="editable && isDirty">保存后预计共 {{ permissionSummary.projectedTotal }} 项权限，{{ permissionSummary.preserved }} 项只读权限继续保留。</p>
           <p>默认范围 {{ scopeChanged ? `${scopeLabel(base.scopeCode)} → ${scopeLabel(draft.scopeCode)}` : '保持不变' }} · 版本 {{ draft.version }}</p>
         </div>
         <div class="sw-row">
@@ -99,6 +112,7 @@
           <div><b>新增 {{ delta.added.length }} 项</b><p v-for="code in delta.added" :key="code" class="sw-added">＋ {{ permissionLabel(code) }}</p><p v-if="!delta.added.length">无新增</p></div>
         </div>
         <p>默认范围：{{ scopeLabel(base.scopeCode) }} → {{ scopeLabel(draft.scopeCode) }}。具体目标未修改。</p>
+        <p>保存后预计共 {{ permissionSummary.projectedTotal }} 项权限，其中 {{ permissionSummary.preserved }} 项只读权限继续保留，不在本次调整范围。</p>
         <p class="sw-muted">保存直接更新本校角色权限，不代表已发起另一个安全变更审批。</p>
       </div>
     </AppConfirmDialog>
@@ -119,7 +133,7 @@ export default {
   emits: ['loaded', 'saved', 'dirty', 'busy'],
   data() {
     return { state: 'loading', error: '', detail: null, draft: null, base: null, fence: null,
-      saving: false, reviewOpen: false, adoptOpen: false, outcomeUnknown: false, receipt: null, keyword: '', reconcileNote: '', lastReason: '' }
+      saving: false, reviewOpen: false, adoptOpen: false, outcomeUnknown: false, receipt: null, keyword: '', reconcileNote: '', lastReason: '', previewMode: 'role' }
   },
   computed: {
     contextKey() { return wc.contextFingerprint(this.ctx) },
@@ -132,7 +146,14 @@ export default {
     canReview() { return this.editable && this.isDirty && !this.saving && !this.outcomeUnknown },
     preserved() { return Array.isArray(this.detail?.readOnlyPreservedPermissions) ? this.detail.readOnlyPreservedPermissions : [] },
     scopeOptions() { return this.ctx.statusOptions?.scopeTypes || [] },
-    previewMenus() { return this.draft ? wc.visibleMenuPreview(this.draft.groups, this.draft.menuKeys) : [] },
+    permissionSummary() { return this.detail && this.draft ? wc.rolePermissionSummary(this.detail, this.draft, this.editable) : null },
+    rolePreview() { return this.detail && this.draft ? wc.roleMenuPreview(this.detail, this.draft, this.editable) : null },
+    previewMenus() {
+      if (!this.draft) return []
+      return this.previewMode === 'editable' && this.editable
+        ? wc.visibleMenuPreview(this.draft.groups, this.draft.menuKeys)
+        : this.rolePreview.items
+    },
     filteredGroups() {
       const keyword = this.keyword.trim().toLowerCase()
       return (this.draft?.groups || []).map(group => ({ ...group, rows: group.rows.filter(node => !keyword || `${node.label} ${node.key}`.toLowerCase().includes(keyword)) })).filter(group => group.rows.length)
@@ -151,7 +172,7 @@ export default {
     scopeLabel(code) { return this.scopeOptions.find(option => option.value === code)?.label || '范围待核对' },
     highRisk(node) { return ['HIGH', 'CRITICAL'].includes(String(node.riskLevel || '').toUpperCase()) },
     permissionLabel(code) { return this.draft?.groups.flatMap(group => group.rows).find(node => node.key === code)?.label || '权限名称未取得' },
-    clear() { this.saving = false; this.$emit('busy', false); this.detail = null; this.draft = null; this.base = null; this.receipt = null; this.outcomeUnknown = false; this.reviewOpen = false; this.adoptOpen = false; this.reconcileNote = ''; this.lastReason = ''; this.$emit('dirty', false) },
+    clear() { this.saving = false; this.$emit('busy', false); this.detail = null; this.draft = null; this.base = null; this.receipt = null; this.outcomeUnknown = false; this.reviewOpen = false; this.adoptOpen = false; this.reconcileNote = ''; this.lastReason = ''; this.previewMode = 'role'; this.$emit('dirty', false) },
     async load(preserve = false) {
       if (this.saving) return
       const current = this.fence.start('read')
@@ -166,6 +187,7 @@ export default {
           ? wc.makePermissionDraft(wc.unwrap(await systemApi.getPermissionTree()), detail, id)
           : wc.makeReadOnlyDraft(detail, id)
         if (!current()) return
+        wc.roleMenuPreview(detail, next, writable)
         this.base = JSON.parse(JSON.stringify(next))
         this.draft = next
         if (old && writable) {
@@ -243,3 +265,13 @@ export default {
   }
 }
 </script>
+
+<style scoped>
+.sw-permission-summary { display: flex; flex-wrap: wrap; gap: 12px 24px; margin: 0; padding: 12px 0; border-bottom: 1px solid var(--sw-line); }
+.sw-permission-summary div { display: flex; align-items: baseline; gap: 8px; }
+.sw-permission-summary dt { color: var(--sw-muted); font-size: 12px; }
+.sw-permission-summary dd { margin: 0; font-weight: 600; }
+.sw-preview-switch { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
+.sw-preview-switch button { flex: 1 1 120px; }
+.sw-preview-switch button[aria-pressed=true] { border-color: var(--sw-accent); color: var(--sw-accent); }
+</style>

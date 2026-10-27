@@ -107,21 +107,14 @@ def _scan_org_duplicate_code(db, tenant_id: int) -> list[dict]:
 
 
 def _scan_class_missing_counselor(db, tenant_id: int) -> list[dict]:
-    from app.services import business_relation_registry as registry
-
-    report = registry.inspect_relation("COUNSELOR_CLASS", tenant_id=tenant_id)
-    out: list[dict] = []
-    for issue in report.get("issues") or []:
-        if issue["code"] != registry.ISSUE_MISSING_SUBJECT:
-            continue
-        for sample in issue.get("samples") or []:
-            out.append({
-                "issueKey": f"CLASS_MISSING_COUNSELOR:{sample['id']}",
-                "objectType": "CLASS", "objectId": str(sample["id"]),
-                "summary": f"班级 {sample['id']} 没有辅导员，辅导员数据范围解析不出任何人",
-                "evidence": {"relationType": "COUNSELOR_CLASS", "classId": sample["id"]},
-            })
-    return out
+    from app.models import SchoolClass
+    from sqlalchemy import or_
+    rows = db.scalars(select(SchoolClass).where(SchoolClass.tenant_id == tenant_id,
+        SchoolClass.is_deleted.is_(False), SchoolClass.status == 'ACTIVE',
+        or_(SchoolClass.counselor_id.is_(None), SchoolClass.counselor_id == 0))).yield_per(500)
+    return [{'issueKey': f'CLASS_MISSING_COUNSELOR:{row.id}', 'objectType': 'CLASS', 'objectId': str(row.id),
+             'summary': f'班级“{row.class_name}”没有辅导员，需要在学工班级管理中核对',
+             'evidence': {'relationType': 'COUNSELOR_CLASS', 'classId': str(row.id)}} for row in rows]
 
 
 def _scan_student_missing_class(db, tenant_id: int) -> list[dict]:
@@ -130,7 +123,7 @@ def _scan_student_missing_class(db, tenant_id: int) -> list[dict]:
     rows = db.scalars(select(StudentProfile).where(
         StudentProfile.tenant_id == tenant_id,
         StudentProfile.is_deleted.is_(False),
-        StudentProfile.class_id.is_(None)).limit(500)).all()
+        StudentProfile.class_id.is_(None))).yield_per(500)
     return [{
         "issueKey": f"STUDENT_MISSING_CLASS:{r.id}",
         "objectType": "STUDENT", "objectId": str(r.id),
@@ -305,6 +298,8 @@ def _parse_dt(value: Any, field: str) -> datetime | None:
 
 
 def list_domains(*, tenant_id: int | None = None) -> dict:
+    from app.models import SecurityAuditLog
+    from app.core.timeutil import iso_utc, tenant_tz
     tid = _tid(tenant_id)
     now = _now()
     db = get_sessionmaker()()
@@ -316,6 +311,8 @@ def list_domains(*, tenant_id: int | None = None) -> dict:
             DataQualityRule.tenant_id == tid, DataQualityRule.is_deleted.is_(False))).all()
         issues = db.scalars(select(DataQualityIssue).where(
             DataQualityIssue.tenant_id == tid, DataQualityIssue.is_deleted.is_(False))).all()
+        scans = db.scalars(select(SecurityAuditLog).where(SecurityAuditLog.tenant_id == tid,
+            SecurityAuditLog.action == 'MASTER_DATA_SCAN').order_by(SecurityAuditLog.id.desc()).limit(200)).all()
         out = []
         for domain in domains:
             owner = _primary_owner(db, tid, domain.domain_code, now=now)
@@ -324,6 +321,11 @@ def list_domains(*, tenant_id: int | None = None) -> dict:
                            if i.status in (ISSUE_OPEN, ISSUE_ASSIGNED, ISSUE_RESOLVED)]
             overdue = [i for i in open_issues if i.due_at is not None and i.due_at < now]
             domain_rules = [r for r in rules if r.domain_code == domain.domain_code]
+            scan = next((event for event in scans if isinstance(event.detail_json, dict)
+                and isinstance(event.detail_json.get('checkedDomains'), list)
+                and domain.domain_code in event.detail_json.get('checkedDomains', [])), None)
+            covered = [rule for rule in (scan.detail_json.get('checkedRules', []) if scan else [])
+                       if isinstance(rule, dict) and rule.get('domain') == domain.domain_code]
             out.append({
                 "domainCode": domain.domain_code, "domainName": domain.domain_name,
                 "ownerModule": domain.owner_module,
@@ -335,7 +337,11 @@ def list_domains(*, tenant_id: int | None = None) -> dict:
                 "p0RuleCount": sum(1 for r in domain_rules if r.severity == SEVERITY_P0),
                 "openIssues": len(open_issues),
                 "overdueIssues": len(overdue),
-                "qualityScore": _quality_score(domain_issues, now),
+                "qualityScore": _quality_score(domain_issues, now) if scan else None,
+                "lastScanAt": iso_utc(scan.created_at) if scan else None,
+                "checkedRuleCount": len(covered),
+                "activeRuleCount": sum(r.status == 'ACTIVE' for r in domain_rules),
+                "timeZone": str(tenant_tz()),
             })
         return {"list": out, "total": len(out),
                 "domainsWithoutOwner": [d["domainCode"] for d in out if not d["hasOwner"]]}
@@ -413,6 +419,7 @@ def scan(*, tenant_id: int | None = None, rule_code: str = "",
             DataQualityIssue.tenant_id == tid, DataQualityIssue.is_deleted.is_(False)))}
         opened, updated, cleared, skipped = 0, 0, 0, []
         seen_keys: set[str] = set()
+        checked_rules = []
 
         for rule in rules:
             executor = EXECUTORS.get(rule.executor_key)
@@ -423,6 +430,7 @@ def scan(*, tenant_id: int | None = None, rule_code: str = "",
             _assert_p0_ready(db, tid, rule, now=now)
             owner = _primary_owner(db, tid, rule.domain_code, now=now)
             findings = executor(db, tid)
+            checked_rules.append({'code': rule.rule_code, 'domain': rule.domain_code})
             for finding in findings:
                 key = finding["issueKey"]
                 seen_keys.add(key)
@@ -453,14 +461,14 @@ def scan(*, tenant_id: int | None = None, rule_code: str = "",
                             and row.exception_until <= now:
                         row.status = ISSUE_OPEN
                         row.exception_until = None
-                    elif row.status == ISSUE_RESOLVED:
+                    elif row.status in (ISSUE_RESOLVED, ISSUE_VERIFIED):
                         row.status = ISSUE_OPEN
                         row.verify_result = "STILL_PRESENT"
                     row.version = int(row.version or 0) + 1
                     updated += 1
 
         # 本轮规则范围内、这次没扫到的问题＝已消除
-        scoped_rules = {r.rule_code for r in rules}
+        scoped_rules = {r['code'] for r in checked_rules}
         for key, row in existing.items():
             if row.rule_code not in scoped_rules or key in seen_keys:
                 continue
@@ -482,7 +490,9 @@ def scan(*, tenant_id: int | None = None, rule_code: str = "",
 
     audit_log.record("MASTER_DATA_SCAN", f"scan:{batch_no}",
                      detail={"opened": opened, "updated": updated, "cleared": cleared,
-                             "skipped": skipped, "moduleCode": "systemAdmin"})
+                             "skipped": skipped, "moduleCode": "systemAdmin",
+                             "checkedRules": checked_rules,
+                             "checkedDomains": sorted({r['domain'] for r in checked_rules})})
     return {"batchNo": batch_no, "opened": opened, "updated": updated,
             "cleared": cleared, "skippedRules": skipped}
 
@@ -520,38 +530,31 @@ def _issue_dto(row, *, now: datetime) -> dict:
 
 def list_issues(*, tenant_id: int | None = None, domain_code: str = "", status: str = "",
                 severity: str = "", page: int = 1, page_size: int = 50) -> dict:
-    tid = _tid(tenant_id)
-    now = _now()
-    db = get_sessionmaker()()
-    try:
-        stmt = select(DataQualityIssue).where(
-            DataQualityIssue.tenant_id == tid, DataQualityIssue.is_deleted.is_(False))
+    from sqlalchemy import and_, or_, case
+    tid = _tid(tenant_id); now = _now()
+    page = max(1, int(page or 1)); page_size = min(200, max(1, int(page_size or 50)))
+    with get_sessionmaker()() as db:
+        stmt = select(DataQualityIssue).where(DataQualityIssue.tenant_id == tid, DataQualityIssue.is_deleted.is_(False))
         if domain_code:
             stmt = stmt.where(DataQualityIssue.domain_code == domain_code)
         if status:
             stmt = stmt.where(DataQualityIssue.status == status)
         if severity:
             stmt = stmt.where(DataQualityIssue.severity == severity)
-        rows = db.scalars(stmt.order_by(DataQualityIssue.severity,
-                                        DataQualityIssue.id.desc())).all()
-        items = [_issue_dto(r, now=now) for r in rows]
-    finally:
-        db.close()
-    page = max(1, int(page or 1))
-    page_size = min(200, max(1, int(page_size or 50)))
-    start = (page - 1) * page_size
-    return {
-        "list": items[start:start + page_size], "total": len(items),
-        "page": page, "pageSize": page_size,
-        "summary": {
-            "p0Open": sum(1 for i in items
-                          if i["severity"] == SEVERITY_P0 and i["status"] in (ISSUE_OPEN, ISSUE_ASSIGNED)),
-            "overdue": sum(1 for i in items if i["overdue"]),
-            "p0WithoutOwner": sum(1 for i in items
-                                  if i["severity"] == SEVERITY_P0 and not i["ownerUserId"]),
-            "excepted": sum(1 for i in items if i["status"] == ISSUE_EXCEPTED),
-        },
-    }
+        total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+        criteria = {
+            'p0Open': and_(DataQualityIssue.severity == SEVERITY_P0, DataQualityIssue.status.in_((ISSUE_OPEN, ISSUE_ASSIGNED))),
+            'overdue': and_(DataQualityIssue.due_at < now, DataQualityIssue.status.in_((ISSUE_OPEN, ISSUE_ASSIGNED, ISSUE_RESOLVED))),
+            'p0WithoutOwner': and_(DataQualityIssue.severity == SEVERITY_P0, or_(DataQualityIssue.owner_user_id.is_(None), DataQualityIssue.owner_user_id == 0)),
+            'excepted': DataQualityIssue.status == ISSUE_EXCEPTED,
+        }
+        summary = db.execute(stmt.with_only_columns(*[func.sum(case((condition, 1), else_=0)).label(key)
+            for key, condition in criteria.items()], maintain_column_froms=True)).one()._mapping
+        offset = (page - 1) * page_size
+        rows = db.scalars(stmt.order_by(DataQualityIssue.severity, DataQualityIssue.id.desc()).offset(offset).limit(page_size)).all() if offset < total else []
+        items = [_issue_dto(row, now=now) for row in rows]
+    return {'list': items, 'total': total, 'page': page, 'pageSize': page_size,
+            'summary': {key: int(value or 0) for key, value in summary.items()}}
 
 
 def assign_issue(issue_id: int, *, owner_user_id: int, reason: str,
@@ -619,6 +622,8 @@ def verify_issue(issue_id: int, *, tenant_id: int | None = None,
     db = get_sessionmaker()()
     try:
         row = _load_issue(db, tid, issue_id)
+        if row.status == ISSUE_VERIFIED:
+            raise AppException("VALIDATION_ERROR", "问题已核销，只能查看；新的问题请通过质量扫描发现")
         rule = db.scalars(select(DataQualityRule).where(
             DataQualityRule.tenant_id == tid, DataQualityRule.rule_code == row.rule_code,
             DataQualityRule.is_deleted.is_(False))).first()
@@ -668,6 +673,8 @@ def except_issue(issue_id: int, *, reason: str, until: str, approved_by: int,
     try:
         row = _load_issue(db, tid, issue_id)
         _check_version(row, expected_version)
+        if row.status == ISSUE_VERIFIED:
+            raise AppException("VALIDATION_ERROR", "问题已核销，不能再登记例外")
         if row.severity == SEVERITY_P0:
             raise AppException("VALIDATION_ERROR", "P0 问题不允许走例外，必须真实修复")
         row.status = ISSUE_EXCEPTED

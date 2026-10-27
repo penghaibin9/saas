@@ -71,7 +71,7 @@
           <StatusTag :type="statusTone(row.status)" :label="row.statusLabel" dot />
         </template>
         <template #cell-lastLoginAt="{ row }">
-          <span class="mp-cell-sub">{{ row.lastLoginAt || '从未登录' }}</span>
+          <span class="mp-cell-sub">{{ row.lastLoginAt || '未记录登录时间' }}</span>
         </template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="openDetail(row)">查看</button>
@@ -123,7 +123,9 @@
     <AppDrawer v-model:visible="detail.open" :title="'账号详情 · ' + (detail.data ? detail.data.name : '')" mode="modal" size="xlarge">
       <LoadingState v-if="detail.loading" />
       <template v-else-if="detail.data">
-        <div class="mp-kv"><span class="mp-kv__k">{{ isStudent ? '学号' : '工号 / 账号' }}</span><span class="mp-kv__v">{{ maskNo(detail.data.userNo) }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">姓名</span><span class="mp-kv__v">{{ detail.data.name || '姓名未登记' }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">登录账号</span><span class="mp-kv__v">{{ maskNo(detail.data.loginName || detail.data.userNo) }}</span></div>
+        <div class="mp-kv"><span class="mp-kv__k">{{ isStudent ? '学号' : '独立工号' }}</span><span class="mp-kv__v">{{ isStudent ? (detail.data.profileBound ? maskNo(detail.data.studentNo) : '主档未绑定，待核对') : (detail.data.staffNo ? maskNo(detail.data.staffNo) : '未单独维护，请核对学校工号登录账号') }}</span></div>
         <template v-if="isStudent">
           <div class="mp-kv"><span class="mp-kv__k">学院</span><span class="mp-kv__v">{{ detail.data.collegeName || '未设置' }}</span></div>
           <div class="mp-kv"><span class="mp-kv__k">专业</span><span class="mp-kv__v">{{ detail.data.majorName || '未设置' }}</span></div>
@@ -133,15 +135,18 @@
         </template>
         <div v-else class="mp-kv"><span class="mp-kv__k">业务归属</span><span class="mp-kv__v">{{ detail.data.orgName }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">手机号</span><span class="mp-kv__v">{{ maskPhone(detail.data.phone) }} <span class="mp-note" :title="reason('viewSensitiveFull')">（完整号码需审计授权）</span></span></div>
-        <PhoneGovernancePanel :ctx="ctx" :user-id="String(detail.data.id)" :account-type="accountType" />
         <div class="mp-kv"><span class="mp-kv__k">邮箱</span><span class="mp-kv__v">{{ maskEmail(detail.data.email) }}</span></div>
         <div class="mp-kv"><span class="mp-kv__k">状态</span><span class="mp-kv__v"><StatusTag :type="statusTone(detail.data.status)" :label="detail.data.statusLabel" dot /></span></div>
         <div class="mp-kv"><span class="mp-kv__k">账号来源</span><span class="mp-kv__v">{{ sourceLabel(detail.data.source) }}</span></div>
+        <details @toggle="detailPhoneOpen = $event.target.open">
+          <summary>手机号登录与绑定管理</summary>
+          <PhoneGovernancePanel v-if="detailPhoneOpen" :ctx="ctx" :user-id="String(detail.data.id)" :account-type="accountType" />
+        </details>
 
         <template v-if="!isStudent">
           <h4 class="su-sec">角色与数据范围</h4>
           <div v-for="r in detail.data.roles" :key="r.code" class="mp-kv">
-            <span class="mp-kv__k">{{ r.name }}</span><span class="mp-kv__v">{{ r.scopeName }}</span>
+            <span class="mp-kv__k">{{ r.name }}</span><span class="mp-kv__v">{{ scopeLabel(r.scopeName) }}</span>
           </div>
           <AppButton variant="secondary" :disabled="!can('assignRole')" :title="reason('assignRole')" style="margin-top: var(--space-2)" @click="openAssign(detail.data)">调整角色分配</AppButton>
         </template>
@@ -152,11 +157,11 @@
         </template>
 
         <h4 class="su-sec">最近登录</h4>
-        <EmptyState v-if="!detail.data.loginHistory.length" title="暂无登录记录" description="该账号尚未登录过系统" />
+        <EmptyState v-if="!detail.data.loginHistory.length" title="暂无可关联的登录记录" description="历史记录缺少账号关联时不会显示，不能据此判断该账号从未登录。" />
         <ul v-else class="mp-timeline">
           <li v-for="(l, i) in detail.data.loginHistory" :key="i" class="mp-timeline__item" :class="l.result === 'SUCCESS' ? 'is-success' : 'is-danger'">
             <div class="mp-timeline__title">{{ l.resultLabel }} · {{ l.device }}</div>
-            <div class="mp-timeline__desc">{{ l.detail || 'IP ' + l.ip }}</div>
+            <div class="mp-timeline__desc">{{ l.detail || '网络地址 ' + l.ip }}</div>
             <div class="mp-timeline__time">{{ l.time }}</div>
           </li>
         </ul>
@@ -297,6 +302,7 @@ import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
 import { presentAuditRecord } from '@/utils/presentationSafety'
 import { accountDetailsChanged, roleAssignmentSignature } from '@/modules/system/utils/accountEditChanges'
+import { contextFingerprint } from '../utils/workspaceContract'
 
 const STAGE_LABELS = { ORIENTATION: '迎新报到', ENROLLED: '在校学习', INTERNSHIP: '岗位实习', GRADUATION: '毕业审核', EMPLOYMENT: '就业跟踪', ALUMNI: '校友阶段', ARCHIVED: '已归档' }
 const SOURCE_LABELS = { MANUAL: '人工创建', IMPORT: '批量导入', ORIENTATION: '迎新建档', SYNC: '外部系统同步', SYSTEM: '系统生成', API: '接口同步' }
@@ -319,6 +325,10 @@ export default {
     const accountEntityKey = accountType === 'STUDENT' ? 'studentAccounts' : 'staffAccounts'
     return {
       phoneOpen: false,
+      detailPhoneOpen: false,
+      loadVersion: 0,
+      detailVersion: 0,
+      queryContext: '',
       loading: true,
       error: '',
       rows: [],
@@ -453,7 +463,7 @@ export default {
     }
   },
   created() {
-    this.load()
+    this.restoreQuery()
     const action = this.$route.query.action
     if (action === 'importUsers') {
       this.$router.replace(this.isStudent
@@ -462,18 +472,50 @@ export default {
       return
     }
     if (this.$route.query.status) this.filters.status = this.$route.query.status
+    this.load()
   },
+  beforeUnmount() { this.loadVersion++; this.detailVersion++ },
   watch: {
+    ctx: { deep: true, handler(value) {
+      if (this.queryContext === contextFingerprint(value)) return
+      this.queryContext = contextFingerprint(value)
+      this.detailVersion++
+      this.detail = { open: false, loading: false, data: null }
+      this.phoneOpen = false
+      this.selected = []
+      this.filters = EMPTY_FILTERS()
+      this.pagination = { page: 1, pageSize: 10, total: 0 }
+      this.load()
+    } },
     '$route.meta.accountType'() {
       this.selected = []
       this.filters = EMPTY_FILTERS()
       this.pagination = { page: 1, pageSize: 10, total: 0 }
+      this.detailVersion++
+      this.detail = { open: false, loading: false, data: null }
+      this.restoreQuery()
       this.columnsConfig = this.ctx.fieldColumns[this.accountEntityKey]
         .map((c) => ({ ...c, visible: c.defaultVisible }))
       this.load()
     }
   },
   methods: {
+    queryStorageKey() { return 'system-account-query:' + this.accountType },
+    restoreQuery() {
+      this.queryContext = contextFingerprint(this.ctx)
+      try {
+        const saved = JSON.parse(sessionStorage.getItem(this.queryStorageKey()) || 'null')
+        if (!saved || saved.context !== this.queryContext) return
+        for (const key of Object.keys(this.filters)) {
+          if (typeof saved.filters?.[key] === 'string') this.filters[key] = saved.filters[key]
+        }
+        if (Number.isSafeInteger(saved.page) && saved.page > 0) this.pagination.page = saved.page
+      } catch { /* 浏览器不允许存储时，仍可正常查询。 */ }
+    },
+    scopeLabel(value) {
+      return this.ctx.statusOptions?.scopeTypes?.find(item => item.value === value)?.label
+        || (/[\u3400-\u9fff]/.test(String(value || '')) ? value : '范围待核对')
+    },
     stageLabel(value) { return STAGE_LABELS[value] || (value ? '阶段待确认' : '未设置') },
     sourceLabel(value) { return SOURCE_LABELS[value] || (/\p{Script=Han}/u.test(String(value || '')) ? value : (value ? '来源待确认' : '未设置')) },
     auditActionLabel(row) { return presentAuditRecord(row).displayAction },
@@ -679,8 +721,11 @@ export default {
       } finally { this.form.submitting = false }
     },
     async openDetail(row) {
+      const version = ++this.detailVersion
+      this.detailPhoneOpen = false
       this.detail = { open: true, loading: true, data: null }
       const res = await systemApi.getUserDetail(row.id)
+      if (version !== this.detailVersion) return
       this.detail.loading = false
       if (res.code === 0) this.detail.data = res.data
       else {
@@ -895,17 +940,24 @@ export default {
       }
     },
     async load() {
+      const version = ++this.loadVersion
       this.loading = true
       this.error = ''
-      const res = await systemApi.getUsers({
+      const params = {
         ...this.filters,
         accountType: this.accountType,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize
-      })
+      }
+      const res = await systemApi.getUsers(params)
+      if (version !== this.loadVersion) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
+        try {
+          sessionStorage.setItem(this.queryStorageKey(), JSON.stringify({ context: contextFingerprint(this.ctx),
+            filters: Object.fromEntries(Object.keys(EMPTY_FILTERS()).map(key => [key, params[key]])), page: params.page }))
+        } catch { /* 查询结果不依赖浏览器存储成功。 */ }
       } else {
         this.error = res.message
       }

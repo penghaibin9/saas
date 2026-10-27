@@ -830,9 +830,9 @@ def retry_dead_outbox(outbox_id: int) -> dict:
             MessageEventOutbox.id == int(outbox_id),
             MessageEventOutbox.tenant_id == _tid(),
             MessageEventOutbox.is_deleted.is_(False),
-        ))
+        ).with_for_update())
         if not row:
-            raise AppException("DATA_NOT_FOUND", "Outbox 记录不存在", http_status=404)
+            raise AppException("DATA_NOT_FOUND", "消息投递任务不存在", http_status=404)
         if row.status != "DEAD":
             raise AppException("DATA_CONFLICT", "仅死信可重试", http_status=409)
         row.status = "PENDING"
@@ -843,6 +843,11 @@ def retry_dead_outbox(outbox_id: int) -> dict:
         row.locked_at = None
         row.lease_expires_at = None
         row.version = int(row.version or 0) + 1
+        from app.services.db_service import audit_insert_in_session
+        audit_insert_in_session(db, "MESSAGE_OUTBOX_RETRY", f"message-outbox:{outbox_id}",
+                                {"outboxId": str(row.id), "version": row.version,
+                                 "beforeStatus": "DEAD", "afterStatus": "PENDING"},
+                                "SUCCESS", tenant_id=_tid(), resource_id=str(row.id))
         db.commit()
         return {"outboxId": str(row.id), "status": "PENDING"}
 

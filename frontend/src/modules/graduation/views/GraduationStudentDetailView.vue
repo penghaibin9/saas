@@ -236,6 +236,7 @@ import { graduationTaskbookApi } from '@/modules/graduation/api/graduation-taskb
 import { graduationDefenseGradeApi } from '@/modules/graduation/api/graduation-defense-grade.api'
 import { graduationRiskArchiveApi } from '@/modules/graduation/api/graduation-risk-archive.api'
 import { toast } from '@/utils/toast'
+import { systemRelationshipReturnTo } from '@/utils/systemRelationshipNavigation'
 import { formatDateTime } from '@/utils/dateUtils'
 
 export default {
@@ -269,6 +270,7 @@ export default {
     }
   },
   computed: {
+    systemReturnTo() { return systemRelationshipReturnTo(this.$route.query.returnTo) },
     graduationReturnTo() {
       if (!this.detail) return ''
       const raw = this.$route?.query?.returnTo
@@ -302,8 +304,8 @@ export default {
       }))
     },
     toolbarActions() {
-      if (!this.detail) return [{ key: 'back', label: '返回列表' }]
-      const returnActions = this.graduationReturnTo ? [{ key: 'backAcademic', label: '返回毕业审核' }] : []
+      if (!this.detail) return this.systemReturnTo ? [{ key: 'backSystem', label: '返回系统管理' }] : [{ key: 'back', label: '返回列表' }]
+      const returnActions = this.systemReturnTo ? [{ key: 'backSystem', label: '返回系统管理' }] : this.graduationReturnTo ? [{ key: 'backAcademic', label: '返回毕业审核' }] : []
       if (this.detail.stage === 'ARCHIVED') {
         return [...returnActions, { key: 'back', label: '返回列表' }]
       }
@@ -398,6 +400,7 @@ export default {
       this.loading = false
     },
     async onToolbar(key) {
+      if (key === 'backSystem' && this.systemReturnTo) { this.$router.push(this.systemReturnTo); return }
       if (key === 'backAcademic' && this.graduationReturnTo) { this.$router.push(this.graduationReturnTo); return }
       if (key === 'back') { this.$router.push('/admin/graduation/students'); return }
       if (key === 'assignTopic') {

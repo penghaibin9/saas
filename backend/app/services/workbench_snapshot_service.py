@@ -49,7 +49,7 @@ def snapshot(user: dict, page_size: int = 8, *, client: str = "pc") -> dict:
                               .order_by(UnifiedTodo.due_at.is_(None).asc(),
                                         UnifiedTodo.due_at.asc(), UnifiedTodo.id.desc())
                               .limit(size)).all()
-            items = [todo_svc._todo_dict(item, client=client) for item in rows]
+            items = todo_svc._project_todo_rows(db, rows, client=client)
             if client == "teacherMini":
                 # 手机指标下钻统一待办，使用同一范围的全量聚合，不从分页预览估算。
                 now = todo_svc._utc_now()

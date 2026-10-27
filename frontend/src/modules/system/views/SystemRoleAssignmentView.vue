@@ -19,6 +19,7 @@
       <LoadingState v-else-if="loading" />
 
       <template v-else-if="tab === 'members'">
+        <p class="mp-note">授权时间按原记录展示；历史记录未保存时区，跨时区核对时需确认原经办时间。</p>
         <section class="mp-card">
           <header class="mp-card__head"><span class="mp-card__title">首屏结论</span></header>
           <div class="mp-card__body ra-buckets">
@@ -55,12 +56,13 @@
             <div v-else class="mp-cell-sub">未复核</div>
           </template>
           <template #cell-ops="{ row }">
-            <template v-if="row.assignmentId">
+            <template v-if="row.assignmentId && row.status === 'ACTIVE'">
               <button class="mp-link" @click="ask('review', row)">复核</button>
               <button v-if="canManageAssignments" class="mp-link" @click="ask('transfer', row)">转交</button>
               <button v-if="canManageAssignments" class="mp-link" @click="ask('revoke', row)">回收</button>
             </template>
-            <button v-else-if="canManageAssignments" type="button" class="mp-link" @click="ask('register', row)">补登记</button>
+            <span v-else-if="row.assignmentId" class="mp-cell-sub">只读记录</span>
+            <button v-else-if="canManageAssignments && row.status === 'ACTIVE'" type="button" class="mp-link" @click="ask('register', row)">补登记</button>
             <span v-else class="mp-cell-sub">历史授权，待管理员补登记</span>
           </template>
         </DataTable>
@@ -80,27 +82,35 @@
             <span class="mp-note">{{ identityNote }}</span>
           </header>
           <div class="mp-card__body">
-            <EmptyState v-if="!identities.length" title="当前没有自动业务身份"
-                        description="业务身份来自任课、毕设、实习等业务关系，先在对应业务模块建立关系" />
-            <DataTable v-else :columns="identityColumns" :rows="identities" row-key="subjectKey">
+            <AccountCandidatePicker :model-value="identityPerson" :ctx="ctx" :search-accounts="searchIdentityPeople" @update:model-value="selectIdentityPerson" />
+            <EmptyState v-if="!identityPerson" title="先选择教职工核对四域关系" description="关系来源分开读取，不把对象数当作实际可访问人数。" />
+            <EmptyState v-else-if="!identities.length" title="该账号当前没有可识别的业务责任" description="可能尚未建立关系或原对象已失效；请在对应模块核对。读取失败会单独提示。" />
+            <DataTable v-else :columns="identityColumns" :rows="identities" row-key="identityKey">
               <template #cell-identity="{ row }">
                 <div class="mp-cell-main">{{ row.label }}</div>
                 <div class="mp-cell-sub">{{ identityTypeLabel(row.identityType) }}</div>
               </template>
               <template #cell-subject="{ row }">
-                <div class="mp-cell-main">{{ row.name || row.subjectKey }}</div>
+                <div class="mp-cell-main">{{ row.name || '姓名待核对' }}</div>
                 <div class="mp-cell-sub">
                   <StatusTag v-if="!row.subjectResolved" type="warning" label="未映射到账号" dot />
-                  <span v-else>用户编号 {{ row.userId }}</span>
+                  <span v-else>已关联本校账号</span>
                 </div>
               </template>
               <template #cell-scope="{ row }">
-                <div class="mp-cell-sub">{{ row.objectCount }} 个对象</div>
-                <div class="mp-cell-sub">{{ (row.objects || []).slice(0, 5).join('、') }}</div>
+                <div class="mp-cell-sub">{{ row.objectCount }} 个关系对象</div>
+                <div v-for="item in (row.objectItems || []).slice(0, 3)" :key="item.reference">
+                  <button v-if="item.route" type="button" class="mp-link" @click="openRelationObject(item)">{{ item.label }}</button>
+                  <span v-else>{{ item.label }}</span>
+                  <small v-if="item.relationSource" class="mp-cell-sub"> · 来源：{{ item.relationSource }}</small>
+                  <small class="mp-cell-sub">{{ item.batchName }}{{ item.state === 'INACTIVE' ? ' · 历史或失效对象' : '' }}</small>
+                </div>
+                <button type="button" class="mp-link" @click="loadObjects(row, 1)">分页核对全部对象</button>
               </template>
               <template #cell-owner="{ row }">
                 <div class="mp-cell-sub">{{ moduleLabel(row.ownerModule) }}</div>
-                <div class="mp-cell-sub">{{ sourceText(row.source) }}</div>
+                <div class="mp-cell-sub">{{ sourceText(row.identityType) }}</div>
+                <details><summary>实施人员使用</summary>{{ row.source }}；{{ row.subjectKey }}</details>
               </template>
             </DataTable>
           </div>
@@ -108,6 +118,24 @@
       </template>
     </div>
 
+    <AppDrawer v-model:visible="objectPanel.open" title="业务关系对象" mode="modal" size="large">
+      <LoadingState v-if="objectPanel.loading" />
+      <ErrorState v-else-if="objectPanel.error" :description="objectPanel.error" @retry="loadObjects(objectPanel.row, objectPanel.page)" />
+      <template v-else>
+        <p>{{ objectPanel.row?.name }} · {{ objectPanel.row?.label }} · 共 {{ objectPanel.total }} 个关系对象</p>
+        <p class="mp-note">对象来源和批次保持独立；进入业务页仍需通过原权限与数据范围校验。</p>
+        <div v-for="item in objectPanel.items" :key="item.reference" class="mp-kv">
+          <span>{{ item.label }}{{ item.batchName ? ' · ' + item.batchName : '' }}<small v-if="item.relationSource" class="mp-cell-sub"> · 来源：{{ item.relationSource }}</small></span>
+          <button v-if="item.route" type="button" class="mp-link" @click="openRelationObject(item)">查看业务对象</button>
+          <span v-else class="mp-note">{{ item.available ? '关联批次或直达入口待核对' : '对象已失效或不在本校' }}</span>
+        </div>
+        <nav class="ra-pager" aria-label="关系对象分页">
+          <button :disabled="objectPanel.page <= 1" @click="loadObjects(objectPanel.row, objectPanel.page - 1)">上一页对象</button>
+          <span>第 {{ objectPanel.page }} 页</span>
+          <button :disabled="objectPanel.page * 20 >= objectPanel.total" @click="loadObjects(objectPanel.row, objectPanel.page + 1)">下一页对象</button>
+        </nav>
+      </template>
+    </AppDrawer>
     <AppConfirmDialog
       :visible="dialogOpen"
       @update:visible="setDialogVisible"
@@ -163,6 +191,10 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { schoolIamApi } from '@/modules/system/api/schoolIam.api'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import AppDrawer from '@/components/ui/AppDrawer.vue'
+import AccountCandidatePicker from '../components/AccountCandidatePicker.vue'
+import { contextFingerprint } from '../utils/workspaceContract'
+import { relationshipObjectDestination } from '@/utils/systemRelationshipNavigation'
 
 const BUCKET_LABELS = {
   EXPIRING_SOON: '即将到期',
@@ -173,7 +205,7 @@ const BUCKET_LABELS = {
 }
 const SOURCE_TYPE_LABELS = { MANUAL: '人工分配', IMPORT: '导入分配', TEMPLATE: '角色模板', BUSINESS: '业务关系自动生成', DELEGATION: '临时委托', UNKNOWN: '来源待确认' }
 const IDENTITY_TYPE_LABELS = { TEACHER: '任课教师', COUNSELOR: '辅导员', ADVISOR: '指导教师', DEFENSE_MEMBER: '答辩成员', INTERNSHIP_ADVISOR: '实习指导教师', CLASS_MANAGER: '班级负责人' }
-const MODULE_LABELS = { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心', STUDENT_AFFAIRS: '学工中心', INTERNSHIP: '实习管理', GRADUATION: '毕业设计', EMPLOYMENT: '就业管理' }
+const MODULE_LABELS = { SYSTEM: '系统管理', ACADEMIC_AFFAIRS: '教务中心', STUDENT_AFFAIRS: '学工中心', INTERNSHIP: '岗位实习', GRADUATION: '毕业设计', EMPLOYMENT: '就业管理', systemAdmin: '系统管理', studentAffairs: '学工中心', academicAffairs: '教务中心', graduationDesign: '毕业设计', internship: '岗位实习' }
 
 const permissionMatches = (patterns = [], code = '') => (patterns || []).some((pattern) => {
   if (pattern === '*' || pattern === code) return true
@@ -186,14 +218,14 @@ export default {
   name: 'SystemRoleAssignmentView',
   components: {
     ModulePageShell, ModuleToolbar, DataTable, StatusTag,
-    LoadingState, ErrorState, EmptyState, AppConfirmDialog
+    LoadingState, ErrorState, EmptyState, AppConfirmDialog, AppDrawer, AccountCandidatePicker
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true,
       error: '',
-      tab: 'members',
+      tab: this.$route?.query?.view === 'relations' ? 'identities' : 'members',
       bucket: '',
       rows: [],
       page: 1,
@@ -204,6 +236,9 @@ export default {
       summary: {},
       identities: [],
       identityNote: '',
+      identityPerson: null,
+      objectSequence: 0,
+      objectPanel: { open: false, loading: false, error: '', row: null, items: [], page: 1, total: 0 },
       dialogOpen: false,
       submitting: false,
       mutationError: '',
@@ -225,11 +260,12 @@ export default {
         { key: 'identity', title: '身份' },
         { key: 'subject', title: '人' },
         { key: 'scope', title: '覆盖对象' },
-        { key: 'owner', title: '归属与权威表' }
+        { key: 'owner', title: '负责模块与来源' }
       ]
     }
   },
   computed: {
+    contextKey() { return contextFingerprint(this.ctx) },
     pageCount() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
     canManageAssignments() {
       const patterns = this.ctx?.permissionPatterns || []
@@ -238,7 +274,7 @@ export default {
     },
     toolbarActions() {
       const actions = [{ key: 'refresh', label: '刷新' }]
-      if (this.canManageAssignments) {
+      if (this.canManageAssignments && this.tab === 'members') {
         actions.unshift({ key: 'sweep', label: '立即回收到期授权', variant: 'primary' })
       }
       return actions
@@ -253,7 +289,7 @@ export default {
     },
     dialogMessage() {
       if (!this.pendingRow) return ''
-      const who = `${this.pendingRow.realName || this.pendingRow.loginName}（${this.pendingRow.roleCode}）`
+      const who = `${this.pendingRow.realName || this.pendingRow.loginName}（${this.roleLabel(this.pendingRow)}）`
       return {
         register: `为 ${who} 补建管理记录，原权限和长期有效状态不变。原始来源仍保留为待确认；登记后可以复核、转交或回收。`,
         revoke: `回收 ${who} 的角色，下一次请求即失效，无需等待重新登录。`,
@@ -262,14 +298,54 @@ export default {
       }[this.pendingAction] || ''
     }
   },
-  created() { this.load() },
-  beforeUnmount() { this.readSequence++; this.recipientSequence++ },
+  created() {
+    if (this.$route?.query?.relationUserId) this.restoreIdentityPerson()
+    else this.load()
+  },
+  watch: { contextKey() {
+    this.readSequence++; this.objectSequence++; this.identityPerson = null
+    this.objectPanel.open = false; this.dialogOpen = false; this.identities = []; this.rows = []
+    this.load()
+  } },
+  beforeUnmount() { this.readSequence++; this.recipientSequence++; this.objectSequence++ },
   methods: {
+    searchIdentityPeople(params) { return systemApi.searchBusinessIdentityPeople(params) },
+    async restoreIdentityPerson() {
+      const sequence = ++this.readSequence
+      this.tab = 'identities'; this.loading = true
+      const result = await systemApi.searchBusinessIdentityPeople({ userId: this.$route.query.relationUserId })
+      if (sequence !== this.readSequence) return
+      if (result.code !== 0 || !Array.isArray(result.data?.list) || result.data.list.length !== 1) {
+        this.loading = false; this.error = result.code !== 0 ? result.message : '原人员不在当前可查询范围，请重新选择'; return
+      }
+      this.identityPerson = result.data.list[0]; this.load()
+    },
+    selectIdentityPerson(person) {
+      this.identityPerson = person; this.objectPanel.open = false; this.objectSequence++; this.readSequence++
+      this.identities = []; this.loading = false
+      this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, view: 'relations', relationUserId: person?.id || undefined } })
+      if (person) this.load()
+    },
+    async loadObjects(row, page) {
+      const sequence = ++this.objectSequence
+      this.objectPanel = { open: true, loading: true, error: '', row, items: [], total: 0, page }
+      const result = await systemApi.listBusinessIdentityObjects(row, page)
+      if (sequence !== this.objectSequence) return
+      this.objectPanel.loading = false
+      if (result.code !== 0) { this.objectPanel.error = result.message; return }
+      if (!Array.isArray(result.data?.list) || !Number.isInteger(result.data.total)) { this.objectPanel.error = '关系对象分页结果不完整，请重新读取'; return }
+      this.objectPanel.items = result.data.list; this.objectPanel.total = result.data.total
+    },
+    openRelationObject(item) {
+      const route = relationshipObjectDestination(item, this.$route.fullPath)
+      if (!route) return toast.error('对象入口或批次信息不完整，请先核对')
+      this.$router.push(route)
+    },
     roleLabel: roleDisplayLabel,
     sourceTypeLabel(value) { return SOURCE_TYPE_LABELS[value] || (value ? '来源待确认' : '—') },
-    identityTypeLabel(value) { return IDENTITY_TYPE_LABELS[value] || (value ? '其他业务身份' : '—') },
+    identityTypeLabel(value) { return {COUNSELOR_CLASS:'辅导员主责',COUNSELOR_CO:'协同责任',COUNSELOR_TEMP:'临时代班',HEAD_TEACHER_CLASS:'班主任责任',COURSE_TEACHER:'任课关系',GD_MENTOR:'毕设指导关系',GD_REVIEWER:'毕设评阅关系',GD_DEFENSE_JUDGE:'答辩评委关系',GD_DEFENSE_SECRETARY:'答辩秘书关系'}[value] || IDENTITY_TYPE_LABELS[value] || (value ? '其他业务身份' : '—') },
     moduleLabel(value) { return MODULE_LABELS[value] || (value ? '其他业务模块' : '—') },
-    sourceText(value) { return /[\u3400-\u9fff]/.test(String(value || '')) ? value : (value ? '业务关系自动生成' : '—') },
+    sourceText(type) { return {COUNSELOR_CLASS:'正式主责优先；未登记时保留班级字段来源',COUNSELOR_CO:'学工协同责任台账',COUNSELOR_TEMP:'学工临时代班台账',HEAD_TEACHER_CLASS:'班级当前班主任',COURSE_TEACHER:'教学班任课关系；无教学班时为原教学任务',GD_MENTOR:'毕设批次内指导关系',GD_REVIEWER:'毕设评阅安排',GD_DEFENSE_JUDGE:'答辩组评委安排',GD_DEFENSE_SECRETARY:'答辩组秘书安排',INTERNSHIP_ADVISOR:'实习批次内指导关系'}[type] || '来源待核对' },
     statusLabel(status) {
       return { ACTIVE: '生效中', EXPIRED: '已过期', REVOKED: '已撤销' }[status] || '状态待确认'
     },
@@ -283,6 +359,7 @@ export default {
     switchTab(tab) {
       if (this.tab === tab || this.submitting) return
       this.tab = tab
+      if (this.$route?.query) this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, view: tab === 'identities' ? 'relations' : undefined, relationUserId: tab === 'identities' ? this.identityPerson?.id : undefined } })
       this.page = 1
       this.load()
     },
@@ -299,6 +376,7 @@ export default {
     },
     ask(action, row) {
       if (this.submitting) return
+      if (row.status !== 'ACTIVE') return toast.error('该授权已失效，只能查看历史记录')
       if (['transfer', 'revoke', 'register'].includes(action) && !this.canManageAssignments) {
         return toast.error('当前角色只有查看权限，不能转交或回收授权')
       }
@@ -413,10 +491,11 @@ export default {
           this.targetPage = this.page
           this.summary = res.data.summary || {}
         } else {
-          const res = await systemApi.listBusinessIdentities()
+          if (!this.identityPerson) { this.loading = false; return }
+          const res = await systemApi.listBusinessIdentities({ userId: this.identityPerson.id })
           if (sequence !== this.readSequence) return
           if (res.code !== 0) throw new Error(res.message || '业务身份加载失败')
-          this.identities = res.data.list || []
+          this.identities = (res.data.list || []).map(row => ({ ...row, identityKey: row.identityKey || `${row.identityType}:${row.subjectKey}` }))
           this.identityNote = res.data.note || ''
         }
       } catch (error) {

@@ -24,6 +24,9 @@ export function workspacePageMatches(current, candidate) {
   if (!candidate) return false
   const route = new URL(current, 'http://workspace.local')
   const page = new URL(candidate, 'http://workspace.local')
+  // 导师名单和分配是同一正式工作区内的页签，批次和分配面板不改变菜单归属。
+  if (route.pathname === '/admin/graduation/mentors' && route.searchParams.get('panel') === 'assign'
+    && page.pathname === route.pathname && page.searchParams.get('panel') === 'list') route.searchParams.set('panel', 'list')
   if (['/admin/graduation', '/admin/internship'].includes(page.pathname) && route.pathname !== page.pathname) return false
   // Graduation forms/details inherit their closest business list. List panel
   // parameters need not be present on a create/edit URL.

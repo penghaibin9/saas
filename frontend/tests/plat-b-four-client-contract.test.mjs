@@ -18,8 +18,9 @@ const files = {
 
 const productionFiles = {
   staffApi: 'frontend/src/modules/system/api/businessForms.api.js',
-  staffPage: 'frontend/src/modules/system/views/SystemBusinessFormsView.vue',
-  staffRoutes: 'frontend/src/modules/system/system.routes.js',
+  staffPage: 'frontend/src/modules/platform/views/control/PlatformBusinessFormsView.vue',
+  staffRoutes: 'frontend/src/modules/platform/platform.routes.js',
+  controlApi: 'frontend/src/modules/platform/api/businessFormsControl.api.js',
   studentPage: 'student-portal/src/views/forms/BusinessFormView.vue',
   studentApi: 'student-portal/src/services/portalApi.js',
   studentRoutes: 'student-portal/src/router/index.js',
@@ -93,8 +94,12 @@ test('Staff and Student PC components are wired to real APIs and routable pages'
   assert.match(staffApi, /platform\/business-form-versions/)
   assert.match(staffApi, /platform\/compliance\/evaluate/)
   assert.match(staffPage, /BusinessFormVersionWorkbench/)
-  assert.match(staffPage, /CompliancePanel/)
-  assert.match(staffRoutes, /SystemBusinessFormsView\.vue/)
+  assert.doesNotMatch(staffPage, /CompliancePanel|evaluateCompliance/)
+  assert.match(staffPage, /loadSources/)
+  assert.match(staffRoutes, /PlatformBusinessFormsView\.vue/)
+  const controlApi = read(productionFiles.controlApi)
+  assert.match(controlApi, /platform\/tenants\/\$\{encodeURIComponent\(id\)\}/)
+  assert.doesNotMatch(controlApi, /compliance\/evaluate|runtime\/submit/)
   assert.match(studentPage, /businessFormLoad/)
   assert.match(studentPage, /fileSdk\.upload/)
   assert.match(studentPage, /expectedBusinessVersion/)

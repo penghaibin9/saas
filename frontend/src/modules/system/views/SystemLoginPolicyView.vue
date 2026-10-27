@@ -30,20 +30,20 @@
                 <tr v-for="c in configs" :key="c.configKey">
                   <td class="is-who">
                     {{ c.configName || c.configKey }}
-                    <span class="lp-key">{{ c.configKey }}</span>
+                    <details><summary>实施人员使用</summary><code>{{ c.configKey }}</code><p>{{ (c.consumers || []).join('、') || '未登记技术读取方' }}</p></details>
                   </td>
-                  <td><b>{{ c.value }}</b></td>
+                  <td><b>{{ policyValue(c) }}</b></td>
                   <td><StatusTag :type="sourceTagType(c.sourceLayer)" :label="sourceLabel(c.sourceLayer)" /></td>
-                  <td class="mp-cell-sub">{{ floorText(c.platformFloor) }}</td>
+                  <td class="mp-cell-sub">{{ isPhone(c.configKey) ? '关闭 / 启用' : floorText(c.platformFloor) }}</td>
                   <td class="mp-cell-sub">
                     <template v-if="c.consumers && c.consumers.length">
-                      {{ c.consumers.join('、') }}
+                      {{ consumerLabel(c) }}
                     </template>
                     <span v-else class="lp-warn">暂无消费者，改了不会有行为变化</span>
                   </td>
                   <td>
-                    <button class="mp-link" :disabled="!c.schoolEditable || (isPhone(c.configKey) && !canPhonePolicy)" @click="openEdit(c)">编辑</button>
-                    <button class="mp-link" @click="openHistory(c)">历史</button>
+                    <button class="mp-link lp-action" :disabled="!c.schoolEditable || (isPhone(c.configKey) ? !canPhonePolicy : !canConfigPolicy)" @click="openEdit(c)">编辑</button>
+                    <button class="mp-link lp-action" @click="openHistory(c)">历史</button>
                   </td>
                 </tr>
               </tbody>
@@ -55,7 +55,7 @@
         <section v-if="detail" class="mp-card">
           <header class="mp-card__head">
             <span class="mp-card__title">{{ detail.configName || detail.configKey }} · 来源链</span>
-            <button class="mp-link" @click="detail = null">收起</button>
+            <button class="mp-link lp-action" @click="detail = null">收起</button>
           </header>
           <div class="mp-card__body">
             <p v-for="(layer, i) in detail.chain" :key="i" class="lp-chain">
@@ -98,7 +98,7 @@
     </AppDrawer>
 
     <AppDrawer v-model:visible="history.open" :title="'变更历史 · ' + history.name">
-      <LoadingState v-if="history.loading" />
+      <LoadingState v-if="history.loading" /><ErrorState v-else-if="history.error" :description="history.error" @retry="openHistory({ configKey: history.configKey, configName: history.name })" @back="history.open = false" />
       <template v-else>
         <table v-if="history.items.length" class="mp-audit">
           <thead><tr><th style="width: 150px">时间</th><th style="width: 110px">变化</th><th>原因</th></tr></thead>
@@ -127,6 +127,7 @@ import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 import { phoneGovernanceApi } from '../api/phoneGovernance.api'
 import { contextFingerprint } from '../utils/workspaceContract'
 import { matchPermission } from '@/config/navPlan'
@@ -155,11 +156,12 @@ export default {
         open: false, configKey: '', name: '', value: '', floor: null,
         effectiveAt: '', reason: '', error: '', submitting: false
       },
-      history: { open: false, loading: false, name: '', items: [] }
+      history: { open: false, loading: false, name: '', items: [], error: '' }
     }
   },
   computed: {
     contextKey() { return contextFingerprint(this.ctx) },
+    canConfigPolicy() { return matchPermission(this.ctx.permissionPatterns || [], 'systemAdmin.config.manage') },
     canPhonePolicy() { return matchPermission(this.ctx.permissionPatterns || [], 'systemAdmin.phoneBinding.policy.manage') }
   },
   watch: { contextKey() { this.epoch += 1; this.edit.open = false; this.edit.value = ''; this.edit.reason = ''; this.detail = null; this.history.open = false; this.configs = []; this.load() } },
@@ -167,13 +169,15 @@ export default {
   beforeUnmount() { this.epoch += 1 },
   methods: {
     isPhone(key) { return ['SEC_PHONE_LOGIN_ENABLED', 'SEC_PHONE_RECOVERY_ENABLED'].includes(key) },
-    fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
+    policyValue(c) { if (!this.isPhone(c.configKey)) return c.value ?? '未取得'; if (c.value === 1 || c.value === '1') return '已启用'; if (c.value === 0 || c.value === '0') return '已关闭'; return '未取得' },
+    fmt(v) { return formatDateTime(v, '—', 'Asia/Shanghai') },
     sourceLabel(s) { return SOURCE_LABEL[s] || (s ? '状态待确认' : '—') },
     sourceTagType(s) {
       if (s === 'TENANT' || s === 'ORG_UNIT' || s === 'TERM') return 'processing'
       if (s === 'TENANT_LEGACY') return 'info'
       return 'default'
     },
+    consumerLabel(c) { return ({ SEC_LOCK_MAX_FAIL: '登录失败计数与锁定', SEC_LOCK_MINUTES: '登录锁定时长校验', SEC_PASSWORD_MIN_LEN: '修改密码校验', SEC_PHONE_LOGIN_ENABLED: '手机号密码登录', SEC_PHONE_RECOVERY_ENABLED: '手机号找回密码' })[c.configKey] || '已登记读取方，详见实施信息' },
     floorText(floor) {
       if (!floor) return '不限'
       if (floor.enum) return floor.enum.join(' / ')
@@ -194,7 +198,7 @@ export default {
     },
 
     openEdit(c) {
-      if (this.isPhone(c.configKey) && !this.canPhonePolicy) return
+      if (!c.schoolEditable || (this.isPhone(c.configKey) ? !this.canPhonePolicy : !this.canConfigPolicy)) return
       this.edit = {
         open: true, configKey: c.configKey, name: c.configName || c.configKey,
         value: String(c.value ?? ''), floor: c.platformFloor,
@@ -206,6 +210,7 @@ export default {
     async submitEdit() {
       if (this.edit.submitting || this.edit.uncertain) return
       const phone = this.isPhone(this.edit.configKey)
+      if (!phone && !this.canConfigPolicy) return
       if (phone && (!this.canPhonePolicy || !/^[01]$/.test(this.edit.value))) { this.edit.error = '请核对权限，并填 0 或 1'; return }
       if (!String(this.edit.value).trim()) { this.edit.error = '请填写配置值'; return }
       if (this.edit.reason.trim().length < 5) { this.edit.error = '变更原因不少于 5 个字'; return }
@@ -240,11 +245,13 @@ export default {
     },
 
     async openHistory(c) {
-      this.history = { open: true, loading: true, name: c.configName || c.configKey, items: [] }
+      this.history = { open: true, loading: true, name: c.configName || c.configKey, configKey: c.configKey, items: [], error: '' }
+      const history = this.history; const stamp = this.epoch
       const res = await systemApi.getConfigHistory(c.configKey)
+      if (history !== this.history || stamp !== this.epoch) return
       this.history.loading = false
       if (res.code === 0) this.history.items = (res.data || {}).items || []
-      else toast.error(res.message)
+      else this.history.error = res.message || '变更历史读取失败'
     }
   }
 }
@@ -252,6 +259,10 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.mp-card__body { overflow-x: auto; }
+.mp-card .mp-audit { min-width: 760px; }
+.lp-action { margin-right: 12px; min-height: 32px; }
+details { font-weight: normal; font-size: 12px; overflow-wrap: anywhere; }
 .lp-key {
   display: block;
   font-size: var(--font-size-xs);

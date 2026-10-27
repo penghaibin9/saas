@@ -63,9 +63,17 @@ export function formatDate(v, fallback = EMPTY_LABEL) {
   return `${d.getFullYear()}-${PAD(d.getMonth() + 1)}-${PAD(d.getDate())}`
 }
 
-export function formatDateTime(v, fallback = EMPTY_LABEL) {
+export function formatDateTime(v, fallback = EMPTY_LABEL, timeZone) {
   const d = parseDate(v)
   if (!d) return fallback
+  if (timeZone) {
+    const parts = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: String(timeZone).replace(/^UTC([+-]\d{2}:\d{2})$/, '$1'),
+      year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).formatToParts(d)
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]))
+    return `${values.year}-${values.month}-${values.day} ${values.hour}:${values.minute}`
+  }
   return `${formatDate(d)} ${PAD(d.getHours())}:${PAD(d.getMinutes())}`
 }
 

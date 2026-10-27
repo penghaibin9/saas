@@ -2,7 +2,7 @@
   <ModulePageShell :title="head.className || '班级画像'" :subtitle="subtitle"
     :role-name="roleName" :data-scope-name="scopeHint">
     <template #actions>
-      <AppButton variant="ghost" size="sm" @click="goBack">← 返回班级列表</AppButton>
+      <AppButton variant="ghost" size="sm" @click="goBack">{{ systemReturnTo ? '← 返回系统管理' : '← 返回班级列表' }}</AppButton>
     </template>
 
     <div v-if="loadErr" class="mp-stack">
@@ -40,6 +40,7 @@
             <div class="mp-cell-main">{{ row.realName }}</div>
             <div class="mp-cell-sub">{{ row.studentNo }}</div>
           </template>
+          <template #cell-studentStatus="{ row }">{{ studentStatusLabel(row.studentStatus) }}</template>
         </DataTable>
       </template>
 
@@ -141,10 +142,12 @@
  */
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppMetricCard, AppConfirmDialog, AppPermissionButton, AppSelect, AppStudentPicker, AppTextInput, AppTextarea, AppDatePicker, AppQuickPhrases } from '@/components/common'
+import { ACADEMIC_STUDENT_STATUS_LABELS } from '@/modules/academicAffairs/config/academicStudentLabels'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { classApi } from '@/modules/studentAffairs/api/class.api'
 import { requestUpload, requestBlob } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import { systemRelationshipReturnTo } from '@/utils/systemRelationshipNavigation'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { canCode } from '@/modules/studentAffairs/composables/permission'
 
@@ -192,6 +195,7 @@ export default {
     }
   },
   computed: {
+    systemReturnTo() { return systemRelationshipReturnTo(this.$route.query.returnTo) },
     classId() { return this.$route.params.classId },
     roleName() { return (this.ctx && this.ctx.currentRole && this.ctx.currentRole.roleName) || '辅导员 / 学院学工 / 学工处' },
     scopeHint() { return (this.ctx && this.ctx.dataScope && (this.ctx.dataScope.scopeName || this.ctx.dataScope.name)) || '按数据范围裁剪' },
@@ -200,8 +204,9 @@ export default {
   },
   created() { this.loadProfile(); this.loadStudents() },
   methods: {
+    studentStatusLabel(value) { return ACADEMIC_STUDENT_STATUS_LABELS[value] || '学籍状态待核对' },
     canBtn(code) { return canCode(this.ctx, code) },
-    goBack() { this.$router.push('/admin/campus-service/classes') },
+    goBack() { this.$router.push(this.systemReturnTo || '/admin/campus-service/classes') },
     metricAccent(m) {
       if ((m.key === 'riskOpen' || m.key === 'overdueLeave' || m.key === 'discipline') && m.value) return 'risk'
       if (m.key === 'currentLeave' && m.value) return 'warning'

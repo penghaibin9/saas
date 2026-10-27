@@ -13,6 +13,38 @@ from app.services.message_identity import resolve_message_user_id
 
 _now = lambda: datetime.now().isoformat(timespec="seconds")  # noqa: E731
 
+
+def source_task_visibility(user, task_model, instance_model):
+    """成绩节点沿用原业务办理权限及指定经办人，不从通用审批管理权推导。"""
+    from sqlalchemy import and_, or_, func
+    from app.core.context import get_current_user_ctx
+    from app.core.permissions import permission_decisions
+    from app.services.message_identity import resolve_message_user_id
+    actor = user or get_current_user_ctx() or {}
+    codes = ("academicAffairs.grade.collegeReview", "academicAffairs.grade.publish", "academicAffairs.gradeChange.review")
+    business_permissions = {
+        "LEAVE": ("studentAffairs.leave.view", "studentAffairs.leave.approve"),
+        "AID": ("studentAffairs.aid.view", "studentAffairs.aid.approve"),
+        "FUNDING": ("studentAffairs.funding.view", "studentAffairs.funding.approve"),
+        "DISCIPLINE": ("studentAffairs.discipline.view", "studentAffairs.discipline.approve"),
+        "DISCIPLINE_REMOVE": ("studentAffairs.discipline.view", "studentAffairs.discipline.remove.approve"),
+    }
+    granted = permission_decisions(actor, (*codes, *(p for group in business_permissions.values() for p in group)))
+    uid = resolve_message_user_id(actor)
+    source = func.upper(func.coalesce(instance_model.source_biz_type, ""))
+    grade_node = or_(
+        and_(task_model.node_code == "COLLEGE_REVIEW", granted.get(codes[0], False)),
+        and_(task_model.node_code == "ACADEMIC_REVIEW", granted.get(codes[1], False)),
+    )
+    return or_(
+        ~source.in_(("AA_GRADE_TASK", "AA_GRADE_CHANGE", *business_permissions)),
+        *(and_(source == kind, all(granted.get(p, False) for p in permissions)) for kind, permissions in business_permissions.items()),
+        and_(task_model.assignee_id == uid, uid > 0, or_(
+            and_(source == "AA_GRADE_TASK", grade_node),
+            and_(source == "AA_GRADE_CHANGE", granted.get(codes[2], False)),
+        )),
+    )
+
 _TASKS: list[dict] = [
     {"taskId": "at-1001", "instanceId": "wi-2001", "tenantId": "1000000000000000001",
      "assigneeId": 0, "title": "张一鸣 · 学籍信息变更", "sourceModule": "student",
@@ -136,6 +168,8 @@ def _db_list(
         ]
         if not db_service._can_manage_all_approvals(user):
             cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
+        if not processed:
+            cond.append(source_task_visibility(user, WorkflowTask, WorkflowInstance))
         if biz_type:
             cond.append(WorkflowInstance.source_biz_type == biz_type)
         kw = (keyword or "").strip()

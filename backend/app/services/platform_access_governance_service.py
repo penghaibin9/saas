@@ -21,6 +21,9 @@ _BREAK_GLASS_SCHOOL_ADMIN_SCOPES = {
 _canonical._base.SUPPORT_SCOPE_CATALOG.update(_BREAK_GLASS_SCHOOL_ADMIN_SCOPES)
 SUPPORT_SCOPE_CATALOG = _canonical._base.SUPPORT_SCOPE_CATALOG
 
+# 仅登记可显式申请的细权限，不改变任何岗位的默认授予。
+_canonical._base.KNOWN_CAPABILITIES.update({"businessForms.view", "businessForms.manage"})
+
 
 def __getattr__(name: str):
     return getattr(_hardened, name)

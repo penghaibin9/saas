@@ -96,3 +96,7 @@ test('身份列表缺少中文名称时不显示角色码或内部身份编号',
   assert.equal(title({ roleCode: 'SCHOOL_ADMIN' }, labels), '学校管理员')
   assert.equal(title({ contextName: '本校教学负责人', roleCode: 'NEW_ROLE' }, labels), '本校教学负责人')
 })
+
+test('工作台尚未读取审批字典时也显示服务端权威业务名称', () => {
+  assert.equal(presentation.taskRow({ sourceBizType: 'AA_GRADE_TASK', sourceBizTypeLabel: '成绩审核' }).bizTypeLabel, '成绩审核')
+})

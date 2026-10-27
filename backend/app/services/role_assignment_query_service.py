@@ -8,7 +8,7 @@ from app.models import Role, User, UserRole
 from app.models.role_assignment import RoleAssignmentValidity as Validity
 
 
-def list_page(db, *, tenant_id, now, role_code, bucket, page, page_size):
+def list_page(db, *, tenant_id, now, role_code, bucket, page, page_size, user_id=None):
     from app.services import role_assignment_service as rules
 
     link_join = and_(UserRole.id == Validity.user_role_id,
@@ -41,6 +41,8 @@ def list_page(db, *, tenant_id, now, role_code, bucket, page, page_size):
     code = str(role_code or '').strip().upper()
     if code:
         scoped = scoped.where(all_rows.c.role_code == code)
+    if user_id is not None:
+        scoped = scoped.where(all_rows.c.user_id == int(user_id))
     rows = scoped.subquery('school_assignments')
     c = rows.c
     filters = {

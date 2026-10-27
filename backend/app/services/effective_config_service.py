@@ -18,6 +18,8 @@ import uuid
 from datetime import datetime
 from typing import Any
 
+from app.core.timeutil import iso_utc, utc_now_naive
+
 from sqlalchemy import select, func
 
 from app.core.context import current_tenant_id, get_current_user_ctx
@@ -179,7 +181,7 @@ def _floor_seconds(value: datetime | None) -> datetime | None:
 
 
 def _now() -> datetime:
-    return _floor_seconds(datetime.utcnow())
+    return _floor_seconds(utc_now_naive())
 
 
 def _tenant_id(value: int | None = None) -> int:
@@ -336,8 +338,8 @@ def resolve(
                     "layer": row.scope_type,
                     "scopeId": row.scope_id or None,
                     "value": value,
-                    "effectiveAt": row.effective_at.isoformat(),
-                    "expiresAt": row.expires_at.isoformat() if row.expires_at else None,
+                    "effectiveAt": iso_utc(row.effective_at),
+                    "expiresAt": iso_utc(row.expires_at),
                 }
             )
 
@@ -357,7 +359,7 @@ def resolve(
             # 没有消费者的配置改了也不会有任何行为变化，页面必须如实说明
             "takesEffectImmediately": bool(consumers),
             "policyVersion": _phone_policy_version(db, tid, config_key) if config_key in PHONE_POLICY_KEYS else None,
-            "resolvedAt": moment.isoformat(),
+            "resolvedAt": iso_utc(moment),
         }
 
 
@@ -524,8 +526,8 @@ def set_override(
         "scopeType": stype,
         "scopeId": row.scope_id or None,
         "value": typed,
-        "effectiveAt": row.effective_at.isoformat(),
-        "expiresAt": row.expires_at.isoformat() if row.expires_at else None,
+        "effectiveAt": iso_utc(row.effective_at),
+        "expiresAt": iso_utc(row.expires_at),
         "version": int(row.version or 0),
         "traceId": trace_id,
         "effective": resolve(config_key, tenant_id=tid),
@@ -576,7 +578,7 @@ def history(config_key: str, *, limit: int = 50, tenant_id: int | None = None) -
                     "actorUserId": str(r.actor_user_id) if r.actor_user_id else None,
                     "reason": r.reason,
                     "traceId": r.trace_id,
-                    "occurredAt": r.created_at.isoformat() if r.created_at else None,
+                    "occurredAt": iso_utc(r.created_at),
                 }
                 for r in rows
             ]

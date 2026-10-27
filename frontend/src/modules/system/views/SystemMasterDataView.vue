@@ -7,7 +7,7 @@
   >
     <template #actions>
       <ModuleToolbar
-        :actions="[{ key: 'scan', label: '执行质量扫描', variant: 'primary' }, { key: 'refresh', label: '刷新' }]"
+        :actions="[{ key: 'scan', label: scanBusy ? '正在扫描' : '执行质量扫描', variant: 'primary', disabled: scanBusy }, { key: 'refresh', label: '刷新' }]"
         @action="onAction"
       />
     </template>
@@ -21,7 +21,7 @@
           <div class="mp-card__body md-summary">
             <div class="md-stat">
               <span class="md-stat__num">{{ worstScore }}</span>
-              <span class="md-stat__label">最低质量分</span>
+              <span class="md-stat__label">已知最低问题台账分</span>
             </div>
             <div class="md-stat">
               <span class="md-stat__num">{{ issueSummary.p0Open || 0 }}</span>
@@ -40,6 +40,7 @@
               <span class="md-stat__label">无责任人数据域</span>
             </div>
           </div>
+          <p class="mp-note">评分依据已登记的问题和例外记录；没有可核对的扫描记录时不显示分数。规则覆盖不等于全量业务对象已检查。</p>
           <div v-if="domainsWithoutOwner.length" class="mp-card__body">
             <p class="md-warn">
               以下数据域还没有责任人，最高优先级规则无法运行：{{ domainsWithoutOwner.join('、') }}
@@ -50,6 +51,7 @@
         <section class="mp-card">
           <header class="mp-card__head"><span class="mp-card__title">数据域与责任人</span></header>
           <div class="mp-card__body">
+            <EmptyState v-if="!domains.length" title="当前未配置数据域目录" description="请核对学校初始化与数据域配置，不能据此判断业务数据没有问题。" />
             <DataTable :columns="domainColumns" :rows="domains" row-key="domainCode">
               <template #cell-domain="{ row }">
                 <div class="mp-cell-main">{{ row.domainName }}</div>
@@ -63,7 +65,9 @@
                            :label="row.hasOwner ? ownerLabel(row) : '未指定'" dot />
               </template>
               <template #cell-score="{ row }">
-                <StatusTag :type="scoreTone(row.qualityScore)" :label="String(row.qualityScore)" dot />
+                <StatusTag :type="scoreTone(row.qualityScore)" :label="typeof row.qualityScore === 'number' ? String(row.qualityScore) : '暂无可核对评分'" dot />
+                <div class="mp-cell-sub">{{ scanTime(row) }}</div>
+                <div class="mp-cell-sub">最近执行 {{ row.checkedRuleCount ?? '未取得' }} 条规则；当前启用 {{ row.activeRuleCount ?? '未取得' }} 条</div>
                 <div class="mp-cell-sub">未闭环 {{ row.openIssues }} · 逾期 {{ row.overdueIssues }}</div>
               </template>
               <template #cell-ops="{ row }">
@@ -81,10 +85,11 @@
           <div class="mp-card__body">
             <EmptyState v-if="!issues.length" title="当前没有数据质量问题"
                         description="先指定数据域责任人，再执行一次质量扫描" />
-            <DataTable v-else :columns="issueColumns" :rows="issues" row-key="issueId">
+            <DataTable v-else :columns="issueColumns" :rows="issues" row-key="issueId" :pagination="issuePagination" @page-change="changeIssuePage">
               <template #cell-issue="{ row }">
                 <div class="mp-cell-main">{{ issueSummaryText(row) }}</div>
                 <div class="mp-cell-sub">{{ domainLabel(row.domainCode) }} · 数据质量检查</div>
+                <button v-if="issueDestination(row)" class="mp-link" @click="$router.push({ path: issueDestination(row), query: { returnTo: $route.fullPath } })">查看业务对象</button>
               </template>
               <template #cell-severity="{ row }">
                 <StatusTag :type="severityTone(row.severity)" :label="severityLabel(row.severity)" dot />
@@ -94,14 +99,17 @@
                 <div v-if="row.verifyResult" class="mp-cell-sub">复扫 {{ verifyLabel(row.verifyResult) }}</div>
               </template>
               <template #cell-sla="{ row }">
-                <div class="mp-cell-sub">{{ row.dueAt || '无 SLA' }}</div>
+                <div class="mp-cell-sub">{{ row.dueAt || '未设置办理期限' }}</div>
                 <StatusTag v-if="row.overdue" type="danger" label="已逾期" dot />
               </template>
               <template #cell-ops="{ row }">
+                <span v-if="row.status === 'VERIFIED'" class="mp-note">已关闭，只读</span>
+                <template v-else>
                 <button class="mp-link" @click="ask('assign', row)">指派</button>
                 <button class="mp-link" @click="ask('resolve', row)">登记处理</button>
                 <button class="mp-link" @click="doVerify(row)">复扫验证</button>
                 <button v-if="row.severity !== 'P0'" class="mp-link" @click="ask('except', row)">例外</button>
+                </template>
               </template>
             </DataTable>
           </div>
@@ -144,6 +152,8 @@ import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { AppRemoteSelect } from '@/components/common'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
+import { contextFingerprint } from '../utils/workspaceContract'
 import { safeEnumLabel } from '@/utils/presentationSafety'
 
 const MODULE_LABEL = { studentAffairs: '学生工作', systemAdmin: '系统管理', academicAffairs: '教务管理', dataExchange: '数据交换' }
@@ -159,7 +169,7 @@ const RULE_LABEL = {
 }
 const SEVERITY_LABEL = { P0: '阻断', P1: '高', P2: '一般', CRITICAL: '阻断', HIGH: '高', MEDIUM: '一般', LOW: '提示' }
 const ISSUE_STATUS_LABEL = { OPEN: '待处理', ASSIGNED: '已指派', RESOLVED: '待复扫', VERIFIED: '已闭环', EXCEPTED: '例外中' }
-const VERIFY_LABEL = { GONE: '问题已消除', STILL_EXISTS: '问题仍存在', PASSED: '已通过', FAILED: '未通过' }
+const VERIFY_LABEL = { GONE: '问题已消除', STILL_EXISTS: '问题仍存在', STILL_PRESENT: '问题仍存在', PASSED: '已通过', FAILED: '未通过' }
 
 export default {
   name: 'SystemMasterDataView',
@@ -175,6 +185,9 @@ export default {
       domains: [],
       domainsWithoutOwner: [],
       issues: [],
+      readSequence: 0,
+      scanBusy: false,
+      issuePagination: { page: 1, pageSize: 20, total: 0 },
       issueSummary: {},
       directoryUsers: [],
       dialogOpen: false,
@@ -188,7 +201,7 @@ export default {
         { key: 'domain', title: '数据域' },
         { key: 'source', title: '权威数据位置' },
         { key: 'owner', title: '责任人' },
-        { key: 'score', title: '质量分' },
+        { key: 'score', title: '问题台账分' },
         { key: 'ops', title: '操作' }
       ],
       issueColumns: [
@@ -201,9 +214,10 @@ export default {
     }
   },
   computed: {
+    contextKey() { return contextFingerprint(this.ctx) },
     worstScore() {
-      if (!this.domains.length) return '—'
-      return Math.min(...this.domains.map((d) => Number(d.qualityScore) || 0))
+      const scores = this.domains.map(d => d.qualityScore).filter(value => typeof value === 'number' && Number.isFinite(value))
+      return scores.length ? Math.min(...scores) : '未取得'
     },
     dialogTitle() {
       return {
@@ -225,7 +239,20 @@ export default {
     }
   },
   created() { this.load() },
+  beforeUnmount() { this.readSequence++ },
+  watch: { contextKey() {
+    this.dialogOpen = false; this.pendingRow = null; this.issues = []; this.domains = []
+    this.issuePagination.page = 1; this.load()
+  } },
   methods: {
+    issueDestination(row) {
+      if (!/^\d+$/.test(String(row.objectId || ''))) return ''
+      if (row.objectType === 'CLASS' && ['CLASS_MISSING_COUNSELOR', 'STUDENT_DUPLICATE_NAME_IN_CLASS'].includes(row.ruleCode)) return '/admin/campus-service/classes/' + row.objectId
+      if (row.objectType === 'STUDENT' && row.ruleCode === 'STUDENT_MISSING_CLASS') return '/admin/academic-affairs/roster/' + row.objectId
+      return ''
+    },
+    changeIssuePage(page) { this.issuePagination.page = page; this.load() },
+    scanTime(row) { return row.lastScanAt ? '最近扫描 ' + formatDateTime(row.lastScanAt, '', row.timeZone) : '尚无可核对的扫描记录' },
     moduleLabel(value) { return safeEnumLabel({ value, dictionary: MODULE_LABEL, unknownLabel: '相关业务模块' }) },
     sourceLabel(row) { return row.authoritativeSourceName || safeEnumLabel({ value: row.authoritativeTable, dictionary: SOURCE_LABEL, unknownLabel: '业务主数据来源' }) },
     severityLabel(value) { return safeEnumLabel({ value, dictionary: SEVERITY_LABEL, unknownLabel: '严重度待确认' }) },
@@ -238,6 +265,7 @@ export default {
       return user ? `${user.name || user.realName || '责任人'}（${user.userNo || user.loginName || '工号待同步'}）` : '责任人信息待同步'
     },
     issueSummaryText(row) {
+      if (row.ruleCode === 'CLASS_MISSING_COUNSELOR' && typeof row.summary === 'string' && row.summary.startsWith('班级“')) return row.summary
       const label = safeEnumLabel({ value: row.ruleCode, dictionary: RULE_LABEL, unknownLabel: '待处理的数据质量问题' })
       const count = Number(row.evidence?.count)
       return Number.isFinite(count) && count > 0 ? `${label}（涉及 ${count} 项）` : label
@@ -253,6 +281,7 @@ export default {
       return this.userOptions(rows)
     },
     scoreTone(score) {
+      if (typeof score !== 'number') return 'default'
       const n = Number(score) || 0
       if (n >= 90) return 'success'
       if (n >= 60) return 'warning'
@@ -270,6 +299,7 @@ export default {
       if (key === 'scan') return this.doScan()
     },
     ask(action, row) {
+      if (action !== 'owner' && row.status === 'VERIFIED') return
       this.pendingAction = action
       this.pendingRow = row
       this.ownerInput = ''
@@ -281,13 +311,17 @@ export default {
       this.ask('owner', row)
     },
     async doScan() {
+      if (this.scanBusy) return
+      this.scanBusy = true
       const res = await systemApi.scanMasterData()
+      this.scanBusy = false
       if (res.code === 0) {
         toast.success(`新增 ${res.data.opened}，更新 ${res.data.updated}，核销 ${res.data.cleared}`)
         await this.load()
       } else toast.error(res.message)
     },
     async doVerify(row) {
+      if (row.status === 'VERIFIED') return
       const res = await systemApi.verifyMasterDataIssue(row.issueId)
       if (res.code === 0) {
         toast.success(res.data.verifyResult === 'GONE' ? '复扫通过，问题已消除' : '问题仍在，已打回待处理')
@@ -344,19 +378,22 @@ export default {
       }
     },
     async load() {
+      const sequence = ++this.readSequence
       this.loading = true
       this.error = ''
       const [domains, issues, users] = await Promise.all([
         systemApi.listMasterDataDomains(),
-        systemApi.listMasterDataIssues(),
+        systemApi.listMasterDataIssues({ page: this.issuePagination.page, pageSize: this.issuePagination.pageSize }),
         systemApi.getUsers({ pageSize: 100 })
       ])
+      if (sequence !== this.readSequence) return
       if (domains.code === 0) {
         this.domains = domains.data.list || []
         this.domainsWithoutOwner = domains.data.domainsWithoutOwner || []
       } else this.error = domains.message
       if (issues.code === 0) {
         this.issues = issues.data.list || []
+        this.issuePagination.total = issues.data.total
         this.issueSummary = issues.data.summary || {}
       } else if (!this.error) this.error = issues.message
       if (users.code === 0) this.directoryUsers = users.data?.list || []

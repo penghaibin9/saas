@@ -13,7 +13,7 @@ from typing import Optional
 from sqlalchemy import and_, func, select
 
 from app.core.context import current_tenant_id, get_current_user_ctx, get_request_meta, get_trace_id
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
 from app.core.field_crypto import mask_id_card, mask_phone
 from app.db.session import get_sessionmaker
 from app.models import (SecurityAuditLog, StudentContact, StudentProfile, StudentStageEvent,
@@ -442,6 +442,18 @@ def _can_manage_all_approvals(user: dict | None, *, workflow_code: str | None = 
 
 
 def _assert_task_assignee(db, t: WorkflowTask, user: dict | None) -> None:
+    from app.services.approval_service import source_task_visibility
+    source_allowed = db.scalar(select(WorkflowTask.id).join(
+        WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id).where(
+        WorkflowTask.id == t.id, WorkflowTask.tenant_id == _tid(),
+        WorkflowInstance.tenant_id == _tid(), WorkflowInstance.is_deleted.is_(False),
+        source_task_visibility(user, WorkflowTask, WorkflowInstance),
+    ))
+    if source_allowed is None:
+        actor_id = _approval_actor_id(user)
+        if not actor_id or int(t.assignee_id) != actor_id:
+            raise not_found("审批任务不存在")
+        raise no_permission("当前身份不能办理该来源业务，请切换已有业务身份")
     workflow_code = None
     if t.node_code:
         inst = db.scalars(select(WorkflowInstance.workflow_code).where(
@@ -737,24 +749,29 @@ def audit_insert(action: str, resource: str, detail: dict | None, result: str,
 def audit_query(page: int, page_size: int, action: str | None = None,
                 operator: str | None = None, date_from: str | None = None,
                 date_to: str | None = None) -> tuple[list[dict], int]:
+    from app.core.timeutil import local_day_bounds_utc, tenant_tz
+    from app.services.operation_audit_service import present_result, present_target
     with session() as db:
         q = select(SecurityAuditLog).where(SecurityAuditLog.tenant_id == _tid())
         if action:
             q = q.where(SecurityAuditLog.action == action)
         if operator:
             q = q.where(SecurityAuditLog.operator_name.like(f"%{operator}%"))
-        if date_from:
-            q = q.where(SecurityAuditLog.created_at >= date_from)
-        if date_to:
-            q = q.where(SecurityAuditLog.created_at <= date_to + " 23:59:59")
+        try:
+            if date_from:
+                q = q.where(SecurityAuditLog.created_at >= local_day_bounds_utc(date_from)[0])
+            if date_to:
+                q = q.where(SecurityAuditLog.created_at < local_day_bounds_utc(date_to)[1])
+        except ValueError:
+            raise AppException("VALIDATION_ERROR", "请选择有效的开始和结束日期", http_status=422) from None
         total = db.scalar(select(func.count()).select_from(q.subquery())) or 0
         rows = db.scalars(q.order_by(SecurityAuditLog.id.desc())
                           .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
         return [{
-            "auditId": str(r.id), "action": r.action, "resource": r.resource or "",
+            "auditId": str(r.id), "action": r.action, "resource": r.resource or "", "targetLabel": present_target(r.resource, r.action),
             "ip": r.ip or "", "userAgent": (r.user_agent or "")[:80],
             "method": r.request_method or "", "path": r.request_path or "",
-            "result": r.result or "SUCCESS", "actorId": r.operator_id, "actorName": r.operator_name,
+            **present_result(r.action, r.result), "actorId": r.operator_id, "actorName": r.operator_name,
             "tenantId": str(r.tenant_id), "requestId": r.trace_id, "detail": r.detail_json or {},
-            "occurredAt": _iso(r.created_at),
+            "occurredAt": _iso(r.created_at), "timeZone": str(tenant_tz()),
         } for r in rows], total

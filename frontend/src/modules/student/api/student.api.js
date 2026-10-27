@@ -312,6 +312,7 @@ async function buildContext() {
     moduleAccessError: ctx?.moduleAccessError || '', readonlyTenant: !!ctx?.readonlyTenant, readonlyReason: ctx?.readonlyReason || '',
     permissionActions: permissionActions(patterns), supportedActions: permissionActions(patterns),
     statusOptions: { ...STATUS_OPTIONS, ...(dictionaryResult?.statusOptions || {}) },
+    dictionaryUnavailable: !Array.isArray(dictionaryResult?.statusOptions?.studentStatus) || !Array.isArray(dictionaryResult?.statusOptions?.riskLevel),
     filterOptions: { colleges, majors, classes, grades, counselors: [] }, pendingCount: Number(todoSummary?.pending || 0),
     identityVerificationCapability: {
       status: 'NOT_CONFIGURED', message: '第三方实名/人脸核验服务当前未配置；新生人工信息核验请使用数字迎新。'

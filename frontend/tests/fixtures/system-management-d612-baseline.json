@@ -1,0 +1,681 @@
+[
+  {
+    "key": "sys-overview-readiness",
+    "path": "/admin/system/overview",
+    "permissionKey": "systemAdmin.dashboard.view",
+    "actions": [
+      {
+        "key": "system:overview:view",
+        "risk": "NORMAL"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-overview",
+    "path": "/admin/system/implementation/overview",
+    "permissionKey": "systemAdmin.implementation.view",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.create",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.implementation.view",
+        "risk": "NORMAL"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-wizard",
+    "path": "/admin/system/implementation/wizard",
+    "permissionKey": "systemAdmin.implementation.configure",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.configure",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.implementation.preview",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-presets",
+    "path": "/admin/system/implementation/presets",
+    "permissionKey": "systemAdmin.implementation.preset.view",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.preset.view",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-standards",
+    "path": "/admin/system/implementation/standards",
+    "permissionKey": "systemAdmin.implementation.preset.view",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.preset.view",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.implementation.configure",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-mapping",
+    "path": "/admin/system/implementation/data-mapping",
+    "permissionKey": "systemAdmin.implementation.mapping.manage",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.mapping.manage",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.implementation.mapping.apply",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-installed",
+    "path": "/admin/system/implementation/installed",
+    "permissionKey": "systemAdmin.implementation.installed.view",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.installed.view",
+        "risk": "NORMAL"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-changes",
+    "path": "/admin/system/implementation/changes",
+    "permissionKey": "systemAdmin.implementation.change.manage",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.change.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-implementation-acceptance",
+    "path": "/admin/system/implementation/acceptance",
+    "permissionKey": "systemAdmin.implementation.check.run",
+    "actions": [
+      {
+        "key": "systemAdmin.implementation.check.run",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.implementation.accept",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-staff-accounts",
+    "path": "/admin/system/accounts/staff",
+    "permissionKey": "systemAdmin.user.view",
+    "actions": [
+      {
+        "key": "user:update",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "user:disable",
+        "risk": "HIGH"
+      },
+      {
+        "key": "user:reset-password",
+        "risk": "HIGH"
+      },
+      {
+        "key": "user:assign-role",
+        "risk": "HIGH"
+      },
+      {
+        "key": "user:export",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-student-accounts",
+    "path": "/admin/system/accounts/students",
+    "permissionKey": "systemAdmin.user.view",
+    "actions": [
+      {
+        "key": "user:disable",
+        "risk": "HIGH"
+      },
+      {
+        "key": "user:reset-password",
+        "risk": "HIGH"
+      },
+      {
+        "key": "user:export",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-teacher-import",
+    "path": "/admin/system/identity-import/teachers",
+    "permissionKey": "systemAdmin.user.import",
+    "actions": [
+      {
+        "key": "user:import",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-student-import",
+    "path": "/admin/system/identity-import/students",
+    "permissionKey": "systemAdmin.user.import",
+    "actions": [
+      {
+        "key": "user:import",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-data-exchange",
+    "path": "/admin/system/data-exchange",
+    "permissionKey": "systemAdmin.dataExchange.viewOwn",
+    "actions": [
+      {
+        "key": "systemAdmin.dataExchange.viewOwn",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.dataExchange.viewTenant",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.dataExchange.confirm",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.dataExchange.download",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.dataExchange.revoke",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.dataExchange.retry",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-account-exceptions",
+    "path": "/admin/system/account-exceptions",
+    "permissionKey": "systemAdmin.user.exception.view",
+    "actions": []
+  },
+  {
+    "key": "sys-login-policy",
+    "path": "/admin/system/login-policy",
+    "permissionKey": "systemAdmin.security.policy.manage",
+    "actions": [
+      {
+        "key": "security:login-policy:update",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-org-tree",
+    "path": "/admin/system/org",
+    "permissionKey": "systemAdmin.org.view",
+    "actions": []
+  },
+  {
+    "key": "sys-org-colleges",
+    "path": "/admin/system/org?tab=college",
+    "permissionKey": "systemAdmin.org.view",
+    "actions": [
+      {
+        "key": "org:create",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "org:update",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "org:disable",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-org-majors",
+    "path": "/admin/system/org?tab=major",
+    "permissionKey": "systemAdmin.org.major.manage",
+    "actions": [
+      {
+        "key": "org:major:manage",
+        "risk": "NORMAL"
+      }
+    ]
+  },
+  {
+    "key": "sys-org-classes",
+    "path": "/admin/system/org?tab=class",
+    "permissionKey": "systemAdmin.org.class.manage",
+    "actions": [
+      {
+        "key": "org:class:manage",
+        "risk": "NORMAL"
+      }
+    ]
+  },
+  {
+    "key": "sys-org-positions",
+    "path": "/admin/system/org?tab=positions",
+    "permissionKey": "systemAdmin.org.view",
+    "actions": []
+  },
+  {
+    "key": "sys-staff-affiliations",
+    "path": "/admin/system/staff-affiliations",
+    "permissionKey": "systemAdmin.org.affiliation.manage",
+    "actions": []
+  },
+  {
+    "key": "sys-business-relations",
+    "path": "/admin/system/business-relations",
+    "permissionKey": "systemAdmin.org.view",
+    "actions": []
+  },
+  {
+    "key": "sys-org-versions",
+    "path": "/admin/system/org?tab=versions",
+    "permissionKey": "systemAdmin.org.view",
+    "actions": []
+  },
+  {
+    "key": "sys-iam-overview",
+    "path": "/admin/system/iam",
+    "permissionKey": "systemAdmin.role.view",
+    "actions": []
+  },
+  {
+    "key": "sys-role-templates",
+    "path": "/admin/system/iam?surface=templates",
+    "permissionKey": "systemAdmin.role.view",
+    "actions": [
+      {
+        "key": "role:template:enable",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-role-members",
+    "path": "/admin/system/iam?surface=roles",
+    "permissionKey": "systemAdmin.role.view",
+    "actions": [
+      {
+        "key": "role:create",
+        "risk": "HIGH"
+      },
+      {
+        "key": "role:member:assign",
+        "risk": "HIGH"
+      },
+      {
+        "key": "role:deprecate",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-role-assignments",
+    "path": "/admin/system/role-assignments",
+    "permissionKey": "systemAdmin.role.view",
+    "actions": []
+  },
+  {
+    "key": "sys-role-permissions",
+    "path": "/admin/system/iam?surface=permissions",
+    "permissionKey": "systemAdmin.role.view",
+    "actions": [
+      {
+        "key": "role:config",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-data-scopes",
+    "path": "/admin/system/scopes",
+    "permissionKey": "systemAdmin.scope.view",
+    "actions": [
+      {
+        "key": "scope:create",
+        "risk": "HIGH"
+      },
+      {
+        "key": "scope:update",
+        "risk": "HIGH"
+      },
+      {
+        "key": "scope:deprecate",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-delegations",
+    "path": "/admin/system/delegations",
+    "permissionKey": "systemAdmin.delegation.manage",
+    "actions": [
+      {
+        "key": "delegation:create",
+        "risk": "HIGH"
+      },
+      {
+        "key": "delegation:revoke",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-security-changes",
+    "path": "/admin/system/security-changes",
+    "permissionKey": "systemAdmin.security.view",
+    "actions": [
+      {
+        "key": "systemAdmin.security.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-access-governance",
+    "path": "/admin/system/access-governance",
+    "permissionKey": "systemAdmin.access.explain",
+    "actions": [
+      {
+        "key": "systemAdmin.access.explain",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.security.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-school-brand",
+    "path": "/admin/system/config?tab=brand",
+    "permissionKey": "systemAdmin.config.view",
+    "actions": [
+      {
+        "key": "config:brand:update",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-dictionaries-fields",
+    "path": "/admin/system/dictionaries-fields",
+    "permissionKey": "systemAdmin.config.view",
+    "actions": [
+      {
+        "key": "config:dictionary:manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-module-entitlements",
+    "path": "/admin/system/module-entitlements",
+    "permissionKey": "systemAdmin.config.feature.view",
+    "actions": [
+      {
+        "key": "config:feature:toggle",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-master-data",
+    "path": "/admin/system/master-data",
+    "permissionKey": "systemAdmin.config.view",
+    "actions": []
+  },
+  {
+    "key": "sys-business-forms",
+    "path": "/admin/system/business-forms",
+    "permissionKey": "systemAdmin.config.view",
+    "actions": [
+      {
+        "key": "systemAdmin.config.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-academic-calendar",
+    "path": "/admin/system/academic-calendar",
+    "permissionKey": "systemAdmin.academicCalendar.view",
+    "actions": [
+      {
+        "key": "systemAdmin.academicCalendar.manage",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.academicCalendar.manage",
+        "risk": "NORMAL"
+      }
+    ]
+  },
+  {
+    "key": "sys-process-templates",
+    "path": "/admin/workflow/processes",
+    "permissionKey": "workflow.process.view",
+    "actions": [
+      {
+        "key": "workflow:template:manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-workflow-governance",
+    "path": "/admin/system/workflow-governance",
+    "permissionKey": "systemAdmin.workflow.view",
+    "actions": [
+      {
+        "key": "systemAdmin.workflow.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-communications",
+    "path": "/admin/system/communications",
+    "permissionKey": "systemAdmin.communication.view",
+    "actions": [
+      {
+        "key": "systemAdmin.communication.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-jobs",
+    "path": "/admin/system/jobs",
+    "permissionKey": "systemAdmin.job.view",
+    "actions": [
+      {
+        "key": "systemAdmin.job.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-operation-audit",
+    "path": "/admin/system/logs?tab=operation",
+    "permissionKey": "systemAdmin.audit.view",
+    "actions": [
+      {
+        "key": "audit:operation:view",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "audit:operation:export",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-login-audit",
+    "path": "/admin/system/logs?tab=login",
+    "permissionKey": "systemAdmin.audit.view",
+    "actions": [
+      {
+        "key": "audit:login:view",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "audit:login:export",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-sensitive-audit",
+    "path": "/admin/system/sensitive-audit",
+    "permissionKey": "systemAdmin.audit.sensitive.view",
+    "actions": [
+      {
+        "key": "audit:sensitive:view",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "audit:export:view",
+        "risk": "NORMAL"
+      }
+    ]
+  },
+  {
+    "key": "sys-audit-evidence",
+    "path": "/admin/system/audit-evidence",
+    "permissionKey": "systemAdmin.audit.view",
+    "actions": [
+      {
+        "key": "audit:evidence:export",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-platform-integrity",
+    "path": "/admin/system/platform-integrity",
+    "permissionKey": "systemAdmin.fileGovernance.view",
+    "actions": [
+      {
+        "key": "systemAdmin.fileGovernance.view",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.file.manage",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-file-storage-governance",
+    "path": "/admin/system/file-storage-governance",
+    "permissionKey": "systemAdmin.fileGovernance.view",
+    "actions": [
+      {
+        "key": "systemAdmin.fileGovernance.view",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "systemAdmin.fileGovernance.quota.manage",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.fileGovernance.retention.manage",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.fileGovernance.cleanup.execute",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.fileGovernance.legalHold.manage",
+        "risk": "HIGH"
+      },
+      {
+        "key": "systemAdmin.fileGovernance.scan.retry",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-integration-connections",
+    "path": "/admin/system/integrations",
+    "permissionKey": "systemAdmin.integration.manage",
+    "actions": [
+      {
+        "key": "integration:connection:manage",
+        "risk": "HIGH"
+      },
+      {
+        "key": "integration:credential:rotate",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-sync-jobs",
+    "path": "/admin/system/sync-jobs",
+    "permissionKey": "systemAdmin.integration.sync.view",
+    "actions": [
+      {
+        "key": "integration:sync:retry",
+        "risk": "HIGH"
+      },
+      {
+        "key": "integration:sync:cancel",
+        "risk": "HIGH"
+      }
+    ]
+  },
+  {
+    "key": "sys-migration-workbench",
+    "path": "/admin/system/migration",
+    "permissionKey": "systemAdmin.migration.view",
+    "actions": [
+      {
+        "key": "migration:template:download",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "migration:validate",
+        "risk": "NORMAL"
+      },
+      {
+        "key": "migration:confirm",
+        "risk": "HIGH"
+      }
+    ]
+  }
+]

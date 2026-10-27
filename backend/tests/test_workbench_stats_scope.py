@@ -132,10 +132,11 @@ def test_workbench_stats_no_scope_fail_closed(client, db_mode):
     assert r["data"]["scopeType"] in ("CLASS", "NONE")
 
 
-def test_workbench_stats_school_admin_sees_tenant(client, auth_headers, db_mode):
+def test_workbench_stats_school_admin_sees_tenant(client, db_mode):
     """校级 SCHOOL_ADMIN（TENANT_ALL）看到本租户全量学生数。"""
     _seed(db_mode)
-    r = client.get("/api/v1/stats/workbench", headers=auth_headers).json()
+    # 与本文件其他范围用例共用签名身份夹具；真实登录另由浏览器验收，不恢复模拟登录入口。
+    r = client.get("/api/v1/stats/workbench", headers=_token(1, "wbStatsSchool", role="SCHOOL_ADMIN", user_type="ADMIN")).json()
     assert r["code"] == 0, r
     assert r["data"]["scopeType"] == "TENANT_ALL"
     assert r["data"]["studentTotal"] >= 3, r["data"]

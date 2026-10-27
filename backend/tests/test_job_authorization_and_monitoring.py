@@ -188,12 +188,12 @@ def test_t03_retry_is_idempotent_and_rejects_second_call(tenant_ctx):
     job_id = _make_file_job(status="FAILED", dedupe="sys16-t03-dedupe")
 
     with _session() as db:
-        result = jr.retry_job(db, f"FILE_JOB:{job_id}", actor=admin)
+        result = jr.retry_job(db, f"FILE_JOB:{job_id}", actor=admin, expected_version=0, reason="独立测试重试失败任务")
         assert result["status"] == "PENDING"
 
     with _session() as db:
         with pytest.raises(AppException) as exc:
-            jr.retry_job(db, f"FILE_JOB:{job_id}", actor=admin)
+            jr.retry_job(db, f"FILE_JOB:{job_id}", actor=admin, expected_version=0, reason="独立测试重复请求拒绝")
         assert exc.value.http_status == 409  # 已经是 PENDING，不是 FAILED，拒绝二次重试
 
     from sqlalchemy import func, select
@@ -215,7 +215,7 @@ def test_t04_stale_revision_retry_is_rejected(tenant_ctx):
 
     with _session() as db:
         with pytest.raises(AppException) as exc:
-            jr.retry_job(db, f"EXCEL_IMPORT:{stale_job_id}", actor=admin)
+            jr.retry_job(db, f"EXCEL_IMPORT:{stale_job_id}", actor=admin, expected_version=0, reason="独立测试旧模板版本拒绝")
         assert exc.value.http_status == 409
 
 
@@ -226,7 +226,7 @@ def test_t04b_current_revision_retry_succeeds(tenant_ctx):
     fresh_job_id = _make_excel_job(template_version="v1", status="FAILED")
 
     with _session() as db:
-        result = jr.retry_job(db, f"EXCEL_IMPORT:{fresh_job_id}", actor=admin)
+        result = jr.retry_job(db, f"EXCEL_IMPORT:{fresh_job_id}", actor=admin, expected_version=0, reason="独立测试当前模板重试")
         assert result["status"] == "UPLOADED"
 
 
@@ -269,7 +269,8 @@ def test_http_endpoints(client, tenant_ctx):
     r = client.get(f"/api/v1/system/jobs/FILE_JOB:{job_id}/authorization-evidence", headers=headers)
     assert r.json()["code"] == 0, r.json()
 
-    r = client.post(f"/api/v1/system/jobs/FILE_JOB:{job_id}/retry", headers=headers)
+    r = client.post(f"/api/v1/system/jobs/FILE_JOB:{job_id}/retry", headers=headers,
+                    json={"expectedVersion":0,"reason":"独立接口验证失败任务重试"})
     assert r.json()["code"] == 0, r.json()
 
     r = client.get("/api/v1/system/jobs/FILE_JOB:9999999999/authorization-evidence", headers=headers)

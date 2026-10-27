@@ -13,8 +13,7 @@ from datetime import datetime
 from app.core.exceptions import AppException
 from app.services.db_service import _tid
 
-# 高危动作的判定用动词特征匹配，而不是维护一份"全代码库高危动作清单"——
-# 后者不可能穷举也不可能保持更新；只要新动作命名遵循这些动词，就自动纳入完整性检查。
+# 复用真实审计写入的高危目录，同时保留历史动词规则。
 HIGH_RISK_VERB_FRAGMENTS = (
     "DELETE", "ROLLBACK", "ROTATE", "APPROVE", "CANCEL", "COMPENSATE",
     "REVOKE", "GRANT", "TRANSITION", "WITHDRAW", "FORCE", "DISABLE",
@@ -23,8 +22,9 @@ HIGH_RISK_VERB_FRAGMENTS = (
 
 
 def is_high_risk_action(action: str) -> bool:
+    from app.services.audit_log import CRITICAL_ACTIONS
     a = str(action or "").upper()
-    return any(fragment in a for fragment in HIGH_RISK_VERB_FRAGMENTS)
+    return a in CRITICAL_ACTIONS or any(fragment in a for fragment in HIGH_RISK_VERB_FRAGMENTS)
 
 
 def _completeness_gaps(row: dict) -> list[str]:
@@ -34,7 +34,7 @@ def _completeness_gaps(row: dict) -> list[str]:
         missing.append("actorId")
     if not row.get("tenantId"):
         missing.append("tenantId")
-    if not row.get("requestId"):
+    if str(row.get("requestId") or "").strip() in {"", "-", "—"}:
         missing.append("traceId")
     if not row.get("resource"):
         missing.append("object")
@@ -51,12 +51,14 @@ def _completeness_gaps(row: dict) -> list[str]:
 
 def evaluate_evidence_completeness(rows: list[dict]) -> dict:
     """纯函数：对一批已经取出的审计记录（audit_query 的 dict 形状）做完整性判定。"""
+    from app.services.operation_audit_service import present_result
     high_risk_rows = [r for r in rows if is_high_risk_action(r.get("action") or "")]
     gaps = []
     for r in high_risk_rows:
         missing = _completeness_gaps(r)
         if missing:
-            gaps.append({"auditId": r.get("auditId"), "action": r.get("action"), "missing": missing})
+            gaps.append({"auditId": r.get("auditId"), "action": r.get("action"),
+                         "actionLabel": present_result(r.get("action"), r.get("result"))["actionLabel"], "missing": missing})
     return {"totalHighRisk": len(high_risk_rows), "gapCount": len(gaps), "gaps": gaps}
 
 
@@ -153,7 +155,7 @@ def governance_overview() -> dict:
     recent, total = db_service.audit_query(1, 500)
     completeness = evaluate_evidence_completeness(recent)
     login_risk = sum(1 for r in recent if "LOGIN" in (r.get("action") or "").upper()
-                     and r.get("result") in ("FAIL", "DENIED"))
+                     and r.get("result") in ("FAIL", "FAILED", "DENIED", "BLOCKED"))
     sensitive_download = sum(1 for r in recent if "DOWNLOAD" in (r.get("action") or "").upper()
                              or "SENSITIVE" in (r.get("action") or "").upper())
     permission_activation = sum(1 for r in recent if "ACTIVATE" in (r.get("action") or "").upper()
@@ -161,7 +163,7 @@ def governance_overview() -> dict:
     emergency_access = sum(1 for r in recent if "SUPPORT_SESSION" in (r.get("action") or "").upper()
                            or "ELEVATION" in (r.get("action") or "").upper())
     return {
-        "totalRecent": total, "loginRiskCount": login_risk,
+        "totalRecent": total, "sampledCount": len(recent), "loginRiskCount": login_risk,
         "highRiskChangeCount": completeness["totalHighRisk"],
         "sensitiveDownloadCount": sensitive_download,
         "permissionActivationCount": permission_activation,

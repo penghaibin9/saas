@@ -70,7 +70,7 @@ export function permissionDisplayLabel(code, label) {
 }
 
 const roles = {
-  ACADEMIC_ADMIN: '教务管理员', ACADEMIC_TEACHER: '任课教师', COLLEGE_ADMIN: '学院管理员',
+  ACADEMIC_ADMIN: '教务管理员', ACADEMIC_TEACHER: '任课教师', COLLEGE_ADMIN: '学院管理员', COLLEGE_ACADEMIC: '学院教务',
   COUNSELOR: '辅导员', DORM_MANAGER: '宿管老师', EMPLOYMENT_TEACHER: '就业老师', FUNDING_TEACHER: '资助老师',
   GD_COLLEGE_ADMIN: '学院毕设管理员', GD_DEFENSE_EXPERT: '答辩专家', GD_DEFENSE_SECRETARY: '答辩秘书',
   GD_GRADE_ADMIN: '毕设成绩管理员', GD_MAJOR_ADMIN: '专业毕设管理员', GD_MENTOR: '毕设指导教师',
@@ -82,4 +82,11 @@ const roles = {
 
 export function roleDisplayLabel(code, label) {
   return label && /[\u3400-\u9fff]/u.test(label) ? label : roles[code] || '角色名称待维护'
+}
+
+export function staffAffiliationDisplay(row) {
+  const type = { SCHOOL: '学校', COLLEGE: '学院', DEPARTMENT: '部门', MAJOR: '专业', CLASS: '班级', STUDENT: '学生' }[row.orgType]
+  const prefix = `${row.orgType}:`
+  return { ...row, roleLabel: roleDisplayLabel(row.roleLabel, row.roleLabel),
+    orgName: type && row.orgName?.startsWith(prefix) ? `${type}：${row.orgName.slice(prefix.length)}` : row.orgName }
 }

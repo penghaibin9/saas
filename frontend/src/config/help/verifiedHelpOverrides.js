@@ -64,7 +64,7 @@ export const VERIFIED_HELP_OVERRIDES = {
       { label: '首次开局向导', route: '/admin/system/implementation/wizard' },
       { label: '数据导入与智能匹配', route: '/admin/system/implementation/data-mapping' },
       { label: '组织结构管理', route: '/admin/system/org' },
-      { label: '角色权限管理', route: '/admin/system/roles' },
+      { label: '角色权限管理', route: '/admin/system/iam?surface=roles' },
       { label: '教职工账号', route: '/admin/system/accounts/staff' },
       { label: '学生导入与账号开通', route: '/admin/system/identity-import/students' },
       { label: '登录与安全策略', route: '/admin/system/login-policy' },

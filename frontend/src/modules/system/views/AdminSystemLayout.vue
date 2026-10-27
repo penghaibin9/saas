@@ -36,19 +36,14 @@ import SystemP1ClosurePanel from '@/modules/system/components/SystemP1ClosurePan
 import { systemApi } from '@/modules/system/api/system.api'
 import { installSystemAuthorityCompatibility } from '@/modules/system/api/systemAuthorityCompatibility'
 import { SYSTEM_MANAGEMENT_CATALOG } from '@/modules/system/systemManagementCatalog'
+import { matchPermission } from '@/config/navPlan'
 import '@/modules/system/styles/system-ui-polish.css'
 
 // Install before any system child view starts issuing reads/writes. The bridge is
 // module-scoped and mutates only systemApi methods; BasePortalLayout/navPlan stay untouched.
 installSystemAuthorityCompatibility(systemApi)
 
-const CONTROL_PLANE_LANDING = Object.freeze({ 'sys-access': '/admin/system/iam' })
-const MENUS = SYSTEM_MANAGEMENT_CATALOG.map((group) => ({
-  key: group.key,
-  label: group.label,
-  icon: group.icon,
-  path: CONTROL_PLANE_LANDING[group.key] || group.items[0].path
-}))
+const CONTROL_PLANE_LANDING = Object.freeze({ 'sys-access': '/admin/system/iam?surface=roles' })
 const P1_CLOSURE_PATHS = new Set([
   '/admin/system/role-assignments',
   '/admin/system/login-policy',
@@ -58,14 +53,26 @@ const P1_CLOSURE_PATHS = new Set([
 export default {
   name: 'AdminSystemLayout',
   components: { BasePortalLayout, LoadingState, ErrorState, SystemP1ClosurePanel },
-  data() { return { menus: MENUS, ctx: null, contextError: '', childKey: 0 } },
+  data() { return { ctx: null, contextError: '', childKey: 0 } },
   computed: {
+    menus() {
+      const patterns = this.ctx?.permissionPatterns || []
+      return SYSTEM_MANAGEMENT_CATALOG.flatMap(group => {
+        const allowed = group.items.filter(item => matchPermission(patterns, item.permissionKey))
+        if (!allowed.length) return []
+        const preferred = CONTROL_PLANE_LANDING[group.key]
+        const path = preferred && allowed.some(item => item.path === preferred) ? preferred : allowed[0].path
+        return [{ key: group.key, label: group.label, icon: group.icon, path }]
+      })
+    },
     brandTitle() { return this.ctx ? this.ctx.tenantBrandConfig.schoolName + ' · 管理端' : '高校学生全生命周期管理平台' },
     activeKey() {
       const path = this.$route.path
-      const hit = [...this.menus].sort((a, b) => b.path.length - a.path.length)
-        .find((m) => path === m.path || path.startsWith(m.path + '/'))
-      return hit ? hit.key : 'sys-overview'
+      const candidates = SYSTEM_MANAGEMENT_CATALOG.flatMap(group => group.items.map(item => ({
+        groupKey: group.key, path: item.path.split('?')[0]
+      }))).sort((a, b) => b.path.length - a.path.length)
+      const hit = candidates.find(item => path === item.path || path.startsWith(item.path + '/'))
+      return hit ? hit.groupKey : 'sys-overview'
     },
     showP1Closure() { return P1_CLOSURE_PATHS.has(this.$route.path) }
   },

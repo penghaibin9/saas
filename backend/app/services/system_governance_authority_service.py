@@ -9,6 +9,7 @@ pre-catalog permissions in the published SYSTEM-role Authority.
 from __future__ import annotations
 
 import os
+from datetime import datetime
 from uuid import uuid4
 
 from app.core.exceptions import AppException
@@ -48,15 +49,31 @@ def create_delegation(user: dict, body: dict) -> dict:
     expected = body.get("expectedVersion")
     if not grantee or not role_code or len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "受权人工号、角色与原因（≥5字）必填")
-    if not expires_at or expires_at <= _legacy._now():
+    try:
+        datetime.strptime(expires_at, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        raise AppException("VALIDATION_ERROR", "请选择有效的到期时间") from None
+    if expires_at <= _legacy._now():
         raise AppException("VALIDATION_ERROR", "到期时间必须晚于当前时间")
 
     permission_codes = _delegated_permission_snapshot(role_code)
     assert_delegable_permission_codes(user, permission_codes)
 
     grantee_user_id, grantee_login = _legacy._resolve_grantee(grantee)
-    items = _legacy.list_delegations()
-    _, current_version = _legacy._load_with_version(_legacy.DOC_DELEGATIONS)
+    from app.db.session import get_sessionmaker
+    from app.models import User
+    from app.services.role_assignment_p1_guard_service import _assert_account_role_compatibility
+    with get_sessionmaker()() as db:
+        account = db.get(User, grantee_user_id)
+        if account is None or account.tenant_id != _legacy._tid():
+            raise AppException("DATA_NOT_FOUND", "受权人不存在或不属于当前学校")
+        _assert_account_role_compatibility(db, _legacy._tid(), account, role_code)
+    payload, current_version = _legacy._load_with_version(_legacy.DOC_DELEGATIONS)
+    items = list(payload or [])
+    if any(str(item.get('granteeUserId')) == str(grantee_user_id)
+           and item.get('roleCode') == role_code and item.get('status') == 'ACTIVE'
+           and str(item.get('expiresAt') or '') > _legacy._now() for item in items):
+        raise AppException("DATA_CONFLICT", "该人员已有同角色的有效临时授权，请先核对现有记录")
     if expected is not None and int(expected) != current_version:
         raise AppException("DATA_CONFLICT", "临时授权已被他人更新，请刷新后重试")
 
@@ -84,11 +101,7 @@ def create_delegation(user: dict, body: dict) -> dict:
         items,
         user,
         expected_version=current_version,
-    )
-    audit_log.record(
-        "DELEGATION_CREATE",
-        f"delegation:{row['id']}",
-        detail={
+        audit_event=("DELEGATION_CREATE", f"delegation:{row['id']}", {
             "grantee": grantee,
             "roleCode": role_code,
             "expiresAt": expires_at,
@@ -96,7 +109,7 @@ def create_delegation(user: dict, body: dict) -> dict:
             "permissionCount": len(permission_codes),
             "authoritySource": AUTHORITY_SOURCE,
             "moduleCode": "systemAdmin",
-        },
+        }),
     )
     return row
 

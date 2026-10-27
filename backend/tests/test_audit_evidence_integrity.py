@@ -80,18 +80,21 @@ def test_t01c_version_key_present_but_null_is_flagged(tenant_ctx):
 
 
 def test_t01d_real_db_backed_evidence_query_runs_completeness(tenant_ctx):
-    from app.core.context import set_current_user
+    from app.core.context import set_current_user, get_trace_id, set_trace_id
     from app.services import audit_evidence_service as evid
     from app.services import audit_log
 
     # audit_log.record() 靠 get_current_user_ctx() 拿 actor；直接调用（不经过
     # HTTP 请求中间件）必须自己把当前用户上下文设进去，否则 actorId 记不上。
     set_current_user({"userId": "db-1", "realName": "系统管理员"})
+    previous_trace = get_trace_id()
+    set_trace_id("req-audit-evidence-real-db-test")
     try:
         audit_log.record("PLATFORM_CHANGE_ROLLBACK", "change:real1",
                          detail={"reason": "真实回归锁测试回滚"}, result="SUCCESS")
     finally:
         set_current_user(None)
+        set_trace_id(previous_trace)
     out = evid.get_evidence(action="PLATFORM_CHANGE_ROLLBACK", page=1, page_size=20)
     assert out["total"] >= 1
     assert out["completeness"]["totalHighRisk"] >= 1

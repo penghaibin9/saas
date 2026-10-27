@@ -15,7 +15,7 @@
             <span class="mp-card__title">正式任职</span>
             <span>
               <label class="sa-toggle">
-                <input v-model="includeExpired" type="checkbox" @change="loadAssignments" />
+                <input v-model="includeExpired" type="checkbox" @change="assignmentPage = 1; loadAssignments()" />
                 显示已过期/已撤销
               </label>
               <AppButton variant="primary" size="small" @click="openCreate">新增任职</AppButton>
@@ -41,8 +41,8 @@
                     <span v-if="row.isPrimary" class="sa-flag">主任职</span>
                   </td>
                   <td>{{ orgName(row.orgType, row.orgNodeId) }}</td>
-                  <td>{{ row.userId }}</td>
-                  <td>{{ fmt(row.effectiveAt) }} ~ {{ row.expiresAt ? fmt(row.expiresAt) : '长期' }}</td>
+                  <td>{{ row.staffName || '姓名未解析' }}<small class="mp-cell-sub">{{ maskedAccount(row.accountName) }}</small></td>
+                  <td>{{ fmt(row.effectiveAt, row.timeZone) }} ~ {{ row.expiresAt ? fmt(row.expiresAt, row.timeZone) : '长期' }}</td>
                   <td>{{ sourceLabel(row.sourceType) }}</td>
                   <td>
                     <StatusTag
@@ -58,6 +58,11 @@
                 </tr>
               </tbody>
             </table>
+            <div class="mp-row">
+              <span>共 {{ assignmentTotal }} 条 · 第 {{ assignmentPage }} 页</span>
+              <button class="mp-link" :disabled="assignmentLoading || assignmentPage <= 1" @click="assignmentPage--; loadAssignments()">上一页</button>
+              <button class="mp-link" :disabled="assignmentLoading || assignmentPage * 20 >= assignmentTotal" @click="assignmentPage++; loadAssignments()">下一页</button>
+            </div>
             <EmptyState
               v-if="!assignments.length"
               title="暂无正式任职"
@@ -143,6 +148,7 @@ import { AppButton } from '@/components/ui'
 import AppDrawer from '@/components/ui/AppDrawer.vue'
 import { systemApi } from '@/modules/system/api/system.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 import { currentUserFromToken } from '@/services/http/client'
 
 const ASSIGNMENT_TYPES = [
@@ -169,6 +175,10 @@ export default {
       error: '',
       includeExpired: false,
       assignments: [],
+      assignmentPage: 1,
+      assignmentTotal: 0,
+      assignmentLoading: false,
+      assignmentVersion: 0,
       legacyRows: [],
       orgOptions: [],
       orgNameMap: {},
@@ -202,7 +212,7 @@ export default {
   },
   created() { this.load() },
   methods: {
-    fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 16) : '—' },
+    fmt(v, timeZone) { return v ? formatDateTime(v, '', timeZone) : '—' },
     assignmentLabel(t) { return (ASSIGNMENT_TYPES.find((x) => x.value === t) || {}).label || (t ? '类型待确认' : '—') },
     sourceLabel(s) { return SOURCE_LABEL[s] || (s ? '状态待确认' : '—') },
     statusLabel(s) { return STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
@@ -216,7 +226,9 @@ export default {
         systemApi.listStaffAffiliations()
       ])
       if (tree.code === 0) this.buildOrgOptions(tree.data || [])
-      if (legacy.code === 0) this.legacyRows = (legacy.data || {}).list || []
+      if (legacy.code === 0) this.legacyRows = ((legacy.data || {}).list || []).map(row => ({ ...row,
+        orgType: { SCHOOL: '学校', COLLEGE: '学院', DEPARTMENT: '部门', MAJOR: '专业', CLASS: '班级', STUDENT: '学生' }[row.orgType] || '类型待核对'
+      }))
       await this.loadAssignments()
       this.loading = false
     },
@@ -245,10 +257,18 @@ export default {
     },
 
     async loadAssignments() {
-      const res = await systemApi.listStaffAssignments({ includeExpired: this.includeExpired })
-      if (res.code === 0) this.assignments = (res.data || {}).items || []
+      const version = ++this.assignmentVersion
+      this.assignmentLoading = true
+      const res = await systemApi.listStaffAssignments({ includeExpired: this.includeExpired, page: this.assignmentPage })
+      if (version !== this.assignmentVersion) return
+      if (res.code === 0) {
+        this.assignments = (res.data || {}).items || []
+        this.assignmentTotal = res.data.total
+      }
       else this.error = res.message
+      this.assignmentLoading = false
     },
+    maskedAccount(value) { return value ? (value.length > 4 ? value.slice(0, 4) + '****' + value.slice(-2) : value) : '账号未解析' },
 
     openCreate() {
       this.form = {

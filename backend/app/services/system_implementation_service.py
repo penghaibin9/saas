@@ -170,10 +170,11 @@ def _contains_secret(value) -> bool:
     return isinstance(value, list) and any(_contains_secret(x) for x in value)
 
 
-def _project(db, project_id: int, tenant_id: int):
-    row = db.scalars(select(SystemImplementationProject).where(
+def _project(db, project_id: int, tenant_id: int, *, lock: bool = False):
+    stmt = select(SystemImplementationProject).where(
         SystemImplementationProject.id == project_id, SystemImplementationProject.tenant_id == tenant_id,
-        SystemImplementationProject.is_deleted.is_(False))).first()
+        SystemImplementationProject.is_deleted.is_(False))
+    row = db.scalars(stmt.with_for_update() if lock else stmt).first()
     if row is None:
         raise AppException("DATA_NOT_FOUND", "实施项目不存在")
     return row
@@ -290,7 +291,8 @@ def save_section(user: dict, project_id: int, code: str, body: dict) -> dict:
                 raise AppException("VALIDATION_ERROR", f"{question['label']}超出允许范围")
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _project(db, project_id, tenant_id, lock=True)
+        _reject_if_sealed(project)
         if project.status not in {"DRAFT", "CONFIGURING", "PREVIEW_READY"}:
             raise AppException("DATA_CONFLICT", "当前状态不能修改配置")
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
@@ -376,14 +378,20 @@ def _impact_preview(db, tenant_id: int, sections) -> dict:
 
 def _reject_if_sealed(project) -> None:
     """SYS-02 T04：验收封板后，任何普通修改都必须被拒绝，只能另开变更项目。"""
-    if project.status == "ACCEPTED":
+    if project.status == "ACCEPTED" or getattr(project, 'acceptance_digest', None):
         raise AppException("DATA_CONFLICT", "项目已验收封板，如需调整请创建变更项目")
+
+
+def _writable_project(db, project_id: int, tenant_id: int):
+    project = _project(db, project_id, tenant_id, lock=True)
+    _reject_if_sealed(project)
+    return project
 
 
 def preview_project(user: dict, project_id: int) -> dict:
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _writable_project(db, project_id, tenant_id)
         if project.status == "ACCEPTED":
             raise AppException("DATA_CONFLICT", "项目已验收封板，如需调整请创建变更项目")
         if project.status not in {"DRAFT", "CONFIGURING", "PREVIEW_READY"}:
@@ -419,7 +427,7 @@ def apply_snapshot(user: dict, project_id: int, body: dict) -> dict:
     expected_hash = str(body.get("expectedPreviewHash") or body.get("idempotencyKey") or "").strip()
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _writable_project(db, project_id, tenant_id)
         if project.status == "ACCEPTED":
             raise AppException("DATA_CONFLICT", "项目已验收封板，如需调整请创建变更项目")
         if project.status == "APPLIED":
@@ -528,7 +536,7 @@ def discover_batch(user: dict, project_id: int, batch_no: str) -> dict:
     tenant_id = _tid(); entry = get_batch(user, tenant_id, batch_no); payload = entry["payload"]
     db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _writable_project(db, project_id, tenant_id)
         if project.status not in {"DRAFT", "CONFIGURING", "PREVIEW_READY"}:
             raise AppException("DATA_CONFLICT", "当前状态不能生成匹配候选")
         colleges = db.scalars(select(College).where(College.tenant_id == tenant_id, College.is_deleted.is_(False))).all()
@@ -614,7 +622,7 @@ def confirm_mapping(user: dict, project_id: int, body: dict) -> dict:
 
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id); _reject_if_sealed(project)
+        project = _writable_project(db, project_id, tenant_id); _reject_if_sealed(project)
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
             raise AppException("DATA_CONFLICT", "项目版本已变化，请刷新候选")
         section = _mapping_section(db, project.id, tenant_id)
@@ -680,7 +688,7 @@ def apply_mapping(user: dict, project_id: int, body: dict) -> dict:
     if len(reason) < 2: raise AppException("VALIDATION_ERROR", "请填写安装原因")
     tenant_id = _tid(); db = get_sessionmaker()(); entry = None; config = None
     try:
-        project = _project(db, project_id, tenant_id); _reject_if_sealed(project)
+        project = _writable_project(db, project_id, tenant_id); _reject_if_sealed(project)
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:
             raise AppException("DATA_CONFLICT", "项目版本已变化，请刷新")
         section = _mapping_section(db, project.id, tenant_id)
@@ -888,7 +896,7 @@ def analyze_change(user: dict, project_id: int) -> dict:
     """
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _writable_project(db, project_id, tenant_id)
         source_id = project.change_source_installation_id
         if not source_id:
             raise AppException("DATA_CONFLICT", "当前项目不是从已安装版本发起的变更")
@@ -944,7 +952,7 @@ def analyze_change(user: dict, project_id: int) -> dict:
 def run_checks(user: dict, project_id: int) -> dict:
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _writable_project(db, project_id, tenant_id)
         if project.status not in {"APPLIED", "VERIFYING", "READY_FOR_ACCEPTANCE"}:
             raise AppException("DATA_CONFLICT", "请先应用预设快照")
         def count(model): return int(db.scalar(select(func.count(model.id)).where(
@@ -1038,7 +1046,7 @@ def accept_project(user: dict, project_id: int, body: dict) -> dict:
     if len(comment) < 2: raise AppException("VALIDATION_ERROR", "请填写验收意见")
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _writable_project(db, project_id, tenant_id)
         if project.status != "READY_FOR_ACCEPTANCE": raise AppException("DATA_CONFLICT", "仍有阻断项")
         accepted_at = datetime.utcnow(); accepted_by = _actor(user)
         sections = _sections(db, project.id, tenant_id)
@@ -1079,7 +1087,7 @@ def confirm_check(user: dict, project_id: int, check_code: str, body: dict) -> d
         raise AppException("VALIDATION_ERROR", "请填写责任确认说明")
     tenant_id = _tid(); db = get_sessionmaker()()
     try:
-        project = _project(db, project_id, tenant_id)
+        project = _writable_project(db, project_id, tenant_id)
         if project.status == "ACCEPTED":
             raise AppException("DATA_CONFLICT", "验收摘要已封板，不能修改责任确认")
         if body.get("projectVersion") is not None and int(body["projectVersion"]) != project.version:

@@ -5,7 +5,7 @@
  * 侧栏完整二/三级仍由 BasePortalLayout 直接消费 getVisibleNavPlan。
  * 本文件只提供轨数据 + 权限过滤，不另维护一套业务叶子。
  */
-import { matchPermission, NAV_PLAN, PLATFORM_PLAN } from '@/config/navPlan'
+import { matchPermission, NAV_PLAN, PLATFORM_PLAN, getVisibleNavPlan } from '@/config/navPlan'
 import { coreGroupEntitled, entitlementSignature, moduleCodeForNav, moduleEntitled } from '@/security/moduleEntitlement'
 
 export const ROLE_TYPE = {
@@ -149,6 +149,7 @@ function contextSignature(ctx) {
     (ctx && (ctx.userId || ctx.user_id)) || role.userId || '',
     (ctx && (ctx.activeContextId || ctx.contextId)) || role.contextId || '',
     roleType(ctx) || '__missing_role__',
+    role.roleCode || '',
     (ctx && ctx.permissionVersion) || '',
     (ctx && ctx.ctxKey) || '',
     moduleSig,
@@ -211,7 +212,8 @@ export const SEARCH_ALIASES = [
   { keywords: ['数据中心', '数据驾驶舱', '领导驾驶舱', '生命周期'], path: '/admin/data-center', label: '学工中心 / 学工工作台 / 领导驾驶舱' },
   { keywords: ['审批中心', '我的待办', '待办', '已办'], path: '/admin/approval', label: '学工中心 / 学工工作台 / 审批中心' },
   { keywords: ['消息中心', '我的消息', '站内信'], path: '/admin/messages/inbox', label: '学工中心 / 学工工作台 / 消息中心' },
-  { keywords: ['权限与流程', '流程配置', '审批模板', '角色', '权限'], path: '/admin/workflow', label: '系统管理 / 权限与流程' },
+  { keywords: ['角色', '权限', '角色权限管理', '权限与流程'], path: '/admin/system/iam', label: '系统管理 / 角色与权限' },
+  { keywords: ['权限与流程', '流程配置', '审批模板'], path: '/admin/workflow', label: '系统管理 / 流程管理' },
   { keywords: ['系统管理', '用户', '菜单', '数据范围', '品牌'], path: '/admin/system', label: '系统管理' },
   { keywords: ['安全审计', '日志', '安全与审计'], path: '/admin/system/logs', label: '系统管理 / 安全与审计' }
 ]
@@ -231,12 +233,31 @@ function aliasMatchesEntry(entry, q) {
   return entry.keywordsLower.some((kk) => kk.includes(q) || q.includes(kk))
 }
 
-export function searchSearchAliases(query, { scopeGroupKeys = null, emptyLimit = 4 } = {}) {
+export function searchSearchAliases(query, { scopeGroupKeys = null, emptyLimit = 4, ctx } = {}) {
+  if (ctx !== undefined && !Array.isArray(ctx?.permissionPatterns)) return []
   const q = (query || '').trim().toLowerCase()
   const scopeKey = scopeGroupKeys ? [...scopeGroupKeys].sort().join(',') : '*'
-  const cacheKey = `${q}|${scopeKey}|${emptyLimit}`
+  const cacheKey = `${q}|${scopeKey}|${emptyLimit}|${ctx === undefined ? 'legacy' : contextSignature(ctx)}`
   if (_aliasSearchCache.has(cacheKey)) return _aliasSearchCache.get(cacheKey)
+  const visible = ctx === undefined ? null : new Map(getVisibleAdminMenu(ctx).map(group => [group.key, group]))
+  const candidates = visible ? getVisibleNavPlan({ permissionPatterns: ctx.permissionPatterns || [], ctxKey: contextSignature(ctx) })
+    .flatMap(group => {
+      const allowed = visible.get(group.key)
+      if (!allowed || (scopeGroupKeys && !scopeGroupKeys.has(group.key))) return []
+      const modules = group.children.filter(module => allowed.children.some(item => item.key === module.key))
+      return modules.flatMap(module => module.children || []).filter(item => item.path && !item.disabled && !item.hidden)
+    }) : []
+  const canonicalRoots = { '/admin/academic': '/admin/academic-affairs', '/admin/campus-service': '/admin/student-affairs' }
+  const targetFor = entry => {
+    const root = canonicalRoots[entry.path] || entry.path
+    const targets = candidates.filter(item => {
+      const path = item.path.split('?')[0]
+      return path === root || path.startsWith(root + '/')
+    })
+    return targets.find(item => item.label.toLowerCase().includes(q)) || targets[0]
+  }
   const inScope = (entry) => {
+    if (visible) return !!targetFor(entry)
     if (!scopeGroupKeys) return true
     const gk = findActiveMenu(entry.path).groupKey
     return !gk || scopeGroupKeys.has(gk)
@@ -252,7 +273,7 @@ export function searchSearchAliases(query, { scopeGroupKeys = null, emptyLimit =
       if (matched.length >= 20) break
     }
   }
-  const result = matched.map((e) => ({ label: e.label, path: e.path }))
+  const result = matched.map((e) => ({ label: e.label, path: visible ? targetFor(e).path : e.path }))
   if (_aliasSearchCache.size > 64) _aliasSearchCache.clear()
   _aliasSearchCache.set(cacheKey, result)
   return result

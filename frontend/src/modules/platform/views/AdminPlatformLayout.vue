@@ -59,7 +59,12 @@ export default {
   computed: {
     menus() {
       if (!this.ctx) return []
-      return BASE_MENUS.filter((item) => canEnterRoute(this.$router.resolve(item.path).meta))
+      return BASE_MENUS.map((item) => {
+        if (canEnterRoute(this.$router.resolve(item.path).meta)) return item
+        const group = PLATFORM_MANAGEMENT_CATALOG.find(group => group.key === item.key)
+        const first = group?.items.find(leaf => canEnterRoute(this.$router.resolve(leaf.path).meta))
+        return first ? { ...item, path: first.path } : null
+      }).filter(Boolean)
     },
     activeKey() {
       const path = this.$route.path

@@ -81,6 +81,12 @@ def overview(user=Depends(require_permission_compat(FILE_GOVERNANCE_VIEW))):
     commercial = commercial_storage_limit_bytes(int(current_tenant_id()))
     usage["commercialStorageLimitBytes"] = commercial
     usage["schoolQuotaWithinCommercialLimit"] = not quota or not commercial or quota <= commercial
+    from app.services.file_storage_quota_reservation_service import effective_total_limit
+    total_limit, sources = effective_total_limit(commercial, quota, bool(usage.get("hardLimitEnabled")))
+    usage["effectiveTotalLimitBytes"] = total_limit
+    usage["effectiveTotalLimitSources"] = sources
+    usage["remainingTotalBytes"] = max(0, total_limit - usage["effectiveOccupiedBytes"]) if total_limit is not None else None
+    usage["effectiveTotalLimitUsagePercent"] = round(usage["effectiveOccupiedBytes"] * 100 / total_limit, 2) if total_limit else None
     return success(payload)
 
 

@@ -44,3 +44,14 @@ test('custom role descendant permission cannot bypass an explicit unpurchased mo
   const menu = getVisibleAdminMenu(customRoleContext([]))
   assert.equal(menu.some((group) => group.key === 'internship'), false)
 })
+
+test('legacy search aliases choose only the current role authorized leaf, including module roots', async()=>{
+  const {searchSearchAliases}=await loadAdminMenu()
+  const ctx={activeContextId:'role:data-reader',currentRole:{roleCode:'DATA_READER'},permissionPatterns:['systemAdmin.dataExchange.viewOwn'],moduleAccessHealthy:true}
+  const result=searchSearchAliases('系统管理',{scopeGroupKeys:new Set(['system']),ctx})
+  assert.equal(result.length,1);assert.equal(result[0].path,'/admin/system/data-exchange')
+  assert.equal(searchSearchAliases('学生画像',{scopeGroupKeys:new Set(['student-affairs','system']),ctx}).length,0)
+  assert.equal(searchSearchAliases('系统管理',{scopeGroupKeys:new Set(['system']),ctx:{...ctx,permissionPatterns:[]}}).length,0)
+  assert.equal(searchSearchAliases('系统管理',{ctx:null}).length,0)
+  assert.equal(searchSearchAliases('系统管理',{ctx:{...ctx,permissionPatterns:{}}}).length,0)
+})

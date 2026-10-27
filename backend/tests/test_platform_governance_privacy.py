@@ -1,7 +1,7 @@
 """PLAT-14 数据治理、集成目录与合规证据（真库）。
 
 跨租户聚合三块权威判定，重点验证：①主数据治理缺口是逐户真实求和，非重新
-判定；②合规证据缺口只暴露 auditId/action/missing，绝不把审计明细（reason
+判定；②合规证据缺口只暴露 auditId/action/actionLabel/missing，绝不把审计明细（reason
 原文、operator、resource）透传到平台运营页面（隐私边界）；③集成目录确实
 逐户切换过租户上下文才能拿到各校数据，且用完必须还原，不遗留污染；
 ④仅平台超管可访问。
@@ -73,7 +73,9 @@ def test_t02_compliance_gaps_never_leak_raw_audit_detail(two_tenants):
     board = pg.governance_overview()
     assert board["complianceEvidence"]["gapCount"] >= 1
     for gap in board["complianceEvidence"]["gaps"]:
-        assert set(gap.keys()) <= {"auditId", "action", "missing"}
+        assert set(gap.keys()) <= {"auditId", "action", "actionLabel", "missing"}
+        from app.services.operation_audit_service import present_result
+        assert gap["actionLabel"] == present_result(gap["action"], None)["actionLabel"]
         assert "秘密操作人" not in str(gap)
         assert "domain:secret-object" not in str(gap)
 

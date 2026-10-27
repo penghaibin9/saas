@@ -343,33 +343,63 @@ def test_t03c_dynamic_default_is_unaffected(tenant_ctx):
 
 
 # ── SYS14-T04：人工推进有理由和审计 ─────────────────────────────────────────
-def test_t04_force_advance_requires_reason_and_leaves_audit(tenant_ctx):
+def test_t04_force_advance_requires_business_actor_version_and_atomic_audit(tenant_ctx, monkeypatch):
+    from app.core.context import set_current_user
+    from app.models import WorkflowTask, WorkflowInstance, SecurityAuditLog
+    from sqlalchemy import select
+
     workflow_code = "SYS14_T04_WF"
     _make_workflow(workflow_code)
     assignee_id = _make_user("sys14_t04_assignee", role_code="COUNSELOR")
+    operator_id = _make_user("sys14_t04_config_operator")
     task_id = _make_task(workflow_code, assignee_id)
+    operator = {"userId": f"db-{operator_id}", "permissionPatterns": ["systemAdmin.workflow.manage"]}
+    assignee = {"userId": f"db-{assignee_id}", "realName": "独立审批经办人"}
+    with _session() as db:
+        version = int(db.get(WorkflowTask, task_id).version or 0)
 
-    with pytest.raises(AppException):
-        wsp.force_advance_task(task_id, action="APPROVED", reason="短",
-                               tenant_id=MAIN_TENANT_ID, user=ADMIN)
+    for actor, action, expected in [(operator, "APPROVED", version),
+                                    (assignee, "APPROVED", None),
+                                    (assignee, "CANCELLED", version)]:
+        with pytest.raises(AppException):
+            wsp.force_advance_task(task_id, action=action, reason="独立权限与版本验证",
+                                   expected_version=expected, tenant_id=MAIN_TENANT_ID, user=actor)
+        with _session() as db:
+            task = db.get(WorkflowTask, task_id)
+            assert task.status == "PENDING" and task.version == version
+            assert db.get(WorkflowInstance, task.instance_id).status == "RUNNING"
 
-    result = wsp.force_advance_task(task_id, action="APPROVED",
-                                    reason="assignee 长期请假，管理员人工推进解卡",
-                                    tenant_id=MAIN_TENANT_ID, user=ADMIN)
+    set_current_user(assignee)
+    try:
+        result = wsp.force_advance_task(task_id, action="APPROVED", reason="独立正常审批验证",
+                                       expected_version=version, tenant_id=MAIN_TENANT_ID, user=assignee)
+    finally:
+        set_current_user(None)
     assert result["afterStatus"] == "APPROVED"
-
-    from app.models import WorkflowTask
-
     with _session() as db:
         task = db.get(WorkflowTask, task_id)
-        assert task.status == "APPROVED"
-        assert "人工推进" in (task.action_reason or "")
+        assert task.status == "APPROVED" and task.version == version + 1
+        assert task.action_reason == "独立正常审批验证"
+        assert db.scalar(select(SecurityAuditLog.id).where(
+            SecurityAuditLog.tenant_id == MAIN_TENANT_ID,
+            SecurityAuditLog.resource_id == str(task_id))) is not None
+    with pytest.raises(AppException):
+        wsp.force_advance_task(task_id, action="APPROVED", reason="重复请求不得再次执行",
+                               expected_version=version, tenant_id=MAIN_TENANT_ID, user=assignee)
 
-    # 已处理的任务不能再被强推
-    with pytest.raises(AppException) as caught:
-        wsp.force_advance_task(task_id, action="REJECTED", reason="重复人工推进",
-                               tenant_id=MAIN_TENANT_ID, user=ADMIN)
-    assert caught.value.code == "DATA_CONFLICT"
+    rollback_id = _make_task(workflow_code, assignee_id)
+    with _session() as db:
+        rollback_version = int(db.get(WorkflowTask, rollback_id).version or 0)
+    def audit_failure(*args, **kwargs):
+        raise RuntimeError("独立测试审计写入失败")
+    monkeypatch.setattr("app.services.operation_audit_service.record_critical", audit_failure)
+    with pytest.raises(RuntimeError, match="审计写入失败"):
+        wsp.force_advance_task(rollback_id, action="APPROVED", reason="验证审计失败整体回滚",
+                               expected_version=rollback_version, tenant_id=MAIN_TENANT_ID, user=assignee)
+    with _session() as db:
+        task = db.get(WorkflowTask, rollback_id)
+        assert task.status == "PENDING" and task.version == rollback_version
+        assert db.get(WorkflowInstance, task.instance_id).status == "RUNNING"
 
 
 def test_t04b_force_advance_rejects_unknown_action(tenant_ctx):
@@ -403,7 +433,9 @@ def test_list_policies_filters_by_workflow(tenant_ctx):
 
 
 # ── 接口层 ───────────────────────────────────────────────────────────────────
-def test_http_endpoints(client, auth_headers, tenant_ctx):
+def test_http_endpoints(client, tenant_ctx):
+    _make_user("sys14_http_operator", role_code="SCHOOL_ADMIN")
+    auth_headers = _login(client, "sys14_http_operator")
     workflow_code = "SYS14_HTTP_WF"
     _make_workflow(workflow_code)
 

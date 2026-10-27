@@ -43,7 +43,7 @@ export const SYSTEM_HELP_CARDS = [
       '账号锁定、停用或长期未登录：进入「账号异常排查」先定位异常类型。'
     ],
     related: [
-      { label: '角色权限管理', route: '/admin/system/roles' },
+      { label: '角色权限管理', route: '/admin/system/iam?surface=roles' },
       { label: '数据范围管理', route: '/admin/system/scopes' },
       { label: '账号异常排查', route: '/admin/system/account-exceptions' }
     ]
@@ -53,7 +53,7 @@ export const SYSTEM_HELP_CARDS = [
     module: '系统管理 · 权限治理',
     title: '如何配置角色的菜单、按钮和数据范围',
     roles: ['学校管理员'],
-    route: '/admin/system/roles',
+    route: '/admin/system/iam?surface=roles',
     entry: '系统管理 → 角色权限管理',
     keywords: ['角色权限', '菜单权限', '按钮权限', '数据范围', '看不到菜单', '无权限', '角色配置'],
     summary: '角色负责“能做什么”，数据范围负责“能看哪些数据”；新增角色默认没有菜单权限，配置保存后即时生效并留痕。',
@@ -247,7 +247,7 @@ export const SYSTEM_HELP_CARDS = [
       '真实 403 已带追踪号：保留追踪号，便于复现同一次鉴权判定。'
     ],
     related: [
-      { label: '角色权限管理', route: '/admin/system/roles' },
+      { label: '角色权限管理', route: '/admin/system/iam?surface=roles' },
       { label: '数据范围管理', route: '/admin/system/scopes' }
     ]
   },

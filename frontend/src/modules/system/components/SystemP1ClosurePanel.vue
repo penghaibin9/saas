@@ -13,19 +13,31 @@
     <template v-if="mode === 'role'">
       <template v-if="canGrantRole">
         <div class="p1-form p1-form--role">
-          <label><span>用户编号</span><input v-model.trim="roleForm.userId" inputmode="numeric" placeholder="数字编号" /></label>
+          <AccountCandidatePicker v-model="rolePerson" :ctx="ctx" :disabled="saving || grantUncertain" />
           <label><span>角色</span>
-            <select v-model="roleForm.roleCode">
+            <select v-model="roleForm.roleCode" :disabled="saving || grantUncertain">
               <option value="">请选择角色</option>
               <option v-for="role in roles" :key="role.id || role.code" :value="role.code">{{ role.name }}</option>
             </select>
           </label>
           <label><span>生效方式</span><input value="立即生效（未来排期暂不开放）" disabled /></label>
-          <label><span>到期时间</span><input v-model="roleForm.expiresAt" type="datetime-local" /></label>
-          <label class="p1-wide"><span>授权原因</span><input v-model.trim="roleForm.reason" placeholder="至少 5 个字；写入授权来源与审计" /></label>
-          <div class="p1-actions"><AppButton variant="primary" :loading="saving" @click="grantRole">新增正式角色授权</AppButton></div>
+          <label><span>到期时间</span><input v-model="roleForm.expiresAt" type="datetime-local" :disabled="saving || grantUncertain" /></label>
+          <label class="p1-wide"><span>授权原因</span><input v-model.trim="roleForm.reason" :disabled="saving || grantUncertain" placeholder="至少 5 个字；写入授权来源与审计" /></label>
+          <div class="p1-actions"><AppButton variant="primary" :loading="saving" :disabled="grantUncertain" @click="grantRole">新增正式角色授权</AppButton></div>
+          <div v-if="grantUncertain" class="p1-wide">
+            <p role="alert">提交结果尚未确认，原输入已保留。先读取该人员与角色的台账核对，不会自动重发。</p>
+            <button type="button" class="mp-link" :disabled="grantChecking" @click="checkGrant">{{ grantChecking ? '正在核对…' : '读取原授权结果' }}</button>
+            <p v-if="grantCheckError" role="alert">{{ grantCheckError }}</p>
+            <template v-if="grantCheck">
+              <p>当前共 {{ grantCheck.total }} 条相关记录，显示最近 {{ grantCheck.list.length }} 条。未查到记录不代表请求一定失败；如仍无法判断，请稍后重新核对。</p>
+              <p v-for="row in grantCheck.list" :key="row.assignmentId || row.userRoleId">授权编号 {{ row.assignmentId || row.userRoleId }} · {{ { ACTIVE: '生效中', REVOKED: '已回收', EXPIRED: '已到期' }[row.status] || '状态待核对' }} · {{ row.reason || '未登记原因' }} · 到期 {{ row.expiresAt || '长期有效' }}</p>
+              <label><input v-model="grantAcknowledged" type="checkbox" :disabled="grantChecking" />我已核对原结果，结束本次提交，不重发原请求</label>
+              <button type="button" class="mp-link" :disabled="grantChecking || !grantAcknowledged" @click="finishGrantCheck">结束本次提交，开始新授权</button>
+            </template>
+          </div>
         </div>
         <p class="p1-note">系统会拒绝停用的角色、学生与教职工角色串用、重复覆盖授权和未来时间提前生效；新增记录继续在下方台账复核、转交、回收。</p>
+        <p class="p1-note">数据范围沿用所选角色的现有配置；请先在角色详情核对本人、指定对象或组织范围。本页不会创建授课、学工责任、毕设或实习指导关系。</p>
       </template>
       <p v-else class="p1-note">当前角色只有查看权限；新增正式授权需要“用户分配”或“角色配置”权限。</p>
     </template>
@@ -91,6 +103,9 @@ import { AppButton } from '@/components/ui'
 import { systemApi } from '@/modules/system/api/system.api'
 import { systemP1ClosureApi } from '@/modules/system/api/systemP1Closure.api'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
+import AccountCandidatePicker from './AccountCandidatePicker.vue'
+import { contextFingerprint } from '../utils/workspaceContract'
 
 function toBackendDateTime(value) {
   if (!value) return null
@@ -110,12 +125,15 @@ const emptyRole = () => ({ userId: '', roleCode: '', expiresAt: '', reason: '' }
 
 export default {
   name: 'SystemP1ClosurePanel',
-  components: { AppButton },
+  components: { AppButton, AccountCandidatePicker },
   props: { ctx: { type: Object, required: true } },
   emits: ['refresh-child'],
   data() {
     return {
       loading: false, saving: false, error: '', roles: [], roleForm: emptyRole(),
+      rolePerson: null,
+      grantUncertain: false,
+      grantChecking: false, grantCheck: null, grantCheckError: '', grantAcknowledged: false,
       configOverrides: [], selectedOverride: null, overrideReason: '',
       identityUserId: '', identity: null, unbindReason: ''
     }
@@ -123,7 +141,7 @@ export default {
   computed: {
     mode() {
       const p = this.$route.path
-      if (p === '/admin/system/role-assignments') return 'role'
+      if (p === '/admin/system/role-assignments') return this.$route.query?.view === 'relations' ? '' : 'role'
       if (p === '/admin/system/login-policy') return 'config'
       if (p === '/admin/system/account-exceptions') return 'identity'
       return ''
@@ -151,6 +169,7 @@ export default {
   created() {
     this.load()
   },
+  watch: { mode() { this.load() } },
   methods: {
     identitySourceLabel(value) { return ({ STUDENT_PROFILE: '学生主档', STAFF_PROFILE: '教职工主档', ACCOUNT: '系统账号', IMPORT: '批量导入', MANUAL: '人工维护' })[value] || (value ? '来源待确认' : '—') },
     accountTypeLabel(value) { return ({ STUDENT: '学生账号', STAFF: '教职工账号', ADMIN: '管理账号', PLATFORM: '平台账号' })[value] || (value ? '账号类型待确认' : '—') },
@@ -158,7 +177,7 @@ export default {
     severityLabel(value) { return ({ CRITICAL: '紧急', HIGH: '高风险', MEDIUM: '中风险', LOW: '低风险', WARNING: '警告', ERROR: '异常' })[value] || (value ? '等级待确认' : '—') },
     issueLabel(value) { return ({ DUPLICATE_BINDING: '存在重复绑定', MISSING_PROFILE: '缺少主体主档', TYPE_MISMATCH: '账号类型不一致', INVALID_BINDING: '绑定关系无效', ORPHAN_ACCOUNT: '账号缺少业务主体' })[value] || (value ? '身份解析异常' : '—') },
     hasAnyPermission(...codes) { return codes.some((code) => this.permissionPatterns.some((pattern) => permissionMatch(pattern, code))) },
-    fmt(v) { return v ? String(v).replace('T', ' ').slice(0, 19) : '—' },
+    fmt(v) { return formatDateTime(v, '—', 'Asia/Shanghai') },
     displayValue(v) {
       if (v === null || v === undefined || v === '') return '—'
       if (typeof v === 'boolean') return v ? '是' : '否'
@@ -171,7 +190,7 @@ export default {
       this.loading = true
       try {
         if (this.mode === 'role') {
-          const res = await systemApi.getRoles({ page: 1, pageSize: 100, status: 'ENABLED' })
+          const res = await systemApi.getRoleAssignmentOptions()
           if (res.code !== 0) throw new Error(res.message)
           this.roles = res.data.list || []
         } else if (this.mode === 'config') {
@@ -186,23 +205,47 @@ export default {
       }
     },
     async grantRole() {
+      if (this.saving || this.grantUncertain) return
       if (!this.canGrantRole) return toast.error('当前角色没有正式授权写权限')
-      if (!/^\d+$/.test(this.roleForm.userId)) return toast.error('账号编号必须是数字')
+      if (!this.rolePerson?.id) return toast.error('请查询并选择本校人员')
       if (!this.roleForm.roleCode) return toast.error('请选择角色')
       if (this.roleForm.reason.trim().length < 5) return toast.error('授权原因不少于 5 个字')
       if (this.roleForm.expiresAt && new Date(this.roleForm.expiresAt).getTime() <= Date.now()) return toast.error('到期时间必须晚于当前时间')
       this.saving = true
+      this.grantCheck = null; this.grantCheckError = ''; this.grantAcknowledged = false
       const res = await systemApi.grantRoleAssignment({
-        userId: Number(this.roleForm.userId), roleCode: this.roleForm.roleCode,
+        userId: String(this.rolePerson.id), roleCode: this.roleForm.roleCode,
         reason: this.roleForm.reason.trim(), sourceType: 'MANUAL',
         effectiveAt: null,
         expiresAt: toBackendDateTime(this.roleForm.expiresAt)
       })
       this.saving = false
-      if (res.code !== 0) return toast.error(res.message)
+      if (res.code !== 0) {
+        this.grantUncertain = !['VALIDATION_ERROR', 'NO_PERMISSION', 'DATA_CONFLICT'].includes(res.bizCode)
+        return toast.error(res.message)
+      }
       toast.success('正式角色授权已创建')
       this.roleForm = emptyRole()
+      this.rolePerson = null
       this.$emit('refresh-child')
+    },
+    async checkGrant() {
+      if (!this.grantUncertain || this.grantChecking) return
+      this.grantChecking = true; this.grantCheck = null; this.grantCheckError = ''; this.grantAcknowledged = false
+      const context = contextFingerprint(this.ctx)
+      try {
+        const result = await systemApi.listRoleAssignments({ userId: String(this.rolePerson.id), roleCode: this.roleForm.roleCode, pageSize: 20 })
+        if (context !== contextFingerprint(this.ctx)) return
+        if (result.code !== 0) { this.grantCheckError = result.message || '核对失败，请重试'; return }
+        this.grantCheck = result.data
+        this.$emit('refresh-child')
+      } catch (error) { this.grantCheckError = error.message || '核对失败，请重试' }
+      finally { this.grantChecking = false }
+    },
+    finishGrantCheck() {
+      if (this.grantChecking || !this.grantCheck || !this.grantAcknowledged) return
+      this.grantUncertain = false; this.grantCheck = null; this.grantAcknowledged = false
+      this.rolePerson = null; this.roleForm = emptyRole()
     },
     selectOverride(item) { if (this.canRestoreConfig) { this.selectedOverride = item; this.overrideReason = '' } },
     async revokeOverride() {

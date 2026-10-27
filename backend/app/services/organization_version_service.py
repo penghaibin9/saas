@@ -14,10 +14,11 @@ import uuid
 from datetime import datetime
 from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.context import current_tenant_id, get_current_user_ctx
 from app.core.exceptions import AppException, not_found
+from app.core.timeutil import iso_utc, tenant_tz
 from app.db.session import get_sessionmaker
 from app.models.organization_version import (ASSIGNMENT_SOURCE_MANUAL,
                                              ASSIGNMENT_STATUS_ACTIVE,
@@ -516,6 +517,7 @@ def _assignment_row(row: StaffAssignment, *, at: datetime | None = None) -> dict
     )
     return {
         "assignmentId": str(row.id),
+        "timeZone": str(tenant_tz()),
         "userId": str(row.user_id),
         "orgType": row.org_type,
         "orgNodeId": str(row.org_node_id),
@@ -523,8 +525,8 @@ def _assignment_row(row: StaffAssignment, *, at: datetime | None = None) -> dict
         "isPrimary": bool(row.is_primary),
         "sourceType": row.source_type,
         "sourceId": row.source_id,
-        "effectiveAt": row.effective_at.isoformat() if row.effective_at else None,
-        "expiresAt": row.expires_at.isoformat() if row.expires_at else None,
+        "effectiveAt": iso_utc(row.effective_at),
+        "expiresAt": iso_utc(row.expires_at),
         "status": row.status,
         "effectiveNow": effective_now,
         "reason": row.reason,
@@ -628,6 +630,7 @@ def revoke_assignment(assignment_id: int, *, reason: str, expected_version: int,
 def list_assignments(
     *, user_id: int | None = None, org_type: str | None = None, org_node_id: int | None = None,
     include_expired: bool = False, at: datetime | None = None, tenant_id: int | None = None,
+    page: int | None = None, page_size: int = 20,
 ) -> dict:
     tid = _tenant_id(tenant_id)
     moment = at or _now()
@@ -641,12 +644,27 @@ def list_assignments(
             stmt = stmt.where(StaffAssignment.org_type == str(org_type).upper())
         if org_node_id:
             stmt = stmt.where(StaffAssignment.org_node_id == int(org_node_id))
-        rows = db.scalars(stmt.order_by(StaffAssignment.id.desc())).all()
-        items = [_assignment_row(r, at=moment) for r in rows]
         if not include_expired:
-            # 读取时校验：即使定时任务还没把状态刷成 EXPIRED，过期任职也不会被当作有效
-            items = [i for i in items if i["effectiveNow"]]
-        return {"items": items, "total": len(items), "resolvedAt": moment.isoformat()}
+            stmt = stmt.where(StaffAssignment.status == ASSIGNMENT_STATUS_ACTIVE,
+                StaffAssignment.effective_at <= moment,
+                or_(StaffAssignment.expires_at.is_(None), StaffAssignment.expires_at > moment))
+        total = db.scalar(select(func.count()).select_from(stmt.subquery())) or 0
+        stmt = stmt.order_by(StaffAssignment.id.desc())
+        if page is not None:
+            page, page_size = max(1, int(page)), min(200, max(1, int(page_size)))
+            stmt = stmt.offset((page - 1) * page_size).limit(page_size)
+        rows = db.scalars(stmt).all()
+        items = [_assignment_row(r, at=moment) for r in rows]
+        if page is not None and rows:
+            from app.models import User
+            people = {u.id: u for u in db.scalars(select(User).where(User.tenant_id == tid,
+                User.is_deleted.is_(False), User.id.in_({r.user_id for r in rows}))).all()}
+            for item in items:
+                person = people.get(int(item['userId']))
+                item['staffName'] = person.real_name if person else None
+                account = person.login_name if person else None
+                item['accountName'] = (account[:4] + '****' + account[-2:] if len(account or '') > 4 else account)
+        return {"items": items, "total": int(total), "resolvedAt": moment.isoformat()}
 
 
 def effective_assignments(user_id: int, *, at: datetime | None = None, tenant_id: int | None = None) -> list[dict]:

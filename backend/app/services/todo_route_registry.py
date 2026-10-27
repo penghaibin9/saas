@@ -246,10 +246,13 @@ def resolve_todo_route(todo_type: str | None, record_id: Any, *, client: str) ->
         if fallback:
             route_name, path, query = fallback
             focus_mode = FOCUS_LIST_FOCUS if type_code in _PC_LIST_FOCUS else FOCUS_NONE
+            target_query = {**query, "recordId": rid}
+            if type_code == "INTERN_LEAVE_APPROVAL":
+                target_query["id"] = rid
             return {
                 "routeName": route_name,
                 "routeParams": {"recordId": rid},
-                "query": {**query, "recordId": rid},
+                "query": target_query,
                 "path": path,
                 "focusMode": focus_mode,
                 # PC 的 LIST_FOCUS 由对应页面合同测试证明；这里不复用 Mini 端页面白名单。

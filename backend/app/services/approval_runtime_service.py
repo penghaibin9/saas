@@ -125,6 +125,7 @@ def _enrich_rows(rows: list[dict], *, user=None) -> list[dict]:
         inst_map = {int(x.id): x for x in instances}
         now = datetime.utcnow()
         for row in rows:
+            row["sourceBizTypeLabel"] = _BIZ_TYPE_LABELS.get(row.get("sourceBizType"), "审批事项")
             try:
                 task = task_map.get(int(row.get("taskId") or 0))
             except (TypeError, ValueError):
@@ -218,6 +219,7 @@ def get_task(task_id: str, *, user=None) -> dict:
         if not inst:
             raise not_found("审批实例不存在")
         row = db_service._task_row(task, inst)
+        row["sourceBizTypeLabel"] = _BIZ_TYPE_LABELS.get(inst.source_biz_type, "审批事项")
         row["instanceStatus"] = inst.status
         row["currentInstanceNode"] = inst.current_node or ""
         row["sourceBizId"] = str(inst.source_biz_id)
@@ -273,6 +275,7 @@ def summary(*, user=None) -> dict:
     ]
     if not db_service._can_manage_all_approvals(user):
         cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
+    cond.append(base.source_task_visibility(user, WorkflowTask, WorkflowInstance))
 
     join_from = WorkflowTask.__table__.join(
         WorkflowInstance.__table__, WorkflowInstance.id == WorkflowTask.instance_id
@@ -308,6 +311,7 @@ def summary(*, user=None) -> dict:
         ]
         if not db_service._can_manage_all_approvals(user):
             done_cond.append(WorkflowTask.assignee_id == db_service._approval_actor_id(user))
+        done_cond.append(base.source_task_visibility(user, WorkflowTask, WorkflowInstance))
         done_today = int(db.scalar(
             select(func.count()).select_from(join_from).where(*done_cond)
         ) or 0)

@@ -19,6 +19,22 @@ from app.services import stats_service
 router = APIRouter()
 
 
+def _current_workbench_path(value):
+    """只投影历史快捷入口，不改安装快照或数据库记录。"""
+    if not isinstance(value, str) or not value.startswith("/admin/system/roles"):
+        return value
+    from urllib.parse import urlsplit, parse_qsl, urlencode, urlunsplit
+    parts = urlsplit(value)
+    if parts.path != "/admin/system/roles":
+        return value
+    query = dict(parse_qsl(parts.query, keep_blank_values=True))
+    query.pop("_workspace", None)
+    query["surface"] = "templates" if query.get("tab") == "templates" else "roles"
+    if query.get("tab") == "templates":
+        query.pop("tab")
+    return urlunsplit(("", "", "/admin/system/iam", urlencode(query), parts.fragment))
+
+
 def _real_summary(user: dict) -> dict:
     """DB 启用时的真实工作台概览（按当前登录人数据范围收敛，见 stats_service.get_workbench_summary）。"""
     s = stats_service.get_workbench_summary(user)
@@ -50,7 +66,7 @@ def _real_summary(user: dict) -> dict:
                 RoleWorkbenchConfig.is_deleted.is_(False))).first()
             if workbench:
                 card_keys = workbench.card_keys_json or card_keys
-                quick_entries = [{"key": x.get("key"), "label": x.get("label"), "path": x.get("path")}
+                quick_entries = [{"key": x.get("key"), "label": x.get("label"), "path": _current_workbench_path(x.get("path"))}
                                  for x in workbench.quick_entries_json or []
                                  if not x.get("permissionCode") or has_permission(user, x["permissionCode"])]
         finally:

@@ -45,7 +45,7 @@
         <div v-else class="sw-role-grid">
           <article v-for="row in listing.rows" :key="row.id" class="sw-card sw-role-card" :data-role-id="row.id" data-testid="role-card">
             <div class="sw-role-card-head"><span class="sw-symbol"><AppIcon :name="row.type === 'CUSTOM' ? 'workbench' : 'students'" :size="21" /></span><div class="sw-role-identity"><h3>{{ row.name }}</h3><p class="sw-muted">{{ row.statusLabel }}</p></div><span class="sw-tag" :class="row.type === 'CUSTOM' ? 'sw-tag--blue' : ''">{{ row.typeLabel }}</span></div>
-            <div class="sw-code">{{ row.code }}</div>
+            <details><summary class="sw-muted">实施人员使用：角色编码</summary><div class="sw-code">{{ row.code }}</div></details>
             <div class="sw-role-stats"><div><strong>{{ countLabel(row.memberCount) }}</strong><small>角色成员</small></div><div><strong class="sw-scope-value">{{ scopeLabel(row.scopeCode) }}</strong><small>默认范围</small></div><div><strong>{{ countLabel(row.version) }}</strong><small>当前版本</small></div></div>
             <div class="sw-row sw-role-actions"><button type="button" class="sw-btn" :class="row.type === 'CUSTOM' ? 'sw-btn--primary' : ''" @click="openRole(row.id, 'permissions')">{{ row.type === 'CUSTOM' ? '配置权限' : '查看权限' }}</button><button type="button" class="sw-btn" @click="openRole(row.id, 'members')">管理成员</button><button type="button" class="sw-link" @click="openRole(row.id, 'details')">详情与维护</button></div>
           </article>

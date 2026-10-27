@@ -239,7 +239,7 @@ def _rotate_browser_refresh(refresh_token: str, *, channel: str, browser_session
     claims["browserSessionIdHash"] = _browser_session_hash(tab_id)
     token = create_access_token(dict(claims))
     new_refresh = issue_refresh(dict(claims))
-    audit.record("TOKEN_REFRESH", target_type="auth", target_id=str(claims.get("userId", "-")))
+    audit.record_authenticated_event(claims, action="TOKEN_REFRESH", path="/api/v1/auth/browser-refresh")
     return success({
         "accessToken": token,
         "refreshToken": new_refresh,

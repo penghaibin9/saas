@@ -206,8 +206,7 @@ def login(body: PasswordLoginRequest):
     from app.services import control_plane_auth_service as control_plane_auth
     result = control_plane_auth.login_with_password(
         identifier, body.password, body.tenantCode, body.clientType, identifier_type=identifier_type)
-    audit.record("登录", method="POST", path="/api/v1/auth/login",
-                 status_code=200, target_type="auth", target_id=result["userId"])
+    audit.record_authenticated_event(result, path="/api/v1/auth/login")
     return success(result, message="登录成功")
 
 
@@ -230,8 +229,7 @@ def wx_login(body: WxLoginRequest):
         audit.record("微信登录-待选择学校", method="POST", path="/api/v1/auth/wx-login",
                      status_code=200, target_type="auth", target_id="-")
         return success(result, message="请选择本次登录学校")
-    audit.record("微信登录", method="POST", path="/api/v1/auth/wx-login",
-                 status_code=200, target_type="auth", target_id=result.get("userId", "-"))
+    audit.record_authenticated_event(result, action="微信登录", path="/api/v1/auth/wx-login")
     return success(result, message="登录成功")
 
 
@@ -246,8 +244,7 @@ def wx_select(body: WxSelectRequest):
     _login_rate_guard()
     from app.services import wx_auth_service
     result = wx_auth_service.wx_select(body.wxToken, body.tenantCode, client_type=body.clientType)
-    audit.record("微信登录-选择学校", method="POST", path="/api/v1/auth/wx-select",
-                 status_code=200, target_type="auth", target_id=result.get("userId", "-"))
+    audit.record_authenticated_event(result, action="微信登录-选择学校", path="/api/v1/auth/wx-select")
     return success(result, message="登录成功")
 
 
@@ -273,8 +270,7 @@ def wx_bind(body: WxBindRequest):
     result = p0_auth.wx_bind(
         body.wxToken, body.loginName.strip(), body.password, body.tenantCode,
         binding_approval_token=body.bindingApprovalToken, client_type=body.clientType)
-    audit.record("微信绑定", method="POST", path="/api/v1/auth/wx-bind",
-                 status_code=200, target_type="auth", target_id=result.get("userId", "-"))
+    audit.record_authenticated_event(result, action="微信绑定", path="/api/v1/auth/wx-bind")
     return success(result, message="绑定成功")
 
 
@@ -377,7 +373,7 @@ def refresh(body: RefreshRequest):
     auth_service_db.validate_token_subject(claims)
     token = create_access_token(dict(claims))
     new_refresh = issue_refresh(claims)
-    audit.record("TOKEN_REFRESH", target_type="auth", target_id=str(claims.get("userId", "-")))
+    audit.record_authenticated_event(claims, action="TOKEN_REFRESH", path="/api/v1/auth/refresh")
     return success({"accessToken": token, "refreshToken": new_refresh,
                     "tokenType": "Bearer", "expiresIn": settings.JWT_EXPIRES_IN}, message="已刷新")
 

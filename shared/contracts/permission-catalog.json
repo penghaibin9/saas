@@ -5,6 +5,8 @@
     "internship": "岗位实习唯一顶层模块；招聘季/企业Portal/学生选岗均为该模块 Surface/Feature"
   },
   "entries": [
+    {"permissionCode":"platform.businessForms.view","label":"查看学校表单配置版本","plane":"PLATFORM","moduleKey":"platform","featureKey":"businessForms","riskLevel":"MEDIUM","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":false,"lifecycle":"ACTIVE"},
+    {"permissionCode":"platform.businessForms.manage","label":"维护学校表单配置版本","plane":"PLATFORM","moduleKey":"platform","featureKey":"businessForms","riskLevel":"HIGH","tenantAssignable":false,"customRoleAssignable":false,"requiresReason":true,"lifecycle":"ACTIVE"},
     {"permissionCode":"systemAdmin.phoneBinding.view","label":"查看脱敏号码治理","plane":"TENANT","moduleKey":"systemAdmin","featureKey":"phoneBinding","riskLevel":"MEDIUM","tenantAssignable":true,"customRoleAssignable":true,"requiresReason":false,"lifecycle":"ACTIVE"},
     {"permissionCode":"systemAdmin.phoneBinding.lookup","label":"精确核对手机号","plane":"TENANT","moduleKey":"systemAdmin","featureKey":"phoneBinding","riskLevel":"HIGH","tenantAssignable":true,"customRoleAssignable":true,"requiresReason":true,"lifecycle":"ACTIVE"},
     {"permissionCode":"systemAdmin.phoneBinding.candidate.manage","label":"登记或清除待验证号码","plane":"TENANT","moduleKey":"systemAdmin","featureKey":"phoneBinding","riskLevel":"HIGH","tenantAssignable":true,"customRoleAssignable":true,"requiresReason":true,"lifecycle":"ACTIVE"},

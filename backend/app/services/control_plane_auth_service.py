@@ -392,7 +392,7 @@ def refresh(refresh_token: str) -> dict:
     claims["securityPolicyDataQuality"] = policy["dataQuality"]
     access_seconds = int(policy["accessTokenExpireMinutes"]) * 60
     refresh_seconds = int(policy["refreshTokenExpireDays"]) * 24 * 3600
-    return {
+    result = {
         "accessToken": create_access_token(claims, expires_in=access_seconds),
         "refreshToken": issue_refresh(claims, expires_in=refresh_seconds),
         "tokenType": "Bearer",
@@ -403,6 +403,9 @@ def refresh(refresh_token: str) -> dict:
             "dataQuality": policy["dataQuality"],
         },
     }
+    from app.services import operation_audit_service as audit
+    audit.record_authenticated_event(claims, action="TOKEN_REFRESH", path="/api/v1/auth/refresh")
+    return result
 
 
 def change_own_password(user_ctx: dict, old_password: str, new_password: str) -> dict:

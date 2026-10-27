@@ -81,7 +81,7 @@ def _load(doc_key: str) -> list | dict:
 
 
 def _save(doc_key: str, payload: Any, user: dict | None = None,
-          expected_version: int | None = None) -> int:
+          expected_version: int | None = None, audit_event: tuple | None = None) -> int:
     from app.models.system_governance import SystemJsonDoc
     from app.db.session import db_enabled
     if not db_enabled():
@@ -110,6 +110,10 @@ def _save(doc_key: str, payload: Any, user: dict | None = None,
             if user:
                 raw = str(user.get("userId") or "").replace("db-", "")
                 row.updated_by = int(raw) if raw.isdigit() else None
+        if audit_event:
+            from app.services import audit_log
+            action, target, detail = audit_event
+            audit_log.record_critical_in_session(db, action, target, detail=detail)
         db.commit()
         return version
     except AppException:
@@ -253,20 +257,22 @@ def revoke_delegation(user: dict, delegation_id: str, reason: str) -> dict:
     reason = str(reason or "").strip()
     if len(reason) < 5:
         raise AppException("VALIDATION_ERROR", "回收原因不少于 5 个字")
-    items = list_delegations()
+    payload, doc_version = _load_with_version(DOC_DELEGATIONS)
+    items = [dict(item) for item in (payload or [])]
     hit = next((x for x in items if x.get("id") == delegation_id), None)
     if hit is None:
         raise AppException("DATA_NOT_FOUND", "临时授权不存在")
+    if hit.get('status') != 'ACTIVE' or str(hit.get('expiresAt') or '') <= _now():
+        raise AppException("VALIDATION_ERROR", "该临时授权已失效，只能查看历史记录")
     hit["status"] = "REVOKED"
     hit["statusLabel"] = "已回收"
     hit["revokedAt"] = _now()
     hit["revokeReason"] = reason
     hit["effective"] = False
     hit["version"] = int(hit.get("version") or 1) + 1
-    _save(DOC_DELEGATIONS, items, user)
-    from app.services import audit_log
-    audit_log.record("DELEGATION_REVOKE", f"delegation:{delegation_id}",
-                     detail={"reason": reason, "moduleCode": "systemAdmin"})
+    _save(DOC_DELEGATIONS, items, user, expected_version=doc_version,
+          audit_event=("DELEGATION_REVOKE", f"delegation:{delegation_id}",
+                       {"reason": reason, "moduleCode": "systemAdmin", "version": hit['version']}))
     return hit
 
 

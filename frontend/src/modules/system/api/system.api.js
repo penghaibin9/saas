@@ -7,6 +7,8 @@
 /* P2 · 真实后端桥 */
 import { request, requestBlob, requestUpload } from '@/services/http/client'
 import { downloadXlsxFromApi } from '@/utils/xlsxDownload'
+import { formatDateTime } from '@/utils/dateUtils'
+import { staffAffiliationDisplay } from '../utils/permissionLabels'
 import {
   SYSTEM_STATUS_OPTIONS,
   SYSTEM_FIELD_COLUMNS,
@@ -26,6 +28,10 @@ function ok(data, message = 'ok') {
 
 function fail(message) {
   return Promise.resolve({ code: 1, data: null, message })
+}
+
+function logPage(data) {
+  return { ...data, list: data.list.map(row => ({ ...row, time: formatDateTime(row.time, '未记录时间', row.timeZone) })) }
 }
 
 function apiError(error) {
@@ -139,7 +145,8 @@ export const systemApi = {
       const routeFor = (code = '') => {
         if (code === 'org') return '/admin/system/org'
         if (code === 'accounts') return '/admin/system/identity-import/students'
-        if (code === 'roles' || code === 'permissions') return '/admin/system/roles'
+        if (code === 'roles') return '/admin/system/iam?surface=roles'
+        if (code === 'permissions') return '/admin/system/iam?surface=permissions'
         if (code === 'data_scope') return '/admin/system/scopes'
         if (code === 'integrations') return '/admin/system/integrations'
         if (code === 'sync') return '/admin/system/sync-jobs'
@@ -188,7 +195,7 @@ export const systemApi = {
           id: item.id,
           who: item.who,
           action: item.actionLabel || item.action,
-          time: item.time
+          time: formatDateTime(item.time, '未记录时间', item.timeZone)
         }))
       })
     } catch (error) {
@@ -200,7 +207,7 @@ export const systemApi = {
 
   async getUsers(params = {}) {
     try {
-      return ok(await request('/system/users', {
+      const data = await request('/system/users', {
         params: {
           keyword: params.keyword || undefined,
           role: params.role || undefined,
@@ -214,7 +221,8 @@ export const systemApi = {
           page: params.page || 1,
           page_size: params.pageSize || 20
         }
-      }))
+      })
+      return ok({ ...data, list: data.list.map(row => ({ ...row, lastLoginAt: formatDateTime(row.lastLoginAt, '', row.timeZone) })) })
     } catch (error) {
       return fail(error.message || '账号列表加载失败')
     }
@@ -222,7 +230,10 @@ export const systemApi = {
 
   async getUserDetail(id) {
     try {
-      return ok(await request(`/system/users/${encodeURIComponent(id)}`))
+      const data = await request(`/system/users/${encodeURIComponent(id)}`)
+      return ok({ ...data, lastLoginAt: formatDateTime(data.lastLoginAt, '', data.timeZone),
+        loginHistory: (data.loginHistory || []).map(row => ({ ...row, time: formatDateTime(row.time, '未记录时间', row.timeZone || data.timeZone) })),
+        auditTrail: (data.auditTrail || []).map(row => ({ ...row, time: formatDateTime(row.time, '未记录时间', row.timeZone || data.timeZone) })) })
     } catch (error) {
       return fail(error.message || '账号详情加载失败')
     }
@@ -325,10 +336,18 @@ export const systemApi = {
     }
   },
 
-  async forceAdvanceWorkflowTask(taskId, { action, reason } = {}) {
+  async listWorkflowGovernanceTasks(page = 1) {
+    try {
+      return ok(await request(`/system/workflow-governance/tasks?page=${page}&pageSize=20`))
+    } catch (error) {
+      return fail(error.message || '当前身份的审批任务读取失败')
+    }
+  },
+
+  async forceAdvanceWorkflowTask(taskId, { action, reason, expectedVersion, expectedSourceVersion } = {}) {
     try {
       return ok(await request(`/system/workflow-tasks/${encodeURIComponent(taskId)}/force-advance`, {
-        method: 'POST', body: { action, reason }
+        method: 'POST', body: { action, reason, expectedVersion, expectedSourceVersion }
       }))
     } catch (error) {
       return { ...apiError(error), bizCode: error?.bizCode || '' }
@@ -362,10 +381,10 @@ export const systemApi = {
     }
   },
 
-  async closeTodoWithEvidence(todoId, { evidence } = {}) {
+  async closeTodoWithEvidence(todoId, { evidence, expectedVersion } = {}) {
     try {
       return ok(await request(`/system/communication-governance/todos/${encodeURIComponent(todoId)}/close`, {
-        method: 'POST', body: { evidence }
+        method: 'POST', body: { evidence, expectedVersion }
       }))
     } catch (error) {
       return { ...apiError(error), bizCode: error?.bizCode || '' }
@@ -427,18 +446,18 @@ export const systemApi = {
     }
   },
 
-  async retryJob(jobId) {
+  async retryJob(jobId, { expectedVersion, reason } = {}) {
     try {
-      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST' }))
+      return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/retry`, { method: 'POST', body: { expectedVersion, reason } }))
     } catch (error) {
       return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
-  async cancelJob(jobId, { reason } = {}) {
+  async cancelJob(jobId, { reason, expectedVersion } = {}) {
     try {
       return ok(await request(`/system/jobs/${encodeURIComponent(jobId)}/cancel`, {
-        method: 'POST', body: { reason }
+        method: 'POST', body: { reason, expectedVersion }
       }))
     } catch (error) {
       return { ...apiError(error), bizCode: error?.bizCode || '' }
@@ -482,7 +501,7 @@ export const systemApi = {
   async scanMasterData(ruleCode) {
     try {
       return ok(await request('/system/master-data/scan', {
-        method: 'POST', body: { ruleCode }
+        method: 'POST', body: { ruleCode }, timeoutMs: 120000
       }))
     } catch (error) {
       return { ...apiError(error), bizCode: error?.bizCode || '' }
@@ -550,11 +569,18 @@ export const systemApi = {
   },
 
   // SYS-07：角色成员有效期与自动业务身份
+  async getAuthorizationCandidates(params = {}) {
+    try { return ok(await request('/system/authorization-candidates', { params: {
+      keyword: params.keyword || undefined, page: params.page || 1, page_size: params.pageSize || 10
+    } })) }
+    catch (error) { return apiError(error) }
+  },
   async listRoleAssignments(params = {}) {
     try {
       return ok(await request('/system/role-assignments', {
         params: {
           role_code: params.roleCode || undefined,
+          user_id: params.userId || undefined,
           bucket: params.bucket || undefined,
           page: params.page || 1,
           page_size: params.pageSize || 50
@@ -563,6 +589,11 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '角色成员加载失败')
     }
+  },
+
+  async getRoleAssignmentOptions() {
+    try { return ok(await request('/system/role-assignment-options')) }
+    catch (error) { return apiError(error) }
   },
 
   async grantRoleAssignment({ userId, roleCode, reason, effectiveAt, expiresAt, sourceType } = {}) {
@@ -611,6 +642,17 @@ export const systemApi = {
     } catch (error) {
       return fail(error.message || '到期回收执行失败')
     }
+  },
+
+  async listBusinessIdentityObjects(row, page = 1) {
+    try { return ok(await request('/system/business-identities/objects', { params: {
+      identity_type: row.identityType, subject_key: row.subjectKey, user_id: row.userId || undefined, page, page_size: 20
+    } })) } catch (error) { return apiError(error) }
+  },
+
+  async searchBusinessIdentityPeople({ keyword = '', userId, page = 1, pageSize = 10 } = {}) {
+    try { return ok(await request('/system/business-identities/people', { params: { keyword, user_id: userId, page, page_size: pageSize } })) }
+    catch (error) { return apiError(error) }
   },
 
   async listBusinessIdentities(params = {}) {
@@ -1220,12 +1262,12 @@ export const systemApi = {
   async getPositions() {
     try {
       const data = await request('/system/staff-affiliations')
-      const list = (data.list || []).map((row) => ({
+      const list = (data.list || []).map(staffAffiliationDisplay).map((row) => ({
         id: row.id,
         name: row.roleLabel || '岗位',
         orgName: row.orgName || '',
         memberCount: 1,
-        remark: [row.staffName, row.staffKey].filter(Boolean).join(' · ') || '',
+        remark: row.staffName || '姓名未解析',
         status: (row.status === 'ACTIVE' || !row.status) ? 'ENABLED' : row.status,
         statusLabel: (row.status === 'ACTIVE' || !row.status) ? '启用' : String(row.status)
       }))
@@ -1352,7 +1394,7 @@ export const systemApi = {
   /** 登录与安全审计（真实库 t_security_audit_log）。安全敏感：不做 mock 回落。 */
   async getLoginLogs(params = {}) {
     try {
-      return ok(await request('/system/login-logs', {
+      return ok(logPage(await request('/system/login-logs', {
         params: {
           keyword: params.keyword || undefined,
           result: params.result || undefined,
@@ -1361,7 +1403,7 @@ export const systemApi = {
           page: params.page || 1,
           page_size: params.pageSize || 20
         }
-      }))
+      })))
     } catch (error) {
       return fail(error.message || '登录日志加载失败')
     }
@@ -1370,7 +1412,7 @@ export const systemApi = {
   /** 操作与权限审计（真实库 t_security_audit_log）。同样不做 mock 回落。 */
   async getOperationLogs(params = {}) {
     try {
-      return ok(await request('/system/operation-logs', {
+      return ok(logPage(await request('/system/operation-logs', {
         params: {
           keyword: params.keyword || undefined,
           result: params.result || undefined,
@@ -1381,7 +1423,7 @@ export const systemApi = {
           page: params.page || 1,
           page_size: params.pageSize || 20
         }
-      }))
+      })))
     } catch (error) {
       return fail(error.message || '操作日志加载失败')
     }
@@ -1392,10 +1434,12 @@ export const systemApi = {
   },
 
   /** 导出登录/操作审计（真实 xlsx：后端查真库 t_security_audit_log+水印，浏览器直接下载） */
-  async exportLogs({ tab } = {}) {
+  async exportLogs({ tab, filters = {}, scope = 'FILTERED', fields = [] } = {}) {
     try {
       const t = tab === 'login' ? 'login' : 'operation'
-      const blob = await requestBlob(`/system/export/logs?tab=${t}`)
+      const blob = await requestBlob('/system/export/logs', {
+        params: { ...filters, tab: t, scope, fields: fields.map(field => field.key).join(',') }, timeoutMs: 60000
+      })
       const fileName = (t === 'login' ? '登录审计_' : '操作审计_') + now().slice(0, 10) + '.xlsx'
       saveBlob(blob, fileName)
       return ok({ fileName })
@@ -1422,7 +1466,8 @@ export const systemApi = {
 
   async listStaffAffiliations() {
     try {
-      return ok(await request('/system/staff-affiliations'))
+      const data = await request('/system/staff-affiliations')
+      return ok({ ...data, list: (data.list || []).map(staffAffiliationDisplay) })
     } catch (error) {
       return fail(error.message || '教职工归属加载失败')
     }
@@ -1440,7 +1485,7 @@ export const systemApi = {
     try {
       return ok(await request('/system/delegations', { method: 'POST', body: payload }))
     } catch (error) {
-      return fail(error.message || '创建临时授权失败')
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
@@ -1450,7 +1495,7 @@ export const systemApi = {
         method: 'POST', body: { reason }
       }))
     } catch (error) {
-      return fail(error.message || '回收临时授权失败')
+      return { ...apiError(error), bizCode: error?.bizCode || '' }
     }
   },
 
@@ -1570,7 +1615,7 @@ export const systemApi = {
 
   async listSensitiveLogs(params = {}) {
     try {
-      return ok(await request('/system/sensitive-logs', {
+      return ok(logPage(await request('/system/sensitive-logs', {
         params: {
           keyword: params.keyword || undefined,
           result: params.result || undefined,
@@ -1579,7 +1624,7 @@ export const systemApi = {
           page: params.page || 1,
           page_size: params.pageSize || 20
         }
-      }))
+      })))
     } catch (error) {
       return fail(error.message || '敏感审计加载失败')
     }
@@ -1726,13 +1771,15 @@ export const systemApi = {
   },
 
   /** 教职工任职（默认只返回此刻真实生效的） */
-  async listStaffAssignments({ userId, orgType, orgNodeId, includeExpired } = {}) {
+  async listStaffAssignments({ userId, orgType, orgNodeId, includeExpired, page = 1, pageSize = 20 } = {}) {
     try {
       const qs = new URLSearchParams()
       if (userId) qs.set('userId', userId)
       if (orgType) qs.set('orgType', orgType)
       if (orgNodeId) qs.set('orgNodeId', orgNodeId)
       if (includeExpired) qs.set('includeExpired', 'true')
+      qs.set('page', String(page))
+      qs.set('pageSize', String(pageSize))
       const suffix = qs.toString() ? `?${qs.toString()}` : ''
       return ok(await request(`/system/staff-assignments${suffix}`))
     } catch (error) {
@@ -2121,7 +2168,8 @@ export const systemApi = {
 
   async getAuditEvidence(params = {}) {
     try {
-      return ok(await request('/system/audit/evidence', { params }))
+      const data = await request('/system/audit/evidence', { params })
+      return ok({ ...data, items: data.items.map(row => ({ ...row, occurredAt: formatDateTime(row.occurredAt, '未记录时间', row.timeZone) })) })
     } catch (error) {
       return fail(error.message || '证据查询失败')
     }

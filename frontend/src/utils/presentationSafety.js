@@ -123,6 +123,9 @@ export function safeLocalizedText({ value, dictionary = {}, unknownLabel = '待�
 }
 
 const AUDIT_ACTION_LABELS = Object.freeze({
+  LOGIN: '登录', LOGOUT: '登出', TOKEN_REFRESH: '会话刷新', LOGIN_FAIL: '登录失败',
+  LOGIN_LOCKED: '账号锁定', RATE_LIMITED: '访问频率拦截', PERMISSION_DENIED: '越权拦截', MODULE_DENIED: '模块越权',
+  ROLE_UPDATE: '编辑角色',
   PHONE_BINDING_CHANGE: '手机号登录凭据变更', PHONE_CANDIDATE_CHANGE: '待验证手机号登记变更',
   PHONE_POLICY_CHANGE: '手机号登录与恢复策略变更', PHONE_BINDING_LOOKUP: '完整手机号授权核对',
   PHONE_LEDGER_EXPORT: '手机号脱敏台账导出', PHONE_VERIFY_REMINDER: '本人手机号验证站内提醒',
@@ -148,7 +151,7 @@ const AUDIT_ROLE_LABELS = Object.freeze({
 export function presentAuditRecord(record = {}) {
   return {
     ...record,
-    displayAction: record.actionLabel || safeEnumLabel({
+    displayAction: record.actionLabel || safeLocalizedText({
       value: record.action,
       dictionary: AUDIT_ACTION_LABELS,
       unknownLabel: '业务操作'
