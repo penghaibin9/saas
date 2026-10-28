@@ -4,22 +4,21 @@
     subtitle="发布岗位实习通知，支持指定学院、紧急强弹、有效期和多格式附件。"
     :watermark="false"
   >
-    <div class="inot-grid">
-      <section class="inot-card">
+    <div class="inot-grid" :class="{ 'inot-grid--readonly': !canManage }">
+      <section v-if="canManage" class="inot-card">
         <header class="inot-head">
           <div>
             <h2>发布通知</h2>
-            <p>重要/紧急通知会在学生和教师移动端强制弹框，明确确认后才记为已读。</p>
+            <p>重要、紧急通知需要接收人确认已读。</p>
           </div>
         </header>
-
-        <div v-if="!canManage" class="inot-readonly">当前账号只有查看权限，不能发布或撤回通知。</div>
 
         <div class="inot-form">
           <label>
             <span>公告类型</span>
             <AppSelect v-model="form.noticeType" :options="typeOptions" :disabled="!canManage || submitting" />
           </label>
+          <label><span>学校公告分类</span><AppSelect v-model="form.schoolCategory" :options="categoryOptions" :disabled="!canManage || submitting" /></label>
           <label>
             <span>紧急程度</span>
             <AppSelect v-model="form.urgency" :options="urgencyOptions" :disabled="!canManage || submitting" />
@@ -86,7 +85,6 @@
         <header class="inot-head">
           <div>
             <h2>本批次通知记录</h2>
-            <p>保留已撤回记录，便于审计和验收。</p>
           </div>
           <AppButton variant="ghost" :disabled="loading" @click="load">{{ loading ? '刷新中…' : '刷新' }}</AppButton>
         </header>
@@ -98,7 +96,7 @@
             <div class="row-between">
               <div class="inot-title-wrap">
                 <strong>{{ row.title }}</strong>
-                <span>{{ typeLabel(row.noticeType) }} · {{ urgencyLabel(row.urgency) }} · {{ audienceLabel(row) }}</span>
+                <span>{{ row.schoolCategory || typeLabel(row.noticeType) }} · {{ urgencyLabel(row.urgency) }} · {{ audienceLabel(row) }}</span>
               </div>
               <AppStatusTag :type="row.status === 'PUBLISHED' ? (row.urgency === 'URGENT' ? 'danger' : 'warning') : 'default'">
                 {{ row.status === 'PUBLISHED' ? '已发布' : '已撤回' }}
@@ -158,6 +156,7 @@ const AUDIENCE = [
 ]
 const blankForm = () => ({
   noticeType: 'NOTICE',
+  schoolCategory: '',
   urgency: 'IMPORTANT',
   audienceScope: 'ALL',
   recipientCollegeIds: [],
@@ -191,6 +190,7 @@ export default {
     }
   },
   computed: {
+    categoryOptions(){return [{value:'',label:'不指定学校分类'},...(this.ctx.announcementCategories || []).map(value=>({value,label:value}))]},
     batchStore() { return useInternshipBatchStore() },
     canManage() { return canCode(this.ctx, 'internship.communication.manage') }
   },
@@ -294,6 +294,7 @@ export default {
       const res = await internshipApi.publishInternshipNotice({
         batchId: Number(batchId),
         noticeType: this.form.noticeType,
+        schoolCategory: this.form.schoolCategory,
         urgency: this.form.urgency,
         audienceScope: this.form.audienceScope,
         recipientCollegeIds: this.form.audienceScope === 'COLLEGE'
@@ -331,5 +332,7 @@ export default {
 </script>
 
 <style scoped>
+.inot-grid.inot-grid--readonly{grid-template-columns:1fr}
+
 .inot-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.15fr);gap:16px;align-items:start}.inot-card{padding:16px;border:1px solid var(--border-light);border-radius:12px;background:var(--card);box-shadow:var(--shadow-xs)}.inot-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:16px}.inot-head h2{margin:0;font-size:16px}.inot-head p{margin:5px 0 0;color:var(--t3);font-size:12px;line-height:1.55}.inot-readonly{margin-bottom:14px;padding:10px 12px;border-radius:8px;background:#fff7ed;color:#9a3412;font-size:12px}.inot-form{display:grid;grid-template-columns:1fr 1fr;gap:14px}.inot-form label{display:flex;flex-direction:column;gap:6px;color:var(--t2);font-size:12px}.inot-full{grid-column:1/-1}.inot-input,.inot-textarea{width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:8px;padding:10px 12px;background:var(--card);color:var(--t1);font:inherit}.inot-textarea{min-height:130px;resize:vertical}.inot-attachments{padding:12px;border:1px solid var(--border-light);border-radius:10px;background:var(--bg-soft)}.inot-attachments-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.inot-attachments-head small{color:var(--t3)}.inot-file{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:10px;align-items:center;padding:8px 0;border-top:1px solid var(--border-light);font-size:12px}.inot-file-name{padding:0;border:0;background:none;text-align:left;color:var(--primary-600);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;cursor:pointer}.inot-file-input{display:none}.inot-upload-row{margin-top:10px}.inot-actions{display:flex;align-items:center;gap:12px;margin-top:16px}.inot-warning{font-size:12px;color:#b45309}.inot-list{display:flex;flex-direction:column;gap:12px}.inot-notice{padding:14px;border:1px solid var(--border-light);border-radius:10px;background:var(--bg-soft)}.inot-title-wrap{min-width:0;display:flex;flex-direction:column;gap:4px}.inot-title-wrap strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.inot-title-wrap span,.inot-meta{font-size:12px;color:var(--t3)}.inot-notice p{margin:10px 0;white-space:pre-wrap;word-break:break-word;line-height:1.65;color:var(--t2)}.inot-meta{display:flex;flex-wrap:wrap;gap:6px 14px}.inot-attachment-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:10px}.inot-attachment-chip{padding:6px 9px;border:1px solid var(--border-light);border-radius:999px;background:var(--card);color:var(--primary-600);cursor:pointer;font-size:12px}.inot-row-actions{margin-top:10px}.danger{color:#b91c1c}@media(max-width:1100px){.inot-grid{grid-template-columns:1fr}}
 </style>

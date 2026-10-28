@@ -1,79 +1,20 @@
 /** 学生 PC 岗位实习核心写流程独立门面。 */
-import { request, uploadFile } from './request'
+import { downloadFile, request, uploadFile } from './request'
 
 const encode = (value) => encodeURIComponent(String(value ?? ''))
 const contextQuery = ({ batchId, internshipId }) =>
   `?batchId=${encode(batchId)}&internshipId=${encode(internshipId)}`
-const APPLICATION_EDITABLE_STATUSES = new Set(['DRAFT', 'REJECTED', 'WITHDRAWN'])
-
-function listItems(data) {
-  if (Array.isArray(data)) return data
-  if (Array.isArray(data?.items)) return data.items
-  if (Array.isArray(data?.list)) return data.list
-  return []
-}
-
-function decorateLeaveReviewFeedback(data) {
-  const decorate = (item) => {
-    if (!item || item.status !== 'REJECTED') return item
-    const reviewComment = String(item.reviewComment || '').trim()
-    if (!reviewComment) return item
-    const reason = String(item.reason || '').trim()
-    return {
-      ...item,
-      reason: `${reason}${reason ? ' · ' : ''}驳回原因：${reviewComment}`
-    }
-  }
-  if (Array.isArray(data)) return data.map(decorate)
-  if (Array.isArray(data?.items)) return { ...data, items: data.items.map(decorate) }
-  if (Array.isArray(data?.list)) return { ...data, list: data.list.map(decorate) }
-  return data
-}
-
-function decorateApplicationReviewFeedback(data) {
-  const decorate = (item) => {
-    if (!item || item.status !== 'REJECTED') return item
-    const reviewComment = String(item.reviewComment || '').trim()
-    if (!reviewComment) return item
-    const note = String(item.applicationNote || '').trim()
-    return {
-      ...item,
-      applicationNote: `${note}${note ? ' · ' : ''}驳回原因：${reviewComment}`
-    }
-  }
-  if (Array.isArray(data)) return data.map(decorate)
-  if (Array.isArray(data?.items)) return { ...data, items: data.items.map(decorate) }
-  if (Array.isArray(data?.list)) return { ...data, list: data.list.map(decorate) }
-  return data
-}
-
-async function resolveEditableSelfArrangedApplication(body) {
-  if (!body || body.id || String(body.applicationType || '').toUpperCase() !== 'SELF_ARRANGED') {
-    return body
-  }
-  if (!body.batchId || !body.internshipId) return body
-
-  // The backend intentionally requires id + expectedVersion when an editable application
-  // already exists. Refresh that identity immediately before saving so a rejected/withdrawn
-  // application can be corrected without weakening optimistic-concurrency protection.
-  const current = await request(
-    `/portal/internship/context/applications${contextQuery(body)}`
-  )
-  const candidates = listItems(current).filter((item) =>
-    item
-    && String(item.applicationType || '').toUpperCase() === 'SELF_ARRANGED'
-    && APPLICATION_EDITABLE_STATUSES.has(String(item.status || '').toUpperCase())
-  )
-  if (candidates.length !== 1 || !candidates[0].id) return body
-
-  return {
-    ...body,
-    id: candidates[0].id,
-    expectedVersion: candidates[0].version
-  }
-}
 
 export const internshipCoreApi = {
+  materialRequirements(context) {
+    return request(`/mobile/internship/context/material-requirements${contextQuery(context)}`)
+  },
+  submitMaterial(id, body) {
+    return request(`/mobile/internship/context/material-requirements/${encode(id)}/submit`, { method: 'POST', body })
+  },
+  materialTemplate(context, id, filename, templateVersionId) {
+    return downloadFile(`/mobile/internship/context/material-requirements/${encode(id)}/template/download${contextQuery(context)}&templateVersionId=${encode(templateVersionId)}`,filename)
+  },
   formalDocuments(context) {
     const batchId = String(context?.batchId || '').trim()
     const internshipId = String(context?.internshipId || '').trim()
@@ -114,12 +55,10 @@ export const internshipCoreApi = {
     return request(`/portal/internship/context/notices?batchId=${encode(batchId)}`)
   },
   async applications(context) {
-    const data = await request(`/portal/internship/context/applications${contextQuery(context)}`)
-    return decorateApplicationReviewFeedback(data)
+    return request(`/portal/internship/context/applications${contextQuery(context)}`)
   },
   async saveApplication(body) {
-    const payload = await resolveEditableSelfArrangedApplication(body)
-    return request('/portal/internship/context/applications', { method: 'PUT', body: payload })
+    return request('/portal/internship/context/applications', { method: 'PUT', body })
   },
   submitApplication(id, body) {
     return request(`/portal/internship/context/applications/${encode(id)}/submit`, {
@@ -131,9 +70,14 @@ export const internshipCoreApi = {
       method: 'POST', body
     })
   },
-  async leaves(context) {
-    const data = await request(`/portal/internship/context/leaves${contextQuery(context)}`)
-    return decorateLeaveReviewFeedback(data)
+  leaves(context) {
+    return request(`/portal/internship/context/leaves${contextQuery(context)}`)
+  },
+  leaveDetail(context, id) {
+    return request(`/portal/internship/context/leaves/${encode(id)}${contextQuery(context)}`)
+  },
+  resubmitLeave(id, body) {
+    return request(`/portal/internship/context/leaves/${encode(id)}/resubmit`, { method: 'POST', body })
   },
   applyLeave(body) {
     return request('/portal/internship/context/leaves', { method: 'POST', body })
@@ -159,8 +103,8 @@ export const internshipCoreApi = {
       method: 'POST', body
     })
   },
-  agreements() {
-    return request('/portal/internship/context/agreements')
+  agreements(context) {
+    return request(`/portal/internship/context/agreements${contextQuery(context)}`)
   },
   agreement(id) {
     return request(`/portal/internship/context/agreements/${encode(id)}`)
@@ -170,14 +114,19 @@ export const internshipCoreApi = {
       method: 'POST', body
     })
   },
-  plans() {
-    return request('/portal/internship/context/plans')
+  agreementPdf(id, body) {
+    return request(`/portal/internship/context/agreements/${encode(id)}/pdf`, {
+      method: 'POST', body
+    })
   },
-  plan(planId = '') {
-    return request('/portal/internship/context/plan' + (planId ? `?planId=${encode(planId)}` : ''))
+  plans(context) {
+    return request('/portal/internship/context/plans' + (context ? contextQuery(context) : ''))
   },
-  planTasks(planId = '') {
-    return request('/portal/internship/context/plan/tasks' + (planId ? `?planId=${encode(planId)}` : ''))
+  plan(planId = '', context) {
+    return request('/portal/internship/context/plan' + (context ? contextQuery(context) : '') + (planId ? `${context ? '&' : '?'}planId=${encode(planId)}` : ''))
+  },
+  planTasks(planId = '', context) {
+    return request('/portal/internship/context/plan/tasks' + (context ? contextQuery(context) : '') + (planId ? `${context ? '&' : '?'}planId=${encode(planId)}` : ''))
   },
   acknowledgePlan(body) {
     return request('/portal/internship/context/plan/acknowledge', {
@@ -192,11 +141,17 @@ export const internshipCoreApi = {
   uploadPlanTaskEvidence(file) {
     return uploadFile('/files?bizType=INTERNSHIP_PLAN_TASK', file)
   },
-  changes(context) {
-    return request(`/portal/internship/context/changes${contextQuery(context)}`)
+  changes(context, page = 1) {
+    return request(`/portal/internship/context/changes${contextQuery(context)}&page=${encode(page)}&pageSize=20`)
+  },
+  changeTargets(context, changeType, keyword = '', page = 1) {
+    return request(`/portal/internship/context/changes/target-positions${contextQuery(context)}&changeType=${encode(changeType)}&keyword=${encode(keyword)}&page=${encode(page)}&pageSize=20`)
   },
   applyChange(body) {
     return request('/portal/internship/context/changes', { method: 'POST', body })
+  },
+  resubmitChange(id, body) {
+    return request(`/portal/internship/context/changes/${encode(id)}/resubmit`, { method: 'POST', body })
   },
   withdrawChange(id, body) {
     return request(`/portal/internship/context/changes/${encode(id)}/withdraw`, {
@@ -211,21 +166,31 @@ export const internshipCoreApi = {
       `/portal/internship/context/reports/${encode(reportKind)}/${encode(reportId)}/pdf?batchId=${encode(batchId)}&internshipId=${encode(internshipId)}`
     )
   },
-  reports(context) {
-    return request(`/portal/internship/context/reports${contextQuery(context)}`)
+  reports(context, page = 1, pageSize = 20, reportType = '', focusReportId = '') {
+    const params = new URLSearchParams({ page, pageSize })
+    if (reportType) params.set('reportType', reportType)
+    if (focusReportId) params.set('focusReportId', String(focusReportId))
+    return request(`/portal/internship/context/reports${contextQuery(context)}&${params}`)
+  },
+  processReportDetail(context, id) {
+    return request(`/portal/internship/context/reports/${encode(id)}${contextQuery(context)}`)
   },
   submitReport(body) {
     return request('/portal/internship/context/reports', { method: 'POST', body })
   },
-  weeklyReports(context) {
-    return request(`/portal/internship/context/weekly-reports${contextQuery(context)}`)
+  weeklyReports(context, page = 1, pageSize = 20, focusReportId = '') {
+    const params = new URLSearchParams({ page, pageSize })
+    if (focusReportId) params.set('focusReportId', String(focusReportId))
+    return request(`/portal/internship/context/weekly-reports${contextQuery(context)}&${params}`)
+  },
+  weeklyReportDetail(context, id) {
+    return request(`/portal/internship/context/weekly-reports/${encode(id)}${contextQuery(context)}`)
   },
   submitWeeklyReport(body) {
     return request('/portal/internship/context/weekly-reports', { method: 'POST', body })
   },
-  positions(city = '') {
-    const query = city ? `?city=${encode(city)}` : ''
-    return request(`/portal/internship/enterprises${query}`)
+  positions(context, page = 1, keyword = '') {
+    return request(`/portal/internship/context/applications/positions${contextQuery(context)}&page=${encode(page)}&pageSize=20&keyword=${encode(keyword)}`)
   },
   uploadApplicationEvidence(file) {
     return uploadFile('/files?bizType=INTERNSHIP_APPLICATION_EVIDENCE', file)

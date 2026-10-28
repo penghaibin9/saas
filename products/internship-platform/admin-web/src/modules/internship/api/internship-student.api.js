@@ -11,7 +11,7 @@ function fail(message, code = 1) {
   return Promise.resolve({ code, data: null, message })
 }
 function toErr(e) {
-  if (e?.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message, bizCode: e.bizCode, httpStatus: e.httpStatus })
+  if (e?.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message, bizCode: e.bizCode, httpStatus: e.httpStatus, ...(e.details !== undefined ? { details: e.details } : {}) })
   return fail(e?.message || '真实接口不可用', 503001)
 }
 async function call(fn) {
@@ -218,12 +218,11 @@ export const internStudentApi = {
     return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows, batchId } }))
   },
   // 建档用：可选学生（学生主档）；分配用：已上架岗位
-  getStudentOptions(keyword) {
-    return call(() =>
-      request('/students', { params: { page: 1, pageSize: 200, keyword: keyword || '' } }).then((d) =>
-        (d.items || []).map((s) => ({ id: s.id || s.studentId, name: s.realName || s.name, studentNo: s.studentNo }))
-      )
-    )
+  getStudentOptions(keyword = '', pageSize = 30) {
+    return call(() => request('/directory/student-options', { params: { page: 1, pageSize, keyword } }).then(data => data.items || []))
+  },
+  getStudentOptionsByIds(ids = []) {
+    return call(() => request('/directory/student-options', { params: { ids: ids.join(',') } }).then(data => data.items || []))
   },
   getPublishedPositions() {
     return call(() =>

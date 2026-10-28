@@ -9,9 +9,40 @@ on:
       - "products/internship-platform/backend/alembic/versions/**"
       - "products/internship-platform/backend/tests/test_internship_employment*.py"
       - "products/internship-platform/backend/tests/test_yiyang_write_flows_mysql.py"
+      - "products/internship-platform/backend/tests/test_yiyang_tm05_review_scope_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_change_resubmit_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_mobile_consent_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_insurance_renewal_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_student_agreement_pdf_mysql.py"
       - "products/internship-platform/backend/tests/test_student_notice_identity_mysql.py"
       - "products/internship-platform/backend/tests/test_yiyang_plan_export_options_mysql.py"
+      - "products/internship-platform/backend/tests/test_plan_allocation_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_exemption_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_safety_mobile_write_mysql.py"
       - "products/internship-platform/backend/tests/test_student_weekly_detail_mysql.py"
+      - "products/internship-platform/backend/tests/test_position_readiness_mysql.py"
+      - "products/internship-platform/backend/tests/test_report_count_rules.py"
+      - "products/internship-platform/backend/tests/test_report_count_consistency_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_application_filters_mysql.py"
+      - "products/internship-platform/backend/tests/test_security_file_regressions.py"
+      - "products/internship-platform/backend/tests/test_report_attachment_quota_mysql.py"
+      - "products/internship-platform/backend/tests/test_score_report_source*.py"
+      - "products/internship-platform/backend/tests/test_student_application_catalog_mysql.py"
+      - "products/internship-platform/backend/tests/test_student_support_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_student_feedback_context_mysql.py"
+      - "products/internship-platform/backend/tests/test_student_makeup_context_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_change_history.py"
+      - "products/internship-platform/backend/tests/test_change_export*.py"
+      - "products/internship-platform/backend/tests/test_payroll_ledger_mysql.py"
+      - "products/internship-platform/backend/tests/test_evaluation_score_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_leave_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_checkin_exemption_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_teacher_todo_report_projection.py"
+      - "products/internship-platform/backend/tests/test_enterprise_member_onboarding_mysql.py"
+      - "products/internship-platform/backend/tests/test_internship_existing_member_invite.py"
+      - "products/internship-platform/backend/tests/test_student_handoff_mysql.py"
+      - "products/internship-platform/backend/tests/test_teacher_visit_story_mysql.py"
+      - "products/internship-platform/backend/tests/test_teacher_guidance_story_mysql.py"
       - "products/internship-platform/backend/tests/test_archive_package_access_mysql.py"
       - "products/internship-platform/backend/tests/test_internship_archive_recovery_employment_static.py"
       - "products/internship-platform/backend/tests/test_internship_material_center.py"
@@ -19,6 +50,7 @@ on:
       - "products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py"
       - "products/internship-platform/backend/tests/test_student_basic_info_mysql.py"
       - "products/internship-platform/backend/tests/test_xlsx_stream_bounds.py"
+      - "products/internship-platform/backend/tests/test_*_unit.py"
       - "products/internship-platform/backend/tests/test_checkin_coordinate_mysql.py"
       - "products/internship-platform/backend/tests/test_checkin_watermark_layout.py"
       - "products/internship-platform/backend/tests/test_teacher_checkin_photo_mysql.py"
@@ -34,6 +66,7 @@ on:
       - "products/internship-platform/backend/requirements.txt"
       - "products/internship-platform/mobile/**"
       - "products/internship-platform/admin-web/**"
+      - "products/internship-platform/student-web/**"
       - ".github/workflows/internship-standalone-employment.yml"
 
 jobs:
@@ -63,7 +96,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-employment-ci
       GAP09_MYSQL_ACCEPTANCE: "1"
-      EXPECTED_ALEMBIC_REVISION: ix0030
+      EXPECTED_ALEMBIC_REVISION: ix0036
       FILE_STORAGE_DIR: /tmp/internship-employment-ci-files
     steps:
       - uses: actions/checkout@v4
@@ -95,22 +128,167 @@ jobs:
       - name: Exercise normal-role employment, archives, basic facts, attachments, notices and write transactions
         run: |
           mkdir -p /tmp/internship-employment-ci-evidence
-          pytest -q products/internship-platform/backend/tests/test_xlsx_stream_bounds.py --junitxml=/tmp/internship-employment-ci-evidence/xlsx-stream-bounds.xml
+          pytest --noconftest -q products/internship-platform/backend/tests/test_xlsx_stream_bounds.py products/internship-platform/backend/tests/test_file_office_mime_unit.py products/internship-platform/backend/tests/test_internship_material_collection_unit.py products/internship-platform/backend/tests/test_material_shared_wiring_unit.py products/internship-platform/backend/tests/test_report_pagination_wiring_unit.py products/internship-platform/backend/tests/test_shared_file_scan_and_org_scope_unit.py products/internship-platform/backend/tests/test_teacher_guidance_batch_receipt_unit.py --junitxml=/tmp/internship-employment-ci-evidence/unit-regressions.xml
           pytest -q products/internship-platform/backend/tests/test_checkin_coordinate_mysql.py products/internship-platform/backend/tests/test_checkin_watermark_layout.py products/internship-platform/backend/tests/test_teacher_checkin_photo_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/checkin-photo.xml
           pytest -q products/internship-platform/backend/tests/test_teacher_checkin_fence_mysql.py products/internship-platform/backend/tests/test_teacher_checkin_rule_contract.py --junitxml=/tmp/internship-employment-ci-evidence/teacher-checkin-fence.xml
           pytest -q products/internship-platform/backend/tests/test_teacher_checkin_history_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/teacher-checkin-history.xml
           pytest -q products/internship-platform/backend/tests/test_material_submission_mysql.py products/internship-platform/backend/tests/test_internship_insurance_detail.py --junitxml=/tmp/internship-employment-ci-evidence/material-submission.xml
+          pytest -q products/internship-platform/backend/tests/test_yiyang_tm05_review_scope_mysql.py -W error::sqlalchemy.exc.SAWarning --junitxml=/tmp/internship-employment-ci-evidence/teacher-application-scope.xml
+          pytest --noconftest -q products/internship-platform/backend/tests/test_internship_change_resubmit_mysql.py products/internship-platform/backend/tests/test_internship_mobile_consent_mysql.py products/internship-platform/backend/tests/test_internship_insurance_renewal_mysql.py products/internship-platform/backend/tests/test_internship_student_agreement_pdf_mysql.py -W error::sqlalchemy.exc.SAWarning --junitxml=/tmp/internship-employment-ci-evidence/change-consent.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/change-consent.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==13
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_score_report_source_rules.py products/internship-platform/backend/tests/test_student_support_feedback_unit.py products/internship-platform/backend/tests/test_student_feedback_file_access_unit.py products/internship-platform/backend/tests/test_student_makeup_file_access_unit.py products/internship-platform/backend/tests/test_internship_change_history.py products/internship-platform/backend/tests/test_change_export.py --junitxml=/tmp/internship-employment-ci-evidence/core-flow-new-rules.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/core-flow-new-rules.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==50
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_score_report_source_mysql.py products/internship-platform/backend/tests/test_student_application_catalog_mysql.py products/internship-platform/backend/tests/test_student_support_story_mysql.py products/internship-platform/backend/tests/test_student_feedback_context_mysql.py products/internship-platform/backend/tests/test_student_makeup_context_story_mysql.py products/internship-platform/backend/tests/test_change_export_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/core-flow-new-mysql.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/core-flow-new-mysql.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==24
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_internship_leave_story_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/leave-story.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/leave-story.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==38
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_checkin_exemption_story_mysql.py products/internship-platform/backend/tests/test_internship_checkin_trust_unit.py --junitxml=/tmp/internship-employment-ci-evidence/attendance-exemption.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/attendance-exemption.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==21
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_teacher_visit_story_mysql.py -W error::sqlalchemy.exc.SAWarning --junitxml=/tmp/internship-employment-ci-evidence/teacher-visit-story.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/teacher-visit-story.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==25
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_teacher_guidance_story_mysql.py -W error::sqlalchemy.exc.SAWarning --junitxml=/tmp/internship-employment-ci-evidence/teacher-guidance-story.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/teacher-guidance-story.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==25
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_yiyang_plan_export_options_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/plan-export-options.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/plan-export-options.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==12
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_student_weekly_detail_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/student-weekly-detail.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/student-weekly-detail.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==35
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_report_count_rules.py products/internship-platform/backend/tests/test_report_count_consistency_mysql.py products/internship-platform/backend/tests/test_internship_application_filters_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/report-application-contracts.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/report-application-contracts.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==32
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_teacher_todo_report_projection.py products/internship-platform/backend/tests/test_enterprise_member_admin_unit.py products/internship-platform/backend/tests/test_enterprise_member_onboarding_mysql.py products/internship-platform/backend/tests/test_internship_existing_member_invite.py products/internship-platform/backend/tests/test_student_handoff_mysql.py products/internship-platform/backend/tests/test_position_readiness_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/handoff-members.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/handoff-members.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==54
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+          pytest --noconftest -q products/internship-platform/backend/tests/test_security_file_regressions.py::FileSecurityTest::test_largest_legal_report_can_reserve_its_last_attachment products/internship-platform/backend/tests/test_security_file_regressions.py::FileSecurityTest::test_temp_count_and_bytes_include_inflight_reservations products/internship-platform/backend/tests/test_security_file_regressions.py::FileSecurityTest::test_reservation_is_committed_with_expiry_before_return products/internship-platform/backend/tests/test_security_file_regressions.py::FileSecurityTest::test_upload_reserves_before_bytes_when_full products/internship-platform/backend/tests/test_report_attachment_quota_mysql.py::test_two_connections_compete_for_last_legal_report_attachment_slot --junitxml=/tmp/internship-employment-ci-evidence/report-attachment-quota.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/report-attachment-quota.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==5
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
           pytest -q products/internship-platform/backend/tests/test_internship_employment_mysql.py products/internship-platform/backend/tests/test_yiyang_write_flows_mysql.py products/internship-platform/backend/tests/test_student_notice_identity_mysql.py products/internship-platform/backend/tests/test_internship_employment_teacher_permission_contract.py products/internship-platform/backend/tests/test_archive_package_access_mysql.py products/internship-platform/backend/tests/test_internship_archive_recovery_employment_static.py products/internship-platform/backend/tests/test_internship_material_center.py products/internship-platform/backend/tests/test_teacher_period_reports_mysql.py products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py products/internship-platform/backend/tests/test_student_basic_info_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/backend.xml
+      - name: Verify normal-role monthly payroll and same-filter exports
+        run: |
+          pytest --noconftest -q products/internship-platform/backend/tests/test_payroll_ledger_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/payroll-ledger.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/payroll-ledger.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==11
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+      - name: Verify enterprise evaluation through student final results
+        run: |
+          pytest --noconftest -q products/internship-platform/backend/tests/test_evaluation_score_story_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/evaluation-score.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/evaluation-score.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==7
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+      - name: Verify formal documents full archive and employment on one placement
+        run: |
+          pytest --noconftest -q products/internship-platform/backend/tests/test_archive_document_employment_story_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/archive-document-employment.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/archive-document-employment.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==13
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+      - name: Verify school statistics teacher performance and scoped exports
+        run: |
+          pytest --noconftest -q products/internship-platform/backend/tests/test_stats_performance_story_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/stats-performance.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/stats-performance.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==15
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+      - name: Verify plans enterprise imports and versioned allocations
+        run: |
+          pytest --noconftest -q products/internship-platform/backend/tests/test_plan_allocation_story_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/plan-allocation-story.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/plan-allocation-story.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==27
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+      - name: Verify exemption original documents and evidence permissions
+        run: |
+          pytest --noconftest -q products/internship-platform/backend/tests/test_exemption_story_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/exemption-story.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/exemption-story.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==5
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
+      - name: Verify student safety write routes and server time authority
+        run: |
+          pytest --noconftest -q products/internship-platform/backend/tests/test_safety_mobile_write_mysql.py --junitxml=/tmp/internship-employment-ci-evidence/safety-mobile-write.xml
+          python - <<'PY'
+          from xml.etree import ElementTree
+          suites=list(ElementTree.parse('/tmp/internship-employment-ci-evidence/safety-mobile-write.xml').getroot().iter('testsuite'))
+          assert sum(int(s.get('tests',0)) for s in suites)==4
+          assert all(int(s.get(k,0))==0 for s in suites for k in ('errors','failures','skipped'))
+          PY
       - name: Exercise the actual mobile and PC page controllers
         run: |
+          npm --prefix products/internship-platform/mobile install --no-audit --no-fund
           npm --prefix products/internship-platform/mobile test
-          npm --prefix products/internship-platform/admin-web run test:employment
-          npm --prefix products/internship-platform/admin-web run test:teacher-reports
-          npm --prefix products/internship-platform/admin-web run test:basic-info
-          npm --prefix products/internship-platform/admin-web run test:attendance-photo
-          npm --prefix products/internship-platform/admin-web run test:teacher-checkin-rule
-          npm --prefix products/internship-platform/admin-web run test:teacher-checkin-history
-          npm --prefix products/internship-platform/admin-web run test:materials
+          node --test products/internship-platform/admin-web/tests/*.test.mjs
+          npm --prefix products/internship-platform/student-web ci --no-audit --no-fund
+          node --test products/internship-platform/student-web/tests/*.test.mjs
       - name: Preserve backend results
         if: always()
         uses: actions/upload-artifact@v4

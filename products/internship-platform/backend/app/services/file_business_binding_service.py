@@ -6,6 +6,7 @@
 """
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import event, inspect, select
@@ -36,6 +37,10 @@ def _actor_student_values(actor: dict) -> set[str]:
 
 
 def _file_ready(file_obj) -> bool:
+    if (str(file_obj.biz_type or '').upper() == 'TEMP_PRIVATE'
+            and getattr(file_obj, 'retention_until', None)
+            and file_obj.retention_until <= datetime.utcnow()):
+        return False
     return bool(
         str(file_obj.status or "").upper() in _READY_FILE_STATUS
         and str(file_obj.scan_status or "NOT_REQUIRED").upper() in _READY_SCAN_STATUS
@@ -158,7 +163,7 @@ def bind_file_to_business(
     # 同一正式对象可能被 ORM 事务钩子、证据冻结守卫和归档快照连续复核。
     # relationType 是关系用途标签，不得把同一 bizType + bizId 误判成“改绑”。
     same_target = _same_target_binding(active, target_type=target_type, target_id=target_id)
-    if same_target:
+    if same_target and all(str(b.biz_type or '').upper() == target_type and _text(b.biz_id) == target_id for b in active):
         _assert_same_target_scope(
             same_target,
             target_subject=target_subject,

@@ -15,6 +15,7 @@ from app.core.permissions import require_module, require_permission
 from app.core.response import success
 from app.modules.internship.services import internship_teacher_activity_service as activity_svc
 from app.services import teacher_mobile_internship_evidence_service as svc
+from app.modules.internship.schemas.internship_visit import VisitLocation
 from app.adapters.employment_gateway import employment_gateway
 
 router = APIRouter(
@@ -27,6 +28,11 @@ router = APIRouter(
 def employment_registrations(batchId:int=Query(...,ge=1),internshipId:int|None=Query(None,ge=1),status:str=Query('ALL'),page:int=Query(1,ge=1),
     pageSize:int=Query(20,ge=1,le=100),user=Depends(require_permission('internship.employment.view'))):
     return success(employment_gateway.list_registrations(user,batch_id=batchId,internship_id=internshipId,status=status,page=page,page_size=pageSize))
+
+@router.post('/employment/export', summary='导出当前筛选的脱敏就业上报台账')
+def export_employment_registrations(batchId:int=Query(...,ge=1),internshipId:int|None=Query(None,ge=1),
+    status:str=Query('ALL'),user=Depends(require_permission('internship.stats.export'))):
+    return success(employment_gateway.export_registrations(user,batch_id=batchId,internship_id=internshipId,status=status))
 
 @router.get('/employment/{registration_id}', summary='查看就业登记当前版本与完整历史')
 def employment_registration(registration_id:int,user=Depends(require_permission('internship.employment.view'))):
@@ -46,7 +52,9 @@ class _StrictBody(BaseModel):
 
 
 class VisitEvidenceBody(_StrictBody):
+    batchId: int = Field(gt=0)
     planId: int = Field(gt=0)
+    expectedPlanVersion: int = Field(strict=True, ge=0)
     visitType: Literal["ONSITE", "ONLINE", "PHONE", "VIDEO", "OTHER"]
     contactPerson: str = Field(min_length=2, max_length=100)
     workStatus: str = Field(min_length=2, max_length=300)
@@ -59,8 +67,9 @@ class VisitEvidenceBody(_StrictBody):
     riskLevel: Literal["LOW", "MEDIUM", "HIGH"] | None = None
     riskReason: str | None = Field(default=None, max_length=500)
     fileIds: list[str] = Field(default_factory=list, max_length=1)
-    location: None = None
-    expectedVersion: int = Field(ge=0)
+    title: str | None = Field(default=None, min_length=2, max_length=200)
+    location: VisitLocation | None = None
+    expectedVersion: int = Field(strict=True, ge=0)
 
 
 class TeacherCheckinBody(_StrictBody):
@@ -116,6 +125,7 @@ class EmergencyNoticeBody(_StrictBody):
     title: str = Field(min_length=2, max_length=200)
     content: str = Field(min_length=5, max_length=5000)
     noticeType: Literal["AGREEMENT", "TRAINING", "SAFETY", "NOTICE", "OTHER"] = "NOTICE"
+    schoolCategory: str = Field(default="",max_length=50)
     urgency: Literal["NORMAL", "IMPORTANT", "URGENT"] = "IMPORTANT"
     validFrom: datetime | None = None
     validUntil: datetime | None = None
@@ -133,8 +143,13 @@ class NoticeWithdrawBody(_StrictBody):
     summary="教师端巡访计划执行目标（含实习记录版本）",
     name="teacher_mobile_v3_visit_targets",
 )
-def visit_targets(user=Depends(require_permission("internship.visit.view"))):
-    return success(svc.list_visit_targets(user))
+def visit_targets(batchId: int = Query(..., ge=1), page: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50), planId: int | None = Query(None, ge=1),
+    studentPage: int = Query(1, ge=1), studentPageSize: int = Query(20, ge=1, le=100),
+    internshipId: int | None = Query(None, ge=1), keyword: str = Query('', max_length=100),
+    user=Depends(require_permission("internship.visit.view"))):
+    return success(svc.list_visit_targets(user, batch_id=batchId, page=page, page_size=pageSize,
+        plan_id=planId, student_page=studentPage, student_page_size=studentPageSize, internship_id=internshipId, keyword=keyword))
 
 
 @router.post(

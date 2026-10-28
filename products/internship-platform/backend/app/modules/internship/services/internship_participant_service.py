@@ -161,6 +161,7 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
 
     with session() as db:
         b = _get_batch(db, batch_id)
+        db.refresh(b, with_for_update=True)
         rule_row = _get_or_create_rule(db, batch_id)
         if rule_row.frozen_at is not None:
             raise AppException("DATA_CONFLICT", "该批次名单已冻结，如需调整请使用单个增减")
@@ -194,6 +195,8 @@ def freeze(batch_id, body: dict, user: dict) -> dict:
                 created += 1
             else:
                 reused += 1
+            from app.modules.internship.services.internship_plan_assignment_service import ensure_published_primary_for_record_in_tx
+            ensure_published_primary_for_record_in_tx(db, rec, user=user)
             db.add(InternshipBatchParticipant(
                 tenant_id=_tid(), batch_id=int(batch_id), student_id=int(s.id), source="SCOPE",
                 snapshot_student_no=snap["studentNo"], snapshot_name=snap["name"],
@@ -260,6 +263,9 @@ def _visible_participant_student_ids(db, rows, user: dict | None = None) -> set[
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
     from app.modules.internship.services.internship_student_service import _current_scope
 
+    if _current_scope(user).get("mode") != "SCOPED":
+        return student_ids
+
     internship_ids = {int(r.internship_id) for r in rows if getattr(r, "internship_id", None)}
     visible: set[int] = set()
     if internship_ids:
@@ -273,13 +279,7 @@ def _visible_participant_student_ids(db, rows, user: dict | None = None) -> set[
         )
         visible.update(int(value) for value in db.scalars(q).all())
 
-    # 历史脏数据若 participant 缺 internship_id，受限角色没有可靠关联可授权，必须 fail-closed；
-    # 校级租户管理员仍可为追溯/对账查看冻结快照。
-    if _current_scope(user).get("mode") != "SCOPED":
-        visible.update(
-            int(r.student_id) for r in rows
-            if getattr(r, "student_id", None) and not getattr(r, "internship_id", None)
-        )
+    # Missing or removed record relations cannot authorize a scoped teacher through history.
     return visible
 
 
@@ -344,6 +344,7 @@ def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dic
 
     with session() as db:
         batch = _get_batch(db, batch_id)
+        db.refresh(batch, with_for_update=True)
         if batch.status != "RUNNING":
             raise AppException("DATA_CONFLICT", "只有进行中的批次可以人工补录参与学生")
         # 新增名单仍属于“新选人”动作，继续复用 resolver 的学籍资格 + 数据范围双重口径。
@@ -374,6 +375,8 @@ def add_participants(batch_id, student_ids, user: dict, reason: str = "") -> dic
                 rec.eligibility_status = "PENDING"
                 rec.destination_type = "NONE"
                 rec.version = int(rec.version or 0) + 1
+            from app.modules.internship.services.internship_plan_assignment_service import ensure_published_primary_for_record_in_tx
+            ensure_published_primary_for_record_in_tx(db, rec, user=user)
             # 曾被移出的人重新加入：复活原行而不是插重复行（唯一键也不允许）
             revived = db.scalars(select(InternshipBatchParticipant).where(
                 InternshipBatchParticipant.tenant_id == _tid(),
@@ -409,7 +412,7 @@ def remove_participant(batch_id, participant_id, reason: str, expected_version, 
     and statistics stop counting it.  A later manual re-add revives that exact record.
     """
     from app.core.optimistic_lock import require_expected_version
-    from app.models import InternshipBatchParticipant, InternshipRecord
+    from app.models import InternshipBatchParticipant, InternshipRecord, InternshipPlanTaskProgress
 
     if not reason or len(reason.strip()) < 2:
         raise AppException("VALIDATION_ERROR", "移出原因必填（不少于 2 字）")
@@ -417,6 +420,7 @@ def remove_participant(batch_id, participant_id, reason: str, expected_version, 
 
     with session() as db:
         batch = _get_batch(db, batch_id)
+        db.refresh(batch, with_for_update=True)
         if batch.status != "RUNNING":
             raise AppException("DATA_CONFLICT", "只有进行中的批次可以调整正式参与名单")
         row = db.scalar(select(InternshipBatchParticipant).where(
@@ -453,6 +457,12 @@ def remove_participant(batch_id, participant_id, reason: str, expected_version, 
                     "DATA_CONFLICT",
                     "该学生已经落实实习去向，不能直接移出批次；请先解除去向后再处理",
                 )
+            if db.scalar(select(InternshipPlanTaskProgress.id).where(
+                InternshipPlanTaskProgress.tenant_id == _tid(),
+                InternshipPlanTaskProgress.internship_id == rec.id,
+                InternshipPlanTaskProgress.is_deleted.is_(False),
+                InternshipPlanTaskProgress.status != "NOT_STARTED").limit(1)):
+                raise AppException("DATA_CONFLICT", "该学生已有计划任务办理记录，不能直接移出；请先核对原办理记录")
             rec.is_deleted = True
             rec.version = int(rec.version or 0) + 1
 

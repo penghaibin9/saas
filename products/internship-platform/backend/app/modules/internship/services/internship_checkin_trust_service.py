@@ -155,7 +155,7 @@ def resolve_rule(db, record, position) -> dict:
 
 def classify_location(*, lat, lng, accuracy, rule: dict, distance_m) -> tuple[str, str | None]:
     if lat is None or lng is None:
-        return "NO_LOCATION", "MISSING"
+        return "NO_LOCATION", "NO_LOCATION"
     if not rule.get("configured"):
         return "RECORDED", None
     maximum = float(rule.get("maxAccuracyM") or DEFAULT_MAX_ACCURACY_M)

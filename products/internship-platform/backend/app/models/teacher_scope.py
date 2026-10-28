@@ -12,7 +12,7 @@ teacher_key 优先用登录名（mock：counselor01 / db：login_name），姓�
 """
 from __future__ import annotations
 
-from sqlalchemy import String
+from sqlalchemy import BigInteger, String
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -24,7 +24,9 @@ class TeacherStudentScope(Base, PKMixin, TenantMixin, CommonMixin):
     teacher_key: Mapped[str] = mapped_column(String(64), nullable=False, index=True,
                                              comment="教师标识：登录名或 userId")
     teacher_name: Mapped[str | None] = mapped_column(String(64), nullable=True, comment="教师姓名（冗余，便于排查）")
-    role_code: Mapped[str | None] = mapped_column(String(32), nullable=True, comment="生效角色（COUNSELOR/GD_MENTOR/...）；空=全部角色")
+    role_code: Mapped[str | None] = mapped_column(String(50), nullable=True, comment="生效角色编码")
     scope_type: Mapped[str] = mapped_column(String(16), nullable=False, comment="CLASS/COLLEGE/MAJOR/STUDENT/ADVISOR")
     ref_value: Mapped[str | None] = mapped_column(String(128), nullable=True, comment="班级名/学院名/专业名/学号；ADVISOR 可空")
     status: Mapped[str] = mapped_column(String(16), nullable=False, default="ACTIVE")
+    user_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
+    ref_id: Mapped[int | None] = mapped_column(BigInteger, index=True)

@@ -35,6 +35,9 @@ class Settings(BaseSettings):
     ENTERPRISE_PORTAL_BASE_URL:str=""
     REGULATORY_RECEIPT_ADAPTER_ENABLED:bool=False
     REGULATORY_RECEIPT_ADAPTER_NAME:str=""
+    SYSTEM_EVIDENCE_DIR:str=""
+    RELEASE_VERSION:str=""
+    RELEASE_COMMIT:str=""
     model_config=SettingsConfigDict(env_file=".env",env_file_encoding="utf-8",extra="ignore")
     @property
     def is_prod(self): return self.APP_ENV.strip().lower()=="production"

@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Optional
 
 from io import BytesIO
+from urllib.parse import quote
 
 from fastapi import APIRouter, Body, Depends, Query
 from fastapi.responses import StreamingResponse
@@ -23,14 +24,36 @@ _P_VIEW = "internship.application.view"
 _P_REVIEW = "internship.application.review"
 
 
+def application_filters(
+    academicYear: Optional[str] = Query(None, max_length=20),
+    grade: Optional[str] = Query(None, max_length=20),
+    collegeId: Optional[str] = Query(None, pattern=r"^[1-9][0-9]{0,18}$"),
+    majorId: Optional[str] = Query(None, pattern=r"^[1-9][0-9]{0,18}$"),
+    classId: Optional[str] = Query(None, pattern=r"^[1-9][0-9]{0,18}$"),
+    studentName: Optional[str] = Query(None, max_length=100),
+    studentNo: Optional[str] = Query(None, max_length=100),
+    exemptionType: Optional[str] = Query(None, max_length=30),
+):
+    return dict(academic_year=academicYear, grade=grade, college_id=collegeId,
+                major_id=majorId, class_id=classId, student_name=studentName,
+                student_no=studentNo, exemption_type=exemptionType)
+
+
 @router.get("")
 def applications(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
                  status: Optional[str] = None, applicationType: Optional[str] = None,
                  keyword: Optional[str] = None, batchId: Optional[str] = None,
+                 filters: dict = Depends(application_filters),
                  user=Depends(require_permission(_P_VIEW))):
     items, total = svc.list_applications(
-        page, pageSize, status, applicationType, keyword, batch_id=batchId, user=user)
+        page, pageSize, status, applicationType, keyword, batch_id=batchId, user=user, **filters)
     return success(paginate(items, total, page, pageSize))
+
+
+@router.get("/filter-options")
+def filter_options(batchId: str = Query(..., min_length=1),
+                   user=Depends(require_permission(_P_VIEW))):
+    return success(svc.application_filter_options(batch_id=batchId, user=user))
 
 
 @router.get("/summary")
@@ -56,6 +79,7 @@ def applications_export(
     applicationType: Optional[str] = None,
     keyword: Optional[str] = None,
     batchId: Optional[str] = None,
+    filters: dict = Depends(application_filters),
     user=Depends(require_permission(_P_VIEW)),
 ):
     payload, filename, _row_count = svc.export_applications(
@@ -64,11 +88,13 @@ def applications_export(
         keyword=keyword,
         batch_id=batchId,
         user=user,
+        **filters,
     )
     return StreamingResponse(
         BytesIO(payload),
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        headers={"Content-Disposition": f"attachment; filename*=UTF-8''{quote(filename, safe='')}",
+                 "Cache-Control": "no-store"},
     )
 
 

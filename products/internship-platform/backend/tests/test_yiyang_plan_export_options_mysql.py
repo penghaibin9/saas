@@ -47,6 +47,9 @@ def seed_workspace(count=23):
                 status='PUBLISHED',version=2,published_at=datetime(2026,9,1))
             db.add(plan); db.flush(); batches.append({'id':str(batch.id),'planId':str(plan.id),'planNo':plan.plan_no,'title':plan.title})
         db.commit()
+        from app.services.system_authorization import bootstrap_school
+        bootstrap_school(db, tenant.id)
+        db.commit()
         return {'tenantCode':code,'tenantId':str(tenant.id),'users':users,'batches':batches}
 
 

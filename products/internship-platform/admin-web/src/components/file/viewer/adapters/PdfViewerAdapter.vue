@@ -161,7 +161,8 @@ async function loadPdf() {
   try {
     const data = await bytesFrom(props.source)
     if (token !== loadToken) return
-    const task = pdfjsLib.getDocument({ data, isEvalSupported: false })
+    const task = pdfjsLib.getDocument({ data, isEvalSupported: false,
+      cMapUrl: import.meta.env.BASE_URL, cMapPacked: true })
     const doc = await task.promise
     if (token !== loadToken) { await doc.destroy(); return }
     if (doc.numPages > PDF_PREVIEW_MAX_PAGES) {

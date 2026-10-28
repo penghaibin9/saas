@@ -7,17 +7,15 @@ DEPLOY_DIR="$(cd "$HERE/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.production.yml}"
 ENV_FILE="${ENV_FILE:-$DEPLOY_DIR/.env.production}"
 BACKUP_DIR="${BACKUP_DIR:-$DEPLOY_DIR/backups}"
-KEEP_DAYS="${KEEP_DAYS:-30}"
 SOURCE_COMMIT="${SOURCE_COMMIT:-unknown}"
 
 [ -f "$COMPOSE_FILE" ] || { echo "compose file missing: $COMPOSE_FILE" >&2; exit 2; }
 [ -f "$ENV_FILE" ] || { echo "environment file missing: $ENV_FILE" >&2; exit 2; }
-[[ "$KEEP_DAYS" =~ ^[0-9]+$ ]] && [ "$KEEP_DAYS" -ge 1 ] || { echo "KEEP_DAYS must be positive" >&2; exit 2; }
 
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR" 2>/dev/null || true
 
-stamp="$(date -u +%Y%m%d_%H%M%S)"
+stamp="$(date -u +%Y%m%d_%H%M%S)_$$"
 db_file="$BACKUP_DIR/mysql_${stamp}.sql.gz"
 files_file="$BACKUP_DIR/files_${stamp}.tar.gz"
 manifest="$BACKUP_DIR/manifest_${stamp}.json"
@@ -99,7 +97,7 @@ mv "$tmp_manifest" "$manifest"
   sha256sum "$(basename "$manifest")" > "$(basename "$manifest").sha256"
 )
 
-find "$BACKUP_DIR" -type f -mtime "+$KEEP_DAYS" \(   -name 'mysql_*.sql.gz' -o -name 'mysql_*.sql.gz.sha256' -o   -name 'files_*.tar.gz' -o -name 'files_*.tar.gz.sha256' -o   -name 'manifest_*.json' -o -name 'manifest_*.json.sha256' \) -delete
+# Retention cleanup is a separate reviewed operation; creating a backup never deletes older sets.
 
 trap - EXIT
 echo "[backup] complete: $manifest"

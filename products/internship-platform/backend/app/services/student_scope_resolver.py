@@ -152,86 +152,18 @@ class ScopeResolveResult:
 
 
 def _scope_filter(db, tenant_id: int, user):
-    """Standalone 数据范围：返回 (class_ids, student_ids)，None 表示全租户。
-
-    只复用岗位实习自己的 TeacherStudentScope。范围缺失时返回两个空集合，
-    绝不退化为全校。
-    """
+    """与系统管理和建档选择器共用稳定编号范围；None 仅表示本校全域。"""
     if user is None:
         return None, None
-    from app.models import College, Major, SchoolClass, StudentProfile
-    from app.services.mobile_teacher_service import resolve_teacher_scope
+    from app.core.exceptions import no_permission
+    from app.models import StudentProfile
+    from app.services.system_management import ids, school_wide, scoped_students
 
-    resolved = resolve_teacher_scope(user)
-    if resolved.get("mode") == "ADMIN_TENANT":
+    if ids(user)[0] != int(tenant_id):
+        raise no_permission('选人范围与当前学校不一致')
+    if school_wide(user):
         return None, None
-    if resolved.get("mode") != "SCOPED":
-        return set(), set()
-
-    class_ids: set[int] = set()
-    student_ids: set[int] = set()
-
-    class_names = {str(x).strip() for x in (resolved.get("classNames") or set()) if str(x).strip()}
-    if class_names:
-        class_ids.update(int(x) for x in db.scalars(select(SchoolClass.id).where(
-            SchoolClass.tenant_id == int(tenant_id),
-            SchoolClass.class_name.in_(class_names),
-            SchoolClass.is_deleted.is_(False),
-        )).all())
-
-    student_nos = {str(x).strip() for x in (resolved.get("studentNos") or set()) if str(x).strip()}
-    if student_nos:
-        student_ids.update(int(x) for x in db.scalars(select(StudentProfile.id).where(
-            StudentProfile.tenant_id == int(tenant_id),
-            StudentProfile.student_no.in_(student_nos),
-            StudentProfile.is_deleted.is_(False),
-        )).all())
-
-    major_names = {str(x).strip() for x in (resolved.get("majorNames") or set()) if str(x).strip()}
-    if major_names:
-        major_ids = set(int(x) for x in db.scalars(select(Major.id).where(
-            Major.tenant_id == int(tenant_id),
-            Major.major_name.in_(major_names),
-            Major.is_deleted.is_(False),
-        )).all())
-        if major_ids:
-            major_class_ids = set(int(x) for x in db.scalars(select(SchoolClass.id).where(
-                SchoolClass.tenant_id == int(tenant_id),
-                SchoolClass.major_id.in_(major_ids),
-                SchoolClass.is_deleted.is_(False),
-            )).all())
-            major_conds = [StudentProfile.major_id.in_(major_ids)]
-            if major_class_ids:
-                major_conds.append(StudentProfile.class_id.in_(major_class_ids))
-            student_ids.update(int(x) for x in db.scalars(select(StudentProfile.id).where(
-                StudentProfile.tenant_id == int(tenant_id),
-                StudentProfile.is_deleted.is_(False),
-                or_(*major_conds),
-            )).all())
-
-    college_names = {str(x).strip() for x in (resolved.get("collegeNames") or set()) if str(x).strip()}
-    if college_names:
-        college_ids = set(int(x) for x in db.scalars(select(College.id).where(
-            College.tenant_id == int(tenant_id),
-            College.college_name.in_(college_names),
-            College.is_deleted.is_(False),
-        )).all())
-        if college_ids:
-            major_ids = set(int(x) for x in db.scalars(select(Major.id).where(
-                Major.tenant_id == int(tenant_id),
-                Major.college_id.in_(college_ids),
-                Major.is_deleted.is_(False),
-            )).all())
-            conds = [StudentProfile.college_id.in_(college_ids)]
-            if major_ids:
-                conds.append(StudentProfile.major_id.in_(major_ids))
-            student_ids.update(int(x) for x in db.scalars(select(StudentProfile.id).where(
-                StudentProfile.tenant_id == int(tenant_id),
-                StudentProfile.is_deleted.is_(False),
-                or_(*conds),
-            )).all())
-
-    return class_ids, student_ids
+    return set(), set(db.scalars(scoped_students(db,user).with_only_columns(StudentProfile.id)))
 
 
 def resolve(db, tenant_id: int, rule: ScopeRule, *, user: dict | None = None,
@@ -248,7 +180,7 @@ def resolve(db, tenant_id: int, rule: ScopeRule, *, user: dict | None = None,
         return result       # 没选任何范围就是没选人，绝不退化成"全校"
 
     conds = [StudentProfile.tenant_id == int(tenant_id),
-             StudentProfile.is_deleted.is_(False)]
+             StudentProfile.is_deleted.is_(False), StudentProfile.status == 'ACTIVE']
     if rule.stages:
         conds.append(StudentProfile.current_stage.in_(list(rule.stages)))
     if rule.student_statuses:

@@ -1,3 +1,5 @@
+import { consumeDocxImageBudget } from './docx-image-budget'
+
 const MAX_SOURCE_BYTES = 25 * 1024 * 1024
 const MAX_ENTRY_BYTES = 32 * 1024 * 1024
 const MAX_TOTAL_UNCOMPRESSED = 80 * 1024 * 1024
@@ -254,6 +256,7 @@ async function appendRunContent(node, target, context) {
       if (!mime) continue
       const bytes = await context.archive.read(relation.target)
       if (!bytes) continue
+      context.imagePixels = consumeDocxImageBudget(bytes, context.imagePixels)
       countNode(context)
       const url = URL.createObjectURL(new Blob([bytes], { type: mime }))
       context.objectUrls.push(url)
@@ -333,7 +336,7 @@ export async function buildDocxPreview(source) {
   const relsXml = parseXml(await archive.text('word/_rels/document.xml.rels'), 'document relationships')
   const stylesXml = parseXml(await archive.text('word/styles.xml'), 'word/styles.xml')
   const objectUrls = []
-  const context = { archive, objectUrls, rels: relationships(relsXml), styles: paragraphStyles(stylesXml), renderedNodes: 0 }
+  const context = { archive, objectUrls, rels: relationships(relsXml), styles: paragraphStyles(stylesXml), renderedNodes: 0, imagePixels: 0 }
   try {
     const shell = document.createElement('article')
     shell.className = 'docx-local-preview'

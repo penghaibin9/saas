@@ -41,7 +41,7 @@ import PdfViewerAdapter from './adapters/PdfViewerAdapter.vue'
 import DocxViewerAdapter from './adapters/DocxViewerAdapter.vue'
 import ImageViewerAdapter from './adapters/ImageViewerAdapter.vue'
 import UnsupportedViewerAdapter from './adapters/UnsupportedViewerAdapter.vue'
-import { normalizePreviewDescriptor, previewIdentity } from './viewer-contract'
+import { normalizePreviewDescriptor, normalizePreviewError, previewIdentity } from './viewer-contract'
 import { usePreviewSession } from './usePreviewSession'
 
 const props = defineProps({
@@ -63,7 +63,7 @@ const downloadAllowed = computed(() => Boolean(props.allowDownload && normalized
 
 function setPage(value) { page.value = Math.min(Math.max(Number(value) || 1, 1), pageCount.value || 1); pdfViewer.value?.goToPage?.(page.value) }
 function onPdfReady({ pageCount: count }) { pageCount.value = Number(count || 0); setPage(Math.min(page.value, pageCount.value || 1)) }
-function onRenderError(error) { state.status = 'ERROR'; state.error = { code: error?.code || 'PREVIEW_RENDER_FAILED', message: error?.message || '文档渲染失败，请重试', retryable: error?.retryable !== false } }
+function onRenderError(error) { state.status = 'ERROR'; state.error = normalizePreviewError({ code: error?.code || 'PREVIEW_RENDER_FAILED', message: error?.message, retryable: error?.retryable, name: error?.name }) }
 watch(identity, () => { page.value = 1; pageCount.value = 0; zoom.value = 1; load(normalizedDescriptor.value) }, { immediate: true })
 watch(() => state.status, (status) => { if (status === 'ERROR' && state.error) emit('preview-error', state.error) })
 </script>

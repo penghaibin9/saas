@@ -171,7 +171,7 @@
           <div class="mp-card__body pf-grid">
             <AppFormItem label="危险岗位"><AppRadioGroup aria-label="危险岗位" v-model="form.hazardousFlag" :options="triStateOptions" :disabled="readonly || submitting" /></AppFormItem>
             <AppFormItem label="特殊设备" v-slot="{ id }"><AppTextInput :id="id" v-model="form.specialEquipment" :disabled="readonly || submitting" /></AppFormItem>
-            <AppFormItem class="pf-grid__full" label="禁止安排说明" v-slot="{ id }"><AppTextarea :id="id" v-model="form.prohibitedReason" :rows="2" :disabled="readonly || submitting" /></AppFormItem>
+            <AppFormItem class="pf-grid__full" label="禁止安排原因（无禁止事项请留空）" hint="填写后将阻止岗位上架；遵守安全要求的说明请写入岗位职责或备注。" v-slot="{ id }"><AppTextarea :id="id" v-model="form.prohibitedReason" :rows="2" :disabled="readonly || submitting" /></AppFormItem>
           </div>
         </section>
 
@@ -182,17 +182,16 @@
           :description="complianceDescription"
         />
 
-        <!-- 企业导师（仅新建：沿用原抽屉口径，编辑态隐藏导师字段） -->
-        <section v-if="!isEdit" class="mp-card">
+        <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">企业导师</span>
-            <span class="pf-aside">先选择所属企业，再选择该企业的导师（可不指定）</span>
+            <span class="pf-aside">未分配学生前，可补齐本企业导师；已有分配时本页保留原指导关系。</span>
           </div>
           <div class="mp-card__body">
             <AppFormItem label="企业导师" prop="mentorContactId">
               <AppEnterpriseMentorPicker
                 v-model="form.mentorContactId"
-                :disabled="readonly || submitting"
+                :disabled="readonly || submitting || (isEdit && detail?.allocatedCount > 0)"
                 :query="{ companyId: form.companyId }"
                 placeholder="选择企业导师（可不指定）"
                 search-placeholder="按导师姓名过滤"
@@ -232,7 +231,7 @@
  *   /admin/internship/positions/new       → 新建（草稿态，须先选合作企业）
  *   /admin/internship/positions/:id/edit  → 编辑（getPositionDetail 回填；ARCHIVED 只读预览）
  * 提交走真实 positionApi.createPosition / updatePosition。
- * 口径（沿用原抽屉）：编辑态所属企业只读展示不可换（:options 预置当前企业回显）、导师字段隐藏不提交；
+ * 编辑态所属企业不可更换；尚无学生分配时可补齐企业导师，已有分配时不从本页调整。
  * 新建态企业与企业导师均由布局注入的业务 Picker 查询；企业导师以 companyId 为联动条件。
  */
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
@@ -244,7 +243,7 @@ import {
 } from '@/components/common'
 import { canCode } from '@/modules/internship/composables/permission'
 import { positionApi } from '@/modules/internship/api/position.api'
-import { REMUNERATION_TYPE, REMUNERATION_CYCLE } from '@/modules/internship/constants/position.constants'
+import { REMUNERATION_TYPE, REMUNERATION_CYCLE, shiftTypeText, shiftTypeValue } from '@/modules/internship/constants/position.constants'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
@@ -411,10 +410,10 @@ export default {
         salaryRange: d.salaryRange || '',
         subsidy: d.subsidy || '',
         headcount: d.headcount || 1,
-        mentorContactId: '', // 编辑态隐藏导师字段（口径同原抽屉），不回填不提交
+        mentorContactId: d.mentorContactId || '',
         remark: d.remark || ''
         ,workContent: d.workContent || '', workAddress: d.workAddress || '',
-        dailyHours: d.dailyHours, weeklyHours: d.weeklyHours, shiftType: d.shiftType || '',
+        dailyHours: d.dailyHours, weeklyHours: d.weeklyHours, shiftType: shiftTypeText(d.shiftType),
         nightShift: d.nightShift, overtimeAllowed: d.overtimeAllowed,
         restDaysPerWeek: d.restDaysPerWeek, remunerationType: d.remunerationType || '',
         remunerationAmount: d.remunerationAmount, remunerationCycle: d.remunerationCycle || '',
@@ -447,7 +446,7 @@ export default {
         headcount: Number(f.headcount || 1),
         remark: (f.remark || '').trim()
         ,workContent: (f.workContent || '').trim(), workAddress: (f.workAddress || '').trim() || null,
-        dailyHours: f.dailyHours, weeklyHours: f.weeklyHours, shiftType: (f.shiftType || '').trim() || null,
+        dailyHours: f.dailyHours, weeklyHours: f.weeklyHours, shiftType: shiftTypeValue(f.shiftType) || null,
         nightShift: f.nightShift, overtimeAllowed: f.overtimeAllowed,
         restDaysPerWeek: f.restDaysPerWeek, remunerationType: f.remunerationType || null,
         remunerationAmount: f.remunerationAmount, remunerationCycle: f.remunerationCycle || null,
@@ -460,6 +459,7 @@ export default {
       }
       body.batchId = this.detail?.batchId || this.batchStore.selectedBatchId || null
       if (this.isEdit) body.expectedVersion = this.detail.version
+      if (this.isEdit && !Number(this.detail.allocatedCount || 0)) body.mentorContactId = f.mentorContactId || ''
       if (!this.isEdit) {
         body.companyId = f.companyId
         body.mentorContactId = f.mentorContactId || null

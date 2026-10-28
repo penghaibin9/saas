@@ -49,7 +49,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-standalone:pc-fullstack
       JWT_SECRET: ci-only-not-production
-      EXPECTED_ALEMBIC_REVISION: ix0030
+      EXPECTED_ALEMBIC_REVISION: ix0036
       FILE_STORAGE_DIR: /tmp/internship-fullstack-files
     steps:
       - uses: actions/checkout@v4
@@ -92,6 +92,9 @@ jobs:
           npm --prefix products/internship-platform/admin-web install --no-audit --no-fund
           npm --prefix products/internship-platform/student-web install --no-audit --no-fund
           npm --prefix products/internship-platform/enterprise-web ci --no-audit --no-fund
+
+      - name: Run student PC behavior checks
+        run: npm --prefix products/internship-platform/student-web test
 
       - name: Install Chromium
         working-directory: products/internship-platform/enterprise-web

@@ -84,11 +84,12 @@ def test_procurement_baseline_never_claims_official_template():
         assert "采购" in definition["templateName"]
 
 
-def test_receipt_is_blocked_without_real_adapter(monkeypatch):
+@pytest.mark.parametrize("enabled", [False, True])
+def test_receipt_is_blocked_without_real_adapter(monkeypatch, enabled):
     monkeypatch.setattr(
         svc.settings,
         "REGULATORY_RECEIPT_ADAPTER_ENABLED",
-        False,
+        enabled,
         raising=False,
     )
     with pytest.raises(AppException) as exc:
@@ -97,6 +98,17 @@ def test_receipt_is_blocked_without_real_adapter(monkeypatch):
             {"status": "ACCEPTED", "receiptCode": "fake"},
         )
     assert "回执" in str(exc.value)
+
+    from app.models import InternshipRegulatoryTask
+
+    task = InternshipRegulatoryTask(
+        id=1, task_no="receipt-pending", report_code="RP01",
+        template_version_id=1, batch_id=1, status="RECEIPT_PENDING",
+    )
+    result = svc._task_view(task)
+    assert result["externalReadiness"] == "BLOCKED_EXTERNAL"
+    assert result["status"] == "RECEIPT_PENDING"
+    assert result["receiptCode"] == ""
 
 
 def test_g18_authoritative_teacher_term_and_rights_sources():

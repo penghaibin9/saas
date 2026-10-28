@@ -6,7 +6,7 @@ A changed source snapshot creates a new document version; old PDFs are never ove
 """
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from hashlib import sha256
 from io import BytesIO
 import json
@@ -23,6 +23,7 @@ from sqlalchemy import func, select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.field_crypto import decrypt_sensitive
 from app.core.tenant_scoped import tenant_get
+from app.core.timeutil import tenant_tz
 from app.models import (
     College,
     InternshipCheckin,
@@ -86,6 +87,13 @@ def _safe(value) -> str:
     if value in (None, ""):
         return "—"
     return escape(str(value)).replace("\n", "<br/>")
+
+
+def _school_time(value) -> str:
+    if not value:
+        return ""
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    return parsed.replace(tzinfo=parsed.tzinfo or timezone.utc).astimezone(tenant_tz()).strftime("%Y-%m-%d %H:%M")
 
 
 def _org_name(db, model, ident, attr) -> str:
@@ -173,7 +181,7 @@ def _attendance_facts(db, record) -> dict:
     makeup = scoped_dates(InternshipMakeup, InternshipMakeup.status == "APPROVED")
     return {"checkinDays": len(normal), "makeupDays": len(makeup),
             "attendanceDays": len(normal | makeup),
-            "countBasis": "实习日期内NORMAL/RECORDED签到与已批准补签按日期去重；同日重叠仅计一天，异常签到和请假不计到岗天数"}
+            "countBasis": "实习日期内正常或已记录签到与已批准补签按日期去重；同日重叠仅计一天，异常签到和请假不计到岗天数"}
 
 
 def _process_facts(db, record) -> dict:
@@ -227,7 +235,8 @@ def _base_snapshot(db, record, student, document_type: str) -> dict:
     college_id = student.college_id or getattr(major, "college_id", None)
     return {
         "schemaVersion": 2,
-        "templateVersion": "YIYANG-SP06-SP07-20261002-V2",
+        "templateVersion": "YIYANG-SP06-SP07-20261019-V3",
+        "displayTimezone": str(tenant_tz()),
         "documentType": document_type,
         "school": {
             "tenantId": str(_tid()),
@@ -320,7 +329,8 @@ def _certificate_fact(db, record) -> dict:
             "DATA_CONFLICT", "实习起止日期缺失，不能生成正式实习证明",
             http_status=409,
         )
-    if record.intern_end_date > datetime.utcnow():
+    from app.modules.internship.services.internship_student_age import policy_today
+    if record.intern_end_date.date() > policy_today():
         raise AppException(
             "DATA_CONFLICT", "实习尚未结束，不能提前生成正式实习证明",
             http_status=409,
@@ -419,6 +429,11 @@ def _summary_report(db, record) -> dict:
     }
 
 
+def _assert_generation_open(record):
+    if record.status == "ARCHIVED":
+        raise AppException("DATA_CONFLICT", "实习档案已冻结，请下载留存文书；需要更正时请学校先撤销归档", http_status=409)
+
+
 def build_source_snapshot(db, record, document_type: str) -> dict:
     document_type = normalize_document_type(document_type)
     student = db.scalar(select(StudentProfile).where(
@@ -429,6 +444,7 @@ def build_source_snapshot(db, record, document_type: str) -> dict:
     if not student:
         raise not_found("实习关联学生档案不存在")
     data = _base_snapshot(db, record, student, document_type)
+    data["renderVersion"] = 2
     if document_type == "ENTERPRISE_EVALUATION":
         data["enterpriseEvaluation"] = _enterprise_evaluation(db, record)
         data["contacts"] = _contacts_snapshot(db, record, student, evaluation=data["enterpriseEvaluation"])
@@ -534,7 +550,7 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
             Paragraph(f"综合评语：{_safe(fact['overallComment'])}", styles["body"]),
             Paragraph(f"建议录用：{'是' if fact['recommendHire'] else '否'}", styles["body"]),
             Paragraph(
-                f"学校审核：{_safe(fact['reviewedByName'])} {_safe(fact['reviewedAt'])}",
+                f"学校审核：{_safe(fact['reviewedByName'])} {_safe(_school_time(fact['reviewedAt']))}",
                 styles["small"],
             ),
             Spacer(1, 18),
@@ -576,7 +592,7 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
                 styles["body"],
             ),
             Paragraph(
-                f"发布人：{_safe(fact['publishedByName'])}；发布时间：{_safe(fact['publishedAt'])}",
+                f"发布人：{_safe(fact['publishedByName'])}；发布时间：{_safe(_school_time(fact['publishedAt']))}",
                 styles["small"],
             ),
         ])
@@ -584,7 +600,8 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
         fact = snapshot["summaryReport"]
         story.extend([
             Paragraph(
-                f"总结评分：{_safe(fact['summaryScore'])}；五级评价：{_safe(fact['ratingLevel'])}",
+                f"总结评分：{_safe(fact['summaryScore'])}分（百分制）"
+                + (f"；历史附加评价：{_safe(fact['ratingLevel'])}级" if fact.get('ratingLevel') is not None else ""),
                 styles["body"],
             ),
             Paragraph(f"批阅意见：{_safe(fact['reviewComment'])}", styles["body"]),
@@ -594,10 +611,10 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
     story.extend([
         Spacer(1, 12),
         Paragraph(
-            f"文书版本 V{int(document_version)}　来源事实 SHA-256：{_safe(source_hash(snapshot))}",
+            f"文书第 {int(document_version)} 版　来源事实文件指纹：{_safe(source_hash(snapshot))}",
             styles["small"],
         ),
-        Paragraph("本 PDF 为系统根据已审核/已发布正式业务事实生成的派生文书；历史版本不覆盖。", styles["small"]),
+        Paragraph("本文件为系统根据已审核/已发布正式业务事实生成的派生文书；历史版本不覆盖。", styles["small"]),
     ])
     doc.build(story)
     data = buffer.getvalue()
@@ -607,6 +624,9 @@ def render_formal_pdf(document_type: str, snapshot: dict, *, document_version: i
 
 
 def _view(row: InternshipFormalDocument) -> dict:
+    generated_at = row.generated_at
+    if generated_at and generated_at.tzinfo is None:
+        generated_at = generated_at.replace(tzinfo=timezone.utc)
     return {
         "id": str(row.id),
         "internshipId": str(row.internship_id),
@@ -620,7 +640,7 @@ def _view(row: InternshipFormalDocument) -> dict:
         "fileSha256": row.file_sha256 or "",
         "status": row.status,
         "generatedByName": row.generated_by_name or "",
-        "generatedAt": _iso(row.generated_at),
+        "generatedAt": _iso(generated_at),
     }
 
 
@@ -646,6 +666,7 @@ def document_readiness(user: dict, internship_id) -> dict:
         for document_type, label in SUPPORTED_DOCUMENTS.items():
             latest = latest_by_type.get(document_type)
             try:
+                _assert_generation_open(record)
                 snapshot = build_source_snapshot(db, record, document_type)
                 digest = source_hash(snapshot)
                 ready = True
@@ -710,6 +731,7 @@ def generate(user: dict, body: dict) -> dict:
         record = assert_internship_record_scope(
             db, internship_id, user, "生成正式文书", lock=True,
         )
+        _assert_generation_open(record)
         if not record.batch_id:
             raise AppException("DATA_CONFLICT", "实习记录缺少批次，不能生成正式文书", http_status=409)
         snapshot = build_source_snapshot(db, record, document_type)
@@ -839,6 +861,7 @@ def student_generate(user: dict, body: dict) -> dict:
     with session() as db:
         record, student, batch_id = _student_document_context(
             db, user, payload, lock=True)
+        _assert_generation_open(record)
         snapshot = build_source_snapshot(db, record, document_type)
         digest = source_hash(snapshot)
         latest = db.scalars(select(InternshipFormalDocument).where(

@@ -1,5 +1,6 @@
 const TECHNICAL_MESSAGE_PATTERNS = [
   /\b(?:integrityerror|traceback|sqlstate|syntaxerror|typeerror|referenceerror)\b/i,
+  /\b(?:sqlalchemy|internal server error|password|token)\b/i,
   /\b(?:select|insert|update|delete)\s+.+\b(?:from|into|set)\b/i,
   /\b(?:column|constraint|table|permissionkey|traceid|bizcode)\b/i,
   /(?:^|[\s=:])[a-z]+(?:[A-Z][a-z0-9]+)+(?=$|[\s,.;:=])/,
@@ -49,6 +50,7 @@ function supportCode(error) {
 export function isTechnicalUiMessage(value) {
   const text = String(value || '').trim()
   if (!text) return false
+  if (!/[\u3400-\u9fff]/.test(text) && /[A-Za-z]/.test(text)) return true
   return TECHNICAL_MESSAGE_PATTERNS.some((pattern) => pattern.test(text))
 }
 
@@ -129,6 +131,8 @@ const AUDIT_ACTION_LABELS = Object.freeze({
   APPLY: '提交申请', RESUBMIT: '重新提交',
   APPROVE: '审核通过', REVIEW_APPROVE: '审批通过',
   REJECT: '审核驳回', REVIEW_REJECT: '审批驳回',
+  REVIEW_REQUEST_CHANGES: '退回补正',
+  RESUBMIT_VERSIONED: '原单补正重交',
   RETURN: '退回修改', REVIEW_RETURN: '退回修改', RETURN_VERSIONED: '办理销假',
   PUBLISH: '发布', ARCHIVE: '归档', ROLE_ASSIGN: '分配角色',
   ROLE_CREATE: '创建本校角色', ROLE_COPY: '复制本校角色', ROLE_PERMISSION_SAVE: '修改角色权限', ROLE_ADOPT: '转为本校维护', ROLE_ASSIGNMENT_REGISTER: '补登记历史授权'

@@ -14,6 +14,8 @@ const internshipRoutes = {
   component: () => import('@/modules/internship/views/AdminInternshipLayout.vue'),
   meta: { moduleCode: 'INTERNSHIP' },
   children: [
+    { path: 'payroll', name: 'internship-payroll', component: () => import('@/modules/internship/views/PayrollLedgerView.vue'),
+      meta: {moduleCode:'INTERNSHIP',navModule:M.ATTENDANCE_LEAVE,title:'月度工资台账',requiresAuth:true,permissionKey:'internship.payroll.view'} },
     { path: 'my-reports', name: 'internship-my-reports', component: () => import('@/modules/internship/views/MyTeacherReportsView.vue'),
       meta: {moduleCode:'INTERNSHIP',navModule:M.ATTENDANCE_LEAVE,title:'我的指导报告',requiresAuth:true,permissionKey:'internship.guidance.view'} },
     { path: 'teacher-reports', name: 'internship-teacher-reports', component: () => import('@/modules/internship/views/MyTeacherReportsView.vue'),
@@ -125,7 +127,7 @@ const internshipRoutes = {
       path: 'teacher-management',
       name: 'internship-teacher-management',
       component: () => import('@/modules/internship/views/TeacherManagementView.vue'),
-      meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: '教师管理', requiresAuth: true, permissionKey: 'internship.stats.view' }
+      meta: { moduleCode: 'INTERNSHIP', navModule: M.GUIDANCE_VISIT, title: '教师工作台账', requiresAuth: true, permissionKey: 'internship.stats.view' }
     },
     {
       path: 'guidance/new',

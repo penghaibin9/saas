@@ -8,10 +8,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException, no_permission
-from app.models import InternshipApplication
+from app.models import EmpCompany, InternshipApplication, InternshipBatch, InternshipPosition, StudentProfile, InternshipEnterpriseCollegeScope
 from app.modules.internship.services import internship_application_service as legacy
 from app.modules.internship.services.internship_student_context_guard import (
     require_explicit_context,
@@ -19,6 +19,52 @@ from app.modules.internship.services.internship_student_context_guard import (
 from app.services.db_service import _as_id, _tid, session
 
 _EDITABLE = {"DRAFT", "REJECTED", "WITHDRAWN"}
+
+
+def list_positions(user: dict, *, batch_id, internship_id, page=1, page_size=20, keyword="") -> dict:
+    """The student's scoped, non-campaign first-placement catalog; counts precede pagination."""
+    from app.modules.internship.services.internship_record_resolver import _is_active_record
+    from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
+    from app.modules.internship.services.internship_student_position_eligibility_service import _major_sql_predicate
+
+    with session() as db:
+        record, student, bid = require_explicit_context(db, user,
+            {"batchId": batch_id, "internshipId": internship_id}, for_write=False)
+        batch = db.get(InternshipBatch, bid)
+        org_query, org = legacy._application_org_query(select(StudentProfile).where(
+            StudentProfile.id == student.id, StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)))
+        college_id, major_name = db.execute(org_query.with_only_columns(org['collegeId'], org['majorName'])).one()
+        scopes = select(InternshipEnterpriseCollegeScope.company_id).where(
+            InternshipEnterpriseCollegeScope.tenant_id == _tid(), InternshipEnterpriseCollegeScope.is_deleted.is_(False))
+        allowed = scopes.where(InternshipEnterpriseCollegeScope.college_id == college_id) if college_id else scopes.where(False)
+        query = select(InternshipPosition, EmpCompany).join(EmpCompany, and_(
+            EmpCompany.id == InternshipPosition.company_id, EmpCompany.tenant_id == InternshipPosition.tenant_id)).where(
+            InternshipPosition.tenant_id == _tid(), InternshipPosition.batch_id == bid,
+            InternshipPosition.campaign_id.is_(None), InternshipPosition.is_deleted.is_(False),
+            InternshipPosition.status == 'PUBLISHED', InternshipPosition.allocated_count < InternshipPosition.headcount,
+            EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False), EmpCompany.coop_status == 'ACTIVE',
+            EmpCompany.blacklist.is_(False),
+            or_(EmpCompany.access_valid_until.is_(None), EmpCompany.access_valid_until >= datetime.utcnow()),
+            or_(~EmpCompany.id.in_(scopes), EmpCompany.id.in_(allowed)), _major_sql_predicate(major_name or ''))
+        term = str(keyword or '').strip()
+        if term:
+            query = query.where(or_(InternshipPosition.title.contains(term, autoescape=True),
+                EmpCompany.name.contains(term, autoescape=True), InternshipPosition.work_location.contains(term, autoescape=True)))
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        current_page, size = max(1, int(page)), max(1, min(50, int(page_size)))
+        rows = db.execute(query.order_by(InternshipPosition.id).offset((current_page-1)*size).limit(size)).all()
+        can_apply = (_is_active_record(record, batch) and record.status in ('PREPARING', 'READY')
+                     and not record.position_id and record.destination_type not in ('ASSIGNED', 'SELF_ARRANGED', 'EXEMPTED'))
+        items = []
+        for position, company in rows:
+            rights = evaluate_position_publishability(position, company, batch, student, operation='APPLY', db=db, record=record)
+            items.append({'id': str(position.id), 'title': position.title, 'companyName': company.name,
+                'workLocation': position.work_location or '', 'remaining': max(0, position.headcount-position.allocated_count),
+                'canSelect': bool(can_apply and rights['passed']),
+                'selectionReason': ('当前实习记录仅可查看岗位' if not can_apply else '；'.join(
+                    item.get('reason') or item.get('label') or '请联系学校核验' for item in rights['blockers']+rights['unknowns']))})
+        return {'items': items, 'total': total, 'page': current_page, 'pageSize': size,
+                'hasMore': current_page*size < total, 'batchId': str(bid), 'internshipId': str(record.id)}
 
 
 def _expected(payload: dict, current: int, *, required: bool) -> int:
@@ -65,6 +111,8 @@ def list_my(user: dict, *, batch_id=None, internship_id=None) -> list[dict]:
         rows = db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == _tid(),
             InternshipApplication.record_id == record.id,
+            InternshipApplication.student_id == student.id,
+            or_(InternshipApplication.batch_id.is_(None), InternshipApplication.batch_id == record.batch_id),
             InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False),
         ).order_by(
@@ -100,7 +148,7 @@ def save(user: dict, body: dict) -> dict:
             if not row:
                 # Do not reveal whether the supplied id belongs to a campaign-scoped V3 row.
                 raise AppException("NOT_FOUND", "实习申请不存在")
-            if row.record_id != record.id or row.student_id != student.id:
+            if not legacy._application_matches_record(row, record, student):
                 raise no_permission("只能修改本人的实习申请")
             if row.status not in _EDITABLE:
                 raise AppException("DATA_CONFLICT", "当前申请不可修改")
@@ -214,7 +262,7 @@ def submit(user: dict, app_id, body: dict) -> dict:
         ).with_for_update())
         if not row:
             raise AppException("NOT_FOUND", "实习申请不存在")
-        if row.record_id != record.id or row.student_id != student.id:
+        if not legacy._application_matches_record(row, record, student):
             raise no_permission("只能提交本人的实习申请")
         _expected(payload, row.version, required=True)
         if row.status != "DRAFT":
@@ -260,7 +308,7 @@ def withdraw(user: dict, app_id, body: dict) -> dict:
         ).with_for_update())
         if not row:
             raise AppException("NOT_FOUND", "实习申请不存在")
-        if row.record_id != record.id or row.student_id != student.id:
+        if not legacy._application_matches_record(row, record, student):
             raise no_permission("只能撤回本人的实习申请")
         _expected(payload, row.version, required=True)
         if row.status != "PENDING_REVIEW":

@@ -52,6 +52,7 @@ def _user_id(user) -> str:
 
 def _role_code(user) -> str:
     return str(
+        (user or {}).get("currentRoleBaseCode") or
         (user or {}).get("currentRoleCode") or
         (user or {}).get("roleCode") or
         (user or {}).get("userType") or ""
@@ -126,6 +127,8 @@ def _snapshot(row):
 def _row(row, record, student):
     return {
         "id": str(row.id), "internId": str(row.internship_id),
+        "batchId": str(record.batch_id) if record else "",
+        "internshipStatus": record.status if record else "",
         "studentName": student.real_name if student else "-",
         "studentNo": student.student_no if student else "-",
         "advisorName": record.advisor_name if record else "",

@@ -16,15 +16,40 @@ function page(overrides={}) {
   const uni={getLocation:options=>options.fail({errMsg:'location unavailable'}),showModal:options=>modals.push(options)}
   const source=fs.readFileSync(new URL('../src/pages/student-internship/checkin/index.vue',import.meta.url),'utf8')
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import[^\n]+\n/gm,'').replace('export default','return')
-  const names=['studentApi','chooseSingleFile','uploadBusinessFile','toast','normalizeError','currentSessionGeneration','uni','ReportFilePreview',...Object.keys(display)]
+  const names=['studentApi','chooseSingleFile','uploadBusinessFile','toast','normalizeError','currentSessionGeneration','uni','ReportFilePreview','fileSdk',...Object.keys(display)]
   const presentation={...display,checkinLocationPolicy:overrides.locationPolicy || display.checkinLocationPolicy}
-  const component=new Function(...names,script)(api,async()=>null,overrides.uploadBusinessFile || (async()=>null),x=>messages.push(x),()=>({kind:'unknown',text:'操作未完成，请重试'}),()=>generation,uni,{},...Object.values(presentation))
+  const component=new Function(...names,script)(api,overrides.chooseSingleFile || (async()=>null),overrides.uploadBusinessFile || (async()=>null),x=>messages.push(x),e=>({kind:e?.bizCode==='DATA_CONFLICT'?'conflict':'unknown',text:'操作未完成，请重试'}),()=>generation,uni,{},overrides.fileSdk || {metadata:async fileId=>({fileId,readyForBusiness:true})},...Object.values(presentation))
   const vm={}
   for(const [name,method] of Object.entries(component.methods))vm[name]=(...args)=>method.apply(vm,args)
   Object.assign(vm,component.data.call(vm));vm.requestedBatch=batch;vm.i=dashboard;vm.state='ready'
   return {vm,component,api,uni,messages,modals,calls,switchAccount:()=>generation++}
 }
 const settle=()=>new Promise(resolve=>setImmediate(resolve))
+
+const exemption={id:'9007199254740993211',version:3,status:'REJECTED',statusLabel:'已驳回',startDate:'2026-10-14',endDate:'2026-10-14',reason:'虚构原免签理由不少于五字',evidenceFileId:'',reviewComment:'请沿原申请补正'}
+test('免签补正沿原编号与版本提交，原教师意见不混入正文',async()=>{
+ let sent;const p=page({applyCheckinExemption:async body=>{sent=body;return {...exemption,status:'PENDING',version:4}}})
+ p.vm.editExemption(exemption);p.vm.exemptionForm.reason='按教师意见补充原免签安排说明';await p.vm.submitExemption()
+ assert.equal(sent.id,exemption.id);assert.equal(sent.expectedVersion,3);assert.equal(sent.batchId,batch);assert.equal(sent.internshipId,record);assert.equal(sent.reason,'按教师意见补充原免签安排说明');assert.equal(p.vm.exemptionBase,null)
+})
+test('免签扫描未就绪不写，失败保留原理由、原版本及材料',async()=>{
+ let writes=0;const p=page({applyCheckinExemption:async()=>{writes++},fileSdk:{metadata:async fileId=>({fileId,readyForBusiness:false})}})
+ p.vm.editExemption({...exemption,evidenceFileId:'proof'});await p.vm.submitExemption()
+ assert.equal(writes,0);assert.equal(p.vm.exemptionForm.evidenceFileId,'proof');assert.equal(p.vm.exemptionBase.version,3);assert.match(p.vm.exemptionError,/安全检查/)
+})
+test('免签冲突回读不自动换版本，明确采用原单后才恢复修改',async()=>{
+ const p=page({applyCheckinExemption:async()=>{throw {bizCode:'DATA_CONFLICT'}},getCheckinExemptions:async()=>[{...exemption,version:9,reason:'另一端最新补正理由'}]})
+ p.vm.editExemption(exemption);p.vm.exemptionForm.reason='本端未保存的补正理由';await p.vm.submitExemption();await p.vm.rereadExemption()
+ assert.equal(p.vm.exemptionConflict,true);assert.equal(p.vm.exemptionBase.version,3);assert.equal(p.vm.exemptionForm.reason,'本端未保存的补正理由');assert.equal(p.vm.exemptionLatest.version,9)
+ p.vm.adoptExemption();assert.equal(p.vm.exemptionBase.version,9);assert.equal(p.vm.exemptionForm.reason,'另一端最新补正理由')
+})
+test('免签上传中离页及旧会话迟到保存，不回填原材料或清新输入',async()=>{
+ const upload=deferred(),p=page({chooseSingleFile:async()=>({name:'proof.png'}),uploadBusinessFile:()=>upload.promise})
+ p.vm.editExemption(exemption);const work=p.vm.pickExemptionEvidence();await settle();p.vm.pause();upload.resolve({fileId:'late',readyForBusiness:true});await work
+ assert.equal(p.vm.exemptionForm.evidenceFileId,'');assert.equal(p.vm.exemptionConflict,true)
+ const save=deferred(),q=page({applyCheckinExemption:()=>save.promise});q.vm.editExemption(exemption);const writing=q.vm.submitExemption();await settle();q.switchAccount();save.resolve({id:exemption.id,version:4});await writing
+ assert.equal(q.vm.exemptionForm.reason,exemption.reason);assert.equal(q.vm.exemptionBase.version,3)
+})
 
 test('日历照片使用当前日期的正式编号，不能借按钮参数换成其他文件',async()=>{
   const p=page(),opened=[]

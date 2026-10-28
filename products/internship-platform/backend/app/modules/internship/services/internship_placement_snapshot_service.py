@@ -111,6 +111,7 @@ def capture_placement_snapshot_in_tx(
         },
         "placementAt": placement_at.isoformat(),
     }
+    payload = json.loads(_canonical_json(payload))
     digest = snapshot_sha256(payload)
     row = InternshipPlacementSnapshot(
         tenant_id=record.tenant_id,
@@ -165,4 +166,5 @@ def capture_placement_snapshot_in_tx(
     db.add(row)
     db.flush()
     record.current_placement_snapshot_id = row.id
+    record.current_application_id = source_application_id
     return row

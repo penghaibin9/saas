@@ -24,6 +24,7 @@ async function callList(params = {}) {
 
 export const internshipApplicationApi = {
   getApplications(params = {}) { return callList(params) },
+  getFilterOptions(batchId) { return call(() => request('/internship/applications/filter-options', { params: { batchId } })) },
   async exportApplications(params = {}) {
     try {
       const blob = await requestBlob('/internship/applications/export.xlsx', { params })

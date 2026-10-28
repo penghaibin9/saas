@@ -72,6 +72,20 @@ def _get(db, pos_id, *, lock=False) -> InternshipPosition:
     return p
 
 
+def _publication_check(position, company, batch, db=None):
+    from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
+    result = evaluate_position_publishability(position, company, batch, operation="PUBLISH", db=db)
+    checkin = ((batch.rules_config or {}).get("checkin") or {}) if batch else {}
+    if not isinstance(checkin, dict):
+        checkin = {}
+    if checkin.get("requireDaily", True) and not all(value is not None for value in (
+            position.geofence_lat, position.geofence_lng, position.geofence_radius_m)):
+        result["blockers"].append({"code": "CHECKIN_LOCATION_REQUIRED", "label": "打卡地点与电子围栏",
+            "reason": "每日打卡岗位须配置打卡中心和电子围栏半径", "severity": "BLOCK", "field": "geofenceLat"})
+        result["passed"] = False
+    return result
+
+
 def _row(p: InternshipPosition, db=None) -> dict:
     out = {
         "id": str(p.id), "companyId": str(p.company_id), "companyName": p.company_name or "",
@@ -111,11 +125,9 @@ def _row(p: InternshipPosition, db=None) -> dict:
         "updatedAt": _iso(p.updated_at), "version": int(p.version or 0),
     }
     if db is not None:
-        from app.modules.internship.services.internship_position_rights import (
-            evaluate_position_publishability)
         company = tenant_get(db, EmpCompany, p.company_id)
         batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
-        result = evaluate_position_publishability(p, company, batch, db=db)
+        result = _publication_check(p, company, batch, db)
         checkin_cfg = ((batch.rules_config or {}).get("checkin") or {}) if batch else {}
         if not isinstance(checkin_cfg, dict):
             checkin_cfg = {}
@@ -429,14 +441,7 @@ def set_status(pos_id, action: str, reason: str = "", *, expected_version=None, 
                 raise AppException("DATA_CONFLICT", "仅待审核/已下架/已暂停岗位可上架")
             c = _company(db, p.company_id)
             batch = tenant_get(db, InternshipBatch, p.batch_id) if p.batch_id else None
-            checkin_cfg = ((batch.rules_config or {}).get("checkin") or {}) if batch else {}
-            if checkin_cfg.get("requireDaily", True) and not all(v is not None for v in (
-                    p.geofence_lat, p.geofence_lng, p.geofence_radius_m)):
-                raise AppException("DATA_CONFLICT", "岗位发布检查未通过：每日打卡岗位须配置打卡中心和电子围栏半径")
-            from app.modules.internship.services.internship_position_rights import (
-                evaluate_position_publishability)
-            rights = evaluate_position_publishability(
-                p, c, batch, operation="PUBLISH", db=db)
+            rights = _publication_check(p, c, batch, db)
             p.rights_status = "COMPLIANT" if rights["passed"] else "NON_COMPLIANT"
             p.rights_checked_at = datetime.utcnow()
             p.rights_rule_version = rights["ruleVersion"]

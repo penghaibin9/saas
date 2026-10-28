@@ -1,7 +1,7 @@
 <template>
   <div class="app-textarea" :class="{ 'is-error': status === 'error', 'is-focus': focused, 'is-disabled': disabled }">
     <textarea
-      :id="id"
+      :id="controlId"
       ref="el"
       class="app-textarea__el"
       :value="modelValue"
@@ -29,6 +29,7 @@
  */
 export default {
   name: 'AppTextarea',
+  inject: { appField: { default: null } },
   props: {
     modelValue: { type: String, default: '' },
     id: { type: String, default: '' },
@@ -44,6 +45,7 @@ export default {
   data() {
     return { focused: false }
   },
+  computed: { controlId() { return this.id || this.appField?.controlId || undefined } },
   methods: {
     onInput(e) { this.$emit('update:modelValue', e.target.value) },
     onBlur(e) { this.focused = false; this.$emit('blur', e); this.$emit('change', e.target.value) }

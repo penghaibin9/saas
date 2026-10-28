@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    title="教师管理"
+    title="教师工作台账"
     subtitle="教师本人签到、补签、工作报告、指导与巡访统一台账；补签须经校级管理员审核。"
     role-name="岗位实习管理员"
     data-scope-name="当前学校 / 当前批次"
@@ -31,7 +31,7 @@
         <section class="tm-card">
           <header class="tm-head">
             <div>
-              <span class="eyebrow">AP16 · 教师业务台账</span>
+              <span class="eyebrow">教师工作概况</span>
               <h2>{{ batchName || '当前批次' }} · {{ teachers.length }} 名教师</h2>
             </div>
           </header>
@@ -87,8 +87,8 @@
           <header class="tm-head">
             <div>
               <span class="eyebrow">报告批阅绩效</span>
-              <h2>{{ reviewPerformance.length }} 名批阅教师 · {{ reviewFactCount }} 条不可变批阅事实</h2>
-              <p>统计周报、日报、月报和实习总结的真实批阅事实；退回后重交再批阅会形成新的批阅事实，不用当前页面条数冒充绩效。</p>
+              <h2>{{ reviewPerformance.length }} 名批阅教师 · {{ reviewFactCount }} 条批阅记录</h2>
+              <p>包含四类报告批阅；退回重交后的再次批阅单独计次。</p>
             </div>
             <AppExportButton
               :export-fn="exportPerformanceFn"
@@ -98,7 +98,7 @@
           </header>
           <DataTable v-if="reviewPerformance.length" :columns="performanceColumns" :rows="reviewPerformance" row-key="rowKey">
             <template #cell-reviewer="{ row }">
-              <div><strong>{{ row.reviewerName }}</strong><small>{{ row.reviewerUserId ? ('账号ID ' + row.reviewerUserId) : '系统/历史批阅人' }}</small></div>
+              <div><strong>{{ row.reviewerName }}</strong></div>
             </template>
             <template #cell-outcome="{ row }">
               <span>通过 {{ row.approvedCount }} / 退回 {{ row.returnedCount }}</span>
@@ -122,7 +122,7 @@
             <div>
               <span class="eyebrow">教师本人补签</span>
               <h2>待审核 {{ pendingCount }} 条</h2>
-              <p>审批通过后才生成教师补签记录；已存在同日签到时服务端会阻断重复补签。</p>
+              <p>审核通过后生成补签；同日已有签到时不能重复补签。</p>
             </div>
             <select v-model="makeupStatus" @change="loadMakeups">
               <option value="PENDING">待审核</option>
@@ -296,7 +296,7 @@ export default {
       const d=value || {}
       return [1,2,3,4,5].map(level => level + '级 ' + Number(d[String(level)] || 0)).join(' / ')
     },
-    statusLabel(value) { return {PENDING:'待审核',APPROVED:'已通过',REJECTED:'已驳回',WITHDRAWN:'已撤回'}[value] || value || '—' },
+    statusLabel(value) { return {PENDING:'待审核',APPROVED:'已通过',REJECTED:'已驳回',WITHDRAWN:'已撤回'}[value] || '状态待确认' },
     statusTone(value) { return {APPROVED:'success',REJECTED:'danger',PENDING:'warning'}[value] || 'default' },
     async load() {
       const sequence=++this.loadSequence,snapshot=this.snapshot()

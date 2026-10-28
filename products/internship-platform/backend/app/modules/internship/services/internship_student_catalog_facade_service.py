@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import and_, func, literal, or_, select
 
 from app.core.exceptions import AppException, not_found
-from app.models import EmpCompany, InternshipPosition, Major, StudentProfile
+from app.models import EmpCompany, InternshipApplication, InternshipPosition, Major, StudentProfile
 from app.models.internship_enterprise_portal import InternshipCampaignEnterprise
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_student_position_eligibility_service as eligibility_svc
@@ -181,7 +181,8 @@ def _public_row(position: InternshipPosition, company: EmpCompany, verdict: dict
         "remunerationDisplay": position.salary_range or (str(position.remuneration_amount) if position.remuneration_amount is not None else ""),
         "remunerationAmount": position.remuneration_amount, "subsidy": position.subsidy or "",
         "dailyHours": position.daily_hours, "weeklyHours": position.weekly_hours, "shiftType": position.shift_type or "",
-        "nightShift": position.night_shift, "overtime": position.overtime_allowed, "restDays": position.rest_days or "",
+        "nightShift": position.night_shift, "overtime": position.overtime_allowed,
+        "restDays": position.rest_days or "", "restDaysPerWeek": position.rest_days_per_week,
         "accommodationProvided": position.accommodation_provided, "mealProvided": position.meal_provided,
         "hazardous": position.hazardous_flag, "equipment": position.special_equipment or "",
         "publishedAt": _iso(position.publish_at),
@@ -219,7 +220,7 @@ def _eligible_rows(
     return result
 
 
-def _candidate_stats_in_tx(db, *, tenant_id: int, campaign, record) -> tuple[int, int]:
+def _candidate_stats_in_tx(db, *, tenant_id: int, campaign, record) -> tuple[int, int, int]:
     """Count the same SQL-projected eligible set used by catalog pagination."""
     q = eligibility_svc.apply_catalog_query_eligibility_filters_in_tx(
         db,
@@ -231,7 +232,10 @@ def _candidate_stats_in_tx(db, *, tenant_id: int, campaign, record) -> tuple[int
     candidate = q.order_by(None).subquery()
     published = int(db.scalar(select(func.count()).select_from(candidate)) or 0)
     partners = int(db.scalar(select(func.count(func.distinct(candidate.c.company_id)))) or 0)
-    return published, partners
+    major_name = _student_major_name(db, tenant_id=tenant_id, student_id=record.student_id)
+    matched_query = q.where(eligibility_svc._major_sql_predicate(major_name)).order_by(None).subquery()
+    matched = int(db.scalar(select(func.count()).select_from(matched_query)) or 0)
+    return published, partners, matched
 
 
 def get_catalog_context(*, user: dict, batch_id=None, campaign_id=None, record_id=None) -> dict:
@@ -249,9 +253,9 @@ def get_catalog_context(*, user: dict, batch_id=None, campaign_id=None, record_i
                 "selectionBlockReason": "当前批次暂未开放选岗。可先查看实习准备事项，开放后再来选择岗位。",
             }
         can_select, reason = _selection_state(campaign, record)
-        published, partners = _candidate_stats_in_tx(
+        published, partners, matched = _candidate_stats_in_tx(
             db, tenant_id=tenant_id, campaign=campaign, record=record,
-        ) if can_select else (0, 0)
+        ) if can_select else (0, 0, 0)
         group = db.scalar(select(InternshipVolunteerGroup).where(
             InternshipVolunteerGroup.tenant_id == tenant_id,
             InternshipVolunteerGroup.student_id == student_id,
@@ -260,6 +264,17 @@ def get_catalog_context(*, user: dict, batch_id=None, campaign_id=None, record_i
             InternshipVolunteerGroup.status.in_(_ACTIVE_GROUP_STATUSES),
             InternshipVolunteerGroup.is_deleted.is_(False),
         ).order_by(InternshipVolunteerGroup.id.desc()))
+        selected = int(db.scalar(select(func.count()).select_from(InternshipApplication).where(
+            InternshipApplication.tenant_id == tenant_id,
+            InternshipApplication.student_id == student_id,
+            InternshipApplication.record_id == record.id,
+            InternshipApplication.campaign_id == campaign.id,
+            InternshipApplication.application_type == "POSITION",
+            InternshipApplication.volunteer_no.in_((1, 2, 3)),
+            InternshipApplication.position_id.is_not(None),
+            InternshipApplication.status.not_in(("WITHDRAWN", "CANCELLED")),
+            InternshipApplication.is_deleted.is_(False),
+        )) or 0) if group else 0
         return {
             "catalogState": "AVAILABLE",
             "batchId": str(campaign.batch_id), "recordId": str(record.id),
@@ -267,8 +282,8 @@ def get_catalog_context(*, user: dict, batch_id=None, campaign_id=None, record_i
             "campaignId": str(campaign.id), "campaignName": campaign.campaign_name, "campaignStatus": campaign.status,
             "campaign": {"id": str(campaign.id), "name": campaign.campaign_name, "status": campaign.status, "studentSelectionEndAt": _iso(campaign.student_select_end_at)},
             "studentSelectionEndAt": _iso(campaign.student_select_end_at), "canSelect": bool(can_select), "selectionBlockReason": reason,
-            "stats": {"publishedPositions": published, "partnerCompanies": partners},
-            "volunteerGroup": {"status": group.status if group else "DRAFT", "selectedCount": 0},
+            "stats": {"publishedPositions": published, "partnerCompanies": partners, "matchedPositions": matched},
+            "volunteerGroup": {"status": group.status if group else "DRAFT", "selectedCount": selected},
         }
 
 

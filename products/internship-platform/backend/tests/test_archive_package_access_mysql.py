@@ -45,7 +45,8 @@ def prepare_frozen(flow, record_id, photo):
             student_id=record.student_id, batch_id=record.batch_id, status='ARCHIVED',
             previous_record_status='ASSESSING', completeness=100, version=1)
         asset = FileAsset(tenant_id=tenant, asset_code='ARCHIVE-PROOF:'+str(record.id),
-            title='合成归档材料', category_code='PROCESS_REPORT')
+            title='合成归档材料', category_code='PROCESS_REPORT',
+            owner_type='INTERNSHIP_RECORD', owner_id=str(record.id))
         db.add_all([archive, asset]); db.flush()
         version = FileVersion(tenant_id=tenant, asset_id=asset.id,
             file_object_id=int(photo['fileId']), version_no=1, status='ARCHIVED')
@@ -207,12 +208,14 @@ def test_modified_zip_bytes_fail_both_download_paths(frozen, kind):
 def add_scoped_admin(data):
     with get_sessionmaker()() as db:
         tenant = int(data['tenantId'])
-        role = Role(tenant_id=tenant,role_code='COLLEGE_ADMIN',role_name='合成范围管理员',role_type='SYSTEM',status='ACTIVE')
+        role = db.scalar(select(Role).where(Role.tenant_id == tenant, Role.role_code == 'COLLEGE_ADMIN'))
+        if not role:
+            role = Role(tenant_id=tenant,role_code='COLLEGE_ADMIN',role_name='合成范围管理员',role_type='SYSTEM',status='ACTIVE')
         user = User(tenant_id=tenant,login_name='college_admin',real_name='合成范围管理员',password_hash=hash_password(PASSWORD),
             user_type='COLLEGE_ADMIN',status='ACTIVE',credential_version=0,must_change_password=False)
         db.add_all([role,user]); db.flush()
-        scope = TeacherStudentScope(tenant_id=tenant,teacher_key='db-'+str(user.id),role_code='COLLEGE_ADMIN',
-            scope_type='STUDENT',ref_value='S0',status='ACTIVE')
+        scope = TeacherStudentScope(tenant_id=tenant,user_id=user.id,teacher_key='db-'+str(user.id),role_code='COLLEGE_ADMIN',
+            scope_type='STUDENT',ref_id=int(data['studentId']),ref_value=str(data['studentId']),status='ACTIVE')
         db.add_all([scope,UserRole(tenant_id=tenant,user_id=user.id,role_id=role.id,status='ACTIVE')]); db.commit()
         return user.id, scope.id
 

@@ -13,7 +13,7 @@
       @click="stepBy(-1)"
     >−</button>
     <input
-      :id="id"
+      :id="controlId"
       ref="input"
       class="app-number-input__el"
       type="text"
@@ -48,6 +48,7 @@
  */
 export default {
   name: 'AppNumberInput',
+  inject: { appField: { default: null } },
   props: {
     modelValue: { type: [Number, String], default: null },
     id: { type: String, default: '' },
@@ -67,6 +68,7 @@ export default {
     return { focused: false, raw: '' }
   },
   computed: {
+    controlId() { return this.id || this.appField?.controlId || undefined },
     numValue() {
       const n = Number(this.modelValue)
       return this.modelValue === null || this.modelValue === '' || Number.isNaN(n) ? null : n

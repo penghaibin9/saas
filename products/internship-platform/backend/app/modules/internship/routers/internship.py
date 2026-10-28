@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+from datetime import date
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, File, Query, Response, UploadFile
@@ -10,6 +11,7 @@ from fastapi.responses import StreamingResponse
 from app.core.response import paginate, success
 from app.modules.internship.services.internship_import_upload import read_safe_xlsx_upload
 from app.core.permissions import require_permission
+from app.core.security import get_current_user
 from app.modules.internship.schemas.internship import (BatchCreate, BatchUpdate, BlacklistRequest, ContactCreate,
                                      ContactUpdate, CoopActionRequest, EnterpriseCreate,
                                      EnterpriseImport, EnterpriseReview, EnterpriseUpdate,
@@ -226,6 +228,11 @@ def guidances_export(keyword: Optional[str] = None, batchId: Optional[str] = Non
     return success(data)
 
 
+@router.post('/guidances/batch', summary='逐学生保存批量指导并返回独立回执')
+def create_guidances_batch(body: dict = Body(...), user=Depends(require_permission('internship.guidance.manage'))):
+    return success(gd.create_batch(user, body), message='请逐学生核对保存结果')
+
+
 @router.get("/guidances/{guidance_id}", summary="指导记录详情")
 def guidance_detail(guidance_id: str, user=Depends(require_permission("internship.guidance.view"))):
     return success(gd.get_guidance(guidance_id, user=user))
@@ -236,7 +243,7 @@ def void_guidance(guidance_id: str, body: dict = Body(default={}), user=Depends(
     b = body or {}
     result = gd.void_guidance(
         user, guidance_id, b.get("reason") or "",
-        expected_version=b.get("expectedVersion", b.get("version")))
+        expected_version=b.get("expectedVersion", b.get("version")), batch_id=b.get('batchId'))
     audit_log.record("撤销指导记录", f"internship-guidance:{guidance_id}", detail=result)
     return success(result, message="已撤销")
 
@@ -276,12 +283,25 @@ def visit_detail(visit_id: str, user=Depends(require_permission("internship.visi
     return success(vis.get_visit(visit_id, user=user))
 
 
+@router.post('/visits/{visit_id}/location/disclose', summary='按权限及用途留痕查看巡访位置')
+def visit_location_disclose(visit_id: str, body: dict = Body(...),
+    user=Depends(require_permission('internship.visit.location.view'))):
+    from app.modules.internship.schemas.internship_visit import VisitLocationDisclosure
+    from pydantic import ValidationError
+    from app.core.exceptions import AppException
+    try:
+        request = VisitLocationDisclosure.model_validate(body)
+    except ValidationError as exc:
+        raise AppException('VALIDATION_ERROR', '查看位置须携带原批次、版本和业务用途') from exc
+    return success(vis.disclose_visit_location(visit_id, user, request.model_dump()))
+
+
 @router.post("/visits/{visit_id}/rectify", summary="巡访整改跟进（owner，说明必填）")
 def visit_rectify(visit_id: str, body: dict = Body(...), user=Depends(require_permission("internship.visit.manage"))):
     b = body or {}
     result = vis.rectify_follow(
         user, visit_id, (b.get("status") or "").upper(), b.get("note") or "",
-        expected_version=b.get("expectedVersion", b.get("version")))
+        expected_version=b.get("expectedVersion", b.get("version")), batch_id=b.get('batchId'))
     audit_log.record("巡访整改跟进", f"internship-visit:{visit_id}", detail=result)
     return success(result, message="已跟进")
 
@@ -289,15 +309,19 @@ def visit_rectify(visit_id: str, body: dict = Body(...), user=Depends(require_pe
 @router.get("/reports", summary="周报批阅列表")
 def reports(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
             status: Optional[str] = None, keyword: Optional[str] = None,
-            batchId: Optional[str] = None, user=Depends(require_permission("internship.report.view"))):
-    items, total = svc.list_weekly_reports(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
+            batchId: Optional[str] = None, startDate: date | None = None, endDate: date | None = None,
+            user=Depends(require_permission("internship.report.view"))):
+    items, total = svc.list_weekly_reports(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user,
+        start_date=startDate, end_date=endDate)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.post("/reports/export", summary="导出周报台账")
 def reports_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                   batchId: Optional[str] = None, user=Depends(require_permission("internship.report.export"))):
-    data = svc.export_weekly_reports(status=status, keyword=keyword, batch_id=batchId, user=user)
+                   batchId: Optional[str] = None, startDate: date | None = None, endDate: date | None = None,
+                   user=Depends(require_permission("internship.report.export"))):
+    data = svc.export_weekly_reports(status=status, keyword=keyword, batch_id=batchId, user=user,
+        start_date=startDate, end_date=endDate)
     audit_log.record("导出周报台账", "internship-report:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -420,8 +444,9 @@ def risk_close(risk_id: str, body: dict = Body(...), user=Depends(require_permis
 
 @router.post("/leaves/export", summary="请假审批台账导出 Excel(.xlsx)")
 def leaves_export(status: Optional[str] = None, keyword: Optional[str] = None,
-                  batchId: Optional[str] = None, user=Depends(require_permission("internship.leave.export"))):
-    data = lv.export_leaves(status=status, keyword=keyword, batch_id=batchId, user=user)
+                  batchId: Optional[str] = None, returnPending: bool = False,
+                  user=Depends(require_permission("internship.leave.export"))):
+    data = lv.export_leaves(status=status, keyword=keyword, batch_id=batchId, user=user, return_pending=returnPending)
     audit_log.record("导出请假审批台账", "internship-leave:export", detail={"rowCount": data["rowCount"]})
     return success(data)
 
@@ -436,26 +461,29 @@ def leave_overdue_refresh(user=Depends(require_permission("internship.leave.revi
 @router.get("/leaves", summary="实习请假列表（按数据范围）")
 def leaves(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
            status: Optional[str] = None, keyword: Optional[str] = None,
-           batchId: Optional[str] = None, user=Depends(require_permission("internship.leave.view"))):
-    items, total = lv.list_leaves(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user)
+           batchId: Optional[str] = None, returnPending: bool = False,
+           user=Depends(require_permission("internship.leave.view"))):
+    items, total = lv.list_leaves(page, pageSize, status=status, keyword=keyword, batch_id=batchId, user=user, return_pending=returnPending)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/leaves/return-queue", summary="销假与超期返岗待确认队列（按数据范围）")
 def leave_return_queue(batchId: str = Query(..., min_length=1),
+                       page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200), keyword: Optional[str] = None,
                        user=Depends(require_permission("internship.leave.view"))):
-    return success(leave_context.list_teacher_overdue(batchId, user))
+    return success(leave_context.list_teacher_overdue(batchId, user, page, pageSize, keyword))
 
 
 @router.get("/leaves/{leave_id}", summary="请假详情（含附件/审批留痕）")
-def leave_detail(leave_id: str, user=Depends(require_permission("internship.leave.view"))):
-    return success(lv.get_leave(leave_id, user=user))
+def leave_detail(leave_id: str, batchId: Optional[str] = None, user=Depends(require_permission("internship.leave.view"))):
+    return success(lv.get_leave(leave_id, user=user, batch_id=batchId))
 
 
 @router.post("/leaves/{leave_id}/evidence-viewed", summary="请假审批证据已查看（按当前版本留痕）")
 def leave_evidence_viewed(leave_id: str,
+                          body: dict = Body(...),
                           user=Depends(require_permission("internship.leave.review"))):
-    result = lv.mark_evidence_viewed(user, leave_id)
+    result = lv.mark_evidence_viewed(user, leave_id, body)
     audit_log.record("查看请假审批证据", f"internship-leave:{leave_id}", detail=result)
     return success(result, message="证据查看已留痕")
 
@@ -464,8 +492,8 @@ def leave_evidence_viewed(leave_id: str,
 def leave_review(leave_id: str, body: dict = Body(...), user=Depends(require_permission("internship.leave.review"))):
     b = body or {}
     result = lv.review(
-        user, leave_id, (b.get("action") or "").upper(), b.get("comment") or "",
-        expected_version=b.get("expectedVersion", b.get("version")))
+        user, leave_id, str(b.get("action") or "").upper(), b.get("comment") or "",
+        expected_version=b.get("expectedVersion", b.get("version")), expected_batch_id=b.get('batchId'))
     audit_log.record("审批实习请假", f"internship-leave:{leave_id}", detail=result)
     return success(result, message="审批完成")
 
@@ -748,6 +776,16 @@ def batch_export(keyword: Optional[str] = None, status: Optional[str] = None,
     data = svc.export_batches(keyword=keyword, status=status)
     audit_log.record("导出实习批次台账", "internship-batch:export", detail={"rowCount": data["rowCount"]})
     return success(data)
+
+
+@router.get("/batch-options", summary="当前工作身份可办理的实习批次目录")
+def batch_options(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                  keyword: Optional[str] = Query(None, max_length=100),
+                  selectedId: Optional[str] = Query(None, pattern=r'^[1-9][0-9]{0,18}$'),
+                  user=Depends(get_current_user)):
+    from app.modules.internship.services.internship_batch_context import list_batch_options
+    items, total, selected = list_batch_options(page, pageSize, user, keyword=keyword, selected_id=selectedId)
+    return success({**paginate(items, total, page, pageSize), 'selected': selected})
 
 
 @router.get("/batches", summary="实习批次列表（分页+筛选）")

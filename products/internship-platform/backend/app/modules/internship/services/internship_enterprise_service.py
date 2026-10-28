@@ -91,15 +91,17 @@ def _student_college_id(db, student) -> int | None:
         return None
     college_id = getattr(student, "college_id", None)
     if college_id:
-        return int(college_id)
+        college = db.get(College, college_id)
+        return int(college.id) if college and college.tenant_id == _tid() and not college.is_deleted else None
     major_id = getattr(student, "major_id", None)
     if not major_id and getattr(student, "class_id", None):
         school_class = db.get(SchoolClass, student.class_id)
-        major_id = school_class.major_id if school_class else None
+        major_id = school_class.major_id if school_class and school_class.tenant_id == _tid() and not school_class.is_deleted else None
     if major_id:
         major = db.get(Major, major_id)
         if major and not major.is_deleted and major.tenant_id == _tid() and major.college_id:
-            return int(major.college_id)
+            college = db.get(College, major.college_id)
+            return int(college.id) if college and college.tenant_id == _tid() and not college.is_deleted else None
     return None
 
 
@@ -113,27 +115,30 @@ def resolve_user_college_ids(db, user=None) -> set[int] | None:
 
     college_ids: set[int] = set()
     college_names = {str(v).strip() for v in scope.get("collegeNames") or set() if str(v).strip()}
-    if college_names:
+    stable_colleges = scope.get("collegeIds") or set()
+    if college_names or stable_colleges:
         college_ids.update(int(row.id) for row in db.scalars(select(College).where(
             College.tenant_id == _tid(),
-            College.college_name.in_(college_names),
+            or_(College.college_name.in_(college_names), College.id.in_(stable_colleges)),
             College.is_deleted.is_(False),
         )).all())
 
     major_names = {str(v).strip() for v in scope.get("majorNames") or set() if str(v).strip()}
-    if major_names:
+    stable_majors = scope.get("majorIds") or set()
+    if major_names or stable_majors:
         college_ids.update(int(row.college_id) for row in db.scalars(select(Major).where(
             Major.tenant_id == _tid(),
-            Major.major_name.in_(major_names),
+            or_(Major.major_name.in_(major_names), Major.id.in_(stable_majors)),
             Major.is_deleted.is_(False),
             Major.college_id.is_not(None),
         )).all() if row.college_id)
 
     class_names = {str(v).strip() for v in scope.get("classNames") or set() if str(v).strip()}
-    if class_names:
+    stable_classes = scope.get("classIds") or set()
+    if class_names or stable_classes:
         classes = db.scalars(select(SchoolClass).where(
             SchoolClass.tenant_id == _tid(),
-            SchoolClass.class_name.in_(class_names),
+            or_(SchoolClass.class_name.in_(class_names), SchoolClass.id.in_(stable_classes)),
             SchoolClass.is_deleted.is_(False),
         )).all()
         major_ids = {int(row.major_id) for row in classes if row.major_id}
@@ -146,22 +151,20 @@ def resolve_user_college_ids(db, user=None) -> set[int] | None:
             )).all() if row.college_id)
 
     student_nos = {str(v).strip() for v in scope.get("studentNos") or set() if str(v).strip()}
-    if student_nos:
+    stable_students = scope.get("studentIds") or set()
+    if student_nos or stable_students:
         students = db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(),
-            StudentProfile.student_no.in_(student_nos),
+            or_(StudentProfile.student_no.in_(student_nos), StudentProfile.id.in_(stable_students)),
             StudentProfile.is_deleted.is_(False),
         )).all()
         college_ids.update(cid for cid in (_student_college_id(db, student) for student in students) if cid)
 
     advisor_ids = {int(v) for v in scope.get("advisorUserIds") or set() if str(v).isdigit()}
-    advisor_names = {str(v).strip() for v in scope.get("advisorNames") or set() if str(v).strip()}
-    if advisor_ids or advisor_names:
+    if advisor_ids:
         clauses = []
         if advisor_ids:
             clauses.append(InternshipRecord.advisor_user_id.in_(advisor_ids))
-        if advisor_names:
-            clauses.append(InternshipRecord.advisor_name.in_(advisor_names))
         records = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False),
@@ -855,10 +858,12 @@ def _persist_enterprises(rows: list[dict]) -> dict:
     with session() as db:
         created = 0
         for r in rows or []:
+            r = {key: str(value).strip() if value is not None else "" for key, value in r.items()}
             c = EmpCompany(
                 tenant_id=_tid(), name=(r.get("name") or "").strip(),
                 credit_code=(r.get("creditCode") or "").strip() or None,
                 industry=r.get("industry") or None, region=r.get("region") or None,
+                nature=r.get("nature") or None, city=r.get("city") or None,
                 contact_person=r.get("contactPerson") or None,
                 contact_phone_encrypted=encrypt_field((r.get("contactPhone") or "").strip() or None),
                 remark=(r.get("remark") or "").strip() or None,
@@ -866,10 +871,41 @@ def _persist_enterprises(rows: list[dict]) -> dict:
                 source="SELF_BUILT")
             db.add(c)
             db.flush()
-            _trail(db, c.id, "IMPORT", {"name": c.name})
+            scope_ids = _import_scope_ids(db, r)
+            _sync_company_scope(db, c.id, scope_ids, user=get_current_user_ctx(), creating=True)
+            if c.contact_person:
+                db.add(InternshipEnterpriseContact(
+                    tenant_id=_tid(), company_id=c.id, contact_type="CONTACT",
+                    name=c.contact_person, phone_encrypted=c.contact_phone_encrypted,
+                    email=r.get("contactEmail") or None, is_primary=True, status="ACTIVE"))
+            _trail(db, c.id, "IMPORT", {"name": c.name, "collegeScopeIds": sorted(scope_ids)})
             created += 1
         db.commit()
         return {"created": created}
+
+
+def _import_scope_ids(db, row) -> set[int]:
+    names = {v.strip() for v in re.split(r"[,，;；]", str(row.get("collegeNames") or "")) if v.strip()}
+    ids = set()
+    for name in names:
+        matches = db.scalars(select(College).where(
+            College.tenant_id == _tid(), College.is_deleted.is_(False),
+            College.college_name == name, College.status == "ACTIVE")).all()
+        if len(matches) != 1:
+            raise AppException("VALIDATION_ERROR", "适用学院须匹配当前学校唯一的在用学院")
+        ids.add(matches[0].id)
+    return _validated_scope_ids(db, ids, user=get_current_user_ctx(), creating=True)
+
+
+def _validate_import_business(row, row_no):
+    if row.get("contactEmail") and not row.get("contactPerson"):
+        return "填写联系人邮箱时，请同时填写联系人姓名"
+    try:
+        with session() as db:
+            _import_scope_ids(db, row)
+    except AppException as exc:
+        return exc.message
+    return None
 
 
 def build_import_spec() -> excel.ImportSpec:
@@ -877,18 +913,22 @@ def build_import_spec() -> excel.ImportSpec:
     return excel.ImportSpec(
         module_key="internship", biz_type="enterprise", template_name="企业库导入",
         columns=[
-            C("name", "企业名称", required=True, validators=[_v_name],
+            C("name", "企业名称", required=True, max_length=200, validators=[_v_name],
               example="华信智能科技有限公司", help_text="填企业全称，勿填账号/税号/地址"),
             C("creditCode", "统一社会信用代码", required=True, unique_in_file=True,
               validators=[_v_credit], example="91310000MA1FL0001X",
               help_text="18 位数字+大写字母；文件内、库内不可重复"),
-            C("industry", "行业", required=True, example="软件"),
-            C("region", "地区", required=True, example="上海"),
-            C("contactPerson", "联系人", example="王经理"),
-            C("contactPhone", "联系电话", example="13800000000", help_text="敏感字段，列表默认脱敏"),
+            C("industry", "行业", required=True, max_length=100, example="软件"),
+            C("nature", "企业性质", max_length=50, example="民营企业"),
+            C("region", "地区", required=True, max_length=100, example="湖南省", help_text="填写省份；兼容旧模板的省市地区"),
+            C("city", "城市", max_length=50, example="益阳市"),
+            C("contactPerson", "联系人", max_length=100, example="王经理"),
+            C("contactPhone", "联系电话", max_length=50, example="13800000000", help_text="敏感字段，列表默认脱敏"),
+            C("contactEmail", "联系人邮箱", type="email", max_length=200, example="contact@example.com"),
+            C("collegeNames", "适用学院", max_length=1000, help_text="学院全称，多项用分号分隔；校级导入留空为全校通用"),
             C("coopStatus", "合作状态", help_text="仅供查阅，导入后默认「待审核」"),
             C("qualificationStatus", "资质状态", help_text="仅供查阅，导入后默认「未核验」"),
-            C("remark", "备注"),
+            C("remark", "备注", max_length=500),
         ],
         notes=[
             "1. 只导入「导入模板」这一页；第一行表头请勿改动、勿删除。",
@@ -897,8 +937,10 @@ def build_import_spec() -> excel.ImportSpec:
             "4. 合作状态/资质状态列仅供查阅，导入后默认为「待审核/未核验」。",
             "5. 联系电话为敏感字段，列表默认脱敏展示。",
             "6. 从第 2 行起逐行填写，一行一家企业；填完保存为 .xlsx 后上传。",
+            "7. 企业性质、省份（地区）、城市及联系人邮箱分别保存；邮箱须同时有联系人姓名。",
+            "8. 适用学院仅匹配本校在用学院全称；多项用分号分隔，留空按现有校级通用规则办理。",
         ],
-        duplicate_check=_db_credit_dup, persist_rows=_persist_enterprises,
+        duplicate_check=_db_credit_dup, business_validate=_validate_import_business, persist_rows=_persist_enterprises,
         permission_key="internship.enterprise.import", audit_action="导入企业库",
     )
 
@@ -910,9 +952,11 @@ def build_export_spec() -> excel.ExportSpec:
         file_name="企业库台账.xlsx",
         columns=[
             C("name", "企业名称"), C("creditCode", "统一社会信用代码"),
-            C("industry", "行业"), C("region", "地区"),
+            C("industry", "行业"), C("nature", "企业性质"), C("region", "省份/地区"), C("city", "城市"),
+            C("collegeScopeNames", "适用学院", mask=lambda v: "；".join(v or []) or "全校通用"),
             C("coopStatusLabel", "合作状态"), C("qualificationLabel", "资质状态"),
             C("contactPerson", "联系人"), C("contactPhoneMasked", "联系电话(脱敏)"),
+            C("contactEmail", "联系人邮箱"),
             C("internCount", "累计实习生"),
             C("blacklist", "是否黑名单", mask=lambda v: "是" if v else "否"),
             C("remark", "备注"),
@@ -956,5 +1000,18 @@ def export_enterprises(keyword=None, coop_status=None, industry=None, region=Non
     items, _ = load_export_rows(
         list_enterprises, keyword=keyword, coop_status=coop_status,
         industry=industry, region=region, user=user)
+    with session() as db:
+        contacts = db.scalars(select(InternshipEnterpriseContact).where(
+            InternshipEnterpriseContact.tenant_id == _tid(),
+            InternshipEnterpriseContact.company_id.in_([int(item["id"]) for item in items]),
+            InternshipEnterpriseContact.contact_type == "CONTACT",
+            InternshipEnterpriseContact.status == "ACTIVE",
+            InternshipEnterpriseContact.is_deleted.is_(False)).order_by(
+            InternshipEnterpriseContact.is_primary.desc(), InternshipEnterpriseContact.id)).all()
+        emails = {}
+        for contact in contacts:
+            emails.setdefault(str(contact.company_id), contact.email or "")
+        for item in items:
+            item["contactEmail"] = emails.get(item["id"], "")
     operator = user or get_current_user_ctx() or {}
     return excel.build_export(build_export_spec(), items, operator_name=operator.get("realName", "-"))

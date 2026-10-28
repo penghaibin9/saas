@@ -49,7 +49,11 @@ def test_accept_intent_only_locks_group_and_never_assigns():
     assert "PUBLISH" not in source
     assert 'decision.effect_status = "SUPERSEDED"' in source
     assert "ENTERPRISE_APPLICATION_WITHDRAW_ACCEPT" in source
-    assert "decision.valid_until is not None and decision.valid_until <= now" in source
+    guard = inspect.getsource(svc._assert_decision_write_window)
+    assert "valid_until is not None and valid_until <= now" in guard
+    assert "campaign.school_confirm_end_at, campaign.enterprise_access_end_at" in guard
+    assert "valid_until = _assert_decision_write_window(" in source
+    assert "decision.valid_until = valid_until" in source
 
 
 def test_decision_transitions_are_audited_with_real_enterprise_actor():

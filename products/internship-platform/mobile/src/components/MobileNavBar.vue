@@ -96,7 +96,7 @@ export default {
 .mnav.is-brand .mnav__bar { background: var(--brand-gradient); }
 .mnav.is-teacher .mnav__status,
 .mnav.is-teacher .mnav__bar { background: var(--brand-gradient-teacher); }
-.mnav__left { width: 64px; display: flex; align-items: center; gap: var(--space-1); }
+.mnav__left { width: 64px; min-height: 44px; display: flex; align-items: center; gap: var(--space-1); }
 .mnav__right { width: 64px; display: flex; align-items: center; justify-content: flex-end; }
 .mnav__back { font-size: 28px; line-height: 1; color: var(--text-primary); }
 .mnav.is-brand .mnav__back,

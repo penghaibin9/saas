@@ -8,6 +8,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Body, Depends, Query
+from starlette.background import BackgroundTask
 
 from app.api.v1.file_contract import validated_local_file_response
 from app.core.permissions import require_permission
@@ -63,9 +64,13 @@ def material_requirement_publish(
 @router.get("/material-requirements/{requirement_id}/coverage", summary="材料已交/缺交全量统计")
 def material_requirement_coverage(
     requirement_id: int,
+    keyword: str = Query(""),
+    collegeId: int | None = Query(None, ge=1),
+    majorId: int | None = Query(None, ge=1),
+    classId: int | None = Query(None, ge=1),
     user=Depends(require_permission("internship.archive.view")),
 ):
-    return success(requirement_svc.coverage(requirement_id, user=user))
+    return success(requirement_svc.coverage(requirement_id, user=user, keyword=keyword, college_id=collegeId, major_id=majorId, class_id=classId))
 
 
 @router.get("/material-requirements/{requirement_id}/students", summary="材料已交/缺交学生名单")
@@ -75,11 +80,14 @@ def material_requirement_students(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=200),
     keyword: str = Query(""),
+    collegeId: int | None = Query(None, ge=1),
+    majorId: int | None = Query(None, ge=1),
+    classId: int | None = Query(None, ge=1),
     user=Depends(require_permission("internship.archive.view")),
 ):
     items, total = requirement_svc.list_students(
         requirement_id, state=state, page=page, page_size=pageSize,
-        keyword=keyword, user=user)
+        keyword=keyword, user=user, college_id=collegeId, major_id=majorId, class_id=classId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -96,15 +104,43 @@ def material_submission_review(
 @router.get("/material-requirements/{requirement_id}/template/download", summary="下载当前材料模板")
 def material_requirement_template_download(
     requirement_id: int,
+    templateVersionId: int | None = Query(None, ge=1),
     user=Depends(require_permission("internship.archive.view")),
 ):
-    path, filename = requirement_svc.template_download(requirement_id, user)
+    path, filename = requirement_svc.template_download(requirement_id, user, template_version_id=templateVersionId)
     return validated_local_file_response(
         path, filename=filename,
         audit_action="INTERNSHIP_MATERIAL_TEMPLATE_DOWNLOAD",
         audit_target=f"internship-material-requirement:{requirement_id}",
-        audit_detail={"requirementId": str(requirement_id), "surface": "STAFF_PC"},
+        audit_detail={"requirementId": str(requirement_id), "templateVersionId": str(templateVersionId or ""), "surface": "STAFF_PC"},
     )
+
+
+@router.get("/material-requirements/{requirement_id}/package/download", summary="下载授权范围的当前过程材料原文件包")
+def material_requirement_package_download(
+    requirement_id: int,
+    state: str = Query("SUBMITTED"),
+    keyword: str = Query(""),
+    collegeId: int | None = Query(None, ge=1),
+    majorId: int | None = Query(None, ge=1),
+    classId: int | None = Query(None, ge=1),
+    user=Depends(require_permission("internship.archive.view")),
+):
+    path, filename = requirement_svc.build_material_package(requirement_id, user=user,
+        state=state, keyword=keyword, college_id=collegeId, major_id=majorId, class_id=classId)
+    try:
+        response = validated_local_file_response(path, filename=filename,
+            media_type="application/zip",
+            audit_action="INTERNSHIP_PROCESS_MATERIAL_PACKAGE_DOWNLOAD",
+            audit_target=f"internship-material-requirement:{requirement_id}",
+            audit_detail={"requirementId": str(requirement_id), "state": state,
+                "collegeId": str(collegeId or ""), "majorId": str(majorId or ""),
+                "classId": str(classId or ""), "surface": "STAFF_PC"})
+        response.background = BackgroundTask(path.unlink, missing_ok=True)
+        return response
+    except Exception:
+        path.unlink(missing_ok=True)
+        raise
 
 
 @router.get("/material-center", summary="实习材料与证据中心（按批次和数据范围）")
@@ -113,12 +149,17 @@ def material_center_list(
     pageSize: int = Query(20, ge=1, le=200),
     batchId: Optional[str] = None,
     keyword: Optional[str] = None,
+    category: str | None = Query(None),
+    reviewStatus: str | None = Query(None),
+    collegeId: int | None = Query(None, ge=1),
+    majorId: int | None = Query(None, ge=1),
+    classId: int | None = Query(None, ge=1),
     safetyStatus: Optional[str] = Query(None, pattern="^(READY|UNSAFE|NOT_SYNCED)?$"),
     user=Depends(require_permission("internship.archive.view")),
 ):
     items, total = material_svc.list_center(
         page, pageSize, batch_id=batchId, keyword=keyword,
-        safety_status=safetyStatus, user=user,
+        safety_status=safetyStatus, user=user, category=category, review_status=reviewStatus, college_id=collegeId, major_id=majorId, class_id=classId,
     )
     return success(paginate(items, total, page, pageSize))
 

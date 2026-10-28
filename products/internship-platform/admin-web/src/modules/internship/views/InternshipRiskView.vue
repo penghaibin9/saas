@@ -190,7 +190,7 @@ export default {
     goStudent(row) {
       this.$router.push({
         path: '/admin/internship/students/' + row.internId,
-        query: this.batchStore.withBatchQuery({})
+        query: this.batchStore.withBatchQuery({ returnTo: this.$route.fullPath })
       })
     },
     goDispose(row) {

@@ -1,18 +1,20 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
+import { compile, createSSRApp, h } from 'vue'
+import { renderToString } from '@vue/server-renderer'
 import {teacherReportTypes,teacherReportView,reportValidation} from '../src/modules/internship/services/teacherReportPresentation.mjs'
 const batch='9007199254740993001',id='9007199254740993002'
 const ok=data=>({code:0,data}),row=()=>({id,batchId:batch,reportType:'WEEKLY',periodKey:'2026-W40',content:'合成指导工作。'.repeat(10),version:0,attachments:[]})
 function deferred(){let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve}}
-function page(api={},sdk={}){
+function page(api={},sdk={},canWrite=true){
   const source=fs.readFileSync(new URL('../src/modules/internship/views/MyTeacherReportsView.vue',import.meta.url),'utf8')
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import[^\n]+\n/gm,'').replace('export default','return')
   let generation=0,downloads=0
   const store={selectedBatchId:batch}
   const scope={ModulePageShell:{},ErrorState:{},LoadingState:{},AppButton:{},FilePreviewer:{},teacherReportTypes,teacherReportView,reportValidation,
     internshipApi:{getTeacherPeriodReports:async()=>ok({items:[row()],total:1,rules:{}}),saveTeacherPeriodReport:async()=>ok(row()),exportTeacherPeriodReports:async()=>ok({}),...api},
-    useInternshipBatchStore:()=>store,canCode:()=>true,fileSdk:{metadata:async fileId=>({fileId}),...sdk},currentSessionGeneration:()=>generation,
+    useInternshipBatchStore:()=>store,canCode:(_ctx,code)=>code!=='internship.guidance.manage'||canWrite,fileSdk:{metadata:async fileId=>({fileId}),...sdk},currentSessionGeneration:()=>generation,
     normalizeUiError:()=>({userMessage:'操作未完成'}),formatDateTime:x=>x,prepareXlsxDownload:data=>{downloads++;return {url:'blob:test',filename:data.filename,rowCount:data.rowCount}}}
   const c=new Function(...Object.keys(scope),script)(...Object.values(scope))
   const vm={...c.data(),ctx:{ctxKey:'test'},$route:{meta:{}}}
@@ -21,6 +23,99 @@ function page(api={},sdk={}){
   vm.form={...vm.form,reportType:'WEEKLY',periodKey:'2026-W40',content:row().content}
   return {vm,c,store,switchAccount:()=>generation++,downloads:()=>downloads}
 }
+
+test('已保存本人报告默认只读且离页不误报，明确修改才保护输入，取消回到原文',async()=>{
+  const {vm}=page();vm.selectReport(teacherReportView(row()))
+  const source=fs.readFileSync(new URL('../src/modules/internship/views/MyTeacherReportsView.vue',import.meta.url),'utf8')
+  const template=source.slice(source.indexOf('<template>')+10,source.indexOf('\n<script>')).replace(/<\/template>\s*$/,'')
+  const render=()=>{const descriptors=Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(vm)).filter(([key])=>!key.startsWith('$')));return renderToString(createSSRApp({components:{ModulePageShell:{setup:(_,{slots})=>()=>h('main',slots.default?.())},AppButton:{props:['disabled'],setup:(props,{slots})=>()=>h('button',{disabled:props.disabled},slots.default?.())},ErrorState:{render:()=>null},LoadingState:{render:()=>null},FilePreviewer:{render:()=>null}},setup:()=>Object.defineProperties({},descriptors),render:compile(template)}))}
+  const frame=fs.readFileSync(new URL('../src/components/workspace/TeacherWorkspaceFrame.vue',import.meta.url),'utf8')
+  const body=frame.match(/async function confirmUnsubmitted\(to, from\) \{([\s\S]*?)\n\}\nonBeforeRouteLeave/)[1]
+  let html=await render(),confirmations=0
+  assert.doesNotMatch(html,/<textarea|<fieldset/)
+  const field={readOnly:false,value:vm.form.content,matches:()=>/<fieldset\b[^>]*disabled/.test(html),getClientRects:()=>html.includes('<textarea')?[1]:[]}
+  const guard=new Function('document','window','systemConfirm',`return async (to,from)=>{${body}}`)({querySelectorAll:()=>[field]}, {},async()=>{confirmations++;return false})
+  assert.equal(await guard({path:'/login'},{path:'/admin/internship/my-reports'}),true)
+  assert.equal(confirmations,0);assert.ok(html.includes('修改原报告'))
+  vm.editReport();vm.form.content='已修改但尚未保存的正文';field.value=vm.form.content;html=await render()
+  assert.equal(await guard({path:'/login'},{path:'/admin/internship/my-reports'}),false)
+  assert.equal(confirmations,1)
+  vm.cancelEdit();html=await render();field.value=vm.form.content
+  assert.equal(vm.form.content,row().content);assert.equal(vm.form.expectedVersion,0)
+  assert.equal(await guard({path:'/login'},{path:'/admin/internship/my-reports'}),true)
+  assert.equal(confirmations,1)
+})
+
+test('已保存本人报告只读方法阻止增删保存，预览下载刷新仍授权，新报告可直接填写',async()=>{
+  let writes=0,uploads=0,downloads=0
+  const file={fileId:'31',fileName:'已保存.zip',readyForBusiness:true,canDownload:true}
+  const api={saveTeacherPeriodReport:async()=>{writes++;return ok(row())}}
+  const sdk={metadata:async fileId=>({...file,fileId}),download:async()=>{downloads++},upload:()=>{uploads++;return {promise:Promise.resolve({...file,fileId:'32'})}}}
+  const {vm}=page(api,sdk)
+  await vm.selectReport(teacherReportView({...row(),attachments:[file]}))
+  assert.equal(vm.canEdit,false);await vm.save();vm.removeAttachment('31')
+  await vm.uploadAttachments({target:{files:[{name:'新附件.zip'}],value:'chosen'}})
+  assert.equal(writes,0);assert.equal(uploads,0);assert.equal(vm.attachments.length,1)
+  await vm.preview(file);assert.equal(vm.previewFile.fileId,'31')
+  await vm.downloadAttachment(file);await vm.refreshAttachments();assert.equal(downloads,1)
+  assert.equal(vm.canEdit,false);assert.equal(vm.form.expectedVersion,0)
+  vm.editReport();assert.equal(vm.canEdit,true);vm.removeAttachment('31');assert.equal(vm.attachments.length,0)
+  await vm.cancelEdit();assert.equal(vm.canEdit,false);assert.equal(vm.attachments[0].fileId,'31')
+  vm.newReport();assert.equal(vm.canEdit,true);assert.equal(vm.selectedId,'');assert.equal(vm.form.expectedVersion,null)
+  const readonly=page(api,sdk,false);await readonly.vm.selectReport(teacherReportView(row()))
+  readonly.vm.editReport();assert.equal(readonly.vm.canEdit,false);await readonly.vm.save();assert.equal(writes,0)
+})
+
+test('本人报告附件未就绪不能保存，刷新安全结果后保留正文和原版本提交',async()=>{
+  let sent=0,ready=false
+  const p=page({saveTeacherPeriodReport:async()=>{sent++;return ok(row())}}, {metadata:async fileId=>({fileId,readyForBusiness:ready,canDownload:ready,scanStatus:ready?'CLEAN':'PENDING'})})
+  p.vm.form.attachments=[{fileId:'21',fileName:'工作材料.zip',readyForBusiness:false,scanStatus:'PENDING'}]
+  const content=p.vm.form.content;p.vm.form.expectedVersion=0
+  await p.vm.save();assert.equal(sent,0);assert.equal(p.vm.form.content,content);assert.equal(p.vm.form.expectedVersion,0)
+  assert.match(p.vm.formError,/安全检查/)
+  ready=true;await p.vm.refreshAttachments();assert.equal(p.vm.attachmentsReady,true)
+  await p.vm.save();assert.equal(sent,1)
+})
+
+test('本人报告压缩包无预览时仍可授权下载，未就绪或无权不能下载',async()=>{
+  const calls=[];let ready=true,allowed=true
+  const p=page({}, {metadata:async fileId=>({fileId,fileName:'工作材料.zip',readyForBusiness:ready,canPreview:false,canDownload:allowed}),download:async(...args)=>calls.push(args)})
+  const file={fileId:'22',fileName:'工作材料.zip'};p.vm.form.attachments=[file]
+  await p.vm.downloadAttachment(file);assert.deepEqual(calls,[['22','工作材料.zip']])
+  ready=false;await p.vm.downloadAttachment(file);assert.equal(calls.length,1)
+  ready=true;allowed=false;await p.vm.downloadAttachment(file);assert.equal(calls.length,1)
+})
+
+test('本人报告附件刷新失败及切换报告时不能恢复旧附件可用状态',async()=>{
+  const d=deferred();const p=page({}, {metadata:()=>d.promise})
+  p.vm.form.attachments=[{fileId:'23',readyForBusiness:true}]
+  const pending=p.vm.refreshAttachments();p.vm.reset();p.vm.form.content='新批次正文'
+  d.resolve({fileId:'23',readyForBusiness:true});await pending
+  assert.deepEqual(p.vm.form.attachments,[]);assert.equal(p.vm.form.content,'新批次正文')
+  const failed=page({}, {metadata:async()=>{throw new Error('unavailable')}})
+  failed.vm.form.attachments=[{fileId:'24',readyForBusiness:true,scanStatus:'CLEAN'}];await failed.vm.refreshAttachments()
+  assert.equal(failed.vm.attachmentsReady,false);assert.ok(failed.vm.formError)
+  assert.notEqual(failed.vm.attachmentStatus(failed.vm.attachments[0]),'安全可用')
+})
+
+test('本人报告附件真实模板提供下载退路和刷新入口，未就绪禁用保存',async()=>{
+  const source=fs.readFileSync(new URL('../src/modules/internship/views/MyTeacherReportsView.vue',import.meta.url),'utf8')
+  const template=source.slice(source.indexOf('<template>')+10,source.indexOf('\n<script>')).replace(/<\/template>\s*$/,'')
+  for(const ready of [false,true]){
+    const {vm}=page();vm.form.attachments=[{fileId:'31',fileName:'工作材料.zip',readyForBusiness:ready,canDownload:ready,canPreview:false}];vm.previewFile=vm.form.attachments[0]
+    const descriptors=Object.fromEntries(Object.entries(Object.getOwnPropertyDescriptors(vm)).filter(([key])=>!key.startsWith('$')))
+    let allowDownload,downloadHandler
+    const components={ModulePageShell:{setup:(_,{slots})=>()=>h('main',slots.default?.())},AppButton:{props:['disabled'],setup:(props,{slots})=>()=>h('button',{disabled:props.disabled},slots.default?.())},ErrorState:{render:()=>null},LoadingState:{render:()=>null},FilePreviewer:{props:['allowDownload','downloadHandler'],setup:props=>{allowDownload=props.allowDownload;downloadHandler=props.downloadHandler;return()=>null}}}
+    const html=await renderToString(createSSRApp({components,setup:()=>Object.defineProperties({},descriptors),render:compile(template)}))
+    const buttons=[...html.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+    const save=buttons.find(([, ,text])=>text.includes('保存本人报告'))
+    assert.equal(save[1].includes('disabled'),!ready)
+    assert.ok(html.includes('刷新附件安全检查'))
+    assert.equal(allowDownload,ready);assert.equal(typeof downloadHandler,'function')
+    const download=buttons.find(([, ,text])=>text.includes('下载附件'))
+    assert.equal(download[1].includes('disabled'),!ready)
+  }
+})
 test('中文展示保留大编号并转换周次和未知类型',()=>{
   const view=teacherReportView(row());assert.equal(view.id,id);assert.equal(view.typeLabel,'周报');assert.equal(view.periodLabel,'2026年第40周');assert.equal(view.edition,1)
   assert.equal(teacherReportView({...row(),reportType:'SECRET',periodKey:'raw'}).typeLabel,'类型待确认')
@@ -33,10 +128,10 @@ test('当前批次最大字数和人数校验阻止不合法提交',()=>{
 })
 test('保存使用原编号版本并成功回读',async()=>{
   let sent;const p=page({saveTeacherPeriodReport:async body=>{sent=body;return ok({...row(),version:1})}})
-  p.vm.selectReport(teacherReportView(row()));await p.vm.save();assert.equal(sent.expectedVersion,0);assert.equal(sent.batchId,batch);assert.equal(p.vm.receipt.edition,2);assert.equal(p.vm.saving,false)
+  p.vm.selectReport(teacherReportView(row()));p.vm.editReport();await p.vm.save();assert.equal(sent.expectedVersion,0);assert.equal(sent.batchId,batch);assert.equal(p.vm.receipt.edition,2);assert.equal(p.vm.saving,false)
 })
 test('版本冲突保留全部输入和原版本，不自动覆盖',async()=>{
-  const p=page({saveTeacherPeriodReport:async()=>({code:1,bizCode:'DATA_CONFLICT'})});p.vm.selectReport(teacherReportView(row()));const content=p.vm.form.content
+  const p=page({saveTeacherPeriodReport:async()=>({code:1,bizCode:'DATA_CONFLICT'})});p.vm.selectReport(teacherReportView(row()));p.vm.editReport();const content=p.vm.form.content
   await p.vm.save();assert.equal(p.vm.form.content,content);assert.equal(p.vm.form.expectedVersion,0);assert.ok(p.vm.formError.includes('输入已保留'));assert.equal(p.vm.receipt,null)
 })
 test('重复点击只有一次实际保存请求',async()=>{
@@ -68,10 +163,10 @@ test('正常重新登录后先重新读取权限与活跃时间再进入受保�
   const source=fs.readFileSync(new URL('../src/views/auth/StandaloneLoginView.vue',import.meta.url),'utf8')
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import[^\n]+\n/gm,'').replace('export default','return')
   const actions=[]
-  const component=new Function('loginWithPassword','clearPermissionPatterns','getAuthContext','refreshLastActive',script)(async()=>actions.push('login'),()=>actions.push('permissions'),()=>actions.push('identity'),()=>actions.push('activity'))
+  const component=new Function('loginWithPassword','clearPermissionPatterns','getAuthContext','refreshLastActive','request','getVisibleNavPlan',script)(async()=>{actions.push('login');return {}},()=>actions.push('permissions'),()=>actions.push('identity'),()=>actions.push('activity'),async path=>{assert.equal(path,'/rbac/current-context');actions.push('context');return {}},()=>{actions.push('navigation');return []})
   const vm={...component.data(),$route:{query:{redirect:'/admin/internship/teacher-reports?batchId=1'}},$router:{replace:async path=>actions.push(path)}}
   await component.methods.submit.call(vm)
-  assert.deepEqual(actions,['login','permissions','identity','activity','/admin/internship/teacher-reports?batchId=1']);assert.equal(vm.error,'');assert.equal(vm.loading,false)
+  assert.deepEqual(actions,['login','permissions','identity','activity','context','navigation','/admin/internship/teacher-reports?batchId=1']);assert.equal(vm.error,'');assert.equal(vm.loading,false)
 })
 test('退出再登录仍使用电脑30分钟超时策略，不能落入移动7天策略',()=>{
   const source=fs.readFileSync(new URL('../src/security/auth/auth.context.js',import.meta.url),'utf8').replace(/^import[^\n]+\n/gm,'').replace(/export /g,'')

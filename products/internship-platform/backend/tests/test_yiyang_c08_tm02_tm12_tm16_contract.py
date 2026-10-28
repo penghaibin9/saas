@@ -1,4 +1,5 @@
 from pathlib import Path
+from fastapi import FastAPI
 from app.api.router import build_teacher_mobile_router
 from app.api.v1.standalone_mobile_auth import router as mobile_auth_router
 
@@ -7,7 +8,9 @@ def _read(relative: str) -> str:
     return (ROOT / relative).read_text(encoding="utf-8")
 
 def test_tm02_tm12_teacher_workbench_routes_are_mounted():
-    paths={route.path for route in build_teacher_mobile_router().routes}
+    app=FastAPI()
+    app.include_router(build_teacher_mobile_router())
+    paths=app.openapi()['paths']
     assert "/teacher-mobile/internship/workbench/messages" in paths
     assert "/teacher-mobile/internship/workbench/messages/{message_id}/read" in paths
     assert "/teacher-mobile/internship/workbench/todos" in paths

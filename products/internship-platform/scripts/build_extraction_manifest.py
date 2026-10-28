@@ -39,12 +39,15 @@ manifest = {
             and not p.startswith("backend/app/modules/internship/")
             and p.endswith(".py")
         ),
-        "staffPc": selected("frontend/src/modules/internship/"),
+        "staffPc": sorted(set(selected("frontend/src/modules/internship/")) | {"frontend/src/router/dirtyFormGuard.js"}),
         "studentMiniapp": selected("miniapp/src/pages/student-internship/"),
         "teacherMiniapp": selected("miniapp/src/pages/teacher-internship/"),
         "studentPc": sorted(
             p for p in tracked
-            if p.startswith("student-portal/") and "internship" in p.lower()
+            if p.startswith("student-portal/") and (
+                "internship" in p.lower()
+                or p.startswith("student-portal/src/components/recruitment/")
+            )
         ),
         "enterprisePortal": selected("enterprise-portal/"),
         "tests": sorted(

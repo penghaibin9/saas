@@ -15,18 +15,27 @@ ROLE_PERMISSIONS={
  "SECURITY_AUDITOR":{"internship.batch.view","internship.dashboard.view","internship.student.view","internship.attendance.view","internship.risk.view","internship.archive.view","internship.stats.view"},
  "STUDENT":set(),
 }
+# Installation expands concrete commands; a wildcard alone cannot register this school-only action.
+ROLE_PERMISSIONS['SCHOOL_ADMIN'].add('internship.agreement.schoolConfirm')
 ROLE_PERMISSIONS['INTERN_MENTOR'].update({'internship.employment.view','internship.employment.review','internship.employment.sensitive.view'})
+ROLE_PERMISSIONS['INTERN_MENTOR'].update({'internship.change.view','internship.change.review'})
+ROLE_PERMISSIONS['INTERN_MENTOR'].add('internship.visit.location.view')
+ROLE_PERMISSIONS['INTERN_MENTOR'].add('internship.guidance.export')
+ROLE_PERMISSIONS['INTERN_MENTOR'].add('internship.report.export')
+ROLE_PERMISSIONS['INTERN_MENTOR'].update({'internship.eval.self.view','internship.eval.advisor.manage'})
 ROLE_PERMISSIONS['COUNSELOR'].add('internship.employment.view')
+ROLE_PERMISSIONS['INTERN_MENTOR'].update({'internship.stats.view','internship.stats.export'})
+ROLE_PERMISSIONS['COUNSELOR'].update({'internship.stats.view','internship.stats.export'})
 
 def _role(user):return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or (user or {}).get("userType") or "").upper()
 def _granted(user):
-    explicit=(user or {}).get("permissions") or (user or {}).get("permissionCodes")
+    explicit=(user or {}).get("permissions") if "permissions" in (user or {}) else (user or {}).get("permissionCodes")
     return {str(x) for x in explicit} if isinstance(explicit,(list,tuple,set)) else set(ROLE_PERMISSIONS.get(_role(user),set()))
 def _matches(pattern,code):return pattern=="*" or pattern==code or (pattern.endswith(".*") and code.startswith(pattern[:-1]))
 def is_super_admin(user):return _role(user)=="PLATFORM_SUPER_ADMIN"
 def has_permission(user,code):return any(_matches(p,code) for p in _granted(user))
 def enforce_permission(user,code):
-    if not has_permission(user,code):raise no_permission(f"缺少权限：{code}")
+    if not has_permission(user,code):raise no_permission("当前工作身份没有此项操作权限，请联系学校管理员")
     return user
 def require_permission(code):
     def dep(user=Depends(get_current_user)):return enforce_permission(user,code)

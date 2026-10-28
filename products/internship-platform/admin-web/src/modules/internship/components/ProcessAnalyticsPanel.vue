@@ -2,9 +2,9 @@
   <section class="pa-panel" aria-labelledby="pa-title">
     <header class="pa-head">
       <div>
-        <span class="pa-eyebrow">益阳采购 AP19～AP24</span>
+        <span class="pa-eyebrow">学生过程与教师工作</span>
         <h2 id="pa-title">过程统计与绩效汇总</h2>
-        <p>周 / 月 / 全部时间共用同一业务事实；指导老师、班主任、院系、专业、班级和实习生均可切换，自定义列与 Excel 完全同条件。</p>
+        <p>按所选时间和范围统计过程记录。</p>
       </div>
       <AppExportButton
         :export-fn="exportFn"
@@ -22,7 +22,7 @@
       </label>
       <label>
         <span>时间范围</span>
-        <select v-model="period" @change="reload">
+        <select v-model="period" @change="resetQuery">
           <option value="WEEK">按周</option>
           <option value="MONTH">按月</option>
           <option value="ALL">全部时间</option>
@@ -30,7 +30,7 @@
       </label>
       <label v-if="period !== 'ALL'">
         <span>参照日期</span>
-        <input v-model="anchor" type="date" @change="reload" />
+        <input v-model="anchor" type="date" @change="resetQuery" />
       </label>
       <AppButton variant="ghost" :disabled="loading || !batchId" @click="reload">刷新</AppButton>
     </div>
@@ -46,8 +46,9 @@
         <span v-if="windowLabel">{{ windowLabel }}</span>
         <span>共 {{ total }} 行</span>
       </div>
+      <p v-if="groupBy==='HOMEROOM'" class="pa-meta">这里显示所辖班级的学生报告批阅进度，包含指导教师等有权人的批阅；班主任本人工作量以批阅留痕为准。</p>
 
-      <details class="pa-columns" open>
+      <details class="pa-columns">
         <summary>自定义查看字段（{{ selectedKeys.length }}/{{ availableColumns.length }}）</summary>
         <div class="pa-column-grid">
           <label v-for="item in availableColumns" :key="item.key">
@@ -135,8 +136,11 @@ const COMPACT = {
 export default {
   name: 'ProcessAnalyticsPanel',
   components: { DataTable, LoadingState, AppExportButton, AppButton },
+  emits:['state-change'],
   props: {
     batchId: { type: [String, Number], default: '' },
+    filters: {type:Object,default:()=>({})},
+    initialState:{type:Object,default:()=>({})},
     canExport: { type: Boolean, default: false }
   },
   data() {
@@ -160,8 +164,8 @@ export default {
   },
   computed: {
     groupOptions() { return GROUPS.map(([value, label]) => ({ value, label })) },
-    groupLabel() { return GROUPS.find(([value]) => value === this.groupBy)?.[1] || this.groupBy },
-    periodLabel() { return { WEEK: '按周', MONTH: '按月', ALL: '全部时间' }[this.period] || this.period },
+    groupLabel() { return GROUPS.find(([value]) => value === this.groupBy)?.[1] || '统计类型待确认' },
+    periodLabel() { return { WEEK: '按周', MONTH: '按月', ALL: '全部时间' }[this.period] || '时间范围待确认' },
     windowLabel() {
       if (!this.windowStart || !this.windowEnd) return ''
       return `${this.windowStart} 至 ${this.windowEnd}`
@@ -173,16 +177,28 @@ export default {
     },
     rateColumns() { return this.tableColumns.filter(item => RATE_RE.test(item.key)) },
     totalPages() { return Math.max(1, Math.ceil(this.total / this.pageSize)) },
-    requestColumns() { return this.selectedKeys.join(',') }
+    requestColumns() { return this.tableColumns.map(item=>item.key).join(',') },
+    queryKey() {return JSON.stringify([this.batchId,this.filters,this.groupBy,this.period,this.anchor])}
   },
   watch: {
     batchId() { this.page = 1; this.reload() }
+    ,filters:{deep:true,handler(){this.resetQuery()}}
   },
-  mounted() { this.reload() },
+  mounted() {
+    const saved=this.initialState
+    if(GROUPS.some(([key])=>key===saved.groupBy))this.groupBy=saved.groupBy
+    if(['ALL','WEEK','MONTH'].includes(saved.period))this.period=saved.period
+    if(/^\d{4}-\d{2}-\d{2}$/.test(saved.anchor||''))this.anchor=saved.anchor
+    if(Array.isArray(saved.selectedKeys))this.selectedKeys=[...saved.selectedKeys]
+    this.page=Number.isInteger(saved.page)&&saved.page>0?saved.page:1
+    this.reload()
+  },
   beforeUnmount() { this.seq += 1 },
   methods: {
+    remember(){this.$emit?.('state-change',{groupBy:this.groupBy,period:this.period,anchor:this.anchor,selectedKeys:[...this.selectedKeys],page:this.page})},
     params(extra = {}) {
       return {
+        ...this.filters,
         batchId: this.batchId || undefined,
         groupBy: this.groupBy,
         period: this.period,
@@ -194,10 +210,11 @@ export default {
     },
     async loadAllColumns() {
       const seq = ++this.seq
+      const key=this.queryKey
       this.loading = true
       this.error = ''
       const res = await statsApi.getProcessAnalytics(this.params({ page: this.page }))
-      if (seq !== this.seq) return
+      if (seq !== this.seq || key!==this.queryKey) return
       this.loading = false
       if (res.code !== 0) {
         this.error = res.message || '过程统计加载失败'
@@ -209,9 +226,12 @@ export default {
         this.selectedKeys = this.availableColumns.map(item => item.key)
       }
       this.applyData(data)
+      this.remember()
     },
     async reload() {
+      this.seq++;this.items=[];this.total=0
       if (!this.batchId) {
+        this.loading=false;this.definitions=null
         this.items = []; this.total = 0; this.availableColumns = []; this.selectedKeys = []; this.error = ''
         return
       }
@@ -227,33 +247,42 @@ export default {
     async changeGroup() {
       this.page = 1
       this.selectedKeys = []
+      this.remember()
       await this.reload()
     },
+    resetQuery(){this.page=1;this.remember();return this.reload()},
     toggleColumn(key, checked) {
       if (checked) {
         if (!this.selectedKeys.includes(key)) this.selectedKeys = [...this.selectedKeys, key]
+        this.remember()
         return
       }
       if (this.selectedKeys.length <= 1) return
       this.selectedKeys = this.selectedKeys.filter(item => item !== key)
+      this.remember()
     },
-    selectAllColumns() { this.selectedKeys = this.availableColumns.map(item => item.key) },
+    selectAllColumns() { this.selectedKeys = this.availableColumns.map(item => item.key);this.remember() },
     useCompactColumns() {
       const wanted = COMPACT[this.groupBy] || []
       const valid = wanted.filter(key => this.availableColumns.some(item => item.key === key))
       this.selectedKeys = valid.length ? valid : this.availableColumns.slice(0, 12).map(item => item.key)
+      this.remember()
     },
     async goPage(value) {
       if (value < 1 || value > this.totalPages) return
       this.page = value
+      this.remember()
       await this.reload()
     },
-    exportFn() {
-      return statsApi.exportProcessAnalytics(this.params({
+    async exportFn() {
+      if(!this.canExport || this.loading || !this.batchId)return {code:1,message:'当前不能导出，请先读取有权查看的统计结果'}
+      const key=this.queryKey,columns=this.requestColumns
+      const result=await statsApi.exportProcessAnalytics(this.params({
         columns: this.requestColumns,
         page: undefined,
         pageSize: undefined
       }))
+      return key===this.queryKey && columns===this.requestColumns ? result : {code:1,message:'统计范围或查看字段已切换，请重新导出'}
     },
     formatRate(value) { return value == null ? '暂无数据' : `${value}%` },
     columnWidth(key) {
@@ -270,7 +299,9 @@ export default {
         weeklyExpected: '周报应交',
         timelyReview: '准时批阅',
         customColumns: '自定义列'
-      }[key] || key
+        ,reportCompletion:'报告完成率'
+        ,homeroomPerformance:'班主任统计说明'
+      }[key] || '其他统计说明'
     }
   }
 }

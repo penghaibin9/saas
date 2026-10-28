@@ -26,7 +26,7 @@ from app.services import file_service
 from app.services.db_service import _as_id, _tid, session
 
 MAX_STUDENTS = 500
-PACKAGE_VERSION = "INTERNSHIP_EVIDENCE_V2"
+PACKAGE_VERSION = "INTERNSHIP_EVIDENCE_V3"
 METRIC_VERSION = "internship-compliance-v2"
 DOWNLOADABLE_STATUSES = {"AVAILABLE", "STORED"}
 SENSITIVE_KEYS = (
@@ -43,6 +43,17 @@ EVIDENCE_MODELS = (
     ("makeups", "InternshipMakeup"),
     ("leaves", "InternshipLeave"),
     ("reports", "WeeklyReport"),
+    ("process-reports", "InternshipProcessReport"),
+    ("report-versions", "InternshipReportVersion"),
+    ("report-reviews", "InternshipReportReview"),
+    ("payroll", "InternshipPayrollStatement"),
+    ("payroll-versions", "InternshipPayrollVersion"),
+    ("rotations", "InternshipRotation"),
+    ("rotation-projects", "InternshipRotationProject"),
+    ("formal-documents", "InternshipFormalDocument"),
+    ("employment", "InternshipEmploymentRegistration"),
+    ("employment-submissions", "InternshipEmploymentSubmission"),
+    ("employment-reviews", "InternshipEmploymentReview"),
     ("guidance", "InternshipGuidance"),
     ("visits", "InternshipVisit"),
     ("complaints", "InternshipComplaint"),
@@ -57,6 +68,11 @@ EVIDENCE_MODELS = (
 
 
 def _json_value(value):
+    if isinstance(value, dict):
+        return {key: _json_value(item) for key, item in value.items()
+                if not str(key).lower().endswith(("encrypted", "_encrypted"))}
+    if isinstance(value, list):
+        return [_json_value(item) for item in value]
     if isinstance(value, (datetime, date)):
         return value.isoformat()
     if isinstance(value, Decimal):
@@ -68,6 +84,11 @@ def _safe_row(row) -> dict:
     result = {}
     for col in inspect(row).mapper.column_attrs:
         key = col.key
+        if key == 'location_encrypted':
+            result['has_location'] = bool(getattr(row, key))
+            continue  # 精确巡访位置不进入默认监管、证据包或归档快照。
+        if key.endswith("_encrypted") or key in {"source_snapshot_json", "material_snapshot"}:
+            continue  # 联系信息保持在原受控业务入口；归档不复制密文或解密后的联系人。
         value = getattr(row, key)
         lowered = key.lower()
         if any(part in lowered for part in SENSITIVE_KEYS) and value:
@@ -87,12 +108,27 @@ def _add_json(entries: dict[str, bytes], path: str, value) -> None:
 
 def _query_evidence(db, model_name: str, internship_id: int):
     model = getattr(models, model_name, None)
-    if model is None or not hasattr(model, "internship_id"):
+    if model is None:
         return []
-    conditions = [
-        model.tenant_id == _tid(),
-        model.internship_id == internship_id,
-    ]
+    parents = {
+        "InternshipReportReview": ("InternshipReportVersion", "report_version_id"),
+        "InternshipPayrollVersion": ("InternshipPayrollStatement", "statement_id"),
+        "InternshipRotationProject": ("InternshipRotation", "rotation_id"),
+        "InternshipEmploymentSubmission": ("InternshipEmploymentRegistration", "registration_id"),
+        "InternshipEmploymentReview": ("InternshipEmploymentRegistration", "registration_id"),
+    }
+    conditions = [model.tenant_id == _tid()]
+    if hasattr(model, "internship_id"):
+        conditions.append(model.internship_id == internship_id)
+    elif model_name in parents:
+        parent_name, foreign_key = parents[model_name]
+        parent = getattr(models, parent_name)
+        parent_conditions = [parent.tenant_id == _tid(), parent.internship_id == internship_id]
+        if hasattr(parent, "is_deleted"):
+            parent_conditions.append(parent.is_deleted.is_(False))
+        conditions.append(getattr(model, foreign_key).in_(select(parent.id).where(*parent_conditions)))
+    else:
+        return []
     if hasattr(model, "is_deleted"):
         conditions.append(model.is_deleted.is_(False))
     return db.scalars(select(model).where(*conditions).order_by(model.id)).all()
@@ -124,6 +160,8 @@ def _attachment(db, file_id: str, user, prefix: str, entries, file_manifest, mis
     elif row.status not in DOWNLOADABLE_STATUSES:
         item["reason"] = f"FILE_NOT_DOWNLOADABLE:{row.status}"
     else:
+        from app.services.internship_file_transfer_service import authorized_file
+        authorized_file(file_id, user, action="download")
         resolved = file_service.resolve_download(str(file_id), user=user)
         if not resolved:
             item["reason"] = "FILE_NOT_FOUND_OR_NOT_AUTHORIZED"
@@ -215,6 +253,20 @@ def capture_archive_snapshot(db, rec, evaluation, user=None) -> dict:
         InternshipAuditTrail.tenant_id == _tid(),
         InternshipAuditTrail.target_type == "INTERN_STUDENT",
         InternshipAuditTrail.target_id == rec.id).order_by(InternshipAuditTrail.id)).all()
+    audit_types = {
+        "reports": "WEEKLY", "process-reports": "PROCESS_REPORT", "payroll": "PAYROLL",
+        "rotations": "ROTATION", "enterprise-evaluations": "ENT_EVAL",
+        "student-evaluations": "STU_EVAL", "scores": "SCORE", "employment": "EMPLOYMENT_REGISTRATION",
+    }
+    for folder, target_type in audit_types.items():
+        ids = [int(row["id"]) for row in datasets.get(folder, [])]
+        if ids:
+            audits.extend(db.scalars(select(InternshipAuditTrail).where(
+                InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == target_type,
+                InternshipAuditTrail.target_id.in_(ids)).order_by(InternshipAuditTrail.id)).all())
+    from app.modules.internship.services import internship_employment_service as employment
+    employment_rows = _query_evidence(db, "InternshipEmploymentRegistration", rec.id)
+    employment_registration = employment._view(db, employment_rows[0], masked=True) if employment_rows else None
     return {
         "snapshotSchemaVersion": "INTERNSHIP_ARCHIVE_SNAPSHOT_V2",
         "capturedAt": datetime.utcnow().isoformat() + "Z",
@@ -225,6 +277,7 @@ def capture_archive_snapshot(db, rec, evaluation, user=None) -> dict:
         "student": _safe_row(student) if student else None,
         "internshipRecord": _safe_row(rec),
         "datasets": datasets,
+        "employmentRegistration": employment_registration,
         "fileRefs": file_refs,
         "audit": [_safe_row(x) for x in audits],
         "sourceObjectVersions": [
@@ -393,6 +446,7 @@ def generate(package_type, target_id, user=None):
             complaints = db.scalars(select(getattr(models, "InternshipComplaint")).where(
                 getattr(models, "InternshipComplaint").tenant_id == _tid(),
                 getattr(models, "InternshipComplaint").enterprise_id == _as_id(target_id),
+                getattr(models, "InternshipComplaint").internship_id.in_([rec.id for rec in records]),
                 getattr(models, "InternshipComplaint").is_deleted.is_(False))).all()
             _add_json(entries, "evidence/enterprise-master.json",
                       _safe_row(company) if company else None)
@@ -463,6 +517,48 @@ def generate(package_type, target_id, user=None):
         }
 
 
+def assert_package_scope(db, package, user):
+    """The immutable member set governs both package and ordinary file download routes."""
+    from app.core.permissions import has_permission
+    from app.modules.internship.services.internship_scope import assert_internship_record_scope
+    from app.services.internship_file_transfer_service import authorized_file
+    if not has_permission(user, "internship.evidence.export"):
+        raise not_found("证据包不存在或不可下载")
+    manifest = package.manifest_json or {}
+    members = manifest.get("sourceObjectVersions") or []
+    if (str(manifest.get("tenantId")) != str(_tid()) or not members
+            or len(members) != package.row_count or len(members) > MAX_STUDENTS
+            or (package.package_type == "ENTERPRISE"
+                and manifest.get("packageSchemaVersion") != PACKAGE_VERSION)):
+        raise not_found("证据包范围无法完整核验，请重新生成")
+    seen = set()
+    for member in members:
+        value = str(member.get("id") or "")
+        if member.get("type") != "INTERNSHIP_RECORD" or not value.isdigit() or value in seen:
+            raise not_found("证据包范围无法完整核验，请重新生成")
+        seen.add(value)
+        assert_internship_record_scope(db, value, user, "下载监管证据包")
+    for attachment in manifest.get("files") or []:
+        if attachment.get("included"):
+            if str(attachment.get("fileId")) == str(package.package_file_id):
+                raise not_found("证据包附件范围无效")
+            authorized_file(attachment.get("fileId"), user, action="download")
+
+
+def authorize_package_file(db, file_obj, user):
+    if db is None:
+        return False
+    packages = db.scalars(select(InternshipEvidencePackage).where(
+        InternshipEvidencePackage.tenant_id == _tid(),
+        InternshipEvidencePackage.package_file_id == str(file_obj.id),
+        InternshipEvidencePackage.is_deleted.is_(False),
+    ).limit(2)).all()
+    if len(packages) != 1 or packages[0].status not in {"READY", "READY_WITH_MISSING"}:
+        return False
+    assert_package_scope(db, packages[0], user)
+    return True
+
+
 def resolve_package_download(package_id, user=None):
     """Object-scoped package download; missing and denied deliberately look identical."""
     with session() as db:
@@ -470,9 +566,9 @@ def resolve_package_download(package_id, user=None):
             InternshipEvidencePackage.id == _as_id(package_id),
             InternshipEvidencePackage.tenant_id == _tid(),
             InternshipEvidencePackage.is_deleted.is_(False)))
-        if not package or package.status == "INVALIDATED" or not package.package_file_id:
+        if not package or package.status not in {"READY", "READY_WITH_MISSING"} or not package.package_file_id:
             raise not_found("证据包不存在或不可下载")
-        _resolve_records(db, package.package_type, package.target_id, user)
+        assert_package_scope(db, package, user)
         resolved = file_service.resolve_download(package.package_file_id, user=user)
         if not resolved:
             raise not_found("证据包不存在或不可下载")

@@ -4,6 +4,7 @@
 """
 
 from app.models.tenant import Tenant
+from app.models.system_admin import SchoolDepartment, StaffProfile, SchoolSetting, SchoolDeliveryRecord
 from app.models.org import College, Major, SchoolClass
 from app.models.rbac import Permission, Role, RolePermission, User, UserRole, WxAccountBinding
 from app.models.student import StudentContact, StudentProfile

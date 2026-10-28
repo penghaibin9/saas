@@ -305,6 +305,8 @@ def evaluate_rotation(rotation_id, body: dict, user: dict):
         requested_batch = payload.get("batchId")
         if requested_batch in (None, "") or int(record.batch_id or 0) != int(requested_batch):
             raise AppException("DATA_CONFLICT", "轮岗记录不属于当前实习批次，请刷新后重试")
+        if record.status == 'ARCHIVED':
+            raise AppException('DATA_CONFLICT', '已归档实习记录不能评定轮岗成绩，请联系学校先撤销归档')
         expected = payload.get("expectedVersion")
         if expected is None or int(expected) != int(row.version or 0):
             raise AppException("DATA_CONFLICT", "轮岗记录已变化，请刷新后重试")

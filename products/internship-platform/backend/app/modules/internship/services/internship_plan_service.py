@@ -176,11 +176,12 @@ def _batch_snapshot(batch) -> dict:
 
 def _rules_snapshot(batch) -> dict:
     from app.modules.internship.services.internship_service import DEFAULT_RULES, _deep_merge
+    from app.modules.internship.services.internship_score_service import get_config
     rules = _deep_merge(DEFAULT_RULES, dict(batch.rules_config or {}))
     checkin = dict(rules.get("checkin") or {})
     weekly = dict(rules.get("weeklyReport") or {})
     process = dict(rules.get("processReport") or {})
-    score = dict(rules.get("score") or {})
+    score = get_config(batch_id=batch.id)
     evaluation = dict(rules.get("evaluation") or {})
     return {
         "rulesVersion": int(batch.rules_version or 1),
@@ -193,8 +194,11 @@ def _rules_snapshot(batch) -> dict:
         "monthlyMinWordCount": int(process.get("monthlyMinWords") or 0),
         "summaryRequiredCount": int(process.get("summaryRequiredCount") or 0),
         "summaryMinWordCount": int(process.get("summaryMinWords") or 0),
-        "scorePassThreshold": float(score.get("passThreshold") or 0),
-        "scoreComponents": list(score.get("components") or []),
+        "scorePassThreshold": float(score["passLine"]),
+        "scoreComponents": [{"name": name, "weight": float(score[key]) / 100}
+                            for key, name in (("checkinWeight", "打卡"), ("weeklyWeight", "周报"),
+                                              ("monthlyWeight", "月报总结"), ("enterpriseWeight", "企业评价"),
+                                              ("schoolWeight", "学校评价"))],
         "evaluationWeights": evaluation,
     }
 
@@ -339,14 +343,28 @@ def _plan_row(plan, batch=None):
     }
 
 
-def _assert_plan_batch_scope(db, batch: InternshipBatch, user, action: str) -> None:
-    """Batch-level plan may be used by scoped leaders only when the whole target cohort is in scope."""
+def _assert_plan_batch_scope(db, batch: InternshipBatch, user, action: str, *, read_only=False) -> None:
+    """Shared plan reads follow related students; cohort-wide writes still require the whole scope."""
     from app.modules.internship.services.internship_service import _current_scope
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
 
     scope = _current_scope(user)
     if scope.get("mode") != "SCOPED":
         return
+
+    if read_only:
+        from sqlalchemy import or_
+        from app.models import InternshipPlanAssignment
+        assigned = select(InternshipPlanAssignment.internship_id).where(
+            InternshipPlanAssignment.tenant_id == _tid(),
+            InternshipPlanAssignment.plan_batch_id == batch.id,
+            InternshipPlanAssignment.status == "ACTIVE",
+            InternshipPlanAssignment.is_deleted.is_(False))
+        related = select(InternshipRecord.id).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+            or_(InternshipRecord.batch_id == batch.id, InternshipRecord.id.in_(assigned)))
+        if db.scalar(apply_internship_record_scope(related, user).limit(1)) is not None:
+            return
 
     base = select(InternshipRecord.id).where(
         InternshipRecord.tenant_id == _tid(),
@@ -391,7 +409,7 @@ def get_plan_context(batch_id, user=None) -> dict:
         batch = db.get(InternshipBatch, _as_id(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("批次不存在")
-        _assert_plan_batch_scope(db, batch, user, "查看实习计划")
+        _assert_plan_batch_scope(db, batch, user, "查看实习计划", read_only=True)
         return {
             "basicSnapshot": _batch_snapshot(batch),
             "rulesSnapshot": _rules_snapshot(batch),
@@ -404,12 +422,49 @@ def get_plan_by_batch(batch_id, user=None):
         batch = db.get(InternshipBatch, _as_id(batch_id))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
             raise not_found("批次不存在")
-        _assert_plan_batch_scope(db, batch, user, "查看实习计划")
+        _assert_plan_batch_scope(db, batch, user, "查看实习计划", read_only=True)
         plan = db.scalar(select(InternshipBatchPlan).where(
             InternshipBatchPlan.tenant_id == _tid(),
             InternshipBatchPlan.batch_id == batch.id,
             InternshipBatchPlan.is_deleted.is_(False)))
         return _plan_row(plan, batch) if plan else None
+
+
+def authorize_plan_file(db, file, bindings, user, action):
+    if db is None or action not in {"meta", "download", "preview", "archive"}:
+        return False
+    pid = str(file.biz_id or "")
+    if file.tenant_id != _tid() or file.biz_type != "INTERNSHIP_PLAN" or not pid.isdigit():
+        return False
+    if not any(b.tenant_id == _tid() and b.file_id == file.id and not b.is_deleted
+               and b.status == "ACTIVE" and b.is_current and b.biz_type == "INTERNSHIP_PLAN"
+               and str(b.biz_id) == pid for b in bindings):
+        return False
+    plan = db.get(InternshipBatchPlan, int(pid))
+    if (not plan or plan.tenant_id != _tid() or plan.is_deleted
+            or str(file.id) not in {str(fid) for fid in plan.attachment_file_ids_json or []}):
+        return False
+    if str(user.get("userType") or "").upper() == "STUDENT":
+        from sqlalchemy import or_
+        from app.services.mobile_student_service import _require_student, resolve_student
+        student = resolve_student(db, _require_student(user))
+        if not student or student.tenant_id != _tid() or student.is_deleted or plan.status != "PUBLISHED":
+            return False
+        assigned = select(InternshipPlanAssignment.internship_id).where(
+            InternshipPlanAssignment.tenant_id == _tid(), InternshipPlanAssignment.plan_id == plan.id,
+            InternshipPlanAssignment.status == "ACTIVE", InternshipPlanAssignment.is_deleted.is_(False))
+        return db.scalar(select(InternshipRecord.id).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == student.id,
+            InternshipRecord.is_deleted.is_(False),
+            or_(InternshipRecord.batch_id == plan.batch_id, InternshipRecord.id.in_(assigned))).limit(1)) is not None
+    from app.core.permissions import has_permission
+    if not has_permission(user, "internship.plan.view"):
+        return False
+    batch = db.get(InternshipBatch, plan.batch_id)
+    if not batch or batch.tenant_id != _tid() or batch.is_deleted:
+        return False
+    _assert_plan_batch_scope(db, batch, user, "查看计划附件", read_only=True)
+    return True
 
 
 def save_plan(batch_id, body, user=None) -> dict:
@@ -911,10 +966,31 @@ def _student_plan_for_record(db, record, plan_id=None, *, lock=False):
     return plan, assignment
 
 
-def student_assigned_plans(user) -> dict:
-    from app.modules.internship.services.internship_agreement_service import _student_record
+def _student_plan_record(db, user, *, batch_id=None, internship_id=None, for_write=False):
+    """Resolve the student's record, separately from an assigned plan's owning batch."""
+    if batch_id is not None or internship_id is not None:
+        from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+        record, student, _batch_id = require_explicit_context(
+            db, user, {"batchId": batch_id, "internshipId": internship_id}, for_write=for_write)
+        return record, student
+    from app.services.mobile_student_service import _require_student, resolve_student
+    from app.modules.internship.services.internship_record_resolver import resolve_student_internship_context
+    student = resolve_student(db, _require_student(user))
+    if student is None or student.is_deleted or student.tenant_id != _tid():
+        raise no_permission("学生账号未绑定有效的本校学生档案")
+    context = resolve_student_internship_context(db, student=student, for_write=for_write)
+    if context.mode == "need_select":
+        raise AppException("NEED_SELECT", "请先选择实习批次，再查看实习计划", http_status=409)
+    return context.record, context.student
+
+
+def _student_context_row(record):
+    return {"batchId": str(record.batch_id), "internshipId": str(record.id)} if record else None
+
+
+def student_assigned_plans(user, batch_id=None, internship_id=None) -> dict:
     with session() as db:
-        record, _student = _student_record(db, user)
+        record, _student = _student_plan_record(db, user, batch_id=batch_id, internship_id=internship_id)
         if not record:
             return {"items": [], "total": 0, "primaryPlanId": ""}
 
@@ -1012,13 +1088,13 @@ def student_assigned_plans(user) -> dict:
             })
 
         primary_id = next((item["planId"] for item in rows if item["isPrimary"]), "")
-        return {"items": rows, "total": len(rows), "primaryPlanId": primary_id}
+        return {"items": rows, "total": len(rows), "primaryPlanId": primary_id,
+                "context": _student_context_row(record)}
 
 
-def student_my_plan(user, plan_id=None) -> dict | None:
-    from app.modules.internship.services.internship_agreement_service import _student_record
+def student_my_plan(user, plan_id=None, batch_id=None, internship_id=None) -> dict | None:
     with session() as db:
-        record, _student = _student_record(db, user)
+        record, _student = _student_plan_record(db, user, batch_id=batch_id, internship_id=internship_id)
         if not record:
             return None
         plan, assignment = _student_plan_for_record(db, record, plan_id)
@@ -1040,6 +1116,7 @@ def student_my_plan(user, plan_id=None) -> dict | None:
         approved = sum(1 for task in tasks if task.get("progressStatus") == "APPROVED")
         return {
             **_plan_row(plan),
+            "context": _student_context_row(record),
             "assignmentId": str(assignment.id) if assignment else "",
             "isPrimary": bool(assignment.is_primary) if assignment else int(plan.batch_id) == int(record.batch_id),
             "planBatchId": str(plan.batch_id),

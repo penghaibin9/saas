@@ -31,17 +31,23 @@ C09 不是“代码能启动”即完成。正式交付必须同时留下以下�
 
 实际 CPU、内存、带宽不得仅按开发机估算，应以 G20 压测结果反推。
 
-### 2.2 构建三个 PC 端
+### 2.2 独立构建和交付包
+
+当前推荐从本产品目录运行 `python scripts/product.py build`：按四端锁文件安装、执行测试，并构建管理/教师、学生、企业电脑端及同源移动网页版。随后运行 `python scripts/product.py package --output ../岗位实习独立交付包.zip`，输出全新文件和校验值。构建回执只证明本地源码与产物一致，不表示学校或生产验收通过。
+
+生产网关同时交付 `/mobile/`；移动网页版构建时使用 `VITE_API_BASE_URL=/`，通过同一域名的 `/api/v1` 请求后台，不保留开发机地址。
+
+需要逐端排查时，下面命令仍有效。
 
 在 `products/internship-platform` 下分别构建：
 
 ```bash
 cd admin-web
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run build
 
 cd ../student-web
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run build
 
 cd ../enterprise-web
@@ -53,13 +59,23 @@ npm run build
 
 ```bash
 cd ../mobile
-npm install --no-audit --no-fund
+npm ci --no-audit --no-fund
 npm run build:mp-weixin
 ```
 
 小程序产物必须继续经过微信开发者工具与真实手机验收，不能用 H5 build 替代。
 
+小程序构建前必须显式设置实际的 `VITE_API_BASE_URL`，并核对 `mobile/src/manifest.json` 的应用编号属于本次学校交付。没有正式目标时，只交付源码和移动网页版，不把本机构建当成可发布微信版本。
+
 ### 2.3 配置生产变量
+
+**独立产品的统一入口与首次交接约定**
+
+- `admin-web` 同时交付岗位实习与系统管理，分别使用 `/admin/internship`、`/admin/system`；共用 `/login`、`/api/v1`、同一后台与本校主档。不得把系统管理部署成另一套学校库或要求师生重复开户。
+- 初始账号默认承担学校系统维护职责。本人完成首次改密后，从“系统管理概览”的学校准备与实习开局步骤，完成组织、教职工和学生开户，再在“角色与权限”中为实际负责人配置校级或院系实习身份及相应范围。兼任人员使用原账号；不因显示两个入口而自动授予审批或敏感资料查看权。
+- 顶部两个区域使用同一外壳。当前身份有权时直接进入；另有已授权身份时明确选择、确认切换；没有对应身份时指向负责人配置。切换后服务端重新裁定权限，不能合并多个身份的权限。
+- 安装交接时用同一学生主档与原教师账号验收：学校准备 → 实习批次及参与名单 → 导师分配 → 教师接收 → 切回系统管理核对原资料，并检查刷新、无权深链和撤权。后台与管理端候选需配套，身份发现接口返回各已授权身份的有效权限用于入口提示，不替代当前身份授权。
+- 三个电脑端仍按本节构建和统一网关交付；教师与学生微信端指向同一独立后台，微信宿主、域名与真机证据单列。上述约定及本地通过不能替代空库安装、隔离恢复、真实迁移或生产发布验收。
 
 ```bash
 cd deploy
@@ -102,9 +118,48 @@ curl -fsS https://正式域名/health/ready
 
 - `status=READY`
 - `database=READY`
-- `schemaRevision=ix0023`（以后新增迁移时同步更新部署配置）
+- `schemaRevision=ix0036`（以后新增迁移时同步更新部署配置）
 - Redis 为 READY
 - fileStorage 为 READY
+
+### 2.5 企业扫码与考勤启用检查
+
+首次迁移成功且确认数据库完全为空后，使用安装镜像内同一初始化入口建立学校。下面回执目录须由实施人员提前创建并限制访问，不能位于网页根目录、附件目录或源码公开目录。实际学校名称、代码和账号需按交付目标填写。
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml run --rm --no-deps \
+  --user "$(id -u):$(id -g)" --volume /srv/private/internship-handoff:/run/school-init \
+  backend python -m app.initialize_school --school-code SCHOOL_CODE --school-name SCHOOL_NAME \
+  --admin-login SCHOOL_OWNER --receipt-file /run/school-init/owner.json
+```
+
+命令拒绝已有学校、已有账号或已有同名回执。临时密码不打印，由受控回执交接给负责人；首次登录必须本人修改密码。不能用再次初始化来修复已有学校。
+
+首次空校安装可保持考勤配置档关闭；健康检查通过不代表已经具备日常考勤调度。学校建好实际进行中的批次后，交付前必须完成下面的配置和运行核验。
+
+<details>
+<summary>实施人员使用：明确目标后启用，不默认扫描所有学校</summary>
+
+- 设置 `ENTERPRISE_PORTAL_BASE_URL` 为本次实际部署的加密公网地址，路径与单域名反代的 `/enterprise` 一致；该值由容器配置传入后台，不能只留在宿主环境文件。
+- 设置 `COMPOSE_PROFILES=attendance`，并明确填写 `ATTENDANCE_TENANT_ID`、`ATTENDANCE_BATCH_ID`；实际学校与进行中批次必须只读核验一致。没有目标时，不启动考勤程序。
+- 从仓库根目录运行以下只读检查；示例文件保留空值，因此不能用示例文件取得交付通过结论。
+
+```powershell
+python products/internship-platform/scripts/check_delivery_config.py --env-file products/internship-platform/deploy/.env.production
+```
+
+检查通过并取得本次发布授权后，从本产品部署目录显式启动考勤服务：
+
+```bash
+docker compose --env-file .env.production -f docker-compose.production.yml --profile attendance up -d --build attendance-worker
+docker compose --env-file .env.production -f docker-compose.production.yml ps attendance-worker
+```
+
+心跳按学校、批次分别记录；运行失败、心跳过期或查询另一个目标均不能报健康。当前一个进程只处理明确的一校一批次；多个进行中批次须分别配置进程并逐个核验，不能将一批次通过算成全部批次已调度。
+
+</details>
+
+配置检查不连接公网或数据库。正式交付仍须检查评价二维码指向本校原学生任务、未登录扫码后能接续、限定目标的提醒持续产生并由正常学生/导师接收，重复扫描不重复通知。本次候选补丁没有执行生产启动命令。
 
 ## 3. G19 历史数据迁移
 
@@ -276,7 +331,7 @@ python scripts/g20_validate_evidence.py g20-k6-summary.json \
 
 ```bash
 cd deploy
-SOURCE_COMMIT="$(git rev-parse HEAD)" ./backup/backup.sh
+SOURCE_COMMIT="$(sha256sum ../delivery-manifest.json | cut -d ' ' -f1)" bash ./backup/backup.sh
 ```
 
 一个有效恢复点由以下文件共同组成：
@@ -295,7 +350,7 @@ manifest 是提交标记。禁止只留 SQL、不留附件，或 SQL 与附件�
 ### 5.2 隔离恢复演练
 
 ```bash
-./backup/restore-drill.sh backups/manifest_YYYYMMDD_HHMMSS.json internship_restore_drill
+bash ./backup/restore-drill.sh backups/manifest_YYYYMMDD_HHMMSS_PID.json internship_restore_drill
 ```
 
 演练会：
@@ -307,7 +362,7 @@ manifest 是提交标记。禁止只留 SQL、不留附件，或 SQL 与附件�
 5. 解压附件到临时目录；
 6. 对 `t_file_object` 中 local 文件逐个核验 size/SHA；
 7. 输出 `restore-evidence-*.json`；
-8. 默认清理 drill DB。
+8. 默认保留演练库和回执；目标库已存在时直接拒绝，不能清空重建。只有明确要求清理本次新建演练库时才设置 `KEEP_DRILL_DB=0`，不会清理此前已有的同名库。
 
 COS/其他对象存储必须另留 provider-level 恢复和 checksum 证据，不能由 local-file drill 代替。
 

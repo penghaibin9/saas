@@ -154,6 +154,14 @@ def ensure_primary_assignment_in_tx(db, *, plan, record, user=None):
     )
 
 
+def ensure_published_primary_for_record_in_tx(db, record, user=None):
+    """Record creators lock the batch first so plan publication and joining serialize."""
+    plan = db.scalar(select(InternshipBatchPlan).where(
+        InternshipBatchPlan.tenant_id == _tid(), InternshipBatchPlan.batch_id == record.batch_id,
+        InternshipBatchPlan.status == "PUBLISHED", InternshipBatchPlan.is_deleted.is_(False)).with_for_update())
+    return ensure_primary_assignment_in_tx(db, plan=plan, record=record, user=user) if plan else None
+
+
 def _view(db, assignment: InternshipPlanAssignment) -> dict:
     plan = db.get(InternshipBatchPlan, assignment.plan_id)
     batch = db.get(InternshipBatch, assignment.plan_batch_id)

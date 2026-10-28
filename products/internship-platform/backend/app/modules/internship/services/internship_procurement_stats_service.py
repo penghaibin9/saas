@@ -26,6 +26,25 @@ from app.modules.internship.services import internship_stats_service as base_sta
 from app.services.db_service import _tid, session
 
 
+def export(user, **filters):
+    from app.services import xlsx_util
+    data=overview(user,**filters)
+    rows=[]
+    for group in data['groups']:
+        for item in group.get('counters',[]):
+            rows.append([group['label'],item['label'],item['value'],None,None,None])
+        for item in group.get('ratios',[])+group.get('metrics',[]):
+            rows.append([group['label'],item['label'],item['numerator'],item['denominator'],item['rate'],None])
+        for item in group.get('wageByCurrency',[]):
+            rows.append([group['label'],'实际工资合计',item['count'],None,item['totalActualAmount'],item['currency']])
+            rows.append([group['label'],'平均实际工资',item['count'],None,item['averageActualAmount'],item['currency']])
+        for item in group.get('cityTop10',[]):
+            rows.append([group['label'],'工作城市 · '+item['city'],item['count'],None,None,None])
+    content=xlsx_util.build_ledger_xlsx('质量与工资统计',['分组','指标','分子或数量','分母','比率或金额','币种'],rows,watermark='学校统计 · 同条件导出')
+    base_stats._record_export(user,'质量与工资统计',len(rows),filters)
+    return xlsx_util.pack_xlsx_result(content,'质量与工资统计.xlsx',len(rows))
+
+
 def _rate(num: int, den: int):
     return round(int(num) * 100.0 / int(den), 1) if den else None
 
@@ -42,7 +61,7 @@ def _ratio(key, label, numerator, denominator, *, note="", source=""):
     }
 
 
-def _visible(db, user, batch_id):
+def _visible(db, user, batch_id, college=None, major=None, class_name=None):
     batch = resolve_batch(db, batch_id, for_write=False)
     query = select(InternshipRecord, StudentProfile).join(
         StudentProfile,
@@ -64,12 +83,15 @@ def _visible(db, user, batch_id):
         user,
     ).subquery()
     rows = db.execute(query.where(InternshipRecord.id.in_(select(scoped_ids.c.id)))).all()
+    cache=base_stats._preload_org_cache(db,[student for _,student in rows])
+    rows=[(rec,stu) for rec,stu in rows if all(not value or value==actual for value,actual in
+        zip((college,major,class_name),base_stats._org_of(db,stu,cache)))]
     return batch, rows
 
 
-def overview(user, *, batch_id) -> dict:
+def overview(user, *, batch_id, college=None, major=None, class_name=None) -> dict:
     with session() as db:
-        batch, pairs = _visible(db, user, batch_id)
+        batch, pairs = _visible(db, user, batch_id, college, major, class_name)
         records = [row for row, _student in pairs]
         students = [student for _row, student in pairs]
         record_ids = [int(row.id) for row in records]
@@ -79,7 +101,7 @@ def overview(user, *, batch_id) -> dict:
         application_facts = base_stats._latest_approved_application_facts(db, record_ids)
         report_task = base_stats._weekly_task_facts(
             db,
-            [row for row in records if row.status in ("ONBOARD", "ASSESSING", "ARCHIVED")],
+            records,
             batch,
         )
 
@@ -205,7 +227,7 @@ def overview(user, *, batch_id) -> dict:
         }
 
         # ── 活动：应交实交 / 打卡 / 指导巡访用现有已验证口径 ──
-        base = base_stats.overview(user, batch_id=str(batch.id))
+        base = base_stats.overview(user, batch_id=str(batch.id), college=college, major=major, class_name=class_name)
         metric_by_key = {item["key"]: item for item in base.get("metrics") or []}
         activity_keys = (
             "reportTaskCompletionRate",
@@ -243,6 +265,7 @@ def overview(user, *, batch_id) -> dict:
                 InternshipPayrollStatement,
                 InternshipPayrollStatement.current_version_id == InternshipPayrollVersion.id,
             ).where(
+                InternshipPayrollStatement.id == InternshipPayrollVersion.statement_id,
                 InternshipPayrollStatement.tenant_id == _tid(),
                 InternshipPayrollStatement.internship_id.in_(record_ids),
                 InternshipPayrollStatement.is_deleted.is_(False),

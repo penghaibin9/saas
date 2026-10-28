@@ -25,7 +25,10 @@ export function weeklyReportView(row = {}) {
   }
 }
 export function processReportView(row = {}) {
-  return { ...row, reportTypeLabel: reportTypeLabel(row.reportType), statusLabel: weeklyStatusLabel(row.status), periodLabel: reportPeriodLabel(row.reportType, row.periodKey) }
+  return { ...row, reportTypeLabel: reportTypeLabel(row.reportType), statusLabel: weeklyStatusLabel(row.status), periodLabel: reportPeriodLabel(row.reportType, row.periodKey),
+    review: row.review ? { ...row.review, actionLabel: reviewActionLabel(row.review.action), ratingLabel: weeklyRatingLabel(row.review.ratingLevel) } : null,
+    immutableVersions: (row.immutableVersions || []).map(version => ({ ...version,
+      review: version.review ? { ...version.review, actionLabel: reviewActionLabel(version.review.action), ratingLabel: weeklyRatingLabel(version.review.ratingLevel) } : null })) }
 }
 export function attachmentKind(file = {}) {
   const mime = String(file.mimeType || '').toLowerCase()

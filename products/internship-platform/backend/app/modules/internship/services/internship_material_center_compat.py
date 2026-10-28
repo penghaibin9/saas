@@ -121,6 +121,9 @@ def preflight_process_report(report_id, user=None) -> dict:
 
 
 def _ensure_archive_state_snapshot(db, record, evaluation: dict, user=None) -> dict:
+    from app.modules.internship.services.internship_evidence_package_service import capture_archive_snapshot
+    from app.modules.internship.services.internship_score_archive_guard import _score_freeze
+    from app.models import InternshipFinalScore
     student = db.get(StudentProfile, record.student_id)
     payload = {
         "schemaVersion": "INTERNSHIP_ARCHIVE_STATE_SNAPSHOT_V1",
@@ -142,6 +145,12 @@ def _ensure_archive_state_snapshot(db, record, evaluation: dict, user=None) -> d
         "generatedAt": datetime.utcnow().isoformat() + "Z",
         "generatedBy": core._op_name(user),
     }
+    payload["businessEvidence"] = capture_archive_snapshot(db, record, evaluation, user)
+    score = db.scalar(select(InternshipFinalScore).where(
+        InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == record.id,
+        InternshipFinalScore.status == "PUBLISHED", InternshipFinalScore.is_deleted.is_(False)))
+    if score:
+        payload["finalScoreFreeze"], payload["finalScoreFreezeHash"] = _score_freeze(db, score)
     item = _store_snapshot(
         db,
         payload=payload,

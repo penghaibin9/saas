@@ -23,6 +23,13 @@ export function decodeQueryText(value, fallback = '') {
 }
 
 let pendingNavigation = null
+// 构建器只识别静态 API 引用，动态 uni[name] 会漏掉所需导航方法。
+const navigationApis = {
+  navigateTo: options => uni.navigateTo(options),
+  reLaunch: options => uni.reLaunch(options),
+  navigateBack: options => uni.navigateBack(options),
+  redirectTo: options => uni.redirectTo(options)
+}
 // 一次只允许一个宿主路由转换；迟到回调不能解锁后续操作。
 function navigate(method, options, fallback) {
   if (pendingNavigation && Date.now() - pendingNavigation.startedAt < 8000) return false
@@ -32,7 +39,7 @@ function navigate(method, options, fallback) {
   const run = (name, args, recovery) => {
     let recovering = false
     try {
-      uni[name]({ ...args,
+      navigationApis[name]({ ...args,
         fail() {
           if (pendingNavigation !== operation) return
           if (recovery) { recovering = true; run(recovery.method, recovery.options) }

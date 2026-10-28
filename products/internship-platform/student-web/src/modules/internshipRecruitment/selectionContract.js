@@ -75,13 +75,13 @@ export function buildVolunteerDraftPayload({ batchId, internshipId, items, expec
     .filter((item) => item && item.positionId)
     .map((item, index) => ({
       volunteerNo: Number(item.volunteerNo || index + 1),
-      positionId: Number(item.positionId),
+      positionId: String(item.positionId),
       applicationStatement: String(item.applicationStatement || '').trim()
     }))
     .sort((a, b) => a.volunteerNo - b.volunteerNo)
 
   if (normalized.length < 1 || normalized.length > 3) throw new Error('岗位志愿必须为 1–3 个')
-  if (normalized.some((item) => !Number.isInteger(item.positionId) || item.positionId <= 0)) throw new Error('岗位志愿包含无效岗位')
+  if (normalized.some((item) => !/^[1-9]\d*$/.test(item.positionId))) throw new Error('岗位志愿包含无效岗位')
   if (new Set(normalized.map((item) => item.positionId)).size !== normalized.length) throw new Error('同一岗位不能重复加入志愿')
   if (normalized.some((item, index) => item.volunteerNo !== index + 1)) throw new Error('岗位志愿必须使用连续的第一/第二/第三固定槽位')
 

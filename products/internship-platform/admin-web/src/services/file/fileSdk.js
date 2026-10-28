@@ -42,6 +42,7 @@ function parseEnvelope(raw, status) {
 function uploadError(payload, status) {
   const err = new Error(payload?.message || `上传失败（HTTP ${status || 0}）`)
   err.biz = true
+  err.httpStatus = Number(status || 0)
   err.code = payload?.code || status || 'UPLOAD_FAILED'
   err.bizCode = payload?.bizCode
   err.traceId = payload?.traceId

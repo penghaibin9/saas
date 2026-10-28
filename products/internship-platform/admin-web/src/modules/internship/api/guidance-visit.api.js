@@ -4,12 +4,14 @@
  * owner + 数据范围由后端强校验，前端仅负责交互与提示。
  */
 import { request, requestUpload, requestBlob } from '@/services/http/client'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
-  return fail(e?.message || '真实接口不可用', 503001)
+  return { code: e?.code || 503001, data: null,
+    message: normalizeUiError(e, { fallback: '操作未完成，请稍后重试' }).userMessage,
+    httpStatus: e?.httpStatus, biz: e?.biz, bizCode: e?.bizCode }
 }
 async function call(fn) {
   try { return ok(await fn()) } catch (e) { return toErr(e) }
@@ -27,12 +29,15 @@ const B = '/internship'
 export async function uploadAttachment(file) {
   try { return ok(await requestUpload('/files', file)) } catch (e) { return toErr(e) }
 }
-export async function downloadAttachment(fileId, fileName = '附件') {
+export async function downloadAttachment(fileId, fileName = '附件', isCurrent = () => true) {
+  if (!isCurrent()) return false
   const blob = await requestBlob(`/files/download/${fileId}`)
+  if (!isCurrent()) return false
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url; a.download = fileName; document.body.appendChild(a); a.click()
   a.remove(); URL.revokeObjectURL(url)
+  return true
 }
 
 export const guidanceVisitApi = {
@@ -42,9 +47,17 @@ export const guidanceVisitApi = {
   getGuidances(params = {}) { return callList(`${B}/guidances`, params) },
   getGuidanceDetail(id) { return call(() => request(`${B}/guidances/${id}`)) },
   createGuidance(body) { return call(() => request(`${B}/guidances`, { method: 'POST', body })) },
-  voidGuidance(id, { reason, expectedVersion, version } = {}) {
+  async createGuidancesBatch(body) {
+    const result = await call(() => request(`${B}/guidances/batch`, { method: 'POST', body }))
+    if (result.code === 0 && Array.isArray(result.data?.items)) result.data.items = result.data.items.map(row => row.success ? row : {
+      ...row, message: normalizeUiError({ code: row.code, message: row.message }, { fallback: '本条未完成，请保留原输入重试' }).userMessage
+    })
+    return result
+  },
+  getAttachmentMetadata(id) { return call(() => request(`/files/${id}`)) },
+  voidGuidance(id, { reason, expectedVersion, version, batchId } = {}) {
     return call(() => request(`${B}/guidances/${id}/void`, {
-      method: 'POST', body: { reason: reason || '', expectedVersion: expectedVersion ?? version }
+      method: 'POST', body: { reason: reason || '', expectedVersion: expectedVersion ?? version, batchId }
     }))
   },
   exportGuidances(params = {}) { return call(() => request(`${B}/guidances/export`, { method: 'POST', params })) },
@@ -58,10 +71,11 @@ export const guidanceVisitApi = {
   // 教师巡访
   getVisits(params = {}) { return callList(`${B}/visits`, params) },
   getVisitDetail(id) { return call(() => request(`${B}/visits/${id}`)) },
+  getVisitLocation(id, body) { return call(() => request(`${B}/visits/${id}/location/disclose`, { method: 'POST', body })) },
   createVisit(body) { return call(() => request(`${B}/visits`, { method: 'POST', body })) },
-  rectifyVisit(id, { status, note, expectedVersion, version }) {
+  rectifyVisit(id, { status, note, expectedVersion, version, batchId }) {
     return call(() => request(`${B}/visits/${id}/rectify`, {
-      method: 'POST', body: { status, note, expectedVersion: expectedVersion ?? version }
+      method: 'POST', body: { status, note, batchId, expectedVersion: expectedVersion ?? version }
     }))
   },
   exportVisits(params = {}) { return call(() => request(`${B}/visits/export`, { method: 'POST', params })) },

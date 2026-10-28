@@ -1,12 +1,13 @@
 <template>
   <div class="app-date" :class="{ 'is-disabled': disabled, 'is-invalid': !!errorText }">
-    <label v-if="label" class="app-date__label">
+    <label :for="controlId" v-if="label" class="app-date__label">
       {{ label }}<i v-if="required">*</i>
       <span v-if="hint" class="app-date__hint-inline">{{ hint }}</span>
     </label>
     <div class="app-date__row">
       <el-config-provider :locale="zhCn">
         <el-date-picker
+          :id="controlId"
           type="date"
           :model-value="inner || null"
           value-format="YYYY-MM-DD"
@@ -14,7 +15,7 @@
           :disabled="disabled"
           :clearable="clearable"
           :disabled-date="disabledDate"
-          :aria-label="label || placeholder"
+          :aria-label="label || appField?.label || placeholder"
           @update:model-value="onPick"
         />
       </el-config-provider>
@@ -38,7 +39,9 @@ import { toDateInputValue, formatDate, isEmptyDate } from '@/utils/dateUtils'
 export default {
   name: 'AppDatePicker',
   components: { ElDatePicker, ElConfigProvider },
+  inject: { appField: { default: null } },
   props: {
+    id: { type: String, default: '' },
     modelValue: { type: [String, Date], default: '' },
     label: { type: String, default: '' },
     hint: { type: String, default: '' },
@@ -60,6 +63,7 @@ export default {
     return { zhCn }
   },
   computed: {
+    controlId() { return this.id || this.appField?.controlId || undefined },
     inner() {
       return toDateInputValue(this.modelValue)
     },

@@ -19,7 +19,10 @@ from app.services.db_service import _tid, session
 log = logging.getLogger("internship.message_outbox")
 
 _EVENT_TEMPLATES = {
+    "INTERNSHIP.CHECKIN_REMIND": ("REMINDER", "IMPORTANT", "今日实习签到提醒"),
+    "INTERNSHIP.CHECKIN_STREAK": ("BUSINESS", "IMPORTANT", "学生连续三天未签到，请核实"),
     "INTERNSHIP.COUNSELOR_NOTICE": ("BUSINESS", "NORMAL", "实习辅导员通知"),
+    "INTERNSHIP.REPORT_REMIND": ("REMINDER", "IMPORTANT", "实习报告缺交提醒"),
     "INTERNSHIP.WEEKLY_REMIND": ("REMINDER", "IMPORTANT", "实习周报提醒"),
     "INTERNSHIP.WEEKLY_RETURNED": ("BUSINESS", "IMPORTANT", "实习周报已退回"),
     "INTERNSHIP.WEEKLY_APPROVED": ("BUSINESS", "NORMAL", "实习周报已通过"),
@@ -64,6 +67,14 @@ def emit_message_event(
     if existed:
         return existed
     category, priority, default_title = _EVENT_TEMPLATES[code]
+    message_content=str(content or '')[:2000]
+    if category=='REMINDER':
+        from app.models import SchoolSetting
+        setting=db.scalar(select(SchoolSetting).where(SchoolSetting.tenant_id==effective_tenant,
+            SchoolSetting.setting_key=='notification',SchoolSetting.is_deleted.is_(False)))
+        reminder=str((setting.value_json or {}).get('reminderText') or '') if setting else ''
+        # Preserve the original business facts; a long message may truncate only the optional school suffix.
+        if reminder:message_content=(message_content+'\n\n'+reminder)[:2000]
     row = MessageEventOutbox(
         tenant_id=effective_tenant,
         event_code=code,
@@ -72,7 +83,7 @@ def emit_message_event(
         source_biz_id=int(source_biz_id),
         payload_json={
             "title": str(title or default_title)[:500],
-            "content": str(content or "")[:2000],
+            "content": message_content,
             "variables": dict(variables or {}),
             "actionKey": action_key,
             "actionParams": dict(action_params or {}),

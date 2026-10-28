@@ -1,19 +1,19 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="实习计划任务确认" subtitle="查看完成说明与凭证后确认" show-back />
+  <view class="mobile-page mobile-teacher page-wrap teacher-plan-tasks">
+    <MobileNavBar variant="teacher" title="计划任务确认" show-back />
 
     <view class="page-pad pt__context">
-      <view class="card pt__batch" v-if="batches.length">
+      <view class="pt__batch" v-if="batches.length">
         <view class="pt__batch-copy">
-          <text class="pt__eyebrow">当前确认批次</text>
           <text class="pt__batch-name">{{ batches[batchIndex]?.name || '请选择批次' }}</text>
         </view>
-        <picker class="pt__picker" mode="selector" :range="batchLabels" :value="batchIndex" :disabled="!!actingId" @change="onBatch">
+        <picker v-if="batches.length > 1" class="mobile-picker pt__picker" mode="selector" :range="batchLabels" :value="batchIndex" :disabled="!!actingId" @change="onBatch">
           <view class="pt__pick-val">切换批次 <text class="pt__arrow">▾</text></view>
         </picker>
       </view>
 
-      <view v-if="batches.length && list" class="card pt__summary">
+      <button v-if="batches.length && list?.length" class="mobile-control btn btn-ghost" :aria-expanded="queueSummaryOpen" @click="queueSummaryOpen=!queueSummaryOpen">{{ queueSummaryOpen ? '收起任务确认统计' : '查看任务确认统计' }}</button>
+        <view v-if="batches.length && list?.length && queueSummaryOpen" class="card pt__summary">
         <view class="pt__summary-main">
           <text class="pt__summary-label">待确认任务</text>
           <view class="pt__summary-value"><text>{{ list.length }}</text><text>项</text></view>
@@ -25,7 +25,6 @@
         </view>
       </view>
 
-      <MobileInlineAlert type="info" description="先阅读学生完成说明，再按任务要求查看凭证。退回时写清可执行修改意见，避免学生反复重交。" />
     </view>
 
     <MobileGlobalState :state="state" @retry="load">
@@ -33,7 +32,7 @@
         <MobileGlobalState v-if="!batches.length" state="empty" title="暂无实习批次"
           description="当前身份的数据范围内没有可办理的岗位实习批次。" />
         <MobileGlobalState v-else-if="!list.length" state="empty" title="当前批次没有待确认任务"
-          description="学生提交任务完成情况后会出现在这里。" />
+          description="等待学生提交完成情况。" />
         <view class="stack" v-else>
           <view v-for="p in list" :key="p.id" class="card pt">
             <view class="row-between pt__head">
@@ -53,11 +52,17 @@
             </view>
 
             <view class="pt__note">
+              <text class="pt__section-label">任务要求</text>
+              <text class="pt__note-text">{{ p.taskRequirement || '未填写完成要求' }}</text>
+              <text v-if="p.taskDeadline" class="pt__sub">截止 {{ fmt(p.taskDeadline) }}</text>
+            </view>
+
+            <view class="pt__note">
               <text class="pt__section-label">学生完成说明</text>
               <text class="pt__note-text">{{ p.studentNote || '学生未填写完成说明' }}</text>
             </view>
 
-            <button v-if="p.evidenceFileId" class="pt__evidence" :disabled="previewingId === p.id" @click="previewEvidence(p)">
+            <button v-if="p.evidenceFileId" class="mobile-control pt__evidence" :disabled="previewingId === p.id" @click="previewEvidence(p)">
               <view class="pt__evidence-copy">
                 <text class="pt__evidence-title">学生完成凭证</text>
                 <text class="pt__evidence-hint">打开原始文件，核对是否满足任务要求</text>
@@ -71,7 +76,7 @@
 
             <view class="pt__meta">
               <text>提交时间 {{ fmt(p.submittedAt) }}</text>
-              <text>数据版本 v{{ p.version }}</text>
+              <text>当前版本 {{ p.version }}</text>
             </view>
 
             <view class="pt__next">
@@ -80,8 +85,8 @@
             </view>
 
             <view class="pt__actions" v-if="canReview">
-              <button class="pt__reject flex-1" :disabled="actingId === p.id" @click="review(p, 'REJECT')">退回修改</button>
-              <button class="pt__approve flex-1" :disabled="actingId === p.id" @click="review(p, 'APPROVE')">确认完成</button>
+              <button class="mobile-control pt__reject flex-1" :disabled="actingId === p.id" @click="review(p, 'REJECT')">退回修改</button>
+              <button class="mobile-control pt__approve flex-1" :disabled="actingId === p.id" @click="review(p, 'APPROVE')">确认完成</button>
             </view>
             <MobileInlineAlert v-else type="warning" description="当前身份仅可查看，无任务确认权限。" />
           </view>
@@ -96,16 +101,19 @@ import { teacherInternshipPlanTasks, teacherInternshipPlanTaskReview } from '@/s
 import { openBusinessFile } from '@/services/fileApi'
 import { useInternshipContextStore } from '@/stores/internshipContext'
 import { toast } from '@/utils/nav'
+import { normalizeError } from '@/services/request'
+import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
+import { formatDateTime } from '@/utils/format'
 
 export default {
   data() {
-    return {
+    return { requestedBatchId: '', queueSummaryOpen:false,
       list: null, state: 'loading', actingId: '', previewingId: '', batches: [],
-      batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false, loadSeq: 0
+      batchId: '', batchIndex: 0, page: 1, hasMore: false, loadingMore: false, loadSeq: 0, drafts: {}, generation: currentSessionGeneration(), hidden: false, writeSeq: 0
     }
   },
   computed: {
-    batchLabels() { return this.batches.map((b) => `${b.name} · ${b.status} · ${b.studentCount}人`) },
+    batchLabels() { return this.batches.map((b) => `${b.name} · ${b.studentCount}人`) },
     canReview() { return useInternshipContextStore().can('internship.task.review') },
     evidenceCount() { return (this.list || []).filter((item) => item.evidenceFileId).length },
     missingEvidenceCount() { return (this.list || []).length - this.evidenceCount },
@@ -115,17 +123,21 @@ export default {
       return '全部待办均附带凭证，可按提交顺序逐项确认。'
     }
   },
-  onLoad() { this.load() },
-  onUnload() { this.loadSeq++ },
+  onLoad(query = {}) { this.requestedBatchId = String(query.batchId || ''); this.load() },
+  onHide() { this.hidden = true; this.loadSeq++; this.writeSeq++; this.actingId = ''; this.loadingMore = false },
+  onUnload() { this.hidden = true; this.loadSeq++; this.writeSeq++ },
+  onShow() { const wasHidden = this.hidden; this.hidden = false; if (wasHidden || this.generation !== currentSessionGeneration()) this.load() },
   onReachBottom() { this.loadMore() },
   onPullDownRefresh() {
     if (this.state === 'loading') { uni.stopPullDownRefresh(); return }
     this.load(() => uni.stopPullDownRefresh())
   },
   methods: {
-    fmt(value) { return value ? String(value).slice(0, 16).replace('T', ' ') : '—' },
+    fmt(value) { return /^\d{4}-\d{2}-\d{2}$/.test(String(value || '')) ? value : formatDateTime(value) },
     async load(done) {
+      if (this.generation !== currentSessionGeneration()) { this.generation = currentSessionGeneration(); this.drafts = {} }
       const sequence = ++this.loadSeq
+      const generation = currentSessionGeneration()
       this.state = 'loading'
       this.list = []; this.loadingMore = false
       this.page = 1
@@ -134,25 +146,31 @@ export default {
         const context = useInternshipContextStore()
         context.restore()
         await context.load(true)
-        if (sequence !== this.loadSeq) return
+        if (this.hidden || sequence !== this.loadSeq || generation !== currentSessionGeneration()) return
+        if (this.requestedBatchId) {
+          if (!context.selectBatch(this.requestedBatchId)) throw { httpStatus: 403, message: '当前批次不在授权范围' }
+          this.requestedBatchId = ''
+        }
         this.batches = context.batches || []
         this.batchId = context.selectedBatchId || ''
         this.batchIndex = Math.max(0, this.batches.findIndex((b) => String(b.id) === String(this.batchId)))
         if (!this.batchId) { this.list = []; this.state = 'ready'; return }
         const data = await teacherInternshipPlanTasks(this.batchId, 1, 20)
-        if (sequence !== this.loadSeq) return
+        if (this.hidden || sequence !== this.loadSeq || generation !== currentSessionGeneration()) return
         this.list = (data && (data.items || data.list)) || []
         this.hasMore = !!data?.hasMore
         this.state = 'ready'
       } catch (e) {
-        if (sequence !== this.loadSeq) return
+        if (this.hidden || sequence !== this.loadSeq || generation !== currentSessionGeneration()) return
+        const error = normalizeError(e)
         this.list = []
-        this.state = 'error'
-        toast((e && e.message) || '计划任务加载失败')
+        this.state = error.pageState || 'error'
+        toast(error.text || '计划任务加载失败')
       } finally { if (done) done() }
     },
     async onBatch(e) {
       if (this.actingId) return
+      this.drafts = {}
       this.batchIndex = Number(e.detail.value)
       const batch = this.batches[this.batchIndex]
       const context = useInternshipContextStore()
@@ -184,32 +202,47 @@ export default {
       finally { this.previewingId = '' }
     },
     review(p, action) {
-      if (!this.canReview || this.actingId || this.state !== 'ready') return
+      if (!this.canReview || this.actingId || this.state !== 'ready' || this.hidden) return
       const sequence = this.loadSeq
       const batchId = this.batchId
+      const version = p.version, generation = currentSessionGeneration(), key = `${batchId}:${p.id}`, draft = this.drafts[key]
+      if (draft?.conflicted) {
+        if (draft.version === version) { toast('原意见已保留，请下拉刷新并核对最新任务及凭证'); return }
+        uni.showModal({ title: '采用已核对的任务版本', content: `原第${draft.version}版，现第${version}版。确认保留原意见继续？`, success: r => {
+          if (!r.confirm || this.hidden || sequence !== this.loadSeq || generation !== currentSessionGeneration() || batchId !== this.batchId) return
+          draft.version = version; draft.conflicted = false; this.review(p, action)
+        } }); return
+      }
       const reject = action === 'REJECT'
       uni.showModal({
         title: reject ? '退回任务' : '确认完成',
         editable: true,
         placeholderText: reject ? '请填写具体退回原因（至少5字）' : '可填写确认意见',
-        content: '',
+        content: draft?.action === action ? draft.comment : '',
         success: async (r) => {
-          if (!r.confirm || this.actingId || sequence !== this.loadSeq) return
+          if (!r.confirm || this.hidden || this.actingId || sequence !== this.loadSeq || generation !== currentSessionGeneration() || batchId !== this.batchId) return
           const comment = (r.content || '').trim()
           if (reject && comment.length < 5) { toast('退回原因至少5个字'); return }
+          const savedDraft = { action, comment, version, conflicted: false }
+          const operation = ++this.writeSeq
+          this.drafts[key] = savedDraft
           this.actingId = p.id
           try {
             await teacherInternshipPlanTaskReview(p.id, batchId, {
-              action, comment, expectedVersion: p.version, batchId
+              action, comment, expectedVersion: version, batchId
             })
+            if (this.hidden || operation !== this.writeSeq || sequence !== this.loadSeq || generation !== currentSessionGeneration() || batchId !== this.batchId) return
+            delete this.drafts[key]
             toast(reject ? '已退回学生修改' : '已确认任务完成')
             await this.load()
           } catch (e) {
-            if (String(e && e.code) === 'DATA_CONFLICT') {
-              toast((e && e.message) || '任务已被其他人处理，正在刷新')
+            if (this.hidden || operation !== this.writeSeq || sequence !== this.loadSeq || generation !== currentSessionGeneration() || batchId !== this.batchId) return
+            if (normalizeError(e).kind === 'conflict') {
+              savedDraft.conflicted = true
+              toast('任务已变化，原意见已保留，请核对最新任务及凭证')
               await this.load()
             } else toast((e && e.message) || '任务处理失败，请重试')
-          } finally { this.actingId = '' }
+          } finally { if (!this.hidden && operation === this.writeSeq && generation === currentSessionGeneration() && batchId === this.batchId) this.actingId = '' }
         }
       })
     }
@@ -219,4 +252,5 @@ export default {
 
 <style scoped>
 .pt__context{display:flex;flex-direction:column;gap:var(--space-3)}.pt__batch{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);padding:var(--space-3)}.pt__batch-copy{min-width:0;display:flex;flex-direction:column;gap:3px}.pt__eyebrow{font-size:var(--font-size-xs);color:var(--text-tertiary)}.pt__batch-name{font-size:var(--font-size-md);font-weight:600;color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.pt__picker{flex-shrink:0}.pt__pick-val{color:var(--teacher-700);font-size:var(--font-size-sm);white-space:nowrap}.pt__arrow{margin-left:4px;color:var(--text-tertiary)}.pt__summary{display:flex;align-items:stretch;gap:var(--space-3);padding:var(--space-3)}.pt__summary-main{flex:1;min-width:0}.pt__summary-label{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary)}.pt__summary-value{display:flex;align-items:baseline;gap:4px;margin-top:4px}.pt__summary-value text:first-child{font-size:34px;line-height:1;font-weight:700;color:var(--teacher-700)}.pt__summary-value text:last-child{font-size:var(--font-size-sm);color:var(--text-secondary)}.pt__summary-note{display:block;margin-top:8px;font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.pt__summary-metrics{width:42%;display:grid;grid-template-columns:1fr 1fr;background:var(--gray-50);border-radius:var(--radius-md);overflow:hidden}.pt__metric{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:10px 5px;border-left:1px solid var(--border-light)}.pt__metric:first-child{border-left:0}.pt__metric text:first-child{font-size:var(--font-size-lg);font-weight:700;color:var(--success-700)}.pt__metric.is-warning text:first-child{color:var(--warning-700)}.pt__metric text:last-child{font-size:10px;color:var(--text-tertiary)}.pt__list{padding-top:0}.pt{display:flex;flex-direction:column;gap:var(--space-3);padding:var(--space-3)}.pt__head{align-items:flex-start}.pt__identity{min-width:0}.pt__sub{display:block;font-size:var(--font-size-xs);color:var(--text-tertiary);margin-top:3px}.pt__task-title{display:flex;align-items:center;gap:10px;padding:var(--space-2) var(--space-3);background:var(--teacher-50,#eff6ff);border-radius:var(--radius-md)}.pt__task-no{display:flex;align-items:center;justify-content:center;width:28px;height:28px;flex-shrink:0;border-radius:50%;background:var(--teacher-600);color:#fff;font-size:var(--font-size-sm);font-weight:700}.pt__task-copy{min-width:0}.pt__task-label{display:block;font-size:10px;color:var(--text-tertiary)}.pt__task-name{display:block;margin-top:2px;font-size:var(--font-size-sm);font-weight:600;color:var(--text-primary);word-break:break-word}.pt__note{padding:var(--space-2) var(--space-3);border:1px solid var(--border-light);border-radius:var(--radius-md)}.pt__section-label{display:block;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.pt__note-text{display:block;margin-top:5px;font-size:var(--font-size-sm);line-height:1.6;color:var(--text-primary);white-space:pre-wrap;word-break:break-word}.pt__evidence{display:flex;align-items:center;justify-content:space-between;gap:var(--space-3);min-height:58px;padding:10px var(--space-3);border:1px solid var(--success-300,#86efac);border-radius:var(--radius-md);background:var(--success-50);text-align:left}.pt__evidence::after{border:none}.pt__evidence-copy{min-width:0}.pt__evidence-title{display:block;font-size:var(--font-size-sm);font-weight:600;color:var(--success-800,#166534)}.pt__evidence-hint{display:block;margin-top:3px;font-size:var(--font-size-xs);color:var(--success-700)}.pt__evidence-action{flex-shrink:0;font-size:var(--font-size-sm);color:var(--success-700)}.pt__missing{padding:var(--space-2) var(--space-3);border:1px solid var(--warning-200,#fed7aa);border-radius:var(--radius-md);background:var(--warning-50,#fff7ed)}.pt__missing-title{display:block;font-size:var(--font-size-sm);font-weight:600;color:var(--warning-800,#9a3412)}.pt__missing-text{display:block;margin-top:3px;font-size:var(--font-size-xs);line-height:1.5;color:var(--warning-700)}.pt__meta{display:flex;flex-wrap:wrap;justify-content:space-between;gap:5px 12px;font-size:var(--font-size-xs);color:var(--text-tertiary)}.pt__next{display:flex;gap:10px;padding:10px 12px;border-radius:var(--radius-md);background:var(--gray-50)}.pt__next-label{flex-shrink:0;font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}.pt__next-text{font-size:var(--font-size-xs);line-height:1.5;color:var(--text-secondary)}.pt__actions{display:flex;gap:var(--space-2)}.pt__reject,.pt__approve{min-height:var(--touch-target-min);border-radius:var(--radius-md);font-size:var(--font-size-md)}.pt__reject{border:1px solid var(--danger-500);background:var(--bg-card);color:var(--danger-600)}.pt__approve{border:none;background:var(--teacher-600);color:#fff}.pt__reject::after,.pt__approve::after{border:none}.pt__reject[disabled],.pt__approve[disabled],.pt__evidence[disabled]{opacity:.55}@media(max-width:360px){.pt__summary{flex-direction:column}.pt__summary-metrics{width:100%}.pt__batch{align-items:flex-start}}
+.teacher-plan-tasks .pt__context,.teacher-plan-tasks .pt__list{width:100%;max-width:760px;margin:0 auto;box-sizing:border-box}.teacher-plan-tasks .card{border-radius:8px;box-shadow:none}.teacher-plan-tasks button{min-height:44px;font-size:15px}.pt__batch{padding:4px 0 12px;border-bottom:1px solid var(--border-light)}.pt__batch-name{font-size:15px;line-height:22px;margin:0}.pt__pick-val{display:flex;align-items:center;min-height:44px;font-size:14px}.pt__summary-label,.pt__summary-note,.pt__metric text:last-child,.pt__sub,.pt__task-label,.pt__section-label,.pt__note-text,.pt__evidence-hint,.pt__missing-text,.pt__meta,.pt__next-label,.pt__next-text{font-size:14px;line-height:22px}.pt__task-name,.pt__evidence-title,.pt__missing-title{font-size:16px;line-height:24px}.pt__summary{flex-wrap:wrap}.pt__summary-main{flex-basis:100%}.pt__summary-metrics{width:100%}
 </style>

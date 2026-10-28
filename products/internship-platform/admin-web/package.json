@@ -7,6 +7,7 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
+    "test": "node --test tests/*.test.mjs",
     "check:routes": "node scripts/check-standalone-routes.mjs",
     "check:imports": "node scripts/check-standalone-imports.mjs",
     "test:employment": "node --test tests/employment.behavior.test.mjs",

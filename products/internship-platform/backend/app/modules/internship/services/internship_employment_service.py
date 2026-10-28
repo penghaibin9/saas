@@ -9,7 +9,7 @@ from app.core.exceptions import AppException, no_permission, not_found
 from app.core.field_crypto import decrypt_field, encrypt_field
 from app.core.permissions import enforce_permission, has_permission
 from app.models import (College, EmpCompany, Major, SchoolClass, StudentAccountLink, StudentContact,
-                        StudentProfile, UnifiedMessage, InternshipRecord, InternshipAuditTrail,
+                        StudentProfile, UnifiedMessage, InternshipRecord, InternshipBatch, InternshipAuditTrail,
                         InternshipEmploymentRegistration as Registration,
                         InternshipEmploymentSubmission as Submission, InternshipEmploymentReview as Review)
 from app.modules.internship.services.internship_scope import assert_internship_record_scope, apply_internship_record_scope, lock_internship_record
@@ -201,7 +201,10 @@ def _notification_conditions(head, user):
         or_(UnifiedMessage.expire_at.is_(None), UnifiedMessage.expire_at > _now())]
 
 def _notification_view(row):
+    params = row.action_params_json if isinstance(row.action_params_json,dict) else {}
+    revision = params.get('revisionNo')
     return {'id':str(row.id), 'title':row.title, 'content':row.content or '',
+        'revisionNo':revision if type(revision) is int and revision > 0 else None,
         'status':row.status, 'statusLabel':'已读' if row.status == 'READ' else '未读',
         'createdAt':_iso(row.created_at), 'readAt':_iso(row.read_at) if row.read_at else None}
 
@@ -216,14 +219,35 @@ def _notifications(db, head, user, page):
     return {'items':[_notification_view(row) for row in rows], 'total':total, 'unread':unread,
         'page':page, 'pageSize':20, 'hasMore':page*20 < total}
 
+def _write_readiness(db, record, *, lock=False):
+    from app.modules.internship.services.internship_record_resolver import _is_active_record
+    query = select(InternshipBatch).where(InternshipBatch.id == record.batch_id,
+        InternshipBatch.tenant_id == _tid(), InternshipBatch.is_deleted.is_(False))
+    batch = db.scalar(query.with_for_update(read=True).execution_options(populate_existing=True) if lock else query)
+    if not batch or batch.status != 'RUNNING':
+        return False, '当前批次已关闭，就业登记仅可查看；请联系学校确认办理批次。'
+    if _is_active_record(record,batch):
+        return True, ''
+    if record.status == 'ARCHIVED':
+        from app.modules.internship.services.internship_archive_service import frozen_employment_result
+        try:
+            frozen_employment_result(db,record)
+        except AppException as exc:
+            return False, exc.message
+        return True, '实习档案已冻结，仍可办理就业登记；后续就业变化独立留存，不覆盖原实习档案。'
+    return False, '当前实习状态不允许办理就业登记，请联系学校核对。'
+
+
 def get_my(user, *, batch_id, internship_id, notification_page=1):
     if not isinstance(notification_page,int) or isinstance(notification_page,bool) or notification_page < 1:
         raise AppException('VALIDATION_ERROR','通知页码无效')
     with session() as db:
         record, student, _ = require_explicit_context(db,user,{'batchId':batch_id,'internshipId':internship_id},for_write=False)
         head = _head(db,record.id)
+        writable, hint = _write_readiness(db,record)
         return {'batchId':str(record.batch_id),'internshipId':str(record.id),'prefill':_prefill(db,record,student),
-                'registration':_view(db,head),'resultNotifications':_notifications(db,head,user,notification_page)}
+                'registration':_view(db,head),'resultNotifications':_notifications(db,head,user,notification_page),
+                'canSubmit':writable,'submissionHint':hint}
 
 def read_my_notification(user, message_id, *, batch_id, internship_id):
     with session() as db:
@@ -247,8 +271,13 @@ def submit_my(user, payload):
     if mode not in MODE_LABELS:
         raise AppException('VALIDATION_ERROR','请选择就业上报或实习转就业')
     with session() as db:
-        record, student, _ = require_explicit_context(db,user,payload,for_write=True)
+        record, student, _ = require_explicit_context(db,user,payload,for_write=False)
         record = lock_internship_record(db,record.id)
+        if record.student_id != student.id or str(record.batch_id) != str(payload.get('batchId')):
+            raise no_permission('就业登记不属于当前学生或批次，请刷新后核对')
+        writable, hint = _write_readiness(db,record,lock=True)
+        if not writable:
+            raise AppException('DATA_CONFLICT',hint,http_status=409)
         head = _head(db,record.id,lock=True)
         require_expected_version(payload.get('expectedVersion'),head.version if head else 0,entity_name='就业登记')
         if head and head.status == 'SUBMITTED':
@@ -305,6 +334,8 @@ def list_for_teacher(user, *, batch_id, status='ALL',page=1,page_size=20,interns
     if status not in {'ALL',*STATUS_LABELS}:
         raise AppException('VALIDATION_ERROR','就业登记筛选状态不正确')
     with session() as db:
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        resolve_batch(db,batch_id)
         scoped = apply_internship_record_scope(select(InternshipRecord.id).where(InternshipRecord.tenant_id == _tid(),
             InternshipRecord.batch_id == _as_id(batch_id),InternshipRecord.is_deleted.is_(False)),user)
         query = select(Registration).where(Registration.tenant_id == _tid(),Registration.batch_id == _as_id(batch_id),
@@ -319,9 +350,46 @@ def list_for_teacher(user, *, batch_id, status='ALL',page=1,page_size=20,interns
         current_ids = [row.current_submission_id for row in rows]
         snapshots = db.scalars(select(Submission).where(Submission.tenant_id == _tid(),Submission.id.in_(current_ids))).all() if rows else []
         reviews = db.scalars(select(Review).where(Review.tenant_id == _tid(),Review.submission_id.in_(current_ids))).all() if rows else []
-        by_head = {row.id:([s for s in snapshots if s.registration_id == row.id],[r for r in reviews if r.registration_id == row.id]) for row in rows}
+        by_snapshot = {row.id:row for row in snapshots}
+        by_review = {row.submission_id:row for row in reviews}
+        by_head = {row.id:([by_snapshot[row.current_submission_id]] if row.current_submission_id in by_snapshot else [],
+                          [by_review[row.current_submission_id]] if row.current_submission_id in by_review else []) for row in rows}
         return {'items':[_view(db,row,history=False,masked=True,loaded=by_head[row.id]) for row in rows],'total':total,
             'page':page,'pageSize':page_size,'hasMore':page*page_size < total}
+
+def export_registrations(user, *, batch_id, status='ALL', internship_id=None):
+    from app.modules.internship.services.internship_export_util import require_exportable, write_export_audit
+    from app.modules.internship.services.internship_report_quality_service import format_report_time
+    from app.services import xlsx_util
+    enforce_permission(user,'internship.employment.view')
+    enforce_permission(user,'internship.stats.export')
+    filters = dict(batch_id=batch_id,status=status,internship_id=internship_id)
+    total = list_for_teacher(user,page_size=0,**filters)['total']
+    require_exportable(total)
+    data = list_for_teacher(user,page_size=total,**filters)
+    if data['total'] != total:
+        raise AppException('DATA_CONFLICT','导出预检后数据已变化，请重试')
+    rows = []
+    for item in data['items']:
+        current = item['current']
+        if not current:
+            raise AppException('DATA_CONFLICT','就业登记当前提交版本缺失，请联系管理员核对')
+        review = current['review'] or {}
+        rows.append([item['id'],item['internshipId'],item['batchId'],item['statusLabel'],
+            current['revisionNo'],current['modeLabel'],*[('是' if value else '否') if isinstance(value,bool) else value
+                for value in (current['fields'].get(key,'') for key in FIELD_LABELS)],
+            format_report_time(current['submittedAt']),review.get('reviewerName',''),
+            format_report_time(review.get('reviewedAt')),review.get('actionLabel','待教师审核')])
+    content = xlsx_util.build_ledger_xlsx('就业上报台账',
+        ['登记编号','实习记录编号','批次编号','状态','提交版本','登记方式',*FIELD_LABELS.values(),
+         '提交时间','审核人','审核时间','审核结果'],rows,
+        watermark=f"校内就业核验台账（脱敏）· {user.get('realName') or '经办人'} · {format_report_time(_now())}；不代表外部就业认证")
+    with session() as db:
+        write_export_audit(db,'就业上报台账',total,user=user,filters={
+            'batchId':str(batch_id),'status':status,'internshipId':str(internship_id or ''),'masked':True})
+        db.commit()
+    return xlsx_util.pack_xlsx_result(content,'就业上报台账.xlsx',total)
+
 
 def get_for_teacher(user, registration_id):
     enforce_permission(user,'internship.employment.view')

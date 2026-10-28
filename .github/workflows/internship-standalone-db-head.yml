@@ -22,7 +22,7 @@ jobs:
           --health-retries=30
     env:
       PYTHONPATH: products/internship-platform/backend
-      EXPECTED_ALEMBIC_REVISION: ix0030
+      EXPECTED_ALEMBIC_REVISION: ix0036
       DATABASE_URL: mysql+pymysql://root:standalone_test@127.0.0.1:3306/internship_test?charset=utf8mb4
 
     steps:

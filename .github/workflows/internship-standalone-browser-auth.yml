@@ -15,6 +15,25 @@ on:
       - "products/internship-platform/backend/app/api/router.py"
       - "products/internship-platform/backend/app/main.py"
       - "products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py"
+      - "products/internship-platform/backend/tests/test_security_session_regressions.py"
+      - "products/internship-platform/backend/tests/test_system_management*.py"
+      - "products/internship-platform/backend/tests/test_system_empty_install_mysql.py"
+      - "products/internship-platform/scripts/initialize_school.py"
+      - "products/internship-platform/admin-web/src/modules/system/**"
+      - "products/internship-platform/admin-web/src/layouts/BasePortalLayout.vue"
+      - "products/internship-platform/admin-web/src/components/workspace/TeacherWorkspaceFrame.vue"
+      - "products/internship-platform/admin-web/src/config/navPlan.js"
+      - "products/internship-platform/admin-web/tests/system-*.behavior.test.mjs"
+      - "products/internship-platform/backend/app/services/system_*.py"
+      - "products/internship-platform/backend/app/services/audit_log.py"
+      - "products/internship-platform/backend/app/modules/internship/services/internship_enterprise_auth_service.py"
+      - "products/internship-platform/backend/app/modules/internship/routers/internship_enterprise*auth.py"
+      - "products/internship-platform/backend/app/modules/internship/routers/internship_enterprise_portal.py"
+      - "products/internship-platform/backend/tests/test_internship_enterprise_auth_context.py"
+      - "products/internship-platform/backend/app/api/v1/system_admin.py"
+      - "products/internship-platform/backend/app/core/security.py"
+      - "products/internship-platform/backend/app/core/permissions.py"
+      - "products/internship-platform/backend/alembic/**"
       - ".github/workflows/internship-standalone-browser-auth.yml"
 
 jobs:
@@ -51,9 +70,14 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-standalone:browser-auth
       JWT_SECRET: standalone-browser-auth-ci-secret-20260929
-      EXPECTED_ALEMBIC_REVISION: ix0030
+      EXPECTED_ALEMBIC_REVISION: ix0036
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify management handoff context changes
+        run: node --test products/internship-platform/admin-web/tests/system-*.behavior.test.mjs
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
@@ -80,5 +104,21 @@ jobs:
           assert required <= paths, sorted(required-paths)
           print(sorted(required))
           PY
+      - name: Verify empty school installation before creating test schools
+        env:
+          SYSTEM_EMPTY_INSTALL_ACCEPTANCE: "1"
+        run: |
+          export FIELD_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          export FILE_STORAGE_DIR="$RUNNER_TEMP/system-empty-install-files"
+          pytest -q products/internship-platform/backend/tests/test_system_empty_install_mysql.py
       - name: Run real MySQL staff and student browser auth acceptance
         run: pytest -q products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py
+      - name: Run session revocation and token size regressions
+        run: pytest -q products/internship-platform/backend/tests/test_security_session_regressions.py
+      - name: Run school management stories with real MySQL
+        env:
+          SYSTEM_MYSQL_ACCEPTANCE: "1"
+        run: |
+          export FIELD_ENCRYPTION_KEY="$(python -c 'from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())')"
+          export FILE_STORAGE_DIR="$RUNNER_TEMP/system-management-files"
+          pytest -q products/internship-platform/backend/tests/test_system_management_unit.py products/internship-platform/backend/tests/test_system_management_mysql.py products/internship-platform/backend/tests/test_internship_enterprise_auth_context.py

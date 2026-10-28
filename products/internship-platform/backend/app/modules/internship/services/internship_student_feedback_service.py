@@ -31,6 +31,41 @@ _CATEGORY = "STUDENT_FEEDBACK"
 _MAX_IMAGES = 9
 
 
+def authorize_feedback_file(db, file, bindings, user, action) -> bool:
+    """反馈图片按当前原单、有效绑定与读取范围裁决，不走上传者兜底。"""
+    from app.core.permissions import has_permission
+    from app.services.file_access_service import _scan_ready
+    if (not db or action not in {"meta", "preview", "download"}
+            or file.is_deleted or file.tenant_id != _tid()
+            or file.biz_type != "INTERNSHIP_FEEDBACK" or not str(file.biz_id or "").isdigit()
+            or not _scan_ready(file)):
+        return False
+    row = db.scalar(select(InternshipComplaint).where(
+        InternshipComplaint.id == int(file.biz_id), InternshipComplaint.tenant_id == _tid(),
+        InternshipComplaint.is_deleted.is_(False), InternshipComplaint.category == _CATEGORY,
+        InternshipComplaint.source == "STUDENT"))
+    if (not row or row.is_deleted or row.tenant_id != _tid()
+            or row.category != _CATEGORY or row.source != "STUDENT"
+            or str(file.id) not in {str(value) for value in (row.image_file_ids or [])}):
+        return False
+    if not any(binding.tenant_id == _tid() and binding.file_id == file.id
+               and binding.biz_type == "INTERNSHIP_FEEDBACK" and str(binding.biz_id) == str(row.id)
+               and binding.status == "ACTIVE" and binding.is_current and not binding.is_deleted
+               for binding in bindings):
+        return False
+    if str(user.get("userType") or "").upper() == "STUDENT":
+        try:
+            record, student, batch_id = _student_context(db, user,
+                {"batchId": row.batch_id, "internshipId": row.internship_id}, for_write=False)
+            return student.id == row.student_id and record.id == row.internship_id and batch_id == row.batch_id
+        except AppException:
+            return False
+    if not has_permission(user, "internship.complaint.view"):
+        return False
+    from app.modules.internship.services.internship_complaint_service import _complaint_in_scope
+    return _complaint_in_scope(db, row, user)
+
+
 def _validate_images(value) -> list[str]:
     if value is None:
         return []

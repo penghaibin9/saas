@@ -16,7 +16,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt ./requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python -m pip install --no-cache-dir --upgrade pip==26.2.2 \
+    && python -m pip install --no-cache-dir -r requirements.txt
 
 RUN python -c "from PIL import ImageFont; font=ImageFont.truetype('/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc', 20); assert font.getbbox('签到地点')[2] > 0"
 

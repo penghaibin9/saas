@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from collections import Counter
+from datetime import date
 
 from fastapi import APIRouter, Body, Depends, Query
 from sqlalchemy import select
 
 from app.core.permissions import (
+    enforce_permission,
     get_effective_access_context,
     require_module,
     require_permission,
@@ -22,6 +24,78 @@ router = APIRouter(
     tags=["教师移动端-岗位实习上下文"],
     dependencies=[Depends(require_module("internship"))],
 )
+review_router = APIRouter(
+    prefix="/mobile/teacher/internship",
+    tags=["教师移动端-实习批阅"],
+    dependencies=[Depends(require_module("internship"))],
+)
+
+
+@review_router.get("", summary="当前指导批次的周报与考勤异常分页队列")
+def teacher_review_queue(
+    batchId: str = Query(""), recordId: str = Query(""), exceptionId: str = Query(""),
+    weeklyPage: int = Query(1, ge=1), exceptionPage: int = Query(1, ge=1),
+    pageSize: int = Query(20, ge=1, le=50),
+    user=Depends(require_permission("internship.dashboard.view")),
+):
+    from app.core.exceptions import AppException, no_permission
+    from app.modules.internship.services import internship_service as reports
+
+    if recordId and exceptionId:
+        raise AppException("VALIDATION_ERROR", "请分别打开周报或考勤异常待办", http_status=422)
+    focus = None
+    focus_exception = None
+    if recordId:
+        enforce_permission(user, "internship.report.view")
+        focus = reports.get_weekly_report_detail(recordId, user=user)
+        if batchId and batchId != focus["batchId"]:
+            raise AppException("DATA_CONFLICT", "待办与当前实习批次不一致，请重新打开待办", http_status=409)
+        batchId = focus["batchId"]
+    if exceptionId:
+        enforce_permission(user, "internship.attendance.view")
+        focus_exception = reports.get_exception_detail(exceptionId, user=user)
+        if batchId and batchId != focus_exception["batchId"]:
+            raise AppException("DATA_CONFLICT", "待办与当前实习批次不一致，请重新打开待办", http_status=409)
+        batchId = focus_exception["batchId"]
+    context = teacher_internship_context(user)["data"]
+    if not batchId:
+        batchId = context["defaultBatchId"]
+    if not batchId or batchId not in {row["id"] for row in context["batches"]}:
+        raise no_permission("此实习批次不在当前指导范围内")
+    errors = []
+
+    def source(name, permission, function, page, status):
+        try:
+            enforce_permission(user, permission)
+            return function(page, pageSize, status=status, batch_id=batchId, user=user)
+        except AppException as exc:
+            errors.append({"source": name, "errorCode": exc.code,
+                           "message": "无查看权限，请联系学校管理员" if exc.http_status == 403 else exc.message})
+            return [], 0
+
+    weekly, total = source("weeklyReport", "internship.report.view", reports.list_weekly_reports,
+                           weeklyPage, ("PENDING_REVIEW", "OVERDUE"))
+    abnormal, exception_total = source("attendanceException", "internship.attendance.view",
+                                      reports.list_attendance_exceptions, exceptionPage, "PENDING_HANDLE")
+    if focus_exception and not any(row["source"] == "attendanceException" for row in errors):
+        abnormal = [focus_exception, *[row for row in abnormal if row["id"] != focus_exception["id"]]]
+    pending_total = overdue_total = 0
+    if not any(row["source"] == "weeklyReport" for row in errors):
+        _, pending_total = reports.list_weekly_reports(1, 0, status="PENDING_REVIEW", batch_id=batchId, user=user)
+        _, overdue_total = reports.list_weekly_reports(1, 0, status="OVERDUE", batch_id=batchId, user=user)
+        if focus:
+            weekly = [focus, *[row for row in weekly if row["id"] != focus["id"]]]
+    return success({
+        "batchId": batchId, "focusReportId": focus["id"] if focus else "",
+        "focusExceptionId": focus_exception["id"] if focus_exception else "",
+        "weeklyReports": weekly, "abnormalCheckins": abnormal,
+        "available": not errors, "errors": errors,
+        "pagination": {"pageSize": pageSize, "weeklyPage": weeklyPage, "weeklyTotal": total,
+                       "weeklyPendingTotal": pending_total, "weeklyOverdueTotal": overdue_total,
+                       "weeklyHasMore": weeklyPage * pageSize < total,
+                       "exceptionPage": exceptionPage, "exceptionTotal": exception_total,
+                       "exceptionHasMore": exceptionPage * pageSize < exception_total},
+    })
 
 
 def _choose_default_batch(items: list[dict]) -> str:
@@ -357,11 +431,14 @@ def teacher_batch_process_reports(
     batchId: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    reportType: str | None = None, status: str = "PENDING_REVIEW", keyword: str | None = None,
+    startDate: date | None = None, endDate: date | None = None,
     user=Depends(require_permission("internship.report.view")),
 ):
     from app.modules.internship.services import internship_process_report_service as reports
     items, total = reports.list_reports(
-        page, pageSize, status="PENDING_REVIEW", batch_id=batchId, user=user)
+        page, pageSize, status=status, batch_id=batchId, user=user, report_type=reportType,
+        keyword=keyword, start_date=startDate, end_date=endDate)
     return success(_paged(items, total, page, pageSize, batchId))
 
 
@@ -387,7 +464,8 @@ def teacher_batch_process_report_review(
         report_id, str(payload.get("action") or "").upper(),
         payload.get("comment") or "", user=user,
         expected_version=payload.get("expectedVersion"),
-        expected_batch_id=batchId),
+        expected_batch_id=batchId, rating_level=payload.get("ratingLevel"),
+        summary_score=payload.get("summaryScore")),
         message="过程报告批阅完成")
 
 
@@ -427,11 +505,12 @@ def teacher_batch_applications(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
     status: str = Query("PENDING_REVIEW", min_length=1),
+    applicationId: str | None = Query(None, pattern=r"^[1-9]\d*$"),
     user=Depends(require_permission("internship.application.view")),
 ):
     from app.modules.internship.services import internship_application_service as applications
     items, total = applications.list_applications(
-        page, pageSize, status=status, batch_id=batchId, user=user)
+        page, pageSize, status=status, batch_id=batchId, user=user, application_id=applicationId)
     return success(_paged(items, total, page, pageSize, batchId))
 
 
@@ -531,10 +610,11 @@ def teacher_material_requirements(
 @router.get("/material-requirements/{requirement_id}/coverage", summary="教师材料已交/缺交统计")
 def teacher_material_requirement_coverage(
     requirement_id: int,
+    keyword: str = Query(""),
     user=Depends(require_permission("internship.report.review")),
 ):
     from app.modules.internship.services import internship_material_requirement_service as materials
-    return success(materials.coverage(requirement_id, user=user))
+    return success(materials.coverage(requirement_id, user=user, keyword=keyword))
 
 
 @router.get("/material-requirements/{requirement_id}/students", summary="教师材料已交/缺交学生名单")
@@ -570,11 +650,12 @@ def teacher_checkin_exemptions(
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
     status: str = Query("PENDING"),
+    exemptionId: str | None = Query(None, pattern=r"^[1-9]\d*$"),
     user=Depends(require_permission("internship.attendance.review")),
 ):
     from app.modules.internship.services import internship_checkin_exemption_service as exemptions
     items, total = exemptions.list_for_teacher(
-        page, pageSize, batch_id=batchId, status=status, user=user)
+        page, pageSize, batch_id=batchId, status=status, user=user, exemption_id=exemptionId)
     return success(_paged(items, total, page, pageSize, batchId))
 
 
@@ -630,16 +711,18 @@ def teacher_batch_application_review(
         message="正式实习申请审核完成")
 
 
-@router.get("/changes", summary="教师当前批次实习变更待审核队列")
+@router.get("/changes", summary="教师当前批次实习变更分类队列")
 def teacher_batch_changes(
     batchId: str = Query(..., min_length=1),
     page: int = Query(1, ge=1),
     pageSize: int = Query(20, ge=1, le=100),
+    status: str = Query("PENDING"),
+    changeId: str | None = Query(None, pattern=r"^[1-9]\d*$"),
     user=Depends(require_permission("internship.change.view")),
 ):
     from app.modules.internship.services import internship_change_service as changes
     items, total = changes.list_changes(
-        page, pageSize, status="PENDING", batch_id=batchId, user=user)
+        page, pageSize, status=status, batch_id=batchId, user=user, change_id=changeId)
     return success(_paged(items, total, page, pageSize, batchId))
 
 

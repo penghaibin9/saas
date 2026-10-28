@@ -2,6 +2,7 @@
   <ModulePageShell title="指导巡访" subtitle="记录学生指导与企业沟通，跟进巡访和问题整改。"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
+      <AppButton v-if="archiveReturnTo" variant="ghost" :disabled="cd.submitting" @click="$router.push(archiveReturnTo)">返回归档核验</AppButton>
       <AppPermissionButton v-if="tab === 'guidance' || tab === 'visit'" :code="tab === 'visit' ? 'internship.visit.manage' : 'internship.guidance.manage'" :allowed="canBtn(tab === 'visit' ? 'internship.visit.manage' : 'internship.guidance.manage')" variant="primary" @click="goCreate">新增{{ tab === 'guidance' ? '指导' : '巡访' }}记录</AppPermissionButton>
       <AppPermissionButton v-else-if="tab === 'communication'" code="internship.communication.manage" :allowed="canBtn('internship.communication.manage')" variant="primary" @click="goCreate">登记沟通</AppPermissionButton>
       <AppPermissionButton v-else-if="tab === 'visit-plan'" code="internship.visit.plan.manage" :allowed="canBtn('internship.visit.plan.manage')" variant="primary" @click="goCreate">新建巡访计划</AppPermissionButton>
@@ -20,7 +21,7 @@
       </div>
 
       <div v-if="tab === 'guidance' || tab === 'visit'" class="bar">
-        <AppSearchBox v-if="tab === 'guidance' || tab === 'visit'" v-model="keyword" placeholder="按学生姓名搜索" @search="reload" />
+        <AppSearchBox v-if="tab === 'guidance' || tab === 'visit'" v-model="keyword" :placeholder="tab === 'visit' ? '按标题、企业、姓名或学号搜索' : '按学生、学号、主题或企业搜索'" @search="reload" />
         <AppQuickFilterChips v-if="tab === 'visit'" v-model="rectifyFilter" :options="rectifyOptions" allow-clear @change="reload" />
       </div>
 
@@ -42,8 +43,8 @@
                   <AppStatusTag v-else-if="tab === 'visit-plan'">{{ r.statusLabel }}</AppStatusTag>
                 </div>
                 <div class="gv-item__sub">{{ recordMeta(r) }}</div>
-                <div v-if="tab === 'guidance'" class="gv-item__sub">{{ [r.methodLabel, r.topic, r.createdAt].filter(Boolean).join(' · ') }}</div>
-                <div v-else-if="tab === 'visit'" class="gv-item__sub">{{ [r.methodLabel, r.visitAt].filter(Boolean).join(' · ') }}</div>
+                <div v-if="tab === 'guidance'" class="gv-item__sub">{{ [r.methodLabel, r.topic, r.guidanceDateLabel].filter(Boolean).join(' · ') }}</div>
+                <div v-else-if="tab === 'visit'" class="gv-item__sub">{{ [r.methodLabel, formatDateTime(r.visitAt)].filter(Boolean).join(' · ') }}</div>
               </button>
             </li>
           </ul>
@@ -73,12 +74,25 @@
 
               <div class="sec-t">{{ activeTabLabel }}详情</div>
               <AppDescriptionList :items="detailItems" :columns="2" />
+              <template v-if="tab === 'visit' && detail.data.hasLocation">
+                <AppButton v-if="detail.data.canViewLocation" variant="ghost" :disabled="locationBusy" @click="readLocation">查看巡访位置（留痕）</AppButton>
+                <p v-if="locationData">纬度 {{ locationData.latitude }}，经度 {{ locationData.longitude }}，精度约 {{ Math.round(locationData.accuracyM) }} 米；{{ locationData.coordinateSystem === 'WGS84' ? '全球卫星定位坐标' : '国内地图坐标' }}</p>
+                <AppInlineAlert v-if="locationError" type="warning" :description="locationError" />
+              </template>
 
               <template v-if="detail.data.attachment">
                 <div class="sec-t">附件</div>
-                <AppFilePreview :files="attachmentFiles" @download="downloadAtt" />
+                <AppFilePreview :files="attachmentFiles" @preview="previewAtt" @download="downloadAtt" />
+                <AppInlineAlert v-if="fileError" type="warning" :description="fileError" />
+                <AppDocumentViewer v-if="previewFile" :descriptor="previewDescriptor" :provider="previewProvider"
+                  :versions="[previewFile]" :files="[previewFile]" :active-file-key="previewFile.fileId"
+                  :active-version-id="previewFile.fileVersionId ?? previewFile.versionId ?? null"
+                  :canonical-version-id="previewFile.fileVersionId ?? previewFile.versionId ?? null"
+                  :allow-download="false" :show-version-bar="false" :show-file-switcher="false"
+                  @preview-error="previewFailed" />
               </template>
 
+              <AppInlineAlert v-if="detail.data.attachmentError" type="warning" :description="detail.data.attachmentError" />
               <div class="sec-t">操作留痕</div>
               <AppAuditTrail :records="auditRecords" :show-ip="false" compact empty-text="暂无记录" />
             </div>
@@ -142,6 +156,11 @@
         <AppInternshipEnterprisePicker v-model="planForm.enterpriseId" placeholder="按企业名称搜索（可留空）"
           @change="onPlanEnterpriseChange" />
       </AppFormItem>
+      <AppFormItem label="巡访学生" required>
+        <AppInternshipStudentPicker v-model="planForm.recordIds" multiple
+          :query="{ batchId: batchStore.selectedBatchId }" placeholder="按姓名或学号选择当前批次学生"
+          data-scope-hint="所选学生的当前指导教师负责巡访；最多100名，发布后按所选学号执行" />
+      </AppFormItem>
       <div class="gv-form-grid">
         <AppFormItem label="计划日期"><AppDatePicker v-model="planForm.planDate" /></AppFormItem>
         <AppFormItem label="巡访方式"><AppSelect v-model="planForm.method" :options="planMethodOptions" /></AppFormItem>
@@ -179,20 +198,29 @@ import ActionReceipt from './components/ActionReceipt.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { currentSessionGeneration } from '@/services/http/client'
+import { fileSdk } from '@/services/file/fileSdk'
+import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
+import { buildPreviewDescriptorFromFile } from '@/components/file/viewer/viewer-contract'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 /* 右栏只渲染详情接口真实返回字段（/internship/guidances/{id}、/internship/visits/{id}） */
 const DETAIL = {
   guidance: [
+    { key: 'id', label: '指导编号' },
     { key: 'studentName', label: '学生' }, { key: 'advisorName', label: '指导教师' }, { key: 'methodLabel', label: '方式' },
+    { key: 'guidanceDateLabel', label: '指导日期' },
     { key: 'topic', label: '主题' }, { key: 'content', label: '指导内容' }, { key: 'problemType', label: '问题类型' },
     { key: 'suggestion', label: '处理建议' }, { key: 'nextFollowDate', label: '下次跟进' }
   ],
   visit: [
+    { key: 'title', label: '巡访标题' }, { key: 'visitAt', label: '巡访时间' }, { key: 'locationStatusLabel', label: '位置登记' },
     { key: 'studentName', label: '学生' }, { key: 'advisorName', label: '巡访教师' }, { key: 'enterpriseName', label: '企业' },
     { key: 'methodLabel', label: '方式' }, { key: 'enterpriseFeedback', label: '企业反馈' }, { key: 'studentFeedback', label: '学生反馈' },
     { key: 'safetyIssue', label: '安全隐患' }, { key: 'rectifyRequire', label: '整改要求' }, { key: 'rectifyDeadline', label: '整改截止' },
-    { key: 'rectifyStatusLabel', label: '整改状态' }, { key: 'monthlyReport', label: '月度小结' }
+    { key: 'rectifyStatusLabel', label: '整改状态' }, { key: 'monthlyReport', label: '巡访内容' }
   ],
   communication: [
     { key: 'communicationTypeLabel', label: '沟通方式' }, { key: 'contactName', label: '联系人' },
@@ -202,7 +230,7 @@ const DETAIL = {
   ],
   'visit-plan': [
     { key: 'enterpriseName', label: '企业' }, { key: 'ownerName', label: '责任人' }, { key: 'planDate', label: '计划日期' },
-    { key: 'method', label: '方式' }, { key: 'objective', label: '目标' }, { key: 'statusLabel', label: '状态' },
+    { key: 'methodLabel', label: '方式' }, { key: 'objective', label: '目标' }, { key: 'statusLabel', label: '状态' },
     { key: 'location', label: '地点' }, { key: 'studentScope', label: '学生范围' }
   ]
 }
@@ -244,7 +272,7 @@ export default {
     AppDrawer, AppStatusTag, AppConfirmDialog, AppExportButton, AppPermissionButton, AppDescriptionList,
     AppAuditTrail, AppSearchBox, AppQuickFilterChips, AppFilePreview, AppPagination,
     AppFormItem, AppSelect, AppTextarea, AppTextInput, AppDatePicker,
-    AppInternshipEnterprisePicker, AppInternshipStudentPicker, AppInlineAlert, ActionReceipt },
+    AppInternshipEnterprisePicker, AppInternshipStudentPicker, AppInlineAlert, ActionReceipt, AppDocumentViewer },
   data() {
     return {
       commDlg: { visible: false, submitting: false, error: '' },
@@ -255,7 +283,7 @@ export default {
       ],
       planMethodOptions: [{ value: 'ONSITE', label: '现场巡访' }, { value: 'ONLINE', label: '线上巡访' }, { value: 'PHONE', label: '电话巡访' }],
       planDlg: { visible: false, submitting: false, error: '' },
-      planForm: { enterpriseId: '', enterpriseName: '', objective: '', planDate: '', method: 'ONSITE', location: '' },
+      planForm: { recordIds: [], enterpriseId: '', enterpriseName: '', objective: '', planDate: '', method: 'ONSITE', location: '' },
       tab: 'guidance',
       tabs: [
         { key: 'guidance', label: '指导记录' },
@@ -268,6 +296,8 @@ export default {
       keyword: '', rectifyFilter: '', rectifyOptions: RECTIFY_OPTIONS,
       selectedId: '',
       detail: { loading: false, error: '', data: null },
+      fileRequest: 0, previewFile: null, previewProvider: null, fileError: '', disposed: false,
+      locationData: null, locationBusy: false, locationError: '',
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', reasonLabel: '说明', requireReason: true, submitting: false },
       conflict: emptyConflict(),
       pending: null,
@@ -278,6 +308,11 @@ export default {
     }
   },
   computed: {
+    archiveReturnTo() {
+      const ref = this.$route.query.returnTo
+      if (typeof ref !== 'string' || !/^\/admin\/internship\/archive(?:\?|$)/.test(ref)) return ''
+      return new URL(ref, 'https://local.invalid').searchParams.get('batchId') === String(this.batchStore.selectedBatchId) ? ref : ''
+    },
     batchStore() { return useInternshipBatchStore() },
     /** 当前选中的巡访计划还能做哪些状态迁移；非计划页签或终态时为空 */
     planActions() {
@@ -310,15 +345,16 @@ export default {
     activeTabLabel() { return this.tabs.find((item) => item.key === this.tab)?.label || '指导巡访' },
     canExportTab() { return this.tab === 'guidance' || this.tab === 'visit' },
     detailFields() { return DETAIL[this.tab] || DETAIL.guidance },
-    detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: d[f.key] })) },
+    detailItems() { const d = this.detail.data || {}; return this.detailFields.map((f) => ({ label: f.label, value: ['visitAt','occurredAt'].includes(f.key) ? formatDateTime(d[f.key]) : d[f.key] })) },
     attachmentFiles() { const a = this.detail.data?.attachment; return a ? [{ id: a.fileId, name: a.fileName, sensitive: true }] : [] },
+    previewDescriptor() { return this.previewFile ? buildPreviewDescriptorFromFile(this.previewFile) : null },
     auditRecords() {
       return (this.detail.data?.auditTrail || []).map((t, i) => ({
         id: i, action: t.action, actor: t.operator, reason: t.detail && (t.detail.note || t.detail.reason || ''), at: t.occurredAt
       }))
     }
   },
-  beforeUnmount() { this.resetCreateDialogs() },
+  beforeUnmount() { this.disposed = true; this.resetCreateDialogs(); this.clearPreview() },
   watch: {
     '$route.query.panel': {
       immediate: true,
@@ -358,6 +394,7 @@ export default {
     }
   },
   methods: {
+    formatDateTime,
     canBtn(code) { return canCode(this.ctx, code) },
     /** 打开巡访计划的状态迁移确认框 */
     openPlanAction(a) {
@@ -412,16 +449,18 @@ export default {
       this.load()
     },
     recordTitle(row) {
+      if (this.tab === 'visit') return `${row.title || '历史巡访未填写标题'} · ${row.studentName || '学生'}`
       if (this.tab === 'communication') return row.summary || '企业沟通'
       if (this.tab === 'visit-plan') return row.enterpriseName || row.objective || '巡访计划'
       return row.studentName || '未提供学生姓名'
     },
     recordMeta(row) {
-      if (this.tab === 'communication') return [row.communicationTypeLabel, row.contactName, row.advisorName, row.occurredAt].filter(Boolean).join(' · ')
+        if (this.tab === 'communication') return [row.communicationTypeLabel, row.contactName, row.advisorName, formatDateTime(row.occurredAt)].filter(Boolean).join(' · ')
       if (this.tab === 'visit-plan') return [row.ownerName, row.planDate, row.objective].filter(Boolean).join(' · ')
       return [row.studentNo, this.tab === 'guidance' ? row.advisorName : row.enterpriseName].filter(Boolean).join(' · ')
     },
     resetDetail() {
+      this.clearPreview()
       this.detail = { loading: false, error: '', data: null }
       this.pending = null
       this.cd = { ...this.cd, visible: false, submitting: false }
@@ -494,10 +533,11 @@ export default {
       const f = this.planForm
       const objective = (f.objective || '').trim()
       const name = (f.enterpriseName || '').trim()
+      if (!Array.isArray(f.recordIds) || !f.recordIds.length || f.recordIds.length > 100) { dialog.error = '请选择1至100名当前批次实习学生'; return }
       if (objective.length < 2 && !name) { this.planDlg.error = '请至少选择企业或填写巡访目标'; return }
       this.planDlg.submitting = true; this.planDlg.error = ''
       const res = await guidanceVisitApi.createVisitPlan({
-        batchId, enterpriseId: f.enterpriseId ? String(f.enterpriseId) : undefined,
+        batchId, recordIds: f.recordIds.map(String), enterpriseId: f.enterpriseId ? String(f.enterpriseId) : undefined,
         enterpriseName: name, objective: objective || name,
         planDate: f.planDate || '', method: f.method, location: f.location.trim()
       })
@@ -536,11 +576,11 @@ export default {
       }
       if (this.tab === 'visit-plan') {
         if (!this.batchStore.selectedBatchId) return toast.error('请先选择实习批次')
-        this.planForm = { enterpriseId: '', enterpriseName: '', objective: '', planDate: '', method: 'ONSITE', location: '' }
+        this.planForm = { recordIds: [], enterpriseId: '', enterpriseName: '', objective: '', planDate: '', method: 'ONSITE', location: '' }
         this.planDlg = { visible: true, submitting: false, error: '' }
         return
       }
-      this.$router.push({ path: '/admin/internship/guidance/new', query: this.batchStore.withBatchQuery({ type: this.tab }) })
+      this.$router.push({ path: '/admin/internship/guidance/new', query: this.batchStore.withBatchQuery({ type: this.tab, keyword: this.$route.query.keyword, returnTo: this.archiveReturnTo || undefined }) })
     },
     switchTab(k) {
       const panel = TAB_PANEL[k] || k
@@ -594,6 +634,7 @@ export default {
       this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
     },
     async loadDetail(id) {
+      this.clearPreview()
       this.detail = { loading: true, error: '', data: null }
       const workspace = this.detail
       const tab = this.tab
@@ -623,10 +664,51 @@ export default {
         this.$router.replace({ query: this.batchStore.withBatchQuery(query) })
       }
     },
+    clearPreview() { this.fileRequest++; this.previewFile = null; this.previewProvider = null; this.fileError = ''; this.locationData = null; this.locationBusy = false; this.locationError = '' },
+    async readLocation() {
+      const row = this.detail.data
+      if (this.tab !== 'visit' || !row?.hasLocation || !row.canViewLocation || this.locationBusy) return
+      const { current } = this.attachmentContext()
+      this.locationData = null; this.locationError = ''; this.locationBusy = true
+      try {
+        const res = await guidanceVisitApi.getVisitLocation(row.id, { batchId: row.batchId, expectedVersion: row.version, reason: '学校核对本次巡访发生位置' })
+        if (!current()) return
+        if (res.code !== 0) throw new Error(res.message || '巡访位置读取失败')
+        if (String(res.data.visitId) !== String(row.id) || String(res.data.batchId) !== String(row.batchId)) throw new Error('巡访位置与当前记录不一致')
+        this.locationData = res.data.location
+      } catch (e) { if (current()) this.locationError = normalizeUiError(e, { fallback: '巡访位置读取未完成' }).userMessage }
+      finally { if (current()) this.locationBusy = false }
+    },
+    attachmentContext() {
+      const row = this.detail.data, attachment = row?.attachment, sequence = this.fileRequest,
+        batch = this.batchStore.selectedBatchId, tab = this.tab, ctxKey = this.ctx.ctxKey, generation = currentSessionGeneration()
+      return { attachment, current: () => !this.disposed && generation === currentSessionGeneration() &&
+        sequence === this.fileRequest && row === this.detail.data && row?.attachment === attachment &&
+        batch === this.batchStore.selectedBatchId && tab === this.tab && ctxKey === this.ctx.ctxKey }
+    },
+    async previewAtt() {
+      if (!this.detail.data?.attachment || this.detail.loading || this.cd.submitting) return
+      this.clearPreview()
+      const { attachment, current } = this.attachmentContext()
+      try {
+        const file = await fileSdk.metadata(attachment.fileId)
+        if (!current()) return
+        if (String(file.fileId) !== String(attachment.fileId) || !file.canPreview || file.readyForBusiness !== true) throw { message: '当前附件尚不能安全预览，请核对文件状态' }
+        this.previewProvider = { fetchBytes: async (descriptor, { signal } = {}) => {
+          if (!current() || signal?.aborted || String(descriptor.fileId) !== String(attachment.fileId)) throw { message: '当前巡访已变化，请重新打开附件' }
+          const bytes = await fileSdk.blob(attachment.fileId)
+          if (!current() || signal?.aborted) throw { message: '附件读取已失效，请重新打开' }
+          return bytes
+        }, dispose() {} }
+        this.previewFile = file
+      } catch (error) { if (current()) this.previewFailed(error) }
+    },
+    previewFailed(error) { this.fileError = normalizeUiError(error).userMessage },
     async downloadAtt() {
-      const a = this.detail.data?.attachment
-      if (!a) return
-      try { await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName) } catch (e) { toast.error('下载失败：' + (e.message || '')) }
+      if (!this.detail.data?.attachment || this.detail.loading || this.cd.submitting) return
+      const { attachment, current } = this.attachmentContext()
+      try { await guidanceVisitApi.downloadAttachment(attachment.fileId, attachment.fileName, current) }
+      catch (error) { if (current()) this.previewFailed(error) }
     },
     openVoid(d) {
       if (this.tab !== 'guidance' || !d || this.detail.loading || this.detail.error || this.cd.submitting || !this.canBtn('internship.guidance.manage')) return
@@ -657,10 +739,10 @@ export default {
           reason: reason || '', expectedVersion: p.expectedVersion
         })
       } else if (p.kind === 'void') {
-        res = await guidanceVisitApi.voidGuidance(p.id, { reason, expectedVersion: p.expectedVersion })
+        res = await guidanceVisitApi.voidGuidance(p.id, { reason, expectedVersion: p.expectedVersion, batchId: this.batchStore.selectedBatchId })
       } else {
         res = await guidanceVisitApi.rectifyVisit(p.id, {
-          status: 'DONE', note: reason, expectedVersion: p.expectedVersion
+          status: 'DONE', note: reason, expectedVersion: p.expectedVersion, batchId: this.batchStore.selectedBatchId
         })
       }
       if (this.pending !== p || this.cd !== dialog) return

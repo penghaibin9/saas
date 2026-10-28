@@ -2,7 +2,24 @@
 import io, re, zipfile
 import pytest
 from app.core.exceptions import AppException
-from app.services.xlsx_util import build_template_xlsx, read_xlsx, MAX_ROWS
+from openpyxl import load_workbook
+from app.services.xlsx_util import build_template_xlsx, build_ledger_xlsx, read_xlsx, MAX_ROWS
+
+
+def test_wide_template_and_ledger_keep_column_names_widths_and_values():
+    headers = [f'字段{i}' for i in range(1, 28)]
+    values = [f'合成值{i}' for i in range(1, 28)]
+    for content, widths in [
+        (build_template_xlsx(headers, sample=values), (24, 24)),
+        (build_ledger_xlsx('合成台账', headers, [values], column_widths={1: 11, 27: 33}), (11, 33)),
+    ]:
+        wb = load_workbook(io.BytesIO(content))
+        try:
+            sheet = wb.active
+            assert (sheet.column_dimensions['A'].width, sheet.column_dimensions['AA'].width) == widths
+            assert (sheet['A2'].value, sheet['AA2'].value) == (values[0], values[26])
+        finally:
+            wb.close()
 
 
 def dimensionless(content):

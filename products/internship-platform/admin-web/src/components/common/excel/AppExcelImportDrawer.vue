@@ -18,6 +18,7 @@
       <div class="aeid__body">
         <p v-if="formError" class="aeid__error" role="alert">{{ formError }}</p>
         <AccountImportBoundaryNotice v-if="showAccountBoundary" class="aeid__boundary" />
+        <slot name="notice" />
 
         <!-- Step 0：模板 + 上传 -->
         <AppExcelUpload

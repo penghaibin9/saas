@@ -1,5 +1,6 @@
-import { clearTokens, commitNewSessionTokens, getRefreshToken, realRequest } from './request'
+import { clearTokens, commitNewSessionTokens, getToken, getRefreshToken, realRequest } from './request'
 import { setForcePasswordChange } from '@/security/passwordChangeGate'
+import { currentSessionGeneration } from './sessionGeneration.mjs'
 
 const SESSION_KEY='gx_session_v1'
 
@@ -66,16 +67,20 @@ export async function switchMobileRole(roleCode='') {
 }
 
 export async function logoutMobile() {
+  const generation=currentSessionGeneration()
   const refreshToken=getRefreshToken()
+  const accessToken=getToken()
   try {
     await realRequest('/auth/logout',{
       method:'POST',
       auth:false,
+      headers:accessToken?{Authorization:'Bearer '+accessToken}:{},
       data:refreshToken?{refreshToken}:{}
     })
   } catch (e) {
     // Local logout must still complete if the network is unavailable.
   }
+  if(currentSessionGeneration()!==generation) return false
   clearTokens()
   setForcePasswordChange(false)
   try {

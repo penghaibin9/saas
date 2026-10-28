@@ -32,7 +32,7 @@
             <span class="mp-card__title">协议正文</span>
             <div class="agd-ops">
               <AppPrintButton v-if="detail.renderedBody" print-selector="#agreement-print-body" label="打印正文" />
-              <AppPermissionButton v-if="detail.renderedBody" code="internship.agreement.view" :allowed="canBtn('internship.agreement.view')"
+              <AppPermissionButton mode="hide" v-if="detail.renderedBody" code="internship.agreement.view" :allowed="canBtn('internship.agreement.view')"
                 variant="ghost" size="sm" :loading="pdfLoading" @click="downloadPdf">下载 PDF</AppPermissionButton>
             </div>
           </div>
@@ -118,24 +118,24 @@
             </template>
 
             <div class="agd-actions">
-              <AppPermissionButton v-if="detail.status === 'DRAFT'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
+              <AppPermissionButton mode="hide" v-if="detail.status === 'DRAFT'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" :disabled="actionBusy" @click="confirmAct('issue')">下发给学生确认</AppPermissionButton>
-              <AppPermissionButton v-if="detail.esignStatus === 'NONE' && canReject" code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')"
+              <AppPermissionButton mode="hide" v-if="detail.esignStatus === 'NONE' && canReject" code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')"
                 variant="ghost" :disabled="actionBusy" @click="startEsign">发起内部确认</AppPermissionButton>
               <!-- 企业方禁止教师代签电子签；正式路径为上方纸质扫描件确认（对标企业真签） -->
-              <AppPermissionButton v-if="detail.esignStatus === 'PENDING' && detail.status === 'PENDING_SCHOOL'"
+              <AppPermissionButton mode="hide" v-if="detail.esignStatus === 'PENDING' && detail.status === 'PENDING_SCHOOL'"
                 code="internship.agreement.sign" :allowed="canBtn('internship.agreement.sign')" variant="ghost" :disabled="actionBusy" @click="esignParty('SCHOOL')">学校内部确认</AppPermissionButton>
-              <AppPermissionButton v-if="detail.status === 'PENDING_ENTERPRISE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
+              <AppPermissionButton mode="hide" v-if="detail.status === 'PENDING_ENTERPRISE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" :disabled="!enterpriseFileReady || uploadingFile || actionSubmitting" :loading="entSubmitting"
                 @click="submitEnterprise">确认企业已签署</AppPermissionButton>
               <AppButton v-if="detail.status === 'PENDING_SCHOOL' && detail.attachment?.fileId" variant="secondary" @click="showSection('files')">核对企业签署材料</AppButton>
-              <AppPermissionButton v-if="detail.status === 'PENDING_SCHOOL'" code="internship.agreement.schoolConfirm" :allowed="canBtn('internship.agreement.schoolConfirm')"
+              <AppPermissionButton mode="hide" v-if="detail.status === 'PENDING_SCHOOL'" code="internship.agreement.schoolConfirm" :allowed="canBtn('internship.agreement.schoolConfirm')"
                 variant="primary" :disabled="actionBusy" @click="confirmAct('school')">学校确认生效</AppPermissionButton>
-              <AppPermissionButton v-if="detail.status === 'EFFECTIVE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
+              <AppPermissionButton mode="hide" v-if="detail.status === 'EFFECTIVE'" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="primary" :disabled="actionBusy" @click="confirmAct('archive')">归档协议</AppPermissionButton>
-              <AppPermissionButton v-if="canReject" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
+              <AppPermissionButton mode="hide" v-if="canReject" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="ghost" :disabled="actionBusy" :danger="true" @click="confirmAct('reject')">驳回</AppPermissionButton>
-              <AppPermissionButton v-if="canVoid" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
+              <AppPermissionButton mode="hide" v-if="canVoid" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')"
                 variant="ghost" :disabled="actionBusy" :danger="true" @click="confirmAct('void')">作废</AppPermissionButton>
             </div>
             <p v-if="isFinal" class="mp-note" style="margin-top: var(--space-2)">

@@ -80,7 +80,9 @@ def test_removed_additional_plan_is_not_teacher_task_truth():
     columns = set(assignment_table.c.keys())
     assert {"internship_id", "plan_id", "status", "is_primary"} <= columns
 
-    source = inspect.getsource(plan_task_svc.list_progress)
+    source = inspect.getsource(plan_task_svc._progress_query)
     assert "InternshipPlanAssignment.status == \"ACTIVE\"" in source
     assert "active_assignment" in source
     assert "legacy_primary" in source
+    assert "_progress_query" in inspect.getsource(plan_task_svc.list_progress)
+    assert "_progress_query" in inspect.getsource(plan_task_svc.batch_summary)

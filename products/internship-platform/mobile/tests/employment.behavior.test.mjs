@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
+import { compile, createSSRApp } from 'vue'
+import { renderToString } from '@vue/server-renderer'
 import * as presentation from '../src/services/employmentPresentation.mjs'
 import { reportFileState, reportFilesReady, refreshReportFiles } from '../src/services/weeklyReportPresentation.mjs'
 
@@ -12,20 +14,42 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 function page(overrides={},teacher=false,sdk={}){
   const source=fs.readFileSync(new URL(`../src/pages/${teacher?'teacher':'student'}-internship/employment/index.vue`,import.meta.url),'utf8')
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import[^\n]+\n/gm,'').replace('export default','return')
-  let generation=0
+  let generation=0;const reveals=[]
   const context={batches:[{id:batch,name:'合成批次'}],selectedBatchId:batch,can:()=>true,load:async()=>{},selectBatch(value){if(!this.batches.some(x=>x.id===value))return false;this.selectedBatchId=value;return true}}
   const api={getInternship:async()=>({hasBatch:true,batchId:batch,recordId:record,schoolMentor:'合成导师'}),getInternshipEmployment:async()=>({batchId:batch,internshipId:record,prefill,registration:null}),getEmploymentRegistrations:async()=>({items:[],total:0,hasMore:false}),getEmploymentRegistration:async()=>row(),...overrides}
+  const employmentRead=api.getInternshipEmployment;api.getInternshipEmployment=async(...args)=>({canSubmit:true,...await employmentRead(...args)})
   const defaults={metadata:async fileId=>({fileId,status:'AVAILABLE',scanStatus:'CLEAN',readyForBusiness:true}),...sdk}
   const scope={studentApi:api,teacherApi:api,fileSdk:defaults,ReportFilePreview:{},normalizeError:e=>({text:'操作未完成',kind:Number(e?.code)===409001?'conflict':'unknown',pageState:'error'}),
     currentSessionGeneration:()=>generation,...presentation,reportFileState,reportFilesReady,refreshReportFiles,formatDateTime:x=>x,
     useInternshipContextStore:()=>context,uni:{pageScrollTo(){}}}
   const component=new Function(...Object.keys(scope),script)(...Object.values(scope))
-  const vm={...component.data(),$refs:{photos:{reset(){},open:async()=>{}}}}
+  const vm={...component.data(),$refs:{photos:{reset(){},open:async()=>{},reveal:async()=>reveals.push('preview')}}}
   for(const [key,method] of Object.entries(component.methods))vm[key]=(...args)=>method.apply(vm,args)
   for(const [key,getter] of Object.entries(component.computed))Object.defineProperty(vm,key,{get:()=>getter.call(vm)})
-  return {vm,component,api,context,switchAccount:()=>generation++}
+  return {vm,component,api,context,reveals,switchAccount:()=>generation++}
 }
 async function ready(api={},sdk={}){const p=page(api,false,sdk);await p.vm.load();p.vm.form.fields={...declaration};p.vm.markDirty();return p}
+
+test('精简页面默认收起长意见和通知，退回原因、办理限制及本版附件仍可见',async()=>{
+  const source=fs.readFileSync(new URL('../src/pages/student-internship/employment/index.vue',import.meta.url),'utf8')
+  const approved=presentation.employmentView({...row(8,'APPROVED'),revisionCount:4,current:{...row().current,revisionNo:4,review:{action:'APPROVE',comment:'应当收起的完整核验意见'},attachments:[{fileId:'9',fileName:'原版本照片.png'}]}})
+  approved.history=[approved.current]
+  async function render(overrides={}){
+    const state=page(),shell={render(){return this.$slots.default?.()}}
+    Object.assign(state.vm,{loaded:true,state:'ready',employmentWriteAllowed:true,submissionHint:'不应常驻首屏的冻结说明',prefill,registration:approved,
+      form:presentation.employmentDraft(prefill,approved),notifications:{items:[{id:'n1',title:'核验通知',revisionNo:4,status:'READ',statusLabel:'已读',content:'应当收起的通知正文'}],total:1,unread:0},...overrides})
+    const template=source.match(/<template>([\s\S]*?)<script>/)[1].replace(/<\/template>\s*$/,'')
+    const renderTemplate=compile(template,{isCustomElement:tag=>['view','text'].includes(tag)})
+    return renderToString(createSSRApp({components:{ReportFilePreview:shell,MobileNavBar:shell,MobileGlobalState:shell,MobileStatusTag:shell,MobileSafeAreaBar:shell},render:()=>renderTemplate(state.vm,[])}))
+  }
+  const html=await render();assert.ok(!html.includes('不应常驻首屏的冻结说明'));assert.ok(!html.includes('应当收起的完整核验意见'));assert.ok(!html.includes('应当收起的通知正文'))
+  assert.ok(html.includes('查看全部通知'));assert.ok(!html.includes('通知详情'));assert.ok(html.includes('提交更正'));assert.ok(html.includes('查看本版详情'))
+  const history=await render({expandedId:approved.current.id});assert.ok(history.includes('应当收起的完整核验意见'));assert.ok(history.includes('查看原版本照片.png'))
+  const notices=await render({notificationsOpen:true,expandedId:'notice:n1'});assert.ok(notices.includes('应当收起的通知正文'));assert.ok(notices.includes('收起通知'))
+  const returned={...approved,status:'RETURNED',current:{...approved.current,review:{action:'RETURN',comment:'请补齐4500元对应佐证'}}}
+  const correction=await render({registration:returned});assert.ok(correction.includes('退回原因：请补齐4500元对应佐证'));assert.ok(correction.includes('补正重交'))
+  assert.ok((await render({employmentWriteAllowed:false,submissionHint:'批次已关闭，仅可查看'})).includes('批次已关闭，仅可查看'))
+})
 
 test('visible result notifications stay unread until explicit acknowledgement and failed acknowledgement preserves the result',async()=>{
   const message={id:'9007199254740993020',title:'审核结果',content:'已退回补正',status:'UNREAD',statusLabel:'未读'}
@@ -33,6 +57,26 @@ test('visible result notifications stay unread until explicit acknowledgement an
   assert.equal(p.vm.notifications.unread,1);await p.vm.readNotification(message);assert.equal(p.vm.notifications.items[0].status,'UNREAD');assert.ok(p.vm.notificationError);assert.equal(p.vm.form.fields.salary,'0')
   let submitted; p.api.readInternshipEmploymentResult=async(...args)=>{submitted=args;return {...message,status:'READ',statusLabel:'已读'}}
   await p.vm.readNotification(message);assert.deepEqual(submitted,[message.id,batch,record]);assert.equal(p.vm.notifications.unread,0);assert.equal(p.vm.notifications.items[0].statusLabel,'已读');assert.equal(p.vm.notificationError,'')
+})
+test('通知只预览最新一条，展开翻页收起不标已读、不清草稿，切身份恢复收起',async()=>{
+  let acknowledged=0
+  const p=await ready({getInternshipEmployment:async(b,r,page)=>({batchId:b,internshipId:r,prefill,registration:null,resultNotifications:{items:page===1?[{id:'n2',title:'最新通知'},{id:'n1',title:'较早通知'}]:[{id:'n0',title:'最早通知'}],total:3,unread:3,page,hasMore:page===1}}),readInternshipEmploymentResult:async()=>{acknowledged++}})
+  p.vm.form.fields.positionName='尚未提交的更正';assert.deepEqual(p.vm.visibleNotifications.map(x=>x.id),['n2'])
+  await p.vm.toggleNotifications();assert.equal(p.vm.visibleNotifications.length,2)
+  await p.vm.changeNotificationPage(1);assert.equal(p.vm.notificationPage,2)
+  await p.vm.toggleNotifications();assert.equal(p.vm.notificationsOpen,false);assert.equal(p.vm.notificationPage,1);assert.equal(p.vm.visibleNotifications[0].id,'n2')
+  assert.equal(p.vm.form.fields.positionName,'尚未提交的更正');assert.equal(acknowledged,0);assert.equal(p.vm.notifications.unread,3)
+  await p.vm.toggleNotifications();p.switchAccount();p.vm.resetAccount();assert.equal(p.vm.notificationsOpen,false);assert.equal(p.vm.visibleNotifications.length,0)
+})
+test('教师字段按真实来源分组，混合来源保留例外，隐藏信息和零值不被改写',()=>{
+  const p=page({},true),sources=Object.fromEntries(presentation.employmentFields.map(f=>[f.key,f.school?'SCHOOL_PROFILE':'STUDENT_DECLARED']))
+  sources.companyName='CURRENT_INTERNSHIP_COMPANY'
+  p.vm.detail=presentation.employmentView({...row(),sensitiveVisible:false,current:{...row().current,sources}})
+  const original=JSON.stringify(p.vm.detail),identity=p.vm.fieldGroups.find(g=>g.key==='identity'),company=p.vm.fieldGroups.find(g=>g.key==='company')
+  assert.equal(identity.source,'学校档案');assert.equal(identity.fields.find(f=>f.key==='enrollmentYear').sourceLabel,'学生本次填报')
+  assert.equal(company.source,'学生本次填报');assert.equal(company.fields.find(f=>f.key==='companyName').sourceLabel,'当前正式实习企业')
+  assert.equal(p.vm.fieldValue({value:'已隐藏，请说明核验用途后查看'}),'已隐藏');assert.equal(p.vm.fieldValue({value:'0'}),'0')
+  assert.equal(JSON.stringify(p.vm.detail),original)
 })
 test('a hidden or old-account notification acknowledgement cannot repopulate private messages',async()=>{
   const message={id:'9007199254740993020',status:'UNREAD'},wait=deferred(),p=await ready({readInternshipEmploymentResult:()=>wait.promise})
@@ -47,6 +91,25 @@ test('teacher photo preview cannot bypass full-material disclosure',async()=>{
   const p=page({},true);let opened=0;p.vm.$refs.photos.open=async()=>{opened++};p.vm.state='ready';p.vm.detail=presentation.employmentView({...row(),sensitiveVisible:false})
   await p.vm.openPhoto({fileId:'1'});assert.equal(opened,0);p.vm.detail.sensitiveVisible=true;await p.vm.openPhoto({fileId:'1'});assert.equal(opened,1)
 })
+
+test('就业附件预览完成后定位到预览区，旧上下文迟到结果不滚动当前页面',async()=>{
+  for(const teacher of [false,true]){
+    const p=teacher?page({},true):await ready();p.vm.state='ready';p.vm.detail=presentation.employmentView({...row(),sensitiveVisible:true})
+    await p.vm.openPhoto({fileId:'9'});assert.deepEqual(p.reveals,['preview'])
+    const wait=deferred();p.vm.$refs.photos.open=()=>wait.promise
+    const opening=p.vm.openPhoto({fileId:'10'});p.vm.epoch++;wait.resolve();await opening
+    assert.equal(p.reveals.length,1)
+  }
+})
+
+test('附件图片就绪后可按实际布局定位，已关闭的预览不定位',async()=>{
+  const source=fs.readFileSync(new URL('../src/components/ReportFilePreview.vue',import.meta.url),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
+  const component=new Function('fileSdk','normalizeError','currentSessionGeneration','loadReportMedia','releasePreview',source.replace(/^import[^\n]+\r?\n/gm,'').replace('export default','return'))({},()=>({}),()=>0,()=>{},()=>{})
+  const calls=[],vm={...component.data(),$nextTick:async()=>{},$el:{scrollIntoView:value=>calls.push(value)}}
+  vm.visible=true;await component.methods.reveal.call(vm);assert.deepEqual(calls,[{block:'start',behavior:'smooth'}])
+  const wait=deferred();vm.$nextTick=()=>wait.promise;const old=component.methods.reveal.call(vm)
+  component.methods.reset.call(vm);wait.resolve();await old;assert.equal(calls.length,1);assert.equal(vm.revealRequested,false)
+})
 test('default application launch remains the registered login page',()=>{
   const pages=JSON.parse(fs.readFileSync(new URL('../src/pages.json',import.meta.url),'utf8'));assert.equal(pages.pages[0].path,'pages/login/index')
 })
@@ -57,6 +120,13 @@ test('all 23 fields, zero salary and false match are collected without inventing
   assert.equal(presentation.validateEmployment(form,prefill),null)
   for(const value of ['NaN','-1','0.001'])assert.equal(presentation.validateEmployment({...form,fields:{...form.fields,salary:value}},prefill).key,'salary')
   assert.equal(presentation.validateEmployment({...form,fields:{...form.fields,majorMatch:null}},prefill).key,'majorMatch')
+})
+test('archived employment uses explicit server permission; a closed batch or missing permission stays readonly',async()=>{
+  for(const allowed of [true,false,undefined]){
+    const p=await ready({getInternship:async()=>({hasBatch:true,batchId:batch,recordId:record,historyMode:true}),
+      getInternshipEmployment:async()=>({batchId:batch,internshipId:record,prefill,registration:null,canSubmit:allowed,submissionHint:'归档后就业单独留存'})})
+    assert.equal(p.vm.editable,allowed===true);assert.equal(p.vm.submissionHint,'归档后就业单独留存')
+  }
 })
 test('explicit no choice preserves the false business value and cannot edit a pending declaration',async()=>{
   const p=await ready();p.vm.form.fields.majorMatch=null;p.vm.chooseMatch(false);assert.equal(p.vm.form.fields.majorMatch,false);assert.equal(p.vm.dirty,true)
@@ -95,7 +165,7 @@ test('exact large IDs, current version and file IDs are sent once, then a real r
   assert.equal(payload.batchId,batch);assert.equal(payload.internshipId,record);assert.equal(payload.expectedVersion,0);assert.equal(payload.fields.majorMatch,false);assert.equal(calls,1);assert.equal(p.vm.receipt.id,id);assert.equal(p.vm.editable,false)
 })
 test('version conflict keeps edits and base version until explicit acknowledgement of the reread',async()=>{
-  const returned=row(2,'RETURNED'),latest=row(3,'RETURNED');const p=await ready({getInternshipEmployment:async()=>({batchId:batch,internshipId:record,prefill,registration:returned}),submitInternshipEmployment:async()=>{p.api.getInternshipEmployment=async()=>({batchId:batch,internshipId:record,prefill,registration:latest});throw {code:409001}}})
+  const returned=row(2,'RETURNED'),latest=row(3,'RETURNED');const p=await ready({getInternshipEmployment:async()=>({batchId:batch,internshipId:record,prefill,registration:returned}),submitInternshipEmployment:async()=>{p.api.getInternshipEmployment=async()=>({batchId:batch,internshipId:record,prefill,registration:latest,canSubmit:true});throw {code:409001}}})
   p.vm.form.fields.positionName='本次修改岗位';p.vm.form.correctionReason='已经补充就业材料';await p.vm.submit()
   assert.equal(p.vm.baseVersion,2);assert.equal(p.vm.registration.version,3);assert.equal(p.vm.form.fields.positionName,'本次修改岗位');assert.equal(p.vm.conflict,true);assert.equal(p.vm.canSubmit,false)
   p.vm.acceptLatestVersion();assert.equal(p.vm.baseVersion,3);assert.equal(p.vm.conflict,false)
@@ -105,6 +175,26 @@ test('only a canonical current internship company enables transfer and remains f
   p.vm.prefill={...prefill,canTransfer:true,transfer:{companyName:'正式关联企业',creditCode:declaration.creditCode,positionName:'实习原岗位'}}
   p.vm.chooseMode('INTERNSHIP_TRANSFER');assert.equal(p.vm.form.fields.companyName,'正式关联企业');assert.equal(p.vm.fieldReadonly({key:'companyName'}),true)
   assert.equal(p.vm.form.fields.positionName,'实习原岗位');assert.equal(presentation.validateEmployment({...p.vm.form,fields:{...p.vm.form.fields,companyName:'伪造企业'}},p.vm.prefill).key,'companyName')
+})
+
+test('就业更正切换方式后保留各自单位岗位草稿，重复点当前方式不重置输入',async()=>{
+  const p=await ready({getInternshipEmployment:async()=>({batchId:batch,internshipId:record,prefill,registration:row(4,'APPROVED')})})
+  p.vm.prefill={...prefill,canTransfer:true,transfer:{companyName:'正式实习企业',creditCode:declaration.creditCode,companyAddress:'',positionName:'实习岗位'}}
+  p.vm.form.fields.companyName='核验后更正单位';p.vm.form.fields.companyAddress='核验后更正地址';p.vm.form.fields.positionName='更正岗位'
+  p.vm.form.attachments=[{fileId:'9'}];p.vm.form.correctionReason='本次已核对更正内容'
+  p.vm.chooseMode('INTERNSHIP_TRANSFER');p.vm.form.fields.companyAddress='转就业地址';p.vm.form.fields.positionName='转就业岗位'
+  p.vm.chooseMode('INTERNSHIP_TRANSFER');assert.equal(p.vm.form.fields.companyAddress,'转就业地址')
+  p.vm.chooseMode('EMPLOYMENT');assert.equal(p.vm.form.fields.companyName,'核验后更正单位');assert.equal(p.vm.form.fields.companyAddress,'核验后更正地址');assert.equal(p.vm.form.fields.positionName,'更正岗位')
+  p.vm.chooseMode('INTERNSHIP_TRANSFER');assert.equal(p.vm.form.fields.companyAddress,'转就业地址');assert.equal(p.vm.form.fields.positionName,'转就业岗位')
+  assert.equal(p.vm.form.attachments[0].fileId,'9');assert.equal(p.vm.form.correctionReason,'本次已核对更正内容')
+})
+
+test('切换登记方式不恢复旧学校身份，账号和实习上下文变化清除方式草稿',async()=>{
+  const p=await ready();p.vm.prefill={...prefill,canTransfer:true,transfer:{companyName:'实习企业',creditCode:declaration.creditCode}}
+  p.vm.chooseMode('INTERNSHIP_TRANSFER');p.vm.form.fields.studentName='学校最新姓名';p.vm.form.fields.studentPhone='13900000000'
+  p.vm.chooseMode('EMPLOYMENT');assert.equal(p.vm.form.fields.studentName,'学校最新姓名');assert.equal(p.vm.form.fields.studentPhone,'13900000000')
+  p.vm.requestedBatch='';p.vm.contextKey='old:placement';await p.vm.load();assert.deepEqual(p.vm.modeFields,{})
+  p.vm.modeFields={EMPLOYMENT:{companyName:'旧账号单位'}};p.vm.resetAccount();assert.deepEqual(p.vm.modeFields,{})
 })
 test('old-account read cannot populate the page and showing clears old private drafts',async()=>{
   const wait=deferred(),p=page({getInternshipEmployment:()=>wait.promise});const call=p.vm.load();await Promise.resolve();p.switchAccount();wait.resolve({batchId:batch,internshipId:record,prefill,registration:row()});await call

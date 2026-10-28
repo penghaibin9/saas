@@ -44,3 +44,10 @@ export const REMUNERATION_CYCLE_LABEL = REMUNERATION_CYCLE.reduce((acc, o) => {
   acc[o.value] = o.label
   return acc
 }, {})
+
+const SHIFT_LABELS = Object.freeze({ DAY: '白班', NIGHT: '夜班', ROTATING: '轮班', FLEXIBLE: '弹性班次' })
+export function shiftTypeText(value) { return SHIFT_LABELS[value] || String(value || '') }
+export function shiftTypeValue(text) {
+  const value = String(text || '').trim()
+  return Object.keys(SHIFT_LABELS).find(key => SHIFT_LABELS[key] === value) || value
+}

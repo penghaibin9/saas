@@ -1,6 +1,6 @@
 <template>
   <div class="tw-frame" :class="{ focused, 'mobile-open': mobileOpen }" :style="tokens">
-    <div class="tw-centers"><nav aria-label="一级菜单"><button v-for="center in centers" :key="center.key" :class="{ selected: center.key === activeCenter }" @click="navigate(center.path)">{{ center.label }}</button></nav><WorkspaceDeskUtilities scope-mode :scope-name="scopeName" :identity-key="identityKey" /></div>
+    <div class="tw-centers"><nav aria-label="一级菜单"><button v-for="center in centers" :key="center.key" :class="{ selected: center.key === activeCenter }" @click="center.path ? navigate(center.path) : emit('center-unavailable', center)">{{ center.label }}</button></nav><WorkspaceDeskUtilities scope-mode :scope-name="scopeName" :identity-key="identityKey" /></div>
     <div class="tw-body">
       <div class="tw-rails">
         <aside v-for="level in railLevels" :key="level.key" class="tw-rail" :class="[prefs[level.key], { tertiary: level.key === 'third' }]" :aria-label="level.title">
@@ -39,12 +39,12 @@ import { SHORTCUT_ICONS } from './shortcutIcons'
 import { activeWorkspacePage } from './workspaceRouting'
 import WorkspaceDeskUtilities from './WorkspaceDeskUtilities.vue'
 import { RefreshLeft, Star, FullScreen, Close, Monitor, User, Calendar, House, Bell, ChatDotRound, Sunny, Help, Coin, DocumentChecked, Collection, DataAnalysis, School, Flag, DataBoard, SetUp, Reading, List, Select, Clock, Tickets, TrendCharts, Medal, Notebook, OfficeBuilding, CircleCheck, FolderChecked } from '@element-plus/icons-vue'
-import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, shortcutAppearance, workspacePages, workspaceMenuItems, workspaceShort, workspaceTokens } from './teacherWorkspace'
+import { WORKSPACE_THEMES, WORKSPACE_TONES, restoreWorkspace, systemContextDestination, shortcutAppearance, workspacePages, workspaceMenuItems, workspaceShort, workspaceTokens } from './teacherWorkspace'
 import { systemConfirm } from '@/services/systemDialog'
-const props = defineProps({ resolveDestination: { type: Function, default: path => path }, horizontalModule: { type: String, default: '' }, modules: { type: Array, default: () => [] }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
-const emit = defineEmits(['tokens', 'theme-label'])
+const props = defineProps({ resolveDestination: { type: Function, default: path => path }, horizontalModule: { type: String, default: '' }, modules: { type: Array, default: () => [] }, workspaceModules: { type: Array, default: null }, centers: { type: Array, default: () => [] }, activeCenter: { type: String, default: '' }, activeModule: { type: String, default: '' }, identityKey: { type: String, required: true }, legacyIdentityKey: { type: String, default: '' }, scopeName: { type: String, default: '' } })
+const emit = defineEmits(['tokens', 'theme-label', 'center-unavailable'])
 const route = useRoute(), router = useRouter()
-const pages = computed(() => workspacePages(props.modules))
+const pages = computed(() => workspacePages(props.workspaceModules || props.modules))
 const storageKey = computed(() => `teacher-workspace-v1:${props.identityKey}${props.activeCenter === 'academic-affairs' ? ':academic-affairs' : ''}`)
 const prefs = ref(restoreWorkspace({}, []))
 const focused = ref(false), mobileOpen = ref(false), closedId = ref(''), selectedModule = ref('')
@@ -87,7 +87,7 @@ const shortcuts = computed(() => prefs.value.shortcuts.map(id => pages.value.fin
 async function confirmUnsubmitted(to, from) {
   if (to.path === from.path) return true
   if (window.__SAAS_DIRTY_FORM_GUARD__?.handlesRoute?.(from)) return true
-  const editing = [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.disabled && field.value.trim() && field.getClientRects().length)
+  const editing = [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.matches(':disabled') && field.value.trim() && field.getClientRects().length)
   return !editing || await systemConfirm({ title:'确认离开当前工作区', message:'当前表单还有填写内容，继续离开会丢失未提交的内容。', confirmText:'放弃内容并离开', type:'danger' })
 }
 onBeforeRouteLeave(confirmUnsubmitted)
@@ -96,10 +96,12 @@ watch([storageKey, pages], () => {
   let saved = null
   try { const current = localStorage.getItem(storageKey.value); const legacy = !current && props.legacyIdentityKey ? localStorage.getItem(`teacher-workspace-v1:${props.legacyIdentityKey}`) : null; saved = JSON.parse(current || legacy || 'null') } catch { /* Invalid preferences reset safely. */ }
   prefs.value = restoreWorkspace(saved, pages.value)
+  destinations.clear();scrollPositions.clear()
+  for (const [id,path] of Object.entries(prefs.value.destinations)) destinations.set(id,path)
   closedId.value = ''; selectedModule.value = ''
   rememberCurrent()
 }, { immediate: true })
-watch(prefs, value => { try { localStorage.setItem(storageKey.value, JSON.stringify(value)) } catch { /* Browsing works without storage. */ } }, { deep: true })
+watch(prefs, value => { try { localStorage.setItem(storageKey.value, JSON.stringify(value)) } catch { /* Browsing works without storage. */ } }, { deep: true, immediate: true })
 const originalBodyTokens = new Map()
 let mounted = false
 function applyBodyTokens(value) {
@@ -113,7 +115,7 @@ onMounted(() => { mounted = true; applyBodyTokens(tokens.value) })
 onBeforeUnmount(() => { mounted = false; for (const [name, value] of originalBodyTokens) { if (value) document.body.style.setProperty(name, value); else document.body.style.removeProperty(name) } })
 watch(() => route.fullPath, async path => { selectedModule.value = ''; mobileOpen.value = false; rememberCurrent(); await nextTick(); if (path === route.fullPath && mainElement.value) mainElement.value.scrollTop = scrollPositions.get(currentPage.value?.id) || 0 }, { flush: 'post' })
 function rememberScroll() { if (currentPage.value) scrollPositions.set(currentPage.value.id, mainElement.value?.scrollTop || 0) }
-function rememberCurrent() { const id = currentPage.value?.id; if (id && !currentPage.value.disabled && id !== '/workbench?view=recent') prefs.value.recent = [id, ...prefs.value.recent.filter(key => key !== id)].slice(0, 30); if (id && new URL(currentPage.value.path, window.location.origin).pathname === route.path) destinations.set(id, route.fullPath); if (id && !currentPage.value.disabled && !prefs.value.tabs.includes(id)) prefs.value.tabs = [...prefs.value.tabs, id].slice(-20) }
+function rememberCurrent() { const id = currentPage.value?.id; if (id && !currentPage.value.disabled && id !== '/workbench?view=recent') prefs.value.recent = [id, ...prefs.value.recent.filter(key => key !== id)].slice(0, 30); if (id && new URL(currentPage.value.path, window.location.origin).pathname === route.path) { destinations.set(id, route.fullPath); const saved=systemContextDestination(currentPage.value,route.fullPath); if(saved)prefs.value.destinations[id]=saved;else delete prefs.value.destinations[id] } if (id && !currentPage.value.disabled && !prefs.value.tabs.includes(id)) prefs.value.tabs = [...prefs.value.tabs, id].slice(-20) }
 async function navigate(path) { const page = pages.value.find(item => item.id === path); const cached = destinations.get(path); const ref = cached || page?.destination || page?.path || path; const destination = ref && props.resolveDestination(ref); if (destination && router.resolve(destination).fullPath !== route.fullPath) await router.push(destination); mobileOpen.value = false }
 function selectItem(level, item) {
   if (level === 'second') {

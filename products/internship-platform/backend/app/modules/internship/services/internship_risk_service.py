@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.core.exceptions import AppException, no_permission, not_found
 from app.core.tenant_scoped import tenant_get
 from app.models import (
-    InternshipAuditTrail, InternshipComplaint, InternshipIncident, InternshipRecord,
+    InternshipAuditTrail, InternshipComplaint, InternshipIncident, InternshipRecord, InternshipLeave,
     RiskRecord, StudentProfile,
 )
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -78,6 +78,19 @@ def _source_truth(db, r) -> dict:
                 "closeBlockers": ["高风险来源身份缺失（source_type/source_id）"],
                 "currentAction": "先修复来源身份，禁止关闭",
             })
+        return result
+    if source_type == 'LEAVE':
+        leave = tenant_get(db, InternshipLeave, r.source_id)
+        record = tenant_get(db, InternshipRecord, r.internship_id)
+        if not leave or not record or leave.internship_id != record.id or leave.student_id != record.student_id:
+            result.update(sourceIntegrity='BROKEN', closeAllowed=False,
+                closeBlockers=['来源请假单不存在或与当前实习学生不一致'], currentAction='先核对请假原单关联')
+            return result
+        from app.modules.internship.services.internship_leave_service import STATUS_LABEL as leave_labels
+        result.update(sourceStatus=leave.status, sourceStatusLabel=leave_labels.get(leave.status, '状态待核对'),
+            latestEvent=f'请假至 {leave.end_date}；{leave_labels.get(leave.status, "状态待核对")}',
+            closeAllowed=False, closeBlockers=['请从原请假单核实返岗并确认销假办结，关联风险会同步关闭'],
+            currentAction='从销假办结队列核实原单与返岗事实')
         return result
     if source_type == "INCIDENT":
         incident = db.scalar(select(InternshipIncident).where(
@@ -337,11 +350,8 @@ def close(user, risk_id, result="RESOLVED", comment="", *, expected_version=None
                 "evidenceTarget": source.get("evidenceTarget")}
 
 
-def student_help_report(user, body=None) -> dict:
-    """学生轻量求助/风险上报：写入实习风险单（INT-R-HELP），由指导教师受理。
-
-    不替代企业投诉台（complaint）；就业/监管政策不在此伪造闭环。
-    """
+def student_help_in_session(db, user, body, *, support_session_id=None):
+    """复用同一实习记录锁；调用方负责业务、审计和通知事件一起提交。"""
     b = body or {}
     title = (b.get("title") or b.get("riskTitle") or "").strip() or "学生实习求助"
     content = (b.get("content") or b.get("note") or b.get("reason") or "").strip()
@@ -349,67 +359,69 @@ def student_help_report(user, body=None) -> dict:
     if len(content) < 5:
         raise AppException("VALIDATION_ERROR", "求助说明不少于 5 字")
     if level not in ("LOW", "MEDIUM", "HIGH"):
-        raise AppException("VALIDATION_ERROR", "riskLevel 须为 LOW/MEDIUM/HIGH")
-    with session() as db:
-        if b.get("batchId") is not None or b.get("internshipId") is not None:
-            from app.modules.internship.services.internship_student_context_guard import (
-                require_explicit_context,
-            )
-            rec, stu, _batch_id = require_explicit_context(db, user, b, for_write=True)
-        else:
-            from app.modules.internship.services.internship_leave_service import _student_record
-            rec, stu = _student_record(db, user, for_write=True)
-        open_help = db.scalars(select(RiskRecord).where(
-            RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == rec.id,
-            RiskRecord.risk_code == "INT-R-HELP",
-            RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
-            RiskRecord.is_deleted.is_(False))).first()
-        if open_help:
-            raise AppException("DATA_CONFLICT", "你已有未办结的求助单，请等待指导教师处理后再提交")
-        r = RiskRecord(
-            tenant_id=_tid(), internship_id=rec.id, risk_code="INT-R-HELP",
+        raise AppException("VALIDATION_ERROR", "请选择一般、较急或紧急程度")
+    if b.get("batchId") is not None or b.get("internshipId") is not None:
+        from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+        rec, stu, _batch_id = require_explicit_context(db, user, b, for_write=True)
+    else:
+        from app.modules.internship.services.internship_leave_service import _student_record
+        rec, stu = _student_record(db, user, for_write=True)
+    r = db.scalars(select(RiskRecord).where(
+        RiskRecord.tenant_id == _tid(), RiskRecord.internship_id == rec.id,
+        RiskRecord.risk_code == "INT-R-HELP",
+        RiskRecord.status.in_(("PENDING_HANDLE", "PROCESSING")),
+        RiskRecord.is_deleted.is_(False)).with_for_update()).first()
+    reused = r is not None
+    if reused and support_session_id is None:
+        raise AppException("DATA_CONFLICT", "你已有未办结的求助单，请等待指导教师处理后再提交")
+    if not reused:
+        r = RiskRecord(tenant_id=_tid(), internship_id=rec.id, risk_code="INT-R-HELP",
             risk_title=title[:200], risk_level=level, source_module="student_help",
-            status="PENDING_HANDLE", last_follow_note=content[:500],
-            owner_name=rec.advisor_name or None)
+            status="PENDING_HANDLE", last_follow_note=content[:500], owner_name=rec.advisor_name or None)
         db.add(r)
         db.flush()
         r.source_type = "RISK"
         r.source_id = r.id
         r.source_version = int(r.version or 0)
-        _trail(db, r.id, "STUDENT_HELP", {"title": title, "content": content[:200]},
-               operator=(stu.real_name if stu else "学生"))
         if (rec.risk_level or "NONE") in ("NONE", "", "LOW") and level in ("MEDIUM", "HIGH"):
             rec.risk_level = level
-        # 通知指导教师（outbox）
-        try:
-            from app.models import User
-            from app.services.message_event_outbox_service import emit_message_event
-            advisor = None
-            if getattr(rec, "advisor_user_id", None):
-                advisor = tenant_get(db, User, rec.advisor_user_id)
-            if advisor:
-                emit_message_event(
-                    db,
-                    event_code="INTERNSHIP.RISK_CREATED",
-                    source_module="internship",
-                    source_biz_type="risk_record",
-                    source_biz_id=int(r.id),
-                    recipient_refs=[{"userId": int(advisor.id)}],
-                    title=f"学生求助风险：{title[:40]}",
-                    content=content[:500],
-                    dedup_key=f"INTERNSHIP.RISK_CREATED:{r.id}:user:{advisor.id}",
-                )
-        except Exception:  # noqa: BLE001
-            pass
+    else:
+        r.version = int(r.version or 0) + 1
+    detail = {"title": title, "content": content[:500]}
+    if support_session_id is not None:
+        # 完整最近对话写入原风险办理记录，保留原求助说明，不用截断通知充当全文。
+        detail.update(note=content, supportSessionId=str(support_session_id))
+    _trail(db, r.id, "SUPPORT_CONTEXT_ATTACHED" if reused else "STUDENT_HELP", detail,
+           operator=(stu.real_name if stu else "学生"))
+    from app.models import User
+    from app.services.message_event_outbox_service import emit_message_event
+    advisor = tenant_get(db, User, rec.advisor_user_id) if getattr(rec, "advisor_user_id", None) else None
+    event_ids = []
+    if advisor and advisor.status == "ACTIVE":
+        event = emit_message_event(db, event_code="INTERNSHIP.RISK_CREATED", source_module="internship",
+            source_biz_type="risk_record", source_biz_id=int(r.id),
+            recipient_refs=[{"userId": int(advisor.id)}],
+            title=f"学生求助{'补充对话' if reused else '风险'}：{title[:40]}", content=content[:2000],
+            dedup_key=f"INTERNSHIP.RISK_CREATED:{r.id}:user:{advisor.id}" + (f":support:{support_session_id}" if support_session_id else ""))
+        event_ids.append(int(event.id))
+    return ({"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status],
+             "riskTitle": r.risk_title, "riskLevel": r.risk_level,
+             "message": "求助已登记，可查看后续处理进度。"}, event_ids)
+
+
+def deliver_student_help_events(event_ids):
+    if event_ids:
+        from app.services.message_event_outbox_service import try_process_pending_outbox
+        try_process_pending_outbox(limit=len(event_ids), worker_id="internship-risk-inline", outbox_ids=event_ids)
+
+
+def student_help_report(user, body=None) -> dict:
+    """学生手动求助与咨询转人工共用权威风险命令。"""
+    with session() as db:
+        result, event_ids = student_help_in_session(db, user, body or {})
         db.commit()
-        try:
-            from app.services.message_event_outbox_service import process_pending_outbox
-            process_pending_outbox(limit=10, worker_id="internship-risk-inline")
-        except Exception:  # noqa: BLE001
-            pass
-        return {"id": str(r.id), "status": r.status, "statusLabel": STATUS_LABEL[r.status],
-                "riskTitle": r.risk_title, "riskLevel": r.risk_level,
-                "message": "求助已提交，指导教师将跟进"}
+    deliver_student_help_events(event_ids)
+    return result
 
 
 def my_student_help(user, *, batch_id, internship_id) -> dict:

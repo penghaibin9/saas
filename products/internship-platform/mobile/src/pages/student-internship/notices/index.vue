@@ -1,19 +1,15 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="brand" title="通知公告" show-back />
+  <view class="mobile-page mobile-student page-wrap">
+    <MobileNavBar variant="brand" title="通知公告" show-back :fallback-url="'/pages/student-internship/index' + (requestedBatchId ? '?batchId=' + encodeURIComponent(requestedBatchId) : '')" />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack">
-        <view class="card">
-          <text class="card-title">岗位实习通知公告</text>
-          <text class="nt__hint">查看学校发布的实习协议、岗前培训、安全条例和通知公告。重要/紧急通知会在岗位实习首页强制弹框确认。</text>
-        </view>
-
         <view v-if="notices.length" class="stack">
           <view v-for="item in notices" :key="item.id" class="card nt__item">
             <view class="row-between">
               <view class="nt__title-wrap">
                 <text class="nt__title">{{ item.title }}</text>
-                <text class="nt__meta">{{ typeLabel(item.noticeType) }} · {{ urgencyLabel(item.urgency) }}</text>
+                <text class="nt__meta">{{ typeLabel(item.noticeType) }}</text>
+                <text v-if="item.schoolCategory" class="nt__meta">学校分类：{{ item.schoolCategory }}</text>
               </view>
               <MobileStatusTag :label="urgencyLabel(item.urgency)" :type="urgencyTone(item.urgency)" />
             </view>
@@ -135,10 +131,10 @@ export default {
 </script>
 
 <style scoped>
-.nt__hint{display:block;margin-top:8px;font-size:var(--font-size-sm);line-height:1.6;color:var(--text-secondary)}
-.nt__item{display:flex;flex-direction:column;gap:12px}.nt__title-wrap{min-width:0;display:flex;flex-direction:column;gap:4px}.nt__title{font-size:var(--font-size-md);font-weight:600;line-height:1.45;color:var(--text-primary)}.nt__meta{font-size:var(--font-size-xs);color:var(--text-tertiary)}
-.nt__content{font-size:var(--font-size-sm);line-height:1.75;white-space:pre-wrap;word-break:break-word;color:var(--text-secondary)}
-.nt__meta-block{display:flex;flex-direction:column;gap:4px;padding-top:10px;border-top:1px solid var(--border-light);font-size:var(--font-size-xs);color:var(--text-tertiary)}
-.nt__attachments{display:flex;flex-direction:column;gap:8px}.nt__section-label{font-size:var(--font-size-xs);font-weight:600;color:var(--text-secondary)}
-.nt__file{display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--radius-md);background:var(--gray-50)}.nt__file-name{display:block;font-size:var(--font-size-sm);color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nt__file-meta{display:block;margin-top:2px;font-size:10px;color:var(--text-tertiary)}.nt__file-open{font-size:var(--font-size-xs);color:var(--brand-primary)}
-</style>
+.nt__hint{display:block;margin-top:8px;font-size:var(--font-size-base);line-height:1.6;color:var(--text-secondary)}
+.nt__item{display:flex;flex-direction:column;gap:12px}.nt__title-wrap{min-width:0;display:flex;flex-direction:column;gap:4px}.nt__title{font-size:var(--font-size-md);font-weight:600;line-height:1.45;color:var(--text-primary)}.nt__meta{font-size:var(--font-size-base);color:var(--text-tertiary)}
+.nt__content{font-size:var(--font-size-base);line-height:1.75;white-space:pre-wrap;word-break:break-word;color:var(--text-secondary)}
+.nt__meta-block{display:flex;flex-direction:column;gap:4px;padding-top:10px;border-top:1px solid var(--border-light);font-size:var(--font-size-base);color:var(--text-tertiary)}
+.nt__attachments{display:flex;flex-direction:column;gap:8px}.nt__section-label{font-size:var(--font-size-base);font-weight:600;color:var(--text-secondary)}
+.nt__file{display:flex;align-items:center;gap:12px;padding:10px;border-radius:var(--radius-md);background:var(--gray-50)}.nt__file-name{display:block;font-size:var(--font-size-base);color:var(--text-primary);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.nt__file-meta{display:block;margin-top:2px;font-size:var(--font-size-base);color:var(--text-tertiary)}.nt__file-open{font-size:var(--font-size-base);color:var(--brand-primary)}
+.nt__item>.row-between{gap:12px;align-items:flex-start}.nt__title-wrap{flex:1}.nt__file{min-height:44px;box-sizing:border-box}</style>

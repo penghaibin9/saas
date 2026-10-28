@@ -63,9 +63,12 @@ def test_employment_transition_requires_archived_published_frozen_result():
     router = read("backend/app/modules/internship/routers/internship_material_center.py")
     assert "def employment_transition_context" in archive
     command = archive[archive.index("def employment_transition_context"):archive.index("def build_package")]
-    assert 'archive.status != "ARCHIVED"' in command
-    assert 'InternshipFinalScore.status == "PUBLISHED"' in command
-    assert 'frozen_hash = (archive.material_snapshot or {}).get("finalScoreFreezeHash")' in command
+    assert 'frozen_employment_result(db, record)' in command
+    guard = archive[archive.index("def frozen_employment_result"):archive.index("def employment_transition_context")]
+    assert 'archive.status != "ARCHIVED"' in guard
+    assert 'InternshipFinalScore.status == "PUBLISHED"' in guard
+    assert 'current_freeze, current_hash = score_guard._score_freeze(db, score)' in guard
+    assert 'frozen != current_freeze or (archive.material_snapshot or {}).get("finalScoreFreezeHash") != current_hash' in guard
     assert '"resultAuthority": "PUBLISHED_FINAL_SCORE_FROZEN_IN_ARCHIVE"' in command
     assert "/employment-transition" in router
 

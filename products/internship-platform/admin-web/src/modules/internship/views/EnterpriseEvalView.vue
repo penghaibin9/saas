@@ -89,10 +89,14 @@
             </div>
 
             <div v-if="detail.data.reviewStatus === 'PENDING'" class="lv-foot">
+              <AppInlineAlert v-if="!canReviewStage" type="warning" title="先进入考核，再审核评价">
+                <p>该生尚未进入考核阶段。请在学生档案核对条件并办理进入考核，再返回本条评价。</p>
+                <AppButton v-if="canBtn('internship.student.view')" variant="ghost" @click="openStudent">办理该生考核阶段</AppButton>
+              </AppInlineAlert>
               <span class="mp-note lv-foot__hint">录入人与审核人须分离</span>
-              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="secondary" :disabled="cd.submitting"
+              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="secondary" :disabled="cd.submitting || !canReviewStage"
                 @click="openReview(detail.data, 'RETURN')">退回</AppPermissionButton>
-              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="primary" :disabled="cd.submitting"
+              <AppPermissionButton code="internship.eval.enterprise.review" :allowed="canBtn('internship.eval.enterprise.review')" variant="primary" :disabled="cd.submitting || !canReviewStage"
                 @click="openReview(detail.data, 'APPROVE')">通过</AppPermissionButton>
             </div>
           </template>
@@ -123,6 +127,7 @@ import { emptyConflict, isConflict, captureConflict } from '@/modules/internship
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { formatDateTime } from '@/utils/dateUtils'
 
 const STATUS_OPTIONS = [{ label: '待审核', value: 'PENDING' }, { label: '已通过', value: 'APPROVED' }, { label: '已退回', value: 'RETURNED' }]
 /* 右栏只渲染 /internship/enterprise-evals/{id} 真实返回字段（见 internship_enterprise_eval_service._row + get_eval） */
@@ -163,7 +168,8 @@ export default {
   },
   computed: {
     batchStore() { return useInternshipBatchStore() },
-    summaryItems() { const d = this.detail.data || {}; return SUMMARY_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
+    canReviewStage() { return this.detail.data?.internshipStatus === 'ASSESSING' },
+    summaryItems() { const d = this.detail.data || {}; return SUMMARY_FIELDS.map((f) => ({ label: f.label, value: f.key === 'createdAt' ? formatDateTime(d[f.key], '未记录') : d[f.key] })) },
     scoreItems() { const d = this.detail.data || {}; return SCORE_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
     commentItems() { const d = this.detail.data || {}; return COMMENT_FIELDS.map((f) => ({ label: f.label, value: f.bool ? (d[f.key] ? '是' : '否') : d[f.key] })) },
     reviewItems() { const d = this.detail.data || {}; return REVIEW_FIELDS.map((f) => ({ label: f.label, value: d[f.key] })) },
@@ -200,6 +206,11 @@ export default {
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
     goStudentEvals() { this.$router.push({ path: '/admin/internship/student-evals', query: this.batchStore.withBatchQuery() }) },
     goScores() { this.$router.push({ path: '/admin/internship/scores', query: this.batchStore.withBatchQuery() }) },
+    openStudent() {
+      const row = this.detail.data
+      if (!row?.internId || !this.canBtn('internship.student.view')) return
+      this.$router.push({ path: '/admin/internship/students/' + row.internId, query: this.batchStore.withBatchQuery({ section: 'profile', returnTo: this.$route.fullPath }) })
+    },
     goCreate() { if (this.canBtn('internship.eval.enterprise.manage')) this.$router.push({ path: '/admin/internship/enterprise-evals/new', query: this.batchStore.withBatchQuery() }) },
     exportFn() {
       if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
@@ -282,7 +293,7 @@ export default {
       finally { if (this.detail === workspace) this.downloading = false }
     },
     openReview(r, action) {
-      if (!r || this.detail.loading || this.detail.error || this.cd.submitting || !this.canBtn('internship.eval.enterprise.review') || r.reviewStatus !== 'PENDING' || String(r.id) !== this.selectedId || !['APPROVE', 'RETURN'].includes(action)) return
+      if (!r || !this.canReviewStage || this.detail.loading || this.detail.error || this.cd.submitting || !this.canBtn('internship.eval.enterprise.review') || r.reviewStatus !== 'PENDING' || String(r.id) !== this.selectedId || !['APPROVE', 'RETURN'].includes(action)) return
       const ap = action === 'APPROVE'
       this.conflict = emptyConflict()
       this.pending = { id: r.id, action, version: r.version, studentName: r.studentName }
@@ -292,7 +303,7 @@ export default {
     },
     async onConfirm({ reason }) {
       const pending = this.pending
-      if (!pending || this.cd.submitting || this.conflict.active || !this.canBtn('internship.eval.enterprise.review') || this.detail.loading || this.detail.error || this.detail.data?.reviewStatus !== 'PENDING' || String(pending.id) !== this.selectedId) return
+      if (!pending || !this.canReviewStage || this.cd.submitting || this.conflict.active || !this.canBtn('internship.eval.enterprise.review') || this.detail.loading || this.detail.error || this.detail.data?.reviewStatus !== 'PENDING' || String(pending.id) !== this.selectedId) return
       if (pending.action === 'RETURN' && String(reason || '').trim().length < 5) return toast.error('退回原因至少填写 5 字')
       const dialog = this.cd, batchId = this.batchStore.selectedBatchId
       dialog.submitting = true

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from datetime import date, datetime
+from datetime import datetime
 
 from sqlalchemy import select
 
@@ -37,6 +37,7 @@ from app.modules.internship.services.internship_compliance_authoritative_service
     evaluate_internship_compliance,
 )
 from app.modules.internship.services.internship_compliance_facts import material_quantity_facts
+from app.modules.internship.services.internship_report_quality_service import required_report_counts
 from app.modules.internship.services.internship_version import (
     extract_expected_version,
     versioned_update,
@@ -93,19 +94,6 @@ def _canonical_hash(payload: dict) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-def _date_value(value):
-    if value is None:
-        return None
-    if isinstance(value, datetime):
-        return value.date()
-    if isinstance(value, date):
-        return value
-    try:
-        return datetime.fromisoformat(str(value)[:10]).date()
-    except (TypeError, ValueError):
-        return None
-
-
 def _ratio_score(expected: int, actual: int) -> int:
     expected = max(0, int(expected or 0))
     actual = max(0, int(actual or 0))
@@ -124,26 +112,8 @@ def _row_ref(row, **extra) -> dict:
 
 
 def _monthly_expected(record, batch) -> int:
-    rules = dict(getattr(batch, "rules_config", None) or {})
-    node = (
-        rules.get("monthlyReport")
-        or rules.get("processReport")
-        or rules.get("monthly")
-        or {}
-    )
-    for key in ("expectedCount", "requiredCount", "minCount"):
-        if node.get(key) is not None:
-            return max(0, int(node[key]))
-    start = _date_value(record.intern_start_date) or _date_value(
-        getattr(batch, "start_date", None)
-    )
-    end = _date_value(record.intern_end_date) or _date_value(
-        getattr(batch, "end_date", None)
-    )
-    if not start or not end or start > end:
-        return 0
-    days = (end - start).days + 1
-    return max(1, (days + 29) // 30)
+    rules = required_report_counts(batch)
+    return rules["monthlyRequiredCount"] + rules["summaryRequiredCount"]
 
 
 def _fact_snapshot(db, record: InternshipRecord) -> dict:
@@ -205,8 +175,17 @@ def _fact_snapshot(db, record: InternshipRecord) -> dict:
     ).order_by(InternshipStudentEval.id.desc()))
     config = _score._active_config(db, record.batch_id)
 
+    report_counts = required_report_counts(batch)
+    weekly_expected = report_counts["weeklyRequiredCount"]
+    quantity["weekly"] = {
+        "expected": weekly_expected, "actual": len(weekly),
+        "missing": max(0, weekly_expected - len(weekly)),
+        "status": "VALID" if len(weekly) >= weekly_expected else "MISSING",
+    }
     monthly_expected = _monthly_expected(record, batch)
-    monthly_actual = len(monthly)
+    # Extra monthly documents must not replace a required summary, or vice versa.
+    monthly_actual = sum(min(report_counts[key], sum(row.report_type == kind for row in monthly))
+        for kind, key in (("MONTHLY", "monthlyRequiredCount"), ("SUMMARY", "summaryRequiredCount")))
     school_expected = (
         int(quantity["guidance"]["expected"])
         + int(quantity["visit"]["expected"])
@@ -221,8 +200,8 @@ def _fact_snapshot(db, record: InternshipRecord) -> dict:
         ),
         "weekly": _ratio_score(
             quantity["weekly"]["expected"], quantity["weekly"]["actual"]
-        ),
-        "monthly": _ratio_score(monthly_expected, monthly_actual),
+        ) if weekly_expected else None,
+        "monthly": _ratio_score(monthly_expected, monthly_actual) if monthly_expected else None,
         "enterprise": _score._enterprise_avg(enterprise_eval),
         # 学校评价数值仍由指导/巡访事实生成，但学生自评、对企业/岗位评价、
         # 导师意见及学校审核必须形成同一版本链，不能绕过评价流程直接得分。
@@ -883,8 +862,35 @@ def _review(user, score_id, expected_version=None) -> dict:
                 "adjustmentReviewStatus": "APPROVED" if has_adjustment else "NOT_REQUIRED"}
 
 
+def _allowed_actions(db, score_id, result, user):
+    from app.core.permissions import has_permission
+    score=db.get(InternshipFinalScore,int(score_id))
+    record=db.get(InternshipRecord,score.internship_id) if score else None
+    if not record or record.tenant_id!=_tid() or record.status!='ASSESSING':
+        return []
+    def reviewer(final=False):
+        try:
+            _score._assert_reviewer(user,final=final)
+            return True
+        except AppException:
+            return False
+    actions=[]
+    if has_permission(user,'internship.score.manage') and reviewer():
+        if score.status in {'PENDING_REVIEW','PENDING_PUBLISH'}:
+            actions.append('return')
+        adjusted=any(int(v or 0)!=0 for v in result.get('manualAdjustments',{}).values())
+        independent=not adjusted or str(result.get('adjustedByUserId') or '')!=_score._user_id(user)
+        if score.status=='PENDING_REVIEW' and not score.incomplete and independent:
+            actions.append('review')
+    if has_permission(user,'internship.score.publish') and reviewer(final=True):
+        if score.status=='PENDING_PUBLISH' and not score.incomplete:actions.append('publish')
+        if score.status=='PUBLISHED':actions.append('withdraw')
+    return actions
+
+
 def _get_score(score_id, user=None) -> dict:
     result = _legacy_get_score(score_id, user=user)
+    result['allowedActions']=[]
     with session() as db:
         snapshot = _latest_snapshot(db, int(score_id))
         if not snapshot:
@@ -919,6 +925,7 @@ def _get_score(score_id, user=None) -> dict:
                 (review.detail_json or {}).get("reviewerUserId") if review else ""
             ),
         })
+        result['allowedActions']=_allowed_actions(db,score_id,result,user)
         return result
 
 

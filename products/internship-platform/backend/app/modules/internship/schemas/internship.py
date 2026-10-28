@@ -17,6 +17,7 @@ class StageItem(BaseModel):
 
 class CheckinRule(BaseModel):
     requireDaily: bool = True
+    reminderTime: Optional[str] = Field(None, pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$', description='学校当地当天未签提醒时间；未配置不发送')
     requiredDays: int = Field(0, ge=0, le=366, description="计划要求签到天数；0 表示学校未配置")
     geofenceRadiusM: int = Field(500, ge=0, le=5000, description="电子围栏半径（米）")
     maxAccuracyM: int = Field(200, ge=20, le=2000, description="可接受的最大定位误差（米）")
@@ -28,7 +29,7 @@ class CheckinRule(BaseModel):
 class WeeklyReportRuleCfg(BaseModel):
     frequency: str = Field("WEEKLY", description="WEEKLY/BIWEEKLY")
     minWordCount: int = Field(30, ge=0, le=5000)
-    requiredCount: int = Field(0, ge=0, le=100, description="本批次学生应交周报篇数；0 表示按周期推导")
+    requiredCount: int = Field(0, ge=0, le=100, description="本批次学生应交周报篇数；0 表示未配置，不计算完成率")
     deadlineWeekday: int = Field(7, ge=1, le=7, description="每周几前必须提交，1=周一...7=周日")
     reviewSlaHours: int = Field(48, ge=1, le=720, description="教师准时批阅时限（小时）")
 

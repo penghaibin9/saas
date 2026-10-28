@@ -37,3 +37,7 @@ if(!validVersion||!validVulnerabilities||!validCounts||!numericCounts||!countsCo
 }
 
 console.log(`enterprise-portal audit report validated: high=${Number(counts.high)}, critical=${Number(counts.critical)}, total=${Number(counts.total)}`)
+if(Number(counts.high)>0||Number(counts.critical)>0){
+  console.error('生产依赖存在高危或严重问题，禁止生成交付包。')
+  process.exit(1)
+}

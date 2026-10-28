@@ -17,9 +17,10 @@ function inviteKey(value){return String(value||'')}
 
 export const enterpriseAuthApi={
   login: async ({tenantCode,loginName,password,memberId}) => {
-    inviteSequence++
+    const sequence=++inviteSequence
     validatedInvite=null
     const data=await request(`${ROOT}/auth/browser-login`,{method:'POST',auth:false,body:{tenantCode,loginName,password,...(memberId?{memberId}:{})}})
+    if(sequence!==inviteSequence)throw new Error('登录上下文已切换，请重新核对当前账号')
     if(!data?.accessToken)throw new Error('企业登录响应缺少 accessToken')
     return captureAuth(data,tenantCode)
   },

@@ -25,7 +25,7 @@
         @page-change="onPageChange"
       >
         <template #cell-student="{ row }">
-          <div class="ifb-cell"><strong>{{ row.studentName || '学生' }}</strong><span>{{ row.createdAt || '—' }}</span></div>
+          <div class="ifb-cell"><strong>{{ row.studentName || '学生' }}</strong><span>{{ formatDateTime(row.createdAt) }}</span></div>
         </template>
         <template #cell-title="{ row }">
           <div class="ifb-cell"><strong>{{ row.title || '未命名反馈' }}</strong><span>{{ previewText(row.content) }}</span></div>
@@ -69,12 +69,13 @@
 
           <section class="ifb-card">
             <h2>反馈图片</h2>
-            <AppFilePreview
-              v-if="imageFiles.length"
-              :files="imageFiles"
-              @preview="previewImage"
-              @download="downloadImage"
-            />
+            <p v-if="imagesLoading" class="ifb-muted">正在核对图片安全状态…</p>
+            <p v-else-if="imageError" class="ifb-muted">{{ imageError }} <AppButton variant="ghost" @click="refreshImages">重新读取图片</AppButton></p>
+            <template v-else-if="imageFiles.length">
+              <FilePreviewer v-for="file in imageFiles" :key="`${imageTicket}:${file.fileId}`"
+                :file="file" inline :provider="imageProvider" :allow-download="file.readyForBusiness && file.canDownload"
+                :download-handler="downloadImage" @error="imagePreviewError" />
+            </template>
             <p v-else class="ifb-muted">学生本次未上传图片。</p>
           </section>
 
@@ -127,7 +128,7 @@
 <script>
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import {
-  AppStatusTag, AppSelect, AppDescriptionList, AppFilePreview,
+  AppStatusTag, AppSelect, AppDescriptionList,
   AppAuditTrail, AppConfirmDialog
 } from '@/components/common'
 import { AppButton } from '@/components/ui'
@@ -135,6 +136,8 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { fileSdk } from '@/services/file/fileSdk'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
+import { formatDateTime } from '@/utils/dateUtils'
 import { toast } from '@/utils/toast'
 
 const LEVEL_OPTIONS = [
@@ -157,7 +160,7 @@ export default {
   name: 'InternshipFeedbackView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-    AppStatusTag, AppSelect, AppDescriptionList, AppFilePreview,
+    AppStatusTag, AppSelect, AppDescriptionList, FilePreviewer,
     AppAuditTrail, AppConfirmDialog, AppButton
   },
   props: { ctx: { type: Object, required: true } },
@@ -176,7 +179,8 @@ export default {
       ],
       detail: { id: '', loading: false, error: '', data: null },
       confirm: { visible: false, action: '', submitting: false },
-      listTicket: 0, detailTicket: 0
+      listTicket: 0, detailTicket: 0,
+      imageFiles: [], imagesLoading: false, imageError: '', imageTicket: 0, disposed: false
     }
   },
   computed: {
@@ -189,17 +193,13 @@ export default {
       return [
         { label: '学生', value: d.studentName || '—' },
         { label: '反馈级别', value: this.levelLabel(d.feedbackLevel) },
-        { label: '提交时间', value: d.createdAt || '—' },
+        { label: '提交时间', value: formatDateTime(d.createdAt) },
         { label: '当前状态', value: d.statusLabel || d.status || '—' },
         { label: '受理人', value: d.acceptedByName || '—' },
         { label: '责任人', value: d.ownerName || '—' }
       ]
     },
-    imageFiles() {
-      return (this.detail.data?.imageFileIds || []).map((id, index) => ({
-        id, name: `反馈图片 ${index + 1}`, sensitive: false
-      }))
-    },
+    imageProvider() { return { fetchBytes: descriptor => this.fetchImageBytes(descriptor), dispose() {} } },
     auditRecords() {
       return (this.detail.data?.auditTrail || []).map((item, index) => ({
         id: index,
@@ -224,12 +224,57 @@ export default {
       }
     },
     'batchStore.selectedBatchId'() {
+      this.listTicket++; this.detailTicket++; this.resetImages()
       this.page = 1
       this.detail = { id: '', loading: false, error: '', data: null }
       this.syncQuery()
+    },
+    'ctx.ctxKey'() {
+      this.listTicket++; this.detailTicket++; this.resetImages()
+      this.rows = []; this.total = 0; this.loading = false
+      this.error = '身份已切换，请重新读取反馈列表'
+      this.detail = { id: String(this.$route.query.id || ''), loading: false, data: null, error: '身份已切换，请重新读取反馈详情' }
     }
   },
+  beforeUnmount() { this.disposed = true; this.listTicket++; this.detailTicket++; this.resetImages() },
   methods: {
+    formatDateTime,
+    resetImages() { this.imageTicket++; this.imageFiles = []; this.imagesLoading = false; this.imageError = '' },
+    imageFence() {
+      const ticket = this.imageTicket, id = this.detail.id, batch = this.batchStore.selectedBatchId, context = this.ctx.ctxKey
+      return () => !this.disposed && ticket === this.imageTicket && id === this.detail.id && id === String(this.$route.query.id || '') && batch === this.batchStore.selectedBatchId && context === this.ctx.ctxKey
+    },
+    async readImageMetadata(fileId, action, current) {
+      const id = String(fileId || '')
+      if (!current() || !(this.detail.data?.imageFileIds || []).some(value => String(value) === id)) throw new Error('图片不属于当前反馈，请重新读取详情')
+      const meta = await fileSdk.metadata(id)
+      if (!current()) throw new Error('反馈已切换，请重新打开图片')
+      if (String(meta?.fileId) !== id) throw new Error('图片读取结果不一致，请重新读取')
+      const ready = meta.readyForBusiness === true && ['AVAILABLE', 'STORED', 'CONFIRMED'].includes(meta.status) && ['CLEAN', 'NOT_REQUIRED'].includes(meta.scanStatus)
+      const file = { ...meta, fileId: id, readyForBusiness: ready, canDownload: ready && meta.canDownload === true,
+        canPreview: ready && meta.canPreview === true && meta.canDownload === true }
+      if ((action === 'preview' && !file.canPreview) || (action === 'download' && !file.canDownload)) throw new Error('图片尚未安全可用或没有查看权限，请重新读取安全状态')
+      return file
+    },
+    async refreshImages() {
+      this.resetImages()
+      const current = this.imageFence(), ids = [...new Set((this.detail.data?.imageFileIds || []).map(String))]
+      if (!ids.length) return
+      this.imagesLoading = true
+      try {
+        const files = await Promise.all(ids.map(id => this.readImageMetadata(id, 'meta', current)))
+        if (current()) this.imageFiles = files
+      } catch (error) { if (current()) this.imageError = error?.message || '图片状态读取失败，请重试' }
+      finally { if (current()) this.imagesLoading = false }
+    },
+    async fetchImageBytes(descriptor) {
+      const current = this.imageFence()
+      const file = await this.readImageMetadata(descriptor.fileId, 'preview', current)
+      const blob = await fileSdk.blob(file.fileId)
+      if (!current()) throw new Error('反馈已切换，请重新打开图片')
+      return blob
+    },
+    imagePreviewError(error) { toast.error(error?.message || '反馈图片暂时无法读取，请重试') },
     levelLabel(value) {
       return value === 'COLLEGE' ? '学院级' : value === 'DEPARTMENT' ? '系部级' : '—'
     },
@@ -268,6 +313,7 @@ export default {
       this.syncQuery({ id: undefined })
     },
     async load() {
+      this.detailTicket++; this.resetImages()
       const ticket = ++this.listTicket
       const batchId = this.batchStore.selectedBatchId
       this.rows = []
@@ -296,10 +342,12 @@ export default {
       this.loading = false
     },
     async loadDetail(id) {
+      this.resetImages()
       const ticket = ++this.detailTicket
+      const batch = this.batchStore.selectedBatchId, context = this.ctx.ctxKey
       this.detail = { id: String(id), loading: true, error: '', data: null }
       const res = await internshipApi.getStudentFeedbackDetail(id)
-      if (ticket !== this.detailTicket || String(id) !== String(this.$route.query.id || '')) return
+      if (this.disposed || ticket !== this.detailTicket || batch !== this.batchStore.selectedBatchId || context !== this.ctx.ctxKey || String(id) !== String(this.$route.query.id || '')) return
       if (res.code === 0) {
         const data = res.data
         if (data?.category !== 'STUDENT_FEEDBACK') {
@@ -311,6 +359,7 @@ export default {
         this.detail.error = res.message || '反馈详情加载失败'
       }
       this.detail.loading = false
+      if (this.detail.data) await this.refreshImages()
     },
     async transition(action) {
       if (!this.canHandle || !this.detail.data?.id) return
@@ -353,11 +402,12 @@ export default {
       toast.success(action === 'RESOLVE' ? '反馈已办结' : '处理意见已提交')
       await this.loadDetail(this.detail.data.id)
     },
-    async previewImage(file) {
-      try { await fileSdk.preview(String(file.id)) } catch { toast.error('反馈图片暂时无法预览，请重试。') }
-    },
     async downloadImage(file) {
-      try { await fileSdk.download(String(file.id), file.name || '反馈图片') } catch { toast.error('反馈图片下载失败，请重试。') }
+      const current = this.imageFence()
+      try {
+        const meta = await this.readImageMetadata(file.fileId, 'download', current)
+        await fileSdk.download(meta.fileId, meta.fileName || '反馈图片')
+      } catch (error) { if (current()) toast.error(error?.message || '反馈图片下载失败，请重试。') }
     }
   }
 }

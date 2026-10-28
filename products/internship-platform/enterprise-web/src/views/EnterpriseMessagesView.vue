@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
-import { setSelectedCampaignId } from '../services/request'
+import { requireDecimalId } from '../services/evaluationContext'
+import { hasEnterpriseAuth } from '../services/request'
 import { useEnterpriseContextStore } from '../stores/enterpriseContext'
 
 const context=useEnterpriseContextStore();const router=useRouter()
@@ -38,18 +39,26 @@ async function openMessage(row){
   finally{if(alive&&sequence===detailSequence)detailLoading.value=false}
 }
 async function openAction(){
+  if(!alive)return
   actionError.value=''
+  if(!hasEnterpriseAuth()){actionError.value='登录状态已失效，请重新登录后打开消息。';return}
   const message=selected.value,params=message?.actionParams||{}
   const application=message?.actionKey==='enterprise.internship.application'
-  const objectId=application?params.applicationId:params.positionId
-  if(!['enterprise.internship.position','enterprise.internship.application'].includes(message?.actionKey)||!/^\d+$/.test(String(objectId||''))||!/^\d+$/.test(String(params.campaignId||''))){actionError.value='这条消息没有可安全打开的企业办理对象。';return}
-  setSelectedCampaignId(params.campaignId)
-  try { await context.load() }
+  if(!['enterprise.internship.position','enterprise.internship.application'].includes(message?.actionKey)){actionError.value='这条消息没有可安全打开的企业办理对象。';return}
+  let objectId,campaignId
+  try{objectId=requireDecimalId(application?params.applicationId:params.positionId);campaignId=requireDecimalId(params.campaignId)}
+  catch{actionError.value='这条消息没有可安全打开的企业办理对象。';return}
+  const scopeKey=context.scopeKey,contextEpoch=context.contextEpoch
+  let authority
+  try { authority=await enterpriseInternshipApi.context(campaignId) }
   catch(e){if(alive&&selected.value===message)actionError.value=e?.message||'招聘季权限暂时无法核验，请重试。';return}
-  if(!alive||selected.value!==message)return
-  if(!context.recruitmentContextReady||String(context.campaign?.id)!==String(params.campaignId)){actionError.value='当前账号已不能进入该招聘季，请从招聘季选择页核对授权。';return}
-  if(application&&!context.applicationViewAllowed){actionError.value='当前企业身份没有查看学生申请的权限。';return}
-  await router.push({path:application?`/applications/${objectId}`:`/positions/${objectId}/edit`,query:{campaignId:String(params.campaignId)}})
+  if(!alive||!hasEnterpriseAuth()||selected.value!==message||context.scopeKey!==scopeKey||context.contextEpoch!==contextEpoch)return
+  if(!context.recruitmentContextReady||String(authority?.campaignId)!==campaignId){actionError.value='当前账号已不能进入该招聘季，请从招聘季选择页核对授权。';return}
+  if(application&&(!context.applicationViewAllowed||!['COMPANY_ADMIN','HR'].includes(String(authority?.memberRole||'').toUpperCase()))){actionError.value='当前企业身份没有查看学生申请的权限。';return}
+  // A full navigation reloads the authoritative context without unmounting this pending action.
+  const href=router.resolve({path:application?`/applications/${objectId}`:`/positions/${objectId}/edit`,query:{campaignId}}).href
+  if(new URL(href,window.location.href).origin!==window.location.origin){actionError.value='企业办理入口不属于当前系统，请重新打开消息。';return}
+  window.location.assign(href)
 }
 function previous(){if(page.value<=1)return;page.value--;load()}
 function next(){if(page.value>=pages.value)return;page.value++;load()}
@@ -61,7 +70,7 @@ onBeforeUnmount(()=>{alive=false;listSequence++;detailSequence++})
 <template>
   <section class="ep-page message-page">
     <header class="page-head">
-      <div><span class="eyebrow">INBOX</span><h1 class="ep-title">消息通知</h1><p class="ep-subtitle">学校对企业岗位的退回、上架和状态调整会留在这里。消息已读不代表岗位已经补正。</p></div>
+      <div><span class="eyebrow">消息中心</span><h1 class="ep-title">消息通知</h1><p class="ep-subtitle">学校对企业岗位的退回、上架和状态调整会留在这里。消息已读不代表岗位已经补正。</p></div>
       <div class="unread-summary"><span>当前未读</span><strong>{{ context.unreadMessages }}</strong></div>
     </header>
     <div class="filter-row" role="radiogroup" aria-label="消息阅读状态">

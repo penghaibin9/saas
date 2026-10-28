@@ -421,10 +421,8 @@ def _task_view(row) -> dict:
         "exportedAt": _iso(row.exported_at) or "",
         "submittedAt": _iso(row.submitted_at) or "",
         "receiptAt": _iso(row.receipt_at) or "",
-        "externalReadiness": (
-            "READY" if bool(getattr(settings, "REGULATORY_RECEIPT_ADAPTER_ENABLED", False))
-            else "BLOCKED_EXTERNAL"
-        ),
+        # 配置开关不能代替 record_external_receipt 尚未装配的来源校验。
+        "externalReadiness": "BLOCKED_EXTERNAL",
     }
 
 

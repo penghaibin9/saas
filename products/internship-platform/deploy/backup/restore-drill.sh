@@ -8,8 +8,8 @@ HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEPLOY_DIR="$(cd "$HERE/.." && pwd)"
 COMPOSE_FILE="${COMPOSE_FILE:-$DEPLOY_DIR/docker-compose.production.yml}"
 ENV_FILE="${ENV_FILE:-$DEPLOY_DIR/.env.production}"
-EXPECTED_ALEMBIC_REVISION="${EXPECTED_ALEMBIC_REVISION:-ix0030}"
-KEEP_DRILL_DB="${KEEP_DRILL_DB:-0}"
+EXPECTED_ALEMBIC_REVISION="${EXPECTED_ALEMBIC_REVISION:-ix0036}"
+KEEP_DRILL_DB="${KEEP_DRILL_DB:-1}"
 EVIDENCE_FILE="${EVIDENCE_FILE:-$DEPLOY_DIR/backups/restore-evidence-$(date -u +%Y%m%d_%H%M%S).json}"
 
 [[ "$drill_db" =~ ^[A-Za-z0-9_]+(_drill|_restore_drill|_restore_test)$ ]] || {
@@ -68,20 +68,24 @@ gzip -t "$files_file"
 dc=(docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE")
 "${dc[@]}" exec -T mysql sh -c 'MYSQL_PWD="$MYSQL_ROOT_PASSWORD" mysqladmin -uroot ping --silent'
 
+created_drill=0
 cleanup_db() {
-  if [ "$KEEP_DRILL_DB" != "1" ]; then
+  if [ "$created_drill" = "1" ] && [ "$KEEP_DRILL_DB" = "0" ]; then
     "${dc[@]}" exec -T mysql sh -c "MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mysql -uroot -e 'DROP DATABASE IF EXISTS $drill_db;'" >/dev/null 2>&1 || true
   fi
 }
-tmp="$(mktemp -d)"
+tmp_parent="$(cd "${TMPDIR:-/tmp}" && pwd -P)"
+tmp="$(mktemp -d "$tmp_parent/internship-restore.XXXXXXXX")"
 cleanup_all() {
-  rm -rf "$tmp"
+  [[ "$tmp" == "$tmp_parent"/internship-restore.* ]] && rm -rf -- "$tmp"
   cleanup_db
 }
 trap cleanup_all EXIT
 
 started="$(date +%s)"
-"${dc[@]}" exec -T mysql sh -c "MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mysql -uroot -e 'DROP DATABASE IF EXISTS $drill_db; CREATE DATABASE $drill_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;'"
+# CREATE without IF NOT EXISTS refuses an existing target; never clear another drill.
+"${dc[@]}" exec -T mysql sh -c "MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mysql -uroot -e 'CREATE DATABASE $drill_db CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;'"
+created_drill=1
 gunzip -c "$db_file" | "${dc[@]}" exec -T mysql sh -c "MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mysql -uroot $drill_db"
 
 revision="$("${dc[@]}" exec -T mysql sh -c "MYSQL_PWD=\"\$MYSQL_ROOT_PASSWORD\" mysql -uroot -Nse 'SELECT version_num FROM $drill_db.alembic_version LIMIT 1'" | tr -d '\r')"

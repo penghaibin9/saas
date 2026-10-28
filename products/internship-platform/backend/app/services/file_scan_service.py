@@ -66,13 +66,20 @@ def reconcile_pending_uploads(limit=100):
         return len(rows)
 
 
-def claim_one():
+def claim_one(*, tenant_id=None, job_id=None, file_id=None):
+    filters = []
+    for column, value in ((FileJob.tenant_id, tenant_id), (FileJob.id, job_id), (FileJob.file_id, file_id)):
+        if value is not None:
+            if type(value) is not int or value <= 0:
+                raise ValueError('scan scope identifiers must be positive integers')
+            filters.append(column == value)
     config = get_file_scan_config()
     now = datetime.utcnow()
     with get_sessionmaker()() as db:
         job = db.scalar(select(FileJob).where(
             FileJob.job_type == 'FILE_SCAN', FileJob.is_deleted.is_(False),
             FileJob.available_at <= now,
+            *filters,
             or_(FileJob.status.in_(('PENDING', 'RETRY')),
                 (FileJob.status == 'RUNNING') &
                 (FileJob.locked_at < now - timedelta(seconds=config.stale_lock_seconds))),
@@ -195,8 +202,8 @@ def finish_claim(claim, *, result=None, engine_version='', error=None):
         return {'processed': True, 'jobStatus': job.status, 'scanStatus': row.scan_status}
 
 
-def process_next_scan_job(client=None):
-    claim = claim_one()
+def process_next_scan_job(client=None, *, tenant_id=None, job_id=None, file_id=None):
+    claim = claim_one(tenant_id=tenant_id, job_id=job_id, file_id=file_id)
     if claim is None:
         return {'processed': False, 'reason': 'empty'}
     try:

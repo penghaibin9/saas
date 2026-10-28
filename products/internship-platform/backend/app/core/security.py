@@ -27,6 +27,10 @@ def _validate_db_subject(user: dict, request_path: str = "") -> dict:
     smaller subject volume than the platform control plane, and fail-closed correctness is
     more important here than introducing another Redis authorization cache.
     """
+    from app.core.token_store import jti_blocked
+    from app.services.browser_auth_session_blocklist import auth_session_blocked
+    if jti_blocked(user.get("jti")) or auth_session_blocked(user.get("authSessionId")):
+        raise unauthorized("当前会话已退出，请重新登录")
     raw_user_id = str((user or {}).get("userId") or "")
     raw_tenant_id = str((user or {}).get("tenantId") or (user or {}).get("tenant_id") or "")
     if not raw_user_id.startswith("db-"):
@@ -37,7 +41,7 @@ def _validate_db_subject(user: dict, request_path: str = "") -> dict:
     from app.db.session import db_enabled, get_sessionmaker
     if not db_enabled():
         raise unauthorized("真实账号校验需要数据库")
-    from app.models import User
+    from app.models import User, Tenant
     db=get_sessionmaker()()
     try:
         account=db.scalar(select(User).where(
@@ -48,6 +52,19 @@ def _validate_db_subject(user: dict, request_path: str = "") -> dict:
         ))
         if not account:
             raise unauthorized("账号已停用或令牌已失效，请重新登录")
+        tenant = db.scalar(select(Tenant).where(
+            Tenant.id == int(raw_tenant_id), Tenant.status == "ACTIVE", Tenant.is_deleted.is_(False)))
+        if not tenant:
+            raise unauthorized("学校已停用，请联系学校管理员")
+        from app.api.v1.standalone_browser_auth import _roles_for_user
+        roles = dict(_roles_for_user(db, tenant_id=int(raw_tenant_id), user=account))
+        role = str(user.get("currentRoleCode") or "")
+        if role not in roles:
+            raise unauthorized("当前角色授权已撤销，请重新登录")
+        user.pop("permissions", None)
+        user.pop("permissionCodes", None)
+        user.update(currentRoleName=roles[role], userType=account.user_type,
+                    loginName=account.login_name, realName=account.real_name)
         token_version=user.get("credentialVersion")
         current_version=int(account.credential_version or 0)
         valid=(current_version==0) if token_version is None else (
@@ -55,6 +72,8 @@ def _validate_db_subject(user: dict, request_path: str = "") -> dict:
         )
         if not valid:
             raise unauthorized("认证凭据已更新，请重新登录")
+        from app.services.system_authorization import authorize_subject
+        user = authorize_subject(db, account, user)
         user["mustChangePassword"]=bool(account.must_change_password)
         if account.must_change_password and (request_path.rstrip("/") or "/") not in _PASSWORD_RECOVERY_ALLOWLIST:
             from app.core.exceptions import AppException
@@ -93,6 +112,10 @@ def create_access_token(payload: dict, *, expires_in: int | None = None) -> str:
     ttl = settings.JWT_EXPIRES_IN if expires_in is None else max(60, int(expires_in))
     now = int(time.time())
     body = {**dict(payload or {}), "jti": secrets.token_hex(16), "iat": now, "exp": now + ttl}
+    if str(body.get("userId") or "").startswith("db-"):
+        # 实时权限由请求鉴权重读；重复签入会使刷新后的请求头随角色权限膨胀。
+        body.pop("permissions", None)
+        body.pop("permissionCodes", None)
     if not settings.JWT_SECRET:
         raise unauthorized("服务端未配置登录密钥")
     return jwt.encode(body, settings.JWT_SECRET, algorithm=settings.JWT_ALG)

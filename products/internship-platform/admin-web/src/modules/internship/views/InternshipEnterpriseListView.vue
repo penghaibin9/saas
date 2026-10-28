@@ -70,7 +70,7 @@
       title="导入企业"
       template-name="企业导入模板.xlsx"
       :required-fields="['企业名称', '统一社会信用代码', '行业', '地区']"
-      :preview-fields="['name', 'creditCode', 'industry', 'region', 'contactPerson']"
+      :preview-fields="['name', 'creditCode', 'nature', 'industry', 'region', 'city', 'contactPerson', 'contactEmail', 'collegeNames']"
       :download-template-fn="() => internshipApi.downloadEnterpriseTemplate()"
       :upload-fn="(file) => internshipApi.importEnterprisesXlsx(file)"
       :confirm-fn="({ rows }) => internshipApi.importEnterprisesConfirm(rows)"

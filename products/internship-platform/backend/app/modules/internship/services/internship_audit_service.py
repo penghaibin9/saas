@@ -80,7 +80,7 @@ def mark_retry(db, event_id: str, error: str):
         datetime.utcnow() + timedelta(minutes=min(60, 2 ** row.retry_count)))
 
 
-def process_pending(limit: int = 50, worker_id: str = "audit-outbox") -> dict:
+def process_pending(limit: int = 50, worker_id: str = "audit-outbox", *, tenant_id: int | None = None) -> dict:
     """Lock due rows, isolate poison records, commit each sink fact with its delivery state."""
     from app.db.session import get_sessionmaker
     from app.models.audit import SecurityAuditLog
@@ -88,12 +88,15 @@ def process_pending(limit: int = 50, worker_id: str = "audit-outbox") -> dict:
 
     if type(limit) is not int or not 1 <= limit <= 1000:
         raise ValueError("audit batch size must be an integer in 1..1000")
+    if tenant_id is not None and (type(tenant_id) is not int or tenant_id <= 0):
+        raise ValueError("audit tenant scope must be a positive integer")
     now = datetime.utcnow()
     processed = failed = 0
     with get_sessionmaker()() as db:
         rows = db.scalars(
             select(AuditOutbox)
             .where(AuditOutbox.status.in_(("PENDING", "RETRY_WAIT")))
+            .where(True if tenant_id is None else AuditOutbox.tenant_id == tenant_id)
             .where((AuditOutbox.next_retry_at.is_(None)) | (AuditOutbox.next_retry_at <= now))
             .order_by(AuditOutbox.id).limit(limit)
             .with_for_update(skip_locked=True)

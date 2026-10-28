@@ -28,6 +28,7 @@ from app.modules.internship.services.internship_record_resolver import (
 from app.services import mobile_student_service
 from app.services.db_service import _iso, _tid
 from app.modules.internship.services import internship_checkin_evidence_service as evidence_svc
+from app.modules.internship.services.internship_leave_service import effective_period, lock_attendance_record
 
 _COORDINATE_SYSTEMS = {"GCJ02", "WGS84"}
 
@@ -53,6 +54,8 @@ def _student_record(db, user: dict, *, batch_id=None, for_write=False):
     )
     if not ctx.record:
         raise AppException("DATA_NOT_FOUND", ctx.message or "未找到当前实习记录", http_status=404)
+    if for_write:
+        ctx.record = lock_attendance_record(db, ctx.record.id)
     return ctx.record, student, ctx.batch
 
 
@@ -169,10 +172,10 @@ def checkin(user: dict, body: dict, *, batch_id=None) -> dict:
             InternshipCheckin.tenant_id == _tid(),
             InternshipCheckin.internship_id == record.id,
             InternshipCheckin.checkin_date == today,
-            InternshipCheckin.is_deleted.is_(False),
-        ))
-        if duplicate:
-            if key and duplicate.idempotency_key == key:
+        ).with_for_update())
+        reusable = duplicate and duplicate.is_deleted and duplicate.result == 'LEAVE'
+        if duplicate and not reusable:
+            if key and not duplicate.is_deleted and duplicate.idempotency_key == key:
                 return {
                     "id": str(duplicate.id),
                     "date": today,
@@ -182,7 +185,8 @@ def checkin(user: dict, body: dict, *, batch_id=None) -> dict:
                     "watermarkedFileId": duplicate.watermarked_file_id or "",
                     "message": "打卡请求已成功处理",
                 }
-            raise AppException("DATA_CONFLICT", "当地日期今日已打卡，请勿重复打卡")
+            raise AppException("DATA_CONFLICT", "当前仍在请假期间，请先销假后打卡" if duplicate.result == 'LEAVE'
+                               else "当地日期今日已有签到记录，请勿重复打卡")
 
         position = tenant_get(db, InternshipPosition, record.position_id) if record.position_id else None
         rule = trust.resolve_rule(db, record, position)
@@ -214,7 +218,7 @@ def checkin(user: dict, body: dict, *, batch_id=None) -> dict:
                 distance_m=distance_m,
             )
 
-        row = InternshipCheckin(
+        values = dict(
             tenant_id=_tid(),
             internship_id=record.id,
             checkin_date=today,
@@ -235,6 +239,13 @@ def checkin(user: dict, body: dict, *, batch_id=None) -> dict:
             country_region=country_region,
             idempotency_key=key,
         )
+        if reusable:
+            row = duplicate
+            for field, value in values.items():
+                setattr(row, field, value)
+            row.is_deleted = False
+        else:
+            row = InternshipCheckin(**values)
         db.add(row)
         db.flush()
 
@@ -337,6 +348,15 @@ def _date_range(start: str, end: str):
         current += timedelta(days=1)
 
 
+def calendar_status(current, start, end, today, *, signed=False, makeup=False, exempt=False, leave=False):
+    if current < start or current > end: return 'OUTSIDE'
+    if signed: return 'MAKEUP' if makeup else 'CHECKIN'
+    if exempt: return 'EXEMPT'
+    if leave: return 'LEAVE'
+    if current > today: return 'FUTURE'
+    return 'PENDING' if current == today else 'ABSENT'
+
+
 def calendar(user: dict, *, month: str | None = None, batch_id=None,
              timezone_name: str | None = None) -> dict:
     _require_db()
@@ -368,14 +388,16 @@ def calendar(user: dict, *, month: str | None = None, batch_id=None,
         leaves = db.scalars(select(InternshipLeave).where(
             InternshipLeave.tenant_id == _tid(),
             InternshipLeave.internship_id == record.id,
-            InternshipLeave.status == "APPROVED",
+            InternshipLeave.status.in_(('APPROVED', 'OVERDUE', 'RETURNED')),
             InternshipLeave.end_date >= first.isoformat(),
             InternshipLeave.start_date <= last.isoformat(),
             InternshipLeave.is_deleted.is_(False),
         )).all()
         leave_days = set()
         for row in leaves:
-            leave_days.update(_date_range(max(row.start_date, first.isoformat()), min(row.end_date, last.isoformat())))
+            left, right = effective_period(row)
+            if left and right:
+                leave_days.update(_date_range(max(left, first).isoformat(), min(right, last).isoformat()))
 
         exemptions = db.scalars(select(InternshipCheckinExemption).where(
             InternshipCheckinExemption.tenant_id == _tid(),
@@ -406,31 +428,19 @@ def calendar(user: dict, *, month: str | None = None, batch_id=None,
             current = date(year, month_no, day_no)
             ds = current.isoformat()
             row = checkin_by_day.get(ds)
-            if current < start or current > end:
-                status = "OUTSIDE"
-            elif row:
-                status = "MAKEUP" if ds in makeup_days else "CHECKIN"
-            elif ds in exempt_days:
-                status = "EXEMPT"
-            elif ds in leave_days:
-                status = "LEAVE"
-            elif current > today:
-                status = "FUTURE"
-            elif current == today:
-                status = "PENDING"
-            else:
-                status = "ABSENT"
+            status = calendar_status(current, start, end, today, signed=bool(row and row.result != 'LEAVE'),
+                makeup=ds in makeup_days, exempt=ds in exempt_days, leave=ds in leave_days)
             if status in summary:
                 summary[status] += 1
             days.append({
                 "date": ds,
                 "day": day_no,
                 "status": status,
-                "result": row.result if row else "",
-                "time": _iso(row.checkin_at) if row else None,
-                "address": row.address if row else "",
-                "photoFileId": row.evidence_file_id if row else "",
-                "watermarkedFileId": row.watermarked_file_id if row else "",
+                "result": row.result if row and row.result != 'LEAVE' else "",
+                "time": _iso(row.checkin_at) if row and row.result != 'LEAVE' else None,
+                "address": row.address if row and row.result != 'LEAVE' else "",
+                "photoFileId": row.evidence_file_id if row and row.result != 'LEAVE' else "",
+                "watermarkedFileId": row.watermarked_file_id if row and row.result != 'LEAVE' else "",
                 "canApplyMakeup": status == "ABSENT",
             })
 

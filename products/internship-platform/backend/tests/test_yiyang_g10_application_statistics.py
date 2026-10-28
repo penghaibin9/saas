@@ -29,6 +29,8 @@ def standalone_db(tmp_path):
         SchoolClass,
         StudentProfile,
     )
+    from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
+    from app.models.internship_volunteer_group import InternshipVolunteerGroup
 
     old_url = settings.DATABASE_URL
     settings.DATABASE_URL = f"sqlite+pysqlite:///{(tmp_path / 'yiyang-g10.db').as_posix()}"
@@ -46,6 +48,8 @@ def standalone_db(tmp_path):
         InternshipRecord.__table__,
         InternshipPosition.__table__,
         InternshipApplication.__table__,
+        InternshipRecruitmentCampaign.__table__,
+        InternshipVolunteerGroup.__table__,
     ):
         table.create(bind=engine, checkfirst=True)
 

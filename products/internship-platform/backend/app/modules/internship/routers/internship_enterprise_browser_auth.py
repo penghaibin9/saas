@@ -15,10 +15,9 @@ from fastapi import APIRouter, Header, Request, Response
 from app.core.config import settings
 from app.core.exceptions import AppException, unauthorized
 from app.core.response import success
-from app.core.security import create_access_token, decode_token
+from app.core.security import create_access_token
 from app.core.token_store import (
     REFRESH_TTL,
-    block_jti,
     consume_refresh,
     consume_refresh_if_matches,
     issue_refresh,
@@ -29,7 +28,7 @@ from app.modules.internship.schemas.internship_recruitment_campaign import (
 )
 from app.modules.internship.services import internship_enterprise_auth_service as auth_svc
 from app.services import audit_log
-from app.services.browser_auth_session_blocklist import auth_session_blocked, block_auth_session
+from app.services.browser_auth_session_blocklist import auth_session_blocked, revoke_logout_credentials
 
 # Keep the complete /auth/... path on each decorator. The internship route-permission audit is
 # intentionally static/source-based and must be able to prove that every public endpoint lives
@@ -163,15 +162,6 @@ def browser_accept_invite(
         phone=body.phone,
         password=body.password,
     )
-    audit_log.record(
-        "ENTERPRISE_INVITE_ACCEPT",
-        f"enterprise-member:{result['context']['memberId']}",
-        detail={
-            "tenantId": int(result["context"]["tenantId"]),
-            "companyId": result["context"]["companyId"],
-            "transport": "BROWSER_COOKIE",
-        },
-    )
     return success(_browser_result(result, response, tab_id), message="企业邀请已接受")
 
 
@@ -206,32 +196,10 @@ def browser_logout(
     _clear_refresh_cookie(response, tab_id)
     refresh_claims = None
     if refresh_token:
-        try:
-            refresh_claims = consume_refresh_if_matches(
-                refresh_token,
-                expected_browser_channel=_BROWSER_CHANNEL,
-                expected_browser_session_hash=_tab_hash(tab_id),
-            )
-        except Exception:  # noqa: BLE001 - cookie deletion still succeeds
-            pass
-    raw = (authorization or "").strip()
-    raw = raw[7:].strip() if raw.startswith("Bearer ") else raw
-    access_claims = None
-    if raw:
-        try:
-            access_claims = decode_token(raw)
-            jti = str(access_claims.get("jti") or "")
-            if jti:
-                block_jti(jti, float(access_claims.get("exp") or 0) or None)
-        except Exception:  # noqa: BLE001 - an expired/invalid access token must not prevent cookie deletion
-            pass
-    # Block the entire browser auth-session family, not only the currently presented JTI. This
-    # invalidates older access tokens issued before a refresh as well as any surviving refresh row.
-    auth_session_id = str(
-        (access_claims or {}).get("authSessionId")
-        or (refresh_claims or {}).get("authSessionId")
-        or ""
-    ).strip()
-    if auth_session_id:
-        block_auth_session(auth_session_id)
-    return success({"invalidated": True}, message="已登出")
+        refresh_claims = consume_refresh_if_matches(
+            refresh_token,
+            expected_browser_channel=_BROWSER_CHANNEL,
+            expected_browser_session_hash=_tab_hash(tab_id),
+        )
+    invalidated = revoke_logout_credentials(authorization, refresh_claims)
+    return success({"invalidated": invalidated}, message="已登出" if invalidated else "未确认服务端会话撤销，请重新登录")

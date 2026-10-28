@@ -1,13 +1,14 @@
 <script setup>
 import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { enterpriseCampaignStatusLabel, formatEnterpriseDateTime } from '../services/enterpriseInternshipApi'
 const props=defineProps({ campaign:{type:Object,default:null}, loading:Boolean })
 const now=ref(Date.now())
 let timer=null
 onMounted(()=>{timer=setInterval(()=>{now.value=Date.now()},60_000)})
 onUnmounted(()=>{if(timer)clearInterval(timer)})
-const deadline=computed(()=>props.campaign?.currentDeadlineAt||props.campaign?.phaseDeadlineAt||props.campaign?.enterpriseDecisionDeadline||props.campaign?.enterpriseDecisionEndAt||'')
+const deadline=computed(()=>props.campaign?.enterpriseDecisionDeadline||props.campaign?.enterpriseDecisionEndAt||'')
 const campaignLabel=computed(()=>props.campaign?.name||props.campaign?.campaignName||(props.campaign?.id?`招聘季 #${props.campaign.id}`:'未选择招聘季'))
-const phaseLabel=computed(()=>props.campaign?.phaseLabel||props.campaign?.status||'状态待学校更新')
+const phaseLabel=computed(()=>enterpriseCampaignStatusLabel(props.campaign?.status))
 const remaining=computed(()=>{
   if(!deadline.value)return '—'
   const at=new Date(deadline.value).getTime()
@@ -25,8 +26,8 @@ const remaining=computed(()=>{
 <template>
   <div class="bar ep-card">
     <div><span class="label">当前招聘季</span><strong>{{ loading ? '加载中…' : campaignLabel }}</strong></div>
-    <div><span class="label">当前阶段</span><strong>{{ phaseLabel }}</strong></div>
-    <div><span class="label">当前阶段截止</span><strong>{{ deadline || '—' }}</strong></div>
+    <div><span class="label">招聘季状态</span><strong>{{ phaseLabel }}</strong></div>
+    <div><span class="label">企业处理截止</span><strong>{{ formatEnterpriseDateTime(deadline) }}</strong></div>
     <div><span class="label">距离截止</span><strong class="remaining">{{ remaining }}</strong></div>
   </div>
 </template>

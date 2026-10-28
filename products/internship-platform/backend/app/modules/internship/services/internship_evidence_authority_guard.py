@@ -288,7 +288,7 @@ def grant_exemption(body, user=None):
 
 def review_exemption(exemption_id, body, user=None):
     enforce_permission(user or {}, "internship.compliance.exempt.approve")
-    role = str((user or {}).get("currentRoleCode") or "").upper()
+    role = str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or "").upper()
     if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
         raise no_permission("仅学校管理员可批准合规豁免")
     payload = body or {}

@@ -30,10 +30,10 @@
             <div class="queue__src">{{ sourceText(row.source) }}</div>
             <div class="queue__meta">
               <AppStatusTag :status="row.status" />
-              <span class="mp-note">截止 {{ row.deadline || '未设置' }}</span>
+              <span class="mp-note">截止 {{ formatDateTime(row.deadlineAt || row.deadline) }}</span>
             </div>
-            <div v-if="row.lastFollow && row.lastFollow !== '—'" class="queue__follow" :title="row.lastFollow">
-              最近跟进：{{ row.lastFollow }}
+            <div v-if="row.lastFollowAt || (row.lastFollow && row.lastFollow !== '—')" class="queue__follow" :title="row.lastFollowAt ? formatDateTime(row.lastFollowAt) : row.lastFollow">
+              最近跟进：{{ row.lastFollowAt ? formatDateTime(row.lastFollowAt) : row.lastFollow }}
             </div>
             </button>
           </li>
@@ -51,8 +51,8 @@
           @retry="loadDetail(selectedId)" />
         <EmptyState v-else-if="!selectedId && queueDone" title="已处理到当前列表末尾"
           description="可调整筛选或翻页，核对其他待办记录"><template #actions><AppButton variant="ghost" @click="reload">刷新列表</AppButton></template></EmptyState>
-        <EmptyState v-else-if="!selectedId" title="从左侧选择一条记录"
-          description="在此核对详情、查看留痕并继续办理"><template #actions><AppButton variant="ghost" @click="reload">刷新列表</AppButton></template></EmptyState>
+        <EmptyState v-else-if="!selectedId" :title="rows.length ? '请选择一条风险记录' : '当前分类暂无风险单'"
+          :description="rows.length ? '查看详情后办理。' : '可切换分类查看其他记录。'"><template #actions><AppButton variant="ghost" @click="reload">刷新列表</AppButton></template></EmptyState>
         <template v-else-if="detail">
           <section class="mp-card">
             <div class="mp-card__head">
@@ -163,6 +163,7 @@ import { fileSdk } from '@/services/file/fileSdk'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 import { safeLocalizedText } from '@/utils/presentationSafety'
+import { formatDateTime } from '@/utils/dateUtils'
 
 const LEVEL_OPTIONS = [{ label: '高', value: 'HIGH' }, { label: '中', value: 'MEDIUM' }, { label: '低', value: 'LOW' }]
 const STATUS_OPTIONS = [{ label: '待处理', value: 'PENDING_HANDLE' }, { label: '处理中', value: 'PROCESSING' }, { label: '已关闭', value: 'CLOSED' }]
@@ -208,11 +209,11 @@ export default {
         { label: '投诉内容', value: d.contentMasked ? '当前权限不可查看' : d.content },
         { label: '处理结论', value: d.contentMasked ? '当前权限不可查看' : d.conclusion },
         { label: '回访结果', value: d.contentMasked ? '当前权限不可查看' : d.followupResult },
-        { label: '受理期限', value: d.acceptDeadline }, { label: '办结期限', value: d.resolveDeadline },
-        { label: '登记时间', value: d.createdAt }
+        { label: '受理期限', value: formatDateTime(d.acceptDeadline) }, { label: '办结期限', value: formatDateTime(d.resolveDeadline) },
+        { label: '登记时间', value: formatDateTime(d.createdAt) }
       ]
       return [
-        { label: '风险编码', value: d.riskCode },
+        { label: d.riskCode==='INT-R-HELP'?'风险类型':'风险编码', value: d.riskCode==='INT-R-HELP'?'学生主动求助':d.riskCode },
         { label: '风险标题', value: d.riskTitle },
         { label: '风险等级', value: d.riskLevelLabel },
         { label: '来源模块', value: this.sourceModuleLabel(d.sourceModule) },
@@ -220,11 +221,11 @@ export default {
         { label: '来源状态', value: d.sourceStatusLabel || (d.sourceStatus ? '状态待确认' : '—') },
         { label: '当前状态', value: d.statusLabel },
         { label: '最近事件', value: d.latestEvent || '—' },
-        { label: '当前动作', value: d.currentAction || '—' },
+        { label: '当前动作', value: d.riskCode==='INT-R-HELP'?({PENDING_HANDLE:'受理并核对学生求助',PROCESSING:'继续跟进并记录处理结果',RESOLVED:'已化解，可查看处理记录',CLOSED:'已办结，可查看处理记录'})[d.status] || '请核对原单当前状态':d.currentAction || '—' },
         { label: '当前责任人', value: d.ownerName || '未指派' },
-        { label: '创建时间', value: d.createdAt },
-        { label: '截止时间', value: d.deadlineAt || '未设置' },
-        { label: '最近跟进时间', value: d.lastFollowAt },
+        { label: '创建时间', value: formatDateTime(d.createdAt) },
+        { label: '截止时间', value: formatDateTime(d.deadlineAt) },
+        { label: '最近跟进时间', value: formatDateTime(d.lastFollowAt, '时间未记录') },
         { label: '最近跟进说明', value: d.lastFollowNote }
       ]
     },
@@ -240,7 +241,8 @@ export default {
     auditRecords() {
       return (this.detail?.auditTrail || []).map((t, i) => ({
         id: i, action: t.action, actor: t.operator,
-        reason: t.detail && (t.detail.note || t.detail.comment || ''), at: t.occurredAt
+        actionLabel: ({STUDENT_HELP:'学生提交求助',SUPPORT_CONTEXT_ATTACHED:'补充求助对话',HANDLE:'受理',FOLLOW:'记录跟进',ESCALATE:'升级处理',CLOSE:'关闭办结',REMIND:'发送催办'})[t.action],
+        reason: t.detail && (t.detail.note || t.detail.comment || t.detail.content || ''), at: t.occurredAt
       }))
     }
   },
@@ -267,8 +269,9 @@ export default {
     }
   },
   methods: {
-    sourceText(value) { return safeLocalizedText({ value, unknownLabel: '其他风险来源' }) },
-    sourceModuleLabel(value) { return safeLocalizedText({ value, dictionary: { INTERNSHIP: '实习管理', ATTENDANCE: '考勤打卡', AGREEMENT: '实习协议', ENTERPRISE: '实习企业', WEEKLY_REPORT: '实习周报', COMPLAINT: '投诉反馈' }, unknownLabel: '其他业务模块' }) },
+    formatDateTime(value, fallback) { return formatDateTime(value, fallback) },
+    sourceText(value) { return safeLocalizedText({ value: String(value || '').replace(/^INT-R-HELP(?:\s+|$)/,'学生主动求助 · '), unknownLabel: '其他风险来源' }) },
+    sourceModuleLabel(value) { return safeLocalizedText({ value, dictionary: { STUDENT_HELP:'学生主动求助', INTERNSHIP: '实习管理', ATTENDANCE: '考勤打卡', AGREEMENT: '实习协议', ENTERPRISE: '实习企业', WEEKLY_REPORT: '实习周报', COMPLAINT: '投诉反馈' }, unknownLabel: '其他业务模块' }) },
     sourceTypeLabel(value) { return safeLocalizedText({ value, dictionary: { ATTENDANCE: '考勤记录', AGREEMENT: '实习协议', ENTERPRISE: '实习企业', WEEKLY_REPORT: '实习周报', COMPLAINT: '投诉记录', MANUAL: '人工登记' }, unknownLabel: '业务记录' }) },
     canBtn(code) { return canCode(this.ctx, code) },
     /** navPlan 使用 stage=pending|processing|closed；部分入口仍用 panel= */
@@ -446,7 +449,7 @@ export default {
       if (this.detail?.internId) {
         this.$router.push({
           path: `/admin/internship/students/${this.detail.internId}`,
-          query: this.batchStore.withBatchQuery({})
+          query: this.batchStore.withBatchQuery({ returnTo: this.$route.fullPath })
         })
       }
     },
@@ -531,7 +534,7 @@ export default {
         actionLabel: this.cd.confirmText || '处置完成',
         objectLabel: p.mode === 'complaint' ? `投诉 ${this.detail?.complaintNo || p.id}` : `风险 ${this.detail?.riskCode || p.id}`,
         status: data.status, statusLabel: data.statusLabel || data.status || '已提交',
-        auditText: '业务事实与审计 outbox 已在同一事务提交',
+        auditText: '业务处理与审批留痕已同步保存',
         nextStep: data.nextStep || (data.status === 'CLOSED' ? '生成监管证据包或处理下一条' : '继续处理当前责任链')
       }
       toast.success('操作成功，已写审计')

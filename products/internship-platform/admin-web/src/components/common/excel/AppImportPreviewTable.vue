@@ -33,6 +33,8 @@ const COMMON_FIELD_LABELS = Object.freeze({
   usualScore: '平时成绩', midtermScore: '期中成绩', finalScore: '期末成绩', initialStatus: '初始状态',
   exceptionFlag: '异常标记', status: '状态', sourceType: '来源类型', submitReview: '提交审核',
   capacity: '容量', maxCapacity: '最大容量', creditCode: '统一社会信用代码', industry: '行业',
+  name: '名称', nature: '企业性质', contactEmail: '联系人邮箱', collegeNames: '适用学院',
+  companyCreditCode: '单位社会信用代码', positionName: '岗位名称', remark: '备注',
   region: '地区', location: '地点', city: '城市', contactPerson: '联系人', major: '专业',
   headcount: '需求人数', note: '备注', choiceOrder: '志愿顺序'
 })

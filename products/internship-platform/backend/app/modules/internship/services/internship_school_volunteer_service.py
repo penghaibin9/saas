@@ -8,7 +8,8 @@ from datetime import datetime
 from sqlalchemy import and_, case, func, or_, select
 
 from app.core.exceptions import AppException, not_found
-from app.models import InternshipApplication, InternshipPosition, InternshipRecord, StudentProfile
+from app.core.timeutil import iso_utc
+from app.models import InternshipApplication, InternshipAuditTrail, InternshipPosition, InternshipRecord, StudentProfile
 from app.models.internship_application_material_snapshot import InternshipApplicationMaterialSnapshot
 from app.models.internship_enterprise_application_decision import InternshipEnterpriseApplicationDecision
 from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign
@@ -176,8 +177,8 @@ def review_context(*, batch_id, user):
         ).order_by(InternshipRecruitmentCampaign.round_no.desc(), InternshipRecruitmentCampaign.id.desc()))
         return {"items": [{"id": str(row.id), "batchId": str(row.batch_id),
             "name": row.campaign_name, "status": row.status,
-            "schoolConfirmStartAt": row.school_confirm_start_at.isoformat() if row.school_confirm_start_at else None,
-            "schoolConfirmEndAt": row.school_confirm_end_at.isoformat() if row.school_confirm_end_at else None,
+            "schoolConfirmStartAt": iso_utc(row.school_confirm_start_at),
+            "schoolConfirmEndAt": iso_utc(row.school_confirm_end_at),
             "enterpriseConfirmRequired": bool(row.enterprise_confirm_required)} for row in rows]}
 
 
@@ -201,8 +202,9 @@ def _query(campaign_id, user):
     )).join(student, and_(
         student.id == group.student_id, student.tenant_id == group.tenant_id,
         student.is_deleted.is_(False),
-    )).where(group.tenant_id == _tid(), group.campaign_id == _as_id(campaign_id),
-             group.is_deleted.is_(False))
+    )).where(group.tenant_id == _tid(), group.is_deleted.is_(False))
+    if campaign_id is not None:
+        query = query.where(group.campaign_id == _as_id(campaign_id))
     return apply_internship_record_scope(query, user)
 
 
@@ -217,15 +219,15 @@ def _row(group, record, student, *, now):
         "eligibilityStatus": record.eligibility_status,
         "positionId": str(record.position_id or ""),
         "positionName": record.position_name or "", "enterpriseName": record.enterprise_name or "",
-        "submittedAt": group.submitted_at.isoformat() if group.submitted_at else None,
-        "approvedAt": group.approved_at.isoformat() if group.approved_at else None,
+        "submittedAt": iso_utc(group.submitted_at),
+        "approvedAt": iso_utc(group.approved_at),
         "lockExpired": bool(group.status == "LOCKED" and deadline and deadline <= now),
     }
 
 
 def list_groups(*, campaign_id, user, status="PENDING", keyword=None, page=1, page_size=20,
                 expected_batch_id=None):
-    if status not in _STATUSES | {"PENDING", "ALL"}:
+    if status not in _STATUSES | {"PENDING", "REVIEWED", "ALL"}:
         raise AppException("VALIDATION_ERROR", "志愿组状态不正确")
     if page < 1 or not 1 <= page_size <= 100:
         raise AppException("VALIDATION_ERROR", "分页参数不正确")
@@ -234,6 +236,20 @@ def list_groups(*, campaign_id, user, status="PENDING", keyword=None, page=1, pa
         query = _query(campaign.id, user).where(InternshipVolunteerGroup.batch_id == campaign.batch_id)
         if status == "PENDING":
             query = query.where(InternshipVolunteerGroup.status.in_(("SUBMITTED", "LOCKED")))
+        elif status == "REVIEWED":
+            # NEEDS_REVISION can also come from timeout or enterprise withdrawal.
+            group, trail = InternshipVolunteerGroup, InternshipAuditTrail
+            latest_revision = select(func.max(trail.id)).where(
+                trail.tenant_id == group.tenant_id, trail.target_id == group.id,
+                trail.target_type == 'INTERNSHIP_VOLUNTEER_GROUP',
+                trail.action.in_(('REQUEST_VOLUNTEER_REVISION', 'AUTO_RELEASE_ENTERPRISE_CONFIRM_LOCK')),
+            ).correlate(group).scalar_subquery()
+            school_return = select(trail.id).where(
+                trail.id == latest_revision, trail.action == 'REQUEST_VOLUNTEER_REVISION',
+                trail.detail_json['actorRole'].as_string() != '',
+                ~trail.detail_json['actorRole'].as_string().startswith('ENTERPRISE_', autoescape=True),
+            ).exists()
+            query = query.where(or_(group.status == 'APPROVED', and_(group.status == 'NEEDS_REVISION', school_return)))
         elif status != "ALL":
             query = query.where(InternshipVolunteerGroup.status == status)
         if keyword and keyword.strip():
@@ -259,9 +275,9 @@ def _decision(row):
         "submissionVersion": row.submission_version,
         "status": row.decision_status, "effectStatus": row.effect_status,
         "reason": row.decision_reason, "supersededReason": row.superseded_reason,
-        "interviewAt": row.interview_at.isoformat() if row.interview_at else None,
-        "decidedAt": row.decided_at.isoformat() if row.decided_at else None,
-        "validUntil": row.valid_until.isoformat() if row.valid_until else None,
+        "interviewAt": iso_utc(row.interview_at),
+        "decidedAt": iso_utc(row.decided_at),
+        "validUntil": iso_utc(row.valid_until),
         "version": int(row.version or 0),
     }
 

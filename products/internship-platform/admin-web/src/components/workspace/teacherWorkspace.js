@@ -115,6 +115,39 @@ export function defaultShortcutIds(pages) {
   const ids = paths.map(path => pages.find(page => page.path === path)?.id).filter(Boolean)
   return ids.length ? ids : pages.filter(page => page.path && !page.disabled).slice(0, 4).map(page => page.id)
 }
+export function systemContextDestination(page, value) {
+  const keys = {
+    '/admin/system/leave-policy': ['batchId'],
+    '/admin/system/scopes': ['handoffBatchId', 'handoffSourceId', 'handoffPage'],
+    '/admin/system/organizations': ['search', 'kind', 'page'],
+    '/admin/system/staff': ['search', 'binding', 'page'],
+    '/admin/system/students': ['search', 'binding', 'page'],
+    '/admin/system/accounts': ['search', 'page'],
+    '/admin/system/audit': ['search', 'start', 'end', 'page'],
+    '/admin/system/tasks': ['search', 'status', 'page'],
+    '/admin/system/migration': ['search', 'page'],
+    '/admin/system/delivery': ['search', 'page']
+  }[page?.path]
+  if (!keys || typeof value !== 'string') return ''
+  try {
+    const url = new URL(value, 'http://workspace.local')
+    if (url.origin !== 'http://workspace.local' || url.pathname !== page.path) return ''
+    const query = new URLSearchParams()
+    for (const key of keys) {
+      if (url.searchParams.getAll(key).length !== 1) continue
+      const entry = url.searchParams.get(key)
+      const valid = key === 'search' ? entry.length > 0 && entry.length <= 100 && !/[\u0000-\u001f\u007f]/.test(entry)
+        : key === 'binding' ? ['BOUND', 'UNBOUND'].includes(entry)
+          : key === 'status' ? ['UPLOADED', 'VALIDATING', 'VALIDATED', 'QUEUED', 'CONFIRMING', 'IMPORTED', 'FAILED', 'CANCELLED', 'SUCCESS'].includes(entry)
+          : key === 'kind' ? ['colleges', 'majors', 'classes', 'departments'].includes(entry)
+            : key === 'start' || key === 'end' ? /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])T([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(entry) && Number.isFinite(Date.parse(entry))
+              : key === 'page' ? /^[1-9]\d{0,8}$/.test(entry) : /^\d+$/.test(entry)
+      if (valid) query.set(key, entry)
+    }
+    return query.size ? `${page.path}?${query}` : ''
+  } catch { return '' }
+}
+
 export function restoreWorkspace(value, pages) {
   const saved = value && typeof value === 'object' ? value : {}
   const usable = pages.filter(item => item.path && !item.disabled)
@@ -132,6 +165,7 @@ export function restoreWorkspace(value, pages) {
     appearance[id] = shortcutAppearance(pages.find(page => page.id === id), { [id]: entry })
   }
   return {
+    destinations: Object.fromEntries(usable.map(page => [page.id, systemContextDestination(page, saved.destinations?.[page.id])]).filter(([,path]) => path)),
     appearance,
     recent: safeIds(saved.recent, 30),
     second: ['compact', 'full', 'auto'].includes(saved.second) ? saved.second : 'compact',

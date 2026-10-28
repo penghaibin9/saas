@@ -1,7 +1,7 @@
 <template>
   <section class="msr" aria-label="模块概况">
     <!-- 当前批次（与顶部批次条共用同一 internshipBatch 真值源，不再额外猜批次） -->
-    <div class="msr__batch">
+    <div v-if="!batch" class="msr__batch">
       <span v-if="batchLoading" class="msr__muted">批次信息加载中…</span>
       <template v-else-if="batch">
         <span class="msr__chip msr__chip--batch">当前批次：{{ batch.batchName }}</span>
@@ -91,7 +91,7 @@ export default {
       return {
         batchId: String(this.batchStore.selectedBatchId),
         batchName: this.batchStore.selectedBatchName || '',
-        batchStatus: BATCH_STATUS_LABEL[this.batchStore.batchStatus] || this.batchStore.batchStatus || '—',
+        batchStatus: BATCH_STATUS_LABEL[this.batchStore.batchStatus] || '状态待确认',
         batchRange: startDate && endDate ? `${startDate} ~ ${endDate}` : ''
       }
     }

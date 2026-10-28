@@ -13,9 +13,9 @@
     <div class="reporting-stack">
       <section class="truth-banner" aria-label="外部联调状态">
         <div>
-          <strong>外部监管平台：{{ externalReady ? '已装配真实回执适配器' : 'BLOCKED_EXTERNAL' }}</strong>
-          <p v-if="!externalReady">当前可以完成模板、校验、错误行和正式 Excel；目标平台当年模板与真实回执仍需联调，系统不会伪造“上报成功”。</p>
-          <p v-else>仍以真实平台返回的签名/回执为准，不允许人工直接标记 ACCEPTED。</p>
+          <strong>外部监管平台：{{ externalReady ? '已装配真实回执适配器' : '尚未完成真实回执接入' }}</strong>
+          <p v-if="!externalReady">当前可以完成模板、校验、错误行和上报表格；目标平台当年模板与真实回执仍需联调，系统不会伪造“上报成功”。</p>
+          <p v-else>仍以真实平台返回的签名和回执为准，不允许人工直接标记“已接收”。</p>
         </div>
         <AppStatusTag :type="externalReady ? 'success' : 'warning'">
           {{ externalReady ? '外部已联通' : '待外部联调' }}
@@ -38,7 +38,7 @@
             <div><dt>模板版本</dt><dd>V{{ templateFor(report.code)?.versionNo || '—' }}</dd></div>
             <div><dt>字段数</dt><dd>{{ templateFor(report.code)?.fields?.length || 0 }}</dd></div>
             <div><dt>历史版本</dt><dd>{{ versionsFor(report.code).length }}</dd></div>
-            <div><dt>外部状态</dt><dd>{{ templateFor(report.code)?.externalReadiness || 'BLOCKED_EXTERNAL' }}</dd></div>
+            <div><dt>模板核验</dt><dd>{{ templateReadinessLabel(templateFor(report.code)) }}</dd></div>
           </dl>
           <div class="report-card-actions">
             <AppButton
@@ -67,7 +67,7 @@
           <div>
             <span class="eyebrow">{{ templateEditor.reportCode }}</span>
             <h2 id="template-editor-title">创建新的学校确认模板版本</h2>
-            <p>从当前 ACTIVE 版本复制。字段 Key 已绑定 Standalone 正式业务事实，不能在页面里改成未映射字段；可调整列名、必填、单位和业务来源说明。</p>
+            <p>从当前启用版本复制。字段已绑定独立平台正式业务事实，不能在页面里改成未映射字段；可调整列名、必填、单位和业务来源说明。</p>
           </div>
           <AppButton variant="ghost" @click="closeTemplateEditor">关闭</AppButton>
         </header>
@@ -142,7 +142,7 @@
         </div>
 
         <div class="template-editor-actions">
-          <span class="template-warning">保存后新版本立即成为 ACTIVE，旧版本转为 RETIRED；历史上报任务仍绑定原模板版本，不会被覆盖。</span>
+          <span class="template-warning">保存后新版本立即启用，旧版本停用；历史上报任务仍绑定原模板版本，不会被覆盖。</span>
           <AppButton
             :disabled="templateSaving || templateUploading"
             @click="saveTemplateVersion"
@@ -405,6 +405,11 @@ export default {
     this.load()
   },
   methods: {
+    templateReadinessLabel(template) {
+      if (template?.externalReadiness === 'READY' && template.officialVerified === true) return '正式模板已核验'
+      if (template?.externalReadiness === 'BLOCKED_EXTERNAL') return '待核验正式模板'
+      return '模板状态待确认'
+    },
     templateFor(code) {
       return this.templates.find(item => item.reportCode === code && item.status === 'ACTIVE')
         || this.templates.find(item => item.reportCode === code)
@@ -587,7 +592,7 @@ export default {
         RECEIPT_PENDING: '待真实回执',
         ACCEPTED: '真实回执已接收',
         REJECTED: '真实回执已拒绝'
-      }[status] || status || '—'
+      }[status] || '状态待确认'
     },
     statusType(status) {
       if (status === 'ACCEPTED') return 'success'

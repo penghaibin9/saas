@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 from app.modules.internship.services.internship_student_age import student_age_years
 
@@ -136,9 +136,11 @@ def _row(x, *, include_content):
     out = {
         "id": str(x.id), "internshipId": str(x.internship_id), "consentType": x.consent_type,
         "status": x.status, "contentVersion": x.content_version, "contentHash": x.content_hash,
-        "viewedAt": x.viewed_at, "confirmedAt": x.confirmed_at,
+        "viewedAt": x.viewed_at.replace(tzinfo=timezone.utc).isoformat() if x.viewed_at else None,
+        "confirmedAt": x.confirmed_at.replace(tzinfo=timezone.utc).isoformat() if x.confirmed_at else None,
         "participantName": x.participant_name, "participantRelation": x.participant_relation,
         "contactMasked": x.contact_masked, "version": int(x.version or 0),
+        "rejectionReason": x.revoke_reason if x.status == "REJECTED" and x.consent_type == "STUDENT" else "",
     }
     if include_content:
         out["contentSnapshot"] = x.content_snapshot

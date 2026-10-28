@@ -14,6 +14,7 @@ from datetime import datetime
 from pathlib import Path
 
 from openpyxl import Workbook, load_workbook
+from openpyxl.utils import get_column_letter
 from app.core.exceptions import AppException
 
 MAX_ROWS = 5000
@@ -210,28 +211,28 @@ def build_template_xlsx(headers: list[str], sample: list | None = None,
                         samples: list[list] | None = None,
                         notes: list[str] | None = None,
                         required: list[str] | None = None) -> bytes:
-    """生成预制导入模板 .xlsx。模板示例由服务端定义，不属于用户导出数据。"""
+    """生成模板或可重导入错误表；所有文字均作为不可信单元格处理。"""
     from openpyxl.styles import Font, PatternFill
     req = set(required or [])
     wb = Workbook()
     ws = wb.active
     ws.title = "导入模板"
-    ws.append([(h + " *") if h in req else h for h in headers])
+    ws.append(_safe_row([(h + " *") if h in req else h for h in headers]))
     head_fill = PatternFill("solid", fgColor="DCE6F1")
     for cell in ws[1]:
         cell.font = Font(bold=True)
         cell.fill = head_fill
     for row in ([sample] if sample else []) + (samples or []):
-        ws.append(row)
+        ws.append(_safe_row(row))
     for i, _ in enumerate(headers, start=1):
-        ws.column_dimensions[chr(64 + i)].width = 24
+        ws.column_dimensions[get_column_letter(i)].width = 24
     ws.freeze_panes = "A2"
     if notes:
         ns = wb.create_sheet("填写说明")
         ns.append(["填写说明（请阅读后删除本页或忽略，仅导入「导入模板」页）"])
         ns["A1"].font = Font(bold=True, size=12)
         for i, note in enumerate(notes, start=2):
-            ns.cell(row=i, column=1, value=note)
+            ns.cell(row=i, column=1, value=safe_excel_value(note))
         ns.column_dimensions["A"].width = 80
     buf = io.BytesIO()
     wb.save(buf)
@@ -239,7 +240,7 @@ def build_template_xlsx(headers: list[str], sample: list | None = None,
 
 
 def build_ledger_xlsx(sheet_title: str, headers: list[str], data_rows: list[list],
-                      watermark: str | None = None) -> bytes:
+                      watermark: str | None = None, column_widths: dict[int, float] | None = None) -> bytes:
     """生成台账 .xlsx；业务数据逐单元格防公式注入。"""
     from openpyxl.styles import Font, PatternFill
     wb = Workbook()
@@ -259,9 +260,26 @@ def build_ledger_xlsx(sheet_title: str, headers: list[str], data_rows: list[list
     for row in data_rows:
         ws.append(_safe_row(row))
     for i in range(1, len(headers) + 1):
-        col = chr(64 + i) if i <= 26 else "A"
-        ws.column_dimensions[col].width = 18
+        col = get_column_letter(i)
+        ws.column_dimensions[col].width = (column_widths or {}).get(i, 18)
     ws.freeze_panes = "A3" if watermark else "A2"
+    if column_widths:
+        import math
+        import unicodedata
+        from openpyxl.styles import Alignment
+        for cell in ws[row_idx]:
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+        ws.row_dimensions[row_idx].height = 24
+        for row in ws.iter_rows(min_row=row_idx + 1):
+            lines = 1
+            for cell in row:
+                cell.alignment = Alignment(vertical='top', wrap_text=True)
+                width = max(1, column_widths.get(cell.column, 18) - 2)
+                lines = max(lines, sum(math.ceil(max(1, sum(
+                    2 if unicodedata.east_asian_width(ch) in ('W', 'F') else 1 for ch in part)) / width)
+                    for part in str(cell.value or '').splitlines()))
+            ws.row_dimensions[row[0].row].height = 18 * lines + 6
+        ws.freeze_panes = 'B3' if watermark else 'B2'
     buf = io.BytesIO()
     wb.save(buf)
     return buf.getvalue()

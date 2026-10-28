@@ -1,0 +1,14 @@
+.product-build.json
+.product-audits/
+node_modules/
+.venv/
+__pycache__/
+.pytest_cache/
+dist/
+.env
+.env.*
+deploy/certs/
+deploy/backups/
+backend/data/
+test-results*/
+playwright-report/

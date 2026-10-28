@@ -84,6 +84,7 @@ class CampaignEnterpriseInvite(BaseModel):
     realName: str = Field(min_length=1, max_length=100)
     phone: str = Field(min_length=6, max_length=30)
     memberRole: Literal["COMPANY_ADMIN", "HR", "MENTOR"] = "COMPANY_ADMIN"
+    contactId: str | None = Field(default=None, pattern=r"^[1-9][0-9]{0,18}$")
 
 
 class CampaignEnterpriseRevoke(BaseModel):

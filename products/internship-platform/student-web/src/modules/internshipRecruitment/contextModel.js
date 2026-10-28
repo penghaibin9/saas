@@ -30,6 +30,7 @@ export function normalizeRecruitmentContext(raw = {}) {
 
   return {
     catalogState: raw.catalogState || 'AVAILABLE',
+    batchId: raw.batchId || null, recordId: raw.recordId || null,
     campaignId: campaign.id ?? raw.campaignId ?? null,
     campaignName: campaign.name || raw.campaignName || '当前招聘季',
     status,
@@ -38,10 +39,10 @@ export function normalizeRecruitmentContext(raw = {}) {
     schoolConfirmDeadline: volunteer.teacherConfirmDeadline || raw.teacherConfirmDeadline || '',
     publishedPositions: numberOf(stats.publishedPositions ?? stats.positionCount ?? raw.publishedPositions),
     partnerCompanies: numberOf(stats.partnerCompanies ?? stats.companyCount ?? raw.partnerCompanies),
-    matchedPositions: numberOf(stats.matchedPositions ?? raw.matchedPositions),
+    matchedPositions: numberOf(stats.matchedPositions ?? raw.matchedPositions, null),
     selectedVolunteers: numberOf(volunteer.selectedCount ?? raw.selectedVolunteerCount),
     groupStatus,
-    groupStatusLabel: GROUP_LABELS[groupStatus] || groupStatus,
+    groupStatusLabel: GROUP_LABELS[groupStatus] || '状态待学校核对',
     lockedCompanyName: volunteer.lockedCompanyName || raw.lockedCompanyName || '',
     canSelect: raw.catalogState !== 'NO_OPEN_CAMPAIGN' && Boolean(canSelect),
     blockReason: raw.blockReason || raw.selectionBlockReason || ''

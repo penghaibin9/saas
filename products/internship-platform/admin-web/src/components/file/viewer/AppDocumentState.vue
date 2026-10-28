@@ -8,10 +8,11 @@
 
 <script setup>
 import { computed } from 'vue'
+import { safeBusinessMessage } from '../../../utils/presentationSafety.js'
 const props = defineProps({ state: { type: String, required: true }, error: { type: Object, default: null } })
 defineEmits(['retry'])
 const title = computed(() => ({ IDLE: '选择文件开始预览', FETCHING: '正在加载安全预览…', UNSUPPORTED: '当前格式暂不支持站内预览', ERROR: '预览未加载成功' }[props.state] || '正在准备预览'))
-const description = computed(() => props.error?.message || (props.state === 'UNSUPPORTED' ? '可在业务允许下载时使用下载原文；系统不会自动触发下载。' : ''))
+const description = computed(() => props.error?.message ? safeBusinessMessage(props.error, '文件预览失败，请重试或下载原文查看') : (props.state === 'UNSUPPORTED' ? '可在业务允许下载时使用下载原文；系统不会自动触发下载。' : ''))
 const retryable = computed(() => props.state === 'ERROR' && props.error?.retryable !== false)
 </script>
 

@@ -16,6 +16,8 @@ STAFF = '/api/v1/internship'
 def seed_flow():
     data = seed_workspace(2)
     with get_sessionmaker()() as db:
+        from app.services.system_authorization import bootstrap_school
+        bootstrap_school(db, int(data['tenantId']))
         record = db.scalar(select(InternshipRecord).where(InternshipRecord.batch_id == int(data['batches'][0]['id'])))
         student = db.get(StudentProfile, record.student_id)
         record.status = 'ONBOARD'

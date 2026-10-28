@@ -18,4 +18,4 @@ def test_makeup_evidence_required_only_for_out_of_range():
 def test_requirement_labels_explain_blocking_rule():
     assert "病假" in leave_service._evidence_requirement_label("SICK", 1)
     assert "3天" in leave_service._evidence_requirement_label("PERSONAL", 3)
-    assert "超范围" in makeup_service._evidence_requirement_label("OUT_OF_RANGE")
+    assert "定位异常" in makeup_service._evidence_requirement_label("OUT_OF_RANGE")

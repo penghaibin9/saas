@@ -20,6 +20,7 @@ from app.modules.internship.services.internship_record_resolver import (
     resolve_student_internship_context,
 )
 from app.services.db_service import _iso, _tid, session
+from app.core.timeutil import local_now
 from app.modules.internship.services.internship_eligibility_result import eligibility_result
 from app.modules.internship.services.internship_student_basic_info_service import present as basic_info_present
 
@@ -82,16 +83,18 @@ def get_my_dashboard(user, batch_id=None):
             WeeklyReport.is_deleted.is_(False)).order_by(
                 WeeklyReport.week_number.desc(), WeeklyReport.id.desc()).limit(1))
 
-        today = f"{datetime.now():%Y-%m-%d}"
+        today = local_now().date().isoformat()
         checkin = db.scalar(select(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(),
             InternshipCheckin.internship_id == record.id,
             InternshipCheckin.checkin_date == today,
+            InternshipCheckin.result != 'LEAVE',
             InternshipCheckin.is_deleted.is_(False)).order_by(
                 InternshipCheckin.id.desc()).limit(1))
         checkin_total = int(db.scalar(select(func.count()).select_from(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(),
             InternshipCheckin.internship_id == record.id,
+            InternshipCheckin.result != 'LEAVE',
             InternshipCheckin.is_deleted.is_(False))) or 0)
 
         agreement = db.scalar(select(InternshipAgreement).where(
@@ -130,10 +133,14 @@ def get_my_dashboard(user, batch_id=None):
         feedback = ""
         if latest_report:
             feedback = latest_report.review_comment or ""
+            week_no = int(latest_report.week_number or 1)
             if latest_report.status == "APPROVED":
-                week_no = int(latest_report.week_number or 0) + 1
+                start = record.intern_start_date or getattr(batch, 'start_date', None)
+                end = record.intern_end_date or getattr(batch, 'end_date', None)
+                day = min(local_now().date(), end.date()) if end else local_now().date()
+                if start:
+                    week_no = max(week_no, 1 + max(0, (day - start.date()).days // 7))
             else:
-                week_no = int(latest_report.week_number or 1)
                 submitted = latest_report.status == "PENDING_REVIEW"
 
         return {
@@ -160,6 +167,7 @@ def get_my_dashboard(user, batch_id=None):
             },
             "weekly": {
                 "weekNumber": week_no, "submitted": submitted,
+                "approved": bool(latest_report and latest_report.status == 'APPROVED' and week_no == latest_report.week_number),
                 "lastFeedback": feedback,
             },
             "agreementStatus": agreement_status,

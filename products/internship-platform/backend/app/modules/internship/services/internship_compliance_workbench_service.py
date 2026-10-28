@@ -34,7 +34,7 @@ GROUPS = ("consents", "safety", "filings", "incidents", "exemptions", "evidence"
 
 
 def _role(user) -> str:
-    return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
+    return str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
 
 
 def _is_school_level(user) -> bool:
@@ -145,6 +145,7 @@ def _group_consents(db, record_map, students, record_ids) -> list[dict]:
             **_student_meta(record, students),
             "id": str(row.id), "consentType": row.consent_type,
             "status": row.status, "contentVersion": row.content_version or "",
+            "rejectionReason": row.revoke_reason if row.status == "REJECTED" else "",
             "viewedAt": _iso(row.viewed_at), "confirmedAt": _iso(row.confirmed_at),
             "participantName": row.participant_name or "",
             "participantRelation": row.participant_relation or "",

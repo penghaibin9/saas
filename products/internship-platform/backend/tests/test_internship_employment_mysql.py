@@ -13,12 +13,19 @@ from app.models import (College, Major, SchoolClass, StudentContact, EmpCompany,
     InternshipEmploymentSubmission as Submission, InternshipEmploymentReview as Review)
 from app.models.file import FileObject, FileBinding
 from app.adapters.employment_gateway import employment_gateway
+from app.services.system_authorization import bootstrap_school
 from app.modules.internship.services import internship_employment_service as service, internship_audit_service as audit
 from test_yiyang_write_flows_mysql import flow as base_flow, context, login, upload, png_bytes, seed_flow
 from test_student_weekly_detail_mysql import teammate
 
 MOBILE = '/api/v1/mobile/internship/employment'
 STAFF = '/api/v1/teacher-mobile/internship/employment'
+
+@pytest.mark.parametrize('params,expected',[({'revisionNo':2},2),({'revisionNo':True},None),({'revisionNo':'2'},None),(None,None),([],None)])
+def test_employment_notification_version_uses_its_own_valid_stored_metadata(params,expected):
+    from types import SimpleNamespace
+    message=SimpleNamespace(id=1,title='就业结果',content='原核验回执',status='UNREAD',created_at=None,read_at=None,action_params_json=params)
+    assert service._notification_view(message)['revisionNo']==expected
 
 @pytest.fixture
 def flow(base_flow):
@@ -55,6 +62,169 @@ def decide(client, row, action, comment='合成登记信息已核对'):
 
 def own_head(db, data):
     return db.scalar(select(Registration).where(Registration.internship_id == int(data['recordId'])))
+
+def test_other_todo_group_includes_employment_and_unknown_types_with_scope_and_paging(flow):
+    foreign = seed_flow()
+    path = '/api/v1/teacher-mobile/internship/workbench/todos'
+    with get_sessionmaker()() as db:
+        bootstrap_school(db,int(flow['tenantId']))
+        db.commit()
+    with login(flow,'STUDENT') as student, login(flow,'INTERN_MENTOR') as teacher:
+        submitted = ok(student.post(MOBILE,json=body(flow)))
+        with get_sessionmaker()() as db:
+            defaults = dict(tenant_id=int(flow['tenantId']),source_module='internship',
+                assignee_id=flow['users']['INTERN_MENTOR'],title='合成分类待办',status='PENDING')
+            rows = [
+                UnifiedTodo(**{**defaults,'source_biz_id':1,'todo_type':'SYNTHETIC_UNKNOWN'}),
+                UnifiedTodo(**{**defaults,'source_biz_id':2,'todo_type':'INTERN_WEEKLY_REVIEW'}),
+                UnifiedTodo(**{**defaults,'source_biz_id':3,'todo_type':service.TODO_TYPE,'status':'DONE'}),
+                UnifiedTodo(**{**defaults,'source_biz_id':4,'todo_type':service.TODO_TYPE,'is_deleted':True}),
+                UnifiedTodo(**{**defaults,'source_biz_id':5,'todo_type':service.TODO_TYPE,'assignee_id':flow['users']['SCHOOL_ADMIN']}),
+                UnifiedTodo(**{**defaults,'source_biz_id':6,'todo_type':service.TODO_TYPE,'tenant_id':int(foreign['tenantId'])}),
+            ]
+            db.add_all(rows); db.commit()
+        first = ok(teacher.get(path,params={'group':'OTHER','pageSize':1}))
+        second = ok(teacher.get(path,params={'group':'OTHER','pageSize':1,'page':2}))
+        assert first['groupCounts']['ALL'] == 3 and first['groupCounts']['OTHER'] == 2
+        assert first['total'] == second['total'] == 2 and first['hasMore'] and not second['hasMore']
+        items = first['items'] + second['items']
+        assert {x['todoType'] for x in items} == {service.TODO_TYPE,'SYNTHETIC_UNKNOWN'}
+        employment = next(x for x in items if x['todoType'] == service.TODO_TYPE)
+        assert employment['sourceBizId'] == submitted['id']
+        assert employment['actionPath'].endswith('?registrationId='+submitted['id'])
+        report = ok(teacher.get(path,params={'group':'REPORT'}))
+        assert report['total'] == 1 and report['items'][0]['todoType'] == 'INTERN_WEEKLY_REVIEW'
+        completed = ok(teacher.get(path,params={'group':'OTHER','status':'DONE'}))
+        assert completed['total'] == completed['groupCounts']['OTHER'] == 1
+
+
+def test_employment_ledger_exports_only_latest_filtered_masked_version_and_preserves_text(flow):
+    import base64
+    from io import BytesIO
+    from openpyxl import load_workbook
+    with login(flow,'STUDENT') as student, login(flow,'INTERN_MENTOR') as teacher, login(flow) as school:
+        first = ok(student.post(MOBILE,json=body(flow)))
+        returned = ok(decide(teacher,first,'RETURN','请补正本次岗位名称'))
+        latest = ok(student.post(MOBILE,json=body(flow,expectedVersion=returned['version'],
+            correctionReason='合成补正完整岗位名称',fields=fields(companyName='=合成就业单位',positionName='质量工程师'))))
+        ok(decide(teacher,latest,'APPROVE'))
+        params={**context(flow),'status':'APPROVED'}
+        receipt=ok(school.post(STAFF+'/export',params=params))
+        sheet=load_workbook(BytesIO(base64.b64decode(receipt['contentBase64']))).active
+        assert receipt['rowCount']==1 and sheet.max_row==3
+        values=dict(zip([c.value for c in sheet[2]],[c.value for c in sheet[3]]))
+        assert values['登记编号']==first['id'] and values['实习记录编号']==flow['recordId']
+        assert values['学号']==first['current']['fields']['studentNo'] and sheet.cell(3,8).data_type=='s'
+        assert values['提交版本']==2 and values['状态']=='已核验' and values['专业是否对口']=='否'
+        assert values['单位名称']=="'=合成就业单位" and values['岗位名称']=='质量工程师'
+        assert all(values[service.FIELD_LABELS[key]]=='已隐藏，请说明核验用途后查看' for key in service.SENSITIVE_FIELDS)
+        assert '13800000000' not in str(values) and '合成测试地址' not in str(values)
+        assert ok(school.post(STAFF+'/export',params={**params,'status':'RETURNED'}))['rowCount']==0
+        assert ok(school.post(STAFF+'/export',params={**params,'internshipId':str(int(flow['recordId'])+99999)}))['rowCount']==0
+        assert student.post(STAFF+'/export',params=params).status_code==403
+        assert school.post(STAFF+'/export',params={**params,'batchId':'99999999999999'}).status_code==404
+        with get_sessionmaker()() as db:
+            events=db.scalars(select(InternshipAuditTrail).where(InternshipAuditTrail.tenant_id==int(flow['tenantId']),
+                InternshipAuditTrail.target_type=='EXPORT')).all()
+            assert len(events)==3 and all(e.detail_json['filters']['masked'] for e in events)
+
+
+def test_employment_export_is_scoped_to_tenant_and_current_advisor(flow):
+    foreign=seed_flow()
+    with login(flow,'STUDENT') as student,login(flow,'INTERN_MENTOR') as teacher,login(foreign) as outsider:
+        row=ok(student.post(MOBILE,json=body(flow)))
+        assert outsider.post(STAFF+'/export',params=context(flow)).status_code==404
+        assert ok(teacher.post(STAFF+'/export',params=context(flow)))['rowCount']==1
+        with get_sessionmaker()() as db:
+            db.get(InternshipRecord,int(flow['recordId'])).advisor_user_id=None;db.commit()
+        assert ok(teacher.post(STAFF+'/export',params=context(flow)))['rowCount']==0
+        assert teacher.get(STAFF+'/'+row['id']).status_code==403
+
+
+def test_approved_employment_correction_requires_new_review_and_does_not_mix_history_or_exports(flow):
+    import base64
+    from io import BytesIO
+    from openpyxl import load_workbook
+    def exported(client,status):
+        receipt=ok(client.post(STAFF+'/export',params={**context(flow),'status':status}))
+        sheet=load_workbook(BytesIO(base64.b64decode(receipt['contentBase64']))).active
+        return [dict(zip([c.value for c in sheet[2]],values)) for values in sheet.iter_rows(min_row=3,values_only=True)]
+    with login(flow,'STUDENT') as student,login(flow,'INTERN_MENTOR') as teacher,login(flow) as school:
+        old_photo=upload(student,biz='INTERNSHIP_EMPLOYMENT')
+        initial=ok(student.post(MOBILE,json=body(flow,attachmentFileIds=[old_photo['fileId']])))
+        approved=ok(decide(teacher,initial,'APPROVE'))
+        old=ok(student.get(MOBILE,params=context(flow)))['registration']['current']
+        assert exported(school,'APPROVED')[0]['提交版本']==1
+        new_photo=upload(student,biz='INTERNSHIP_EMPLOYMENT',name='correction.png')
+        correction=ok(student.post(MOBILE,json=body(flow,expectedVersion=approved['version'],
+            correctionReason='核验后更正岗位薪酬与协议',fields=fields(positionName='更正后质量工程师',salary='4200',agreementNo='SYN-CORRECTION-02'),
+            attachmentFileIds=[new_photo['fileId']])))
+        assert correction['id']==initial['id'] and correction['status']=='SUBMITTED'
+        assert correction['current']['review'] is None and correction['current']['revisionNo']==2
+        assert correction['history'][1]==old
+        assert ok(student.get(MOBILE,params=context(flow)))['resultNotifications']['items'][0]['revisionNo']==1
+        assert exported(school,'APPROVED')==[]
+        pending=exported(school,'SUBMITTED');assert len(pending)==1 and pending[0]['岗位名称']=='更正后质量工程师' and pending[0]['提交版本']==2
+        assert decide(teacher,initial,'APPROVE').status_code==409
+        assert decide(teacher,approved,'APPROVE').status_code==409
+        assert teacher.get('/api/v1/files/download/'+new_photo['fileId']).status_code==404
+        ok(teacher.post(STAFF+'/'+correction['id']+'/disclose',json={'purpose':'核对更正后的就业资料及照片'}))
+        assert teacher.get('/api/v1/files/download/'+new_photo['fileId']).content==png_bytes()
+        verified=ok(decide(teacher,correction,'APPROVE'))
+        reread=ok(student.get(MOBILE,params=context(flow)))['registration']
+        assert reread['status']=='APPROVED' and reread['version']==verified['version']==4
+        assert reread['current']['fields']['salary']=='4200.00' and reread['history'][1]==old
+        assert [x['revisionNo'] for x in ok(student.get(MOBILE,params=context(flow)))['resultNotifications']['items']]==[2,1]
+        ledger=exported(school,'APPROVED');assert len(ledger)==1 and ledger[0]['提交版本']==2 and ledger[0]['岗位名称']=='更正后质量工程师'
+        assert exported(school,'SUBMITTED')==[]
+        with get_sessionmaker()() as db:
+            todo=db.scalar(select(UnifiedTodo).where(UnifiedTodo.tenant_id==int(flow['tenantId']),UnifiedTodo.todo_type==service.TODO_TYPE))
+            assert todo.status=='DONE'
+            assert db.scalar(select(func.count()).select_from(Review).where(Review.registration_id==int(initial['id'])))==2
+
+
+def test_approved_correction_return_and_resubmit_keep_notices_files_and_old_review_separate(flow):
+    with login(flow,'STUDENT') as student,login(flow,'INTERN_MENTOR') as teacher,login(flow) as school:
+        old_file=upload(student,biz='INTERNSHIP_EMPLOYMENT')
+        initial=ok(student.post(MOBILE,json=body(flow,attachmentFileIds=[old_file['fileId']])))
+        approved=ok(decide(teacher,initial,'APPROVE'))
+        original=ok(student.get(MOBILE,params=context(flow)))['registration']['current']
+        correction=ok(student.post(MOBILE,json=body(flow,expectedVersion=approved['version'],fields=fields(salary='4500'),
+            correctionReason='申请更正最新薪酬',attachmentFileIds=[old_file['fileId']])))
+        returned=ok(decide(teacher,correction,'RETURN','请补4500元对应的薪酬佐证'))
+        before=ok(student.get(MOBILE,params=context(flow)))
+        rejected=before['registration']['current'];assert rejected['review']['action']=='RETURN'
+        assert [x['revisionNo'] for x in before['resultNotifications']['items']]==[2,1]
+        assert ok(school.post(STAFF+'/export',params={**context(flow),'status':'APPROVED'}))['rowCount']==0
+        new_file=upload(student,biz='INTERNSHIP_EMPLOYMENT',name='corrected-salary.png')
+        resubmitted=ok(student.post(MOBILE,json=body(flow,expectedVersion=returned['version'],fields=fields(salary='4500'),
+            correctionReason='已补充一致的新薪酬佐证',attachmentFileIds=[new_file['fileId']])))
+        assert resubmitted['id']==initial['id'] and resubmitted['revisionCount']==3 and resubmitted['current']['review'] is None
+        assert resubmitted['history'][1]==rejected and resubmitted['history'][2]==original
+        assert [x['fileId'] for x in resubmitted['current']['attachments']]==[new_file['fileId']]
+        assert [x['fileId'] for x in resubmitted['history'][1]['attachments']]==[old_file['fileId']]
+        assert decide(teacher,correction,'APPROVE').status_code==409
+        assert teacher.get('/api/v1/files/download/'+new_file['fileId']).status_code==404
+        ok(teacher.post(STAFF+'/'+resubmitted['id']+'/disclose',json={'purpose':'核对补正后的薪酬佐证'}))
+        assert teacher.get('/api/v1/files/download/'+new_file['fileId']).content==png_bytes()
+        ok(decide(teacher,resubmitted,'APPROVE'))
+        final=ok(student.get(MOBILE,params=context(flow)))
+        assert final['registration']['version']==6 and final['registration']['status']=='APPROVED'
+        assert final['registration']['history'][1]==rejected and final['registration']['history'][2]==original
+        assert [x['revisionNo'] for x in final['resultNotifications']['items']]==[3,2,1]
+        assert ok(school.post(STAFF+'/export',params={**context(flow),'status':'RETURNED'}))['rowCount']==0
+        assert ok(school.post(STAFF+'/export',params={**context(flow),'status':'APPROVED'}))['rowCount']==1
+
+
+def test_employment_export_rejects_over_limit_before_projection(flow,monkeypatch):
+    calls=[]
+    def oversized(user,**filters):
+        calls.append(filters['page_size']);return {'total':10001,'items':[]}
+    monkeypatch.setattr(service,'list_for_teacher',oversized)
+    with login(flow) as school:
+        assert school.post(STAFF+'/export',params=context(flow)).json()['code']!=0
+    assert calls==[0]
+
 
 def test_full_23_fields_photo_todo_return_version_approval_and_formal_audits(flow):
     with login(flow,'STUDENT') as student, login(flow,'INTERN_MENTOR') as teacher:
@@ -104,7 +274,14 @@ def test_full_23_fields_photo_todo_return_version_approval_and_formal_audits(flo
         events = db.scalars(select(AuditOutbox).where(AuditOutbox.tenant_id == int(flow['tenantId']),AuditOutbox.event_type.like('INTERNSHIP_EMPLOYMENT_%'))).all()
         assert len(events) == 5
         event_ids = [x.event_id for x in events]
-    audit.process_pending(limit=1000)
+        # Preserved synthetic test history can precede these events in the FIFO queue.
+        preceding_due = db.scalar(select(func.count()).select_from(AuditOutbox).where(
+            AuditOutbox.id <= max(x.id for x in events),
+            AuditOutbox.status.in_(("PENDING", "RETRY_WAIT")),
+            AuditOutbox.next_retry_at.is_(None) | (AuditOutbox.next_retry_at <= datetime.utcnow()),
+        )) or 0
+    for _ in range(max(1, (preceding_due + 999) // 1000)):
+        audit.process_pending(limit=1000)
     with get_sessionmaker()() as db:
         assert db.scalar(select(func.count()).select_from(SecurityAuditLog).where(SecurityAuditLog.source_event_id.in_(event_ids))) == 5
     set_tenant(flow['tenantId'])

@@ -13,6 +13,45 @@ BATCH_STATUS_LABEL = {
     "DRAFT": "草稿", "RUNNING": "进行中", "CLOSED": "已结束",
     "ARCHIVED": "已归档", "VOIDED": "已作废",
 }
+
+
+def list_batch_options(page, page_size, user, *, keyword=None, selected_id=None):
+    """Only navigation metadata; selecting a batch grants no business/detail access."""
+    from sqlalchemy import func, or_, select
+    from app.core.permissions import ROLE_PERMISSIONS, get_effective_access_context, has_permission
+    from app.core.exceptions import no_permission
+    from app.models import InternshipRecord
+    from app.services.db_service import session, _iso
+    from app.services.mobile_teacher_service import _ADVISOR_ROLES, _role
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+
+    permissions = get_effective_access_context(user)['permissions']
+    if (_role(user) not in (set(ROLE_PERMISSIONS) - {'STUDENT'}) | _ADVISOR_ROLES
+            or not any(code == '*' or code.startswith('internship.') for code in permissions)):
+        raise no_permission('当前身份没有实习业务办理权限')
+    query = select(InternshipBatch).where(InternshipBatch.tenant_id == _tid(),
+        InternshipBatch.is_deleted.is_(False), InternshipBatch.status != 'VOIDED')
+    if not has_permission(user, 'internship.batch.view'):
+        records = apply_internship_record_scope(select(InternshipRecord.batch_id).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False)), user)
+        query = query.where(InternshipBatch.id.in_(records))
+    if keyword and keyword.strip():
+        query = query.where(or_(InternshipBatch.batch_name.contains(keyword.strip(), autoescape=True),
+                                InternshipBatch.batch_no.contains(keyword.strip(), autoescape=True)))
+
+    def project(row):
+        return {'id': str(row.id), 'batchName': row.batch_name or '', 'batchNo': row.batch_no or '',
+                'status': row.status, 'startDate': (_iso(row.start_date) or '')[:10],
+                'endDate': (_iso(row.end_date) or '')[:10]}
+
+    with session() as db:
+        total = db.scalar(select(func.count()).select_from(query.subquery()))
+        fields = (InternshipBatch.id, InternshipBatch.batch_name, InternshipBatch.batch_no,
+                  InternshipBatch.status, InternshipBatch.start_date, InternshipBatch.end_date)
+        limited = query.with_only_columns(*fields)
+        rows = db.execute(limited.order_by(InternshipBatch.id.desc()).offset((page-1)*page_size).limit(page_size)).all()
+        selected = db.execute(limited.where(InternshipBatch.id == int(selected_id))).first() if selected_id else None
+        return [project(row) for row in rows], total, project(selected) if selected else None
 # 禁止新增学生的批次状态（已结束/归档/作废）
 WRITE_FORBIDDEN_STATUSES = frozenset({"VOIDED", "ARCHIVED", "CLOSED"})
 

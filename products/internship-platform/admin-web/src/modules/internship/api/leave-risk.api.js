@@ -27,18 +27,18 @@ export const leaveApi = {
   getReturnQueue(batchId) {
     return call(() => request(`${B}/leaves/return-queue`, { params: { batchId } }))
   },
-  getLeaveDetail(id) { return call(() => request(`${B}/leaves/${id}`)) },
-  markEvidenceViewed(id) {
-    return call(() => request(`${B}/leaves/${id}/evidence-viewed`, { method: 'POST' }))
+  getLeaveDetail(id, batchId) { return call(() => request(`${B}/leaves/${id}`, { params: { batchId } })) },
+  markEvidenceViewed(id, body) {
+    return call(() => request(`${B}/leaves/${id}/evidence-viewed`, { method: 'POST', body }))
   },
-  review(id, { action, comment, expectedVersion, version }) {
+  review(id, { action, comment, expectedVersion, version, batchId }) {
     return call(() => request(`${B}/leaves/${id}/review`, {
-      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version }
+      method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version, batchId }
     }))
   },
-  ackReturn(id, { note, expectedVersion, version }) {
+  ackReturn(id, { note, expectedVersion, version, batchId }) {
     return call(() => request(`${B}/leaves/${id}/ack-return`, {
-      method: 'POST', body: { note, expectedVersion: expectedVersion ?? version }
+      method: 'POST', body: { note, expectedVersion: expectedVersion ?? version, batchId }
     }))
   },
   exportLeaves(params = {}) { return call(() => request(`${B}/leaves/export`, { method: 'POST', params })) }

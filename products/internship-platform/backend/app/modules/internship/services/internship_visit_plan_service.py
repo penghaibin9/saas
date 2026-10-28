@@ -2,7 +2,7 @@
 
 谁在什么时间、以什么方式、巡访哪个企业和哪些学生；区别于巡访记录(InternshipVisit=执行证据)。
 状态机 DRAFT→PUBLISHED→IN_PROGRESS→COMPLETED，旁路 CANCELLED/OVERDUE。
-owner：指导教师只处理分派给本人(owner_name)的计划；管理端全校。临时巡访补录标 plan_type=UNPLANNED。
+指导教师按创建者编号或计划学生的当前导师编号授权；姓名仅作展示。临时巡访补录标 plan_type=UNPLANNED。
 审计走 InternshipAuditTrail(target_type=VISIT_PLAN)。
 """
 from __future__ import annotations
@@ -15,6 +15,54 @@ from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
 from app.models import InternshipAuditTrail, InternshipVisitPlan
 from app.services.db_service import _as_id, _iso, _tid, session
+from app.modules.internship.services.internship_visit_service import METHOD_LABEL
+
+
+def _selected_record_scope(db, body, user):
+    """新计划的精确学生与负责老师来自当前本校实习记录，不信任客户端姓名快照。"""
+    from sqlalchemy import and_
+    from app.models import InternshipRecord, StudentProfile, User, Role, UserRole
+    from app.core.permissions import has_permission
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+    raw = body.get('recordIds')
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 100:
+        raise AppException('VALIDATION_ERROR', '请选择1至100名当前批次实习学生')
+    ids = set()
+    for value in raw:
+        text = str(value).strip()
+        if not text.isascii() or not text.isdigit() or not 0 < int(text) <= 9223372036854775807:
+            raise AppException('VALIDATION_ERROR', '实习学生编号无效，请重新选择')
+        ids.add(int(text))
+    batch = resolve_batch(db, body.get('batchId'), for_write=True)
+    query = select(InternshipRecord, StudentProfile, User).join(StudentProfile, and_(
+        StudentProfile.id == InternshipRecord.student_id, StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+    )).join(User, and_(User.id == InternshipRecord.advisor_user_id, User.tenant_id == _tid(),
+        User.is_deleted.is_(False), User.status == 'ACTIVE',
+    )).where(InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+             InternshipRecord.batch_id == batch.id, InternshipRecord.id.in_(ids))
+    rows = db.execute(apply_internship_record_scope(query, user).with_for_update()).all()
+    if len(rows) != len(ids):
+        raise no_permission('所选学生不在当前范围内或尚未落实有效指导教师')
+    mentor_ids = {teacher.id for _, _, teacher in rows}
+    roles = db.execute(select(UserRole.user_id, Role.role_code).join(Role, and_(
+        Role.id == UserRole.role_id, Role.tenant_id == _tid(), Role.is_deleted.is_(False), Role.status == 'ACTIVE',
+    )).where(UserRole.tenant_id == _tid(), UserRole.user_id.in_(mentor_ids),
+             UserRole.is_deleted.is_(False), UserRole.status == 'ACTIVE')).all()
+    executable = {uid for uid, role in roles if has_permission({'currentRoleCode': role}, 'internship.visit.manage')}
+    if mentor_ids - executable:
+        raise AppException('VALIDATION_ERROR', '所选学生的指导教师尚无巡访办理权限，请先核对教师关系')
+    numbers, names = set(), set()
+    for rec, student, teacher in rows:
+        if not student.student_no or any(char in student.student_no for char in ',，、;；\n\r') or ',' in (teacher.real_name or ''):
+            raise AppException('VALIDATION_ERROR', '当前学号或教师姓名不能唯一用于计划，请先核对主档')
+        if body.get('enterpriseId') and str(rec.enterprise_id or '') != str(body['enterpriseId']):
+            raise AppException('DATA_CONFLICT', '所选学生不属于此巡访企业，请重新核对', http_status=409)
+        numbers.add(student.student_no); names.add(teacher.real_name or teacher.login_name)
+    collaborators = ','.join(sorted(names))
+    if len(collaborators) > 500:
+        raise AppException('VALIDATION_ERROR', '一份计划的协同教师过多，请分批下发')
+    return {**body, 'studentScope': ','.join(sorted(numbers)), 'collaborators': collaborators}
 
 STATUS_LABEL = {"DRAFT": "草稿", "PUBLISHED": "已发布", "IN_PROGRESS": "进行中",
                 "COMPLETED": "已完成", "CANCELLED": "已取消", "OVERDUE": "已逾期"}
@@ -49,23 +97,38 @@ def _scope(user):
     return _current_scope(user)
 
 
+def plan_scope_clause(scope):
+    """Owner ID or a current advisor relation to a frozen student number; names never grant access."""
+    from sqlalchemy import and_, func, or_, true
+    from app.models import College, InternshipRecord, StudentProfile
+    if scope.get('mode') != 'SCOPED':
+        return true()
+    ids = scope.get('advisorUserIds') or set()
+    tokens = func.coalesce(InternshipVisitPlan.student_scope, '')
+    for separator in ('，', '、', ';', '；', '\n', '\r'):
+        tokens = func.replace(tokens, separator, ',')
+    assigned = select(InternshipRecord.id).join(StudentProfile, and_(
+        StudentProfile.id == InternshipRecord.student_id, StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    )).where(InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
+        InternshipRecord.batch_id == InternshipVisitPlan.batch_id, InternshipRecord.advisor_user_id.in_(ids),
+        or_(InternshipVisitPlan.enterprise_id.is_(None), InternshipRecord.enterprise_id == InternshipVisitPlan.enterprise_id),
+        or_(func.find_in_set(StudentProfile.student_no, tokens) > 0,
+            func.find_in_set(func.concat(StudentProfile.real_name, '（', StudentProfile.student_no, '）'), tokens) > 0,
+            func.find_in_set(func.concat(StudentProfile.real_name, '(', StudentProfile.student_no, ')'), tokens) > 0)
+        ).correlate(InternshipVisitPlan).exists()
+    colleges = select(College.id).where(College.tenant_id == _tid(), College.is_deleted.is_(False),
+        or_(College.id.in_(scope.get('collegeIds') or set()),
+            College.college_name.in_(scope.get('collegeNames') or set())))
+    return or_(InternshipVisitPlan.created_by.in_(ids), assigned, InternshipVisitPlan.college_id.in_(colleges))
+
+
 def _scope_ok(scope, p, db=None):
-    if scope.get("mode") != "SCOPED":
+    if scope.get('mode') != 'SCOPED' or getattr(p, 'created_by', None) in (scope.get('advisorUserIds') or set()):
         return True
-    names = scope.get("advisorNames") or set()
-    if (p.owner_name or "") in names:
-        return True
-    collaborators = {n.strip() for n in (p.collaborators or "").split(",") if n.strip()}
-    if collaborators & names:
-        return True
-    # 学院负责人：按计划上的 college_id 匹配学院名范围
-    college_names = scope.get("collegeNames") or set()
-    if college_names and p.college_id and db is not None:
-        from app.models import College
-        col = db.get(College, p.college_id)
-        if col and (col.college_name or "").strip() in college_names:
-            return True
-    return False
+    return bool(db is not None and p.id and db.scalar(select(InternshipVisitPlan.id).where(
+        InternshipVisitPlan.id == p.id, InternshipVisitPlan.tenant_id == _tid(),
+        InternshipVisitPlan.is_deleted.is_(False), plan_scope_clause(scope))))
 
 
 def _row(p):
@@ -76,6 +139,7 @@ def _row(p):
         "enterpriseName": p.enterprise_name or "", "ownerName": p.owner_name or "",
         "collaborators": p.collaborators or "", "studentScope": p.student_scope or "",
         "planDate": p.plan_date or "", "timeWindow": p.time_window or "", "method": p.method,
+        "methodLabel": METHOD_LABEL.get(p.method, '方式待确认'),
         "location": p.location or "", "objective": p.objective or "",
         "status": p.status, "statusLabel": STATUS_LABEL.get(p.status, p.status),
         "version": int(p.version or 0),
@@ -149,6 +213,8 @@ def create_visit_plan(body, user=None):
         raise AppException("VALIDATION_ERROR", "请至少填写巡访企业或巡访目标")
     plan_type = (body.get("planType") or "VISIT").upper()
     with session() as db:
+        if 'recordIds' in body:
+            body = _selected_record_scope(db, body, user)
         scope = _scope(user)
         # 学院负责人不可跨院写 collegeId（与读侧 collegeNames 对齐）
         if scope.get("mode") == "SCOPED" and body.get("collegeId"):
@@ -161,15 +227,14 @@ def create_visit_plan(body, user=None):
             elif not ((scope.get("advisorNames") or set()) & {(user or {}).get("realName") or ""}):
                 # 无学院名范围且非本人指导名：拒绝指定外院
                 pass
+        from app.services.message_identity import resolve_message_user_id
         p = InternshipVisitPlan(tenant_id=_tid(), owner_name=_op_name(user),
                                 status="DRAFT", plan_type=plan_type,
-                                created_by=None)
+                                created_by=resolve_message_user_id(user or get_current_user_ctx() or {}))
         _apply(p, body)
         # 创建后也必须可读（owner 本人或学院命中）
         if not _scope_ok(scope, p, db):
-            # 草稿归属本人 owner_name，一般可通过；若 college 越权已在上拦截
-            if scope.get("mode") == "SCOPED" and p.college_id:
-                raise no_permission("巡访计划不在你的数据范围内")
+            raise no_permission("巡访计划不在你的数据范围内")
         db.add(p)
         db.flush()
         _trail(db, p.id, "CREATE", {"planType": plan_type}, user)

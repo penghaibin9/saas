@@ -41,10 +41,31 @@ def test_legacy_gd_mentor_role_keeps_stable_advisor_id_scope(monkeypatch):
     assert "42" in sql
 
 
-def test_trends_mentor_scope_never_falls_back_to_advisor_name():
-    source = (internship_scope.__file__.replace("internship_scope.py", "internship_stats_service.py"))
-    text = open(source, encoding="utf-8").read()
-    trends = text[text.index("def trends("):text.index("def export_stats(")]
+def test_trends_mentor_scope_never_falls_back_to_advisor_name(monkeypatch):
+    from contextlib import contextmanager
+    from types import SimpleNamespace
+    from app.modules.internship.services import internship_stats_service as stats
+    from app.modules.internship.services import internship_batch_context
 
-    assert "InternshipRecord.advisor_user_id.in_(advisor_user_ids)" in trends
-    assert "InternshipRecord.advisor_name" not in trends
+    statements = []
+    class Database:
+        def execute(self, statement):
+            statements.append(_sql(statement))
+            return SimpleNamespace(all=lambda: [])
+
+    @contextmanager
+    def session():
+        yield Database()
+
+    monkeypatch.setattr(stats, 'session', session)
+    monkeypatch.setattr(stats, '_tid', lambda: 1001)
+    monkeypatch.setattr(stats, '_scope_ctx', lambda user: {
+        'mode': 'SCOPED', 'roleCode': 'INTERN_MENTOR', 'advisorUserIds': {42},
+        'advisorNames': {'同名教师'},
+    })
+    monkeypatch.setattr(internship_batch_context, 'resolve_batch',
+                        lambda *args, **kwargs: SimpleNamespace(id=99))
+    result = stats.trends({}, batch_id=99)
+    assert len(statements) == 4
+    assert all('advisor_user_id in (42)' in sql and 'advisor_name' not in sql for sql in statements)
+    assert all(point['value'] == 0 for series in result['series'] for point in series['points'])

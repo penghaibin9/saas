@@ -23,10 +23,17 @@ def _context_row(row, record, student) -> dict:
     # Return the body so a returned report can be corrected and resubmitted.
     item["content"] = row.content or ""
     item["submittedAt"] = _iso(row.submitted_at) or ""
+    item["internshipId"] = str(record.id)
     return item
 
 
-def list_my(user: dict, *, batch_id, internship_id) -> dict:
+def list_my(user: dict, *, batch_id, internship_id, page=1, page_size=20,
+            report_type=None, focus_report_id=None) -> dict:
+    try:
+        page = max(1, int(page or 1))
+        page_size = min(200, max(1, int(page_size or 20)))
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "报告分页参数不正确") from None
     with session() as db:
         record, student, selected_batch_id = require_explicit_context(
             db,
@@ -34,27 +41,58 @@ def list_my(user: dict, *, batch_id, internship_id) -> dict:
             {"batchId": batch_id, "internshipId": internship_id},
             for_write=False,
         )
-        rows = db.scalars(select(InternshipProcessReport).where(
+        query = select(InternshipProcessReport).where(
             InternshipProcessReport.tenant_id == _tid(),
             InternshipProcessReport.internship_id == record.id,
             InternshipProcessReport.is_deleted.is_(False),
-        ).order_by(
+        )
+        if report_type:
+            if report_type not in legacy.TYPE_LABEL:
+                raise AppException("VALIDATION_ERROR", "请选择日报、月报或实习总结")
+            query = query.where(InternshipProcessReport.report_type == report_type)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        focus_page = None
+        if focus_report_id:
+            focus = db.scalar(query.where(InternshipProcessReport.id == _as_report_id(focus_report_id)))
+            if not focus:
+                raise not_found("报告不存在或不属于当前实习记录")
+            if focus:
+                newer = query.where(or_(
+                    InternshipProcessReport.submitted_at > focus.submitted_at,
+                    and_(InternshipProcessReport.submitted_at == focus.submitted_at,
+                         InternshipProcessReport.id > focus.id),
+                ))
+                before = int(db.scalar(select(func.count()).select_from(newer.subquery())) or 0)
+                focus_page = before // page_size + 1
+        rows = db.scalars(query.order_by(
             InternshipProcessReport.submitted_at.desc(),
             InternshipProcessReport.id.desc(),
-        )).all()
+        ).offset((page - 1) * page_size).limit(page_size)).all()
+        snapshots = quality.latest_snapshot_map(db, "PROCESS", [row.id for row in rows])
+        reviews = quality.latest_review_map(db, "PROCESS", [row.id for row in rows])
         items = []
         for row in rows:
             item = _context_row(row, record, student)
-            snap = quality.latest_process_snapshot(db, row.id)
+            snap = snapshots.get(row.id)
             item["reportVersion"] = int(snap.version_no) if snap else 0
             item["attachments"] = (snap.attachment_meta_json or []) if snap else []
+            item["review"] = reviews.get(row.id)
             items.append(item)
         return {
             "items": items,
             "batchId": str(selected_batch_id),
             "internshipId": str(record.id),
+            "page": page, "pageSize": page_size, "total": total,
+            "hasMore": page * page_size < total, "focusPage": focus_page,
             "rules": quality.rules_for_batch(db, selected_batch_id),
         }
+
+
+def _as_report_id(value):
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "报告编号不正确") from None
 
 
 def submit(user: dict, body: dict) -> dict:
@@ -62,15 +100,15 @@ def submit(user: dict, body: dict) -> dict:
     report_type = str(payload.get("reportType") or "").upper()
     if report_type not in legacy.TYPE_LABEL:
         raise AppException(
-            "VALIDATION_ERROR", "reportType 必须是 DAILY/MONTHLY/SUMMARY")
+            "VALIDATION_ERROR", "请选择日报、月报或实习总结")
     content = str(payload.get("content") or "").strip()
     period_key = str(payload.get("periodKey") or "").strip()
     if report_type == "SUMMARY":
         period_key = "FINAL"
     if not period_key:
-        raise AppException("VALIDATION_ERROR", "periodKey 必填")
+        raise AppException("VALIDATION_ERROR", "请填写报告日期或月份")
     if len(period_key) > 20:
-        raise AppException("VALIDATION_ERROR", "periodKey 最多 20 个字符")
+        raise AppException("VALIDATION_ERROR", "报告日期或月份最多20个字符")
 
     with session() as db:
         record, student, _batch_id = require_explicit_context(
@@ -234,12 +272,15 @@ def list_weekly(
             WeeklyReport.week_number.desc(),
             WeeklyReport.id.desc(),
         ).offset((safe_page - 1) * safe_page_size).limit(safe_page_size)).all()
+        snapshots = quality.latest_snapshot_map(db, "WEEKLY", [row.id for row in rows])
+        reviews = quality.latest_review_map(db, "WEEKLY", [row.id for row in rows])
         items = []
         for row in rows:
             item = _weekly_row(row)
-            snap = quality.latest_weekly_snapshot(db, row.id)
+            snap = snapshots.get(row.id)
             item["immutableVersion"] = int(snap.version_no) if snap else 0
             item["attachments"] = (snap.attachment_meta_json or []) if snap else []
+            item["review"] = reviews.get(row.id)
             items.append(item)
         return {
             "items": items,
@@ -269,13 +310,16 @@ def submit_weekly(user: dict, body: dict) -> dict:
     plan_content = str(payload.get("planContent") or "").strip()
     if not work_content or not harvest_content:
         raise AppException("VALIDATION_ERROR", "本周工作内容与本周收获不能为空")
+    for label, content in (("本周工作内容", work_content), ("收获与体会", harvest_content), ("下周计划", plan_content)):
+        if len(content) > 2000:
+            raise AppException("VALIDATION_ERROR", f"{label}单段不能超过 2000 字，请保留原文并调整后提交")
 
     with session() as db:
         record, _student, _batch_id = require_explicit_context(
             db, user, payload, for_write=True)
         rules = quality.rules_for_batch(db, record.batch_id)
         total_words = len(work_content) + len(harvest_content) + len(plan_content)
-        minimum = int(rules.get("weeklyMinWords") or 30)
+        minimum = int(rules["weeklyMinWords"])
         if total_words < minimum:
             raise AppException("VALIDATION_ERROR", f"周报正文合计至少 {minimum} 字")
         attachment_ids, attachment_meta = quality.validate_attachments(
@@ -410,6 +454,34 @@ def weekly_detail(user: dict, *, report_id, batch_id, internship_id) -> dict:
 
 
 
+def process_detail(user: dict, *, report_id, batch_id, internship_id) -> dict:
+    """本人过程报告的正文、不可变提交与本版批阅；沿用可信账号关联。"""
+    try:
+        rid = int(report_id)
+    except (TypeError, ValueError):
+        raise not_found("报告不存在或不属于当前实习记录") from None
+    with session() as db:
+        record, student, selected_batch_id = require_explicit_context(
+            db, user, {"batchId": batch_id, "internshipId": internship_id}, for_write=False,
+        )
+        row = db.scalar(select(InternshipProcessReport).where(
+            InternshipProcessReport.id == rid,
+            InternshipProcessReport.tenant_id == _tid(),
+            InternshipProcessReport.internship_id == record.id,
+            InternshipProcessReport.is_deleted.is_(False),
+        ))
+        if row is None:
+            raise not_found("报告不存在或不属于当前实习记录")
+        versions = quality.snapshot_view(db, row.id)["versions"]
+        latest = versions[0] if versions else {}
+        return {
+            **_context_row(row, record, student), "batchId": str(selected_batch_id),
+            "reportVersion": latest.get("versionNo", 0),
+            "attachments": latest.get("attachments") or [], "immutableVersions": versions,
+            "review": latest.get("review"), "rules": quality.rules_for_batch(db, selected_batch_id),
+        }
+
+
 def export_report_pdf(user: dict, *, report_kind, report_id, batch_id, internship_id) -> dict:
     """SP02: authenticated student downloads own weekly/monthly/summary report as real PDF."""
     from app.services import pdf_util
@@ -445,7 +517,7 @@ def export_report_pdf(user: dict, *, report_kind, report_id, batch_id, internshi
                 f"学生：{student.real_name or ''}　学号：{student.student_no or ''}",
                 f"实习单位：{record.enterprise_name or '—'}",
                 f"实习岗位：{record.position_name or '—'}",
-                f"提交时间：{_iso(row.submitted_at) or '—'}",
+                f"提交时间：{quality.format_report_time(row.submitted_at) or '—'}",
                 "",
                 "一、本周工作内容",
                 row.work_content or "",
@@ -470,32 +542,42 @@ def export_report_pdf(user: dict, *, report_kind, report_id, batch_id, internshi
                 raise not_found("过程报告不存在或不属于当前学生")
             snap = quality.latest_process_snapshot(db, row.id)
             attachments = list(snap.attachment_meta_json or []) if snap else []
-            type_label = legacy.TYPE_LABEL.get(row.report_type, row.report_type)
-            title = f"{type_label} · {row.period_key or ''}"
+            type_label = legacy.TYPE_LABEL.get(row.report_type, "过程报告")
+            title = type_label if row.report_type == "SUMMARY" else f"{type_label} · {row.period_key or ''}"
             body_lines = [
                 f"学生：{student.real_name or ''}　学号：{student.student_no or ''}",
                 f"实习单位：{record.enterprise_name or '—'}",
                 f"实习岗位：{record.position_name or '—'}",
-                f"提交时间：{_iso(row.submitted_at) or '—'}",
+                f"提交时间：{quality.format_report_time(row.submitted_at) or '—'}",
                 "",
                 "正文",
                 row.content or "",
             ]
             status = row.status
             review_comment = row.review_comment or ""
-            filename = f"{type_label}_{row.period_key or '报告'}.pdf"
+            filename = f"{type_label}_报告{row.id}.pdf" if row.report_type == "SUMMARY" else f"{type_label}_{row.period_key or '报告'}.pdf"
 
+        review = quality.latest_review_map(db, kind, [row.id]).get(row.id)
         body_lines.extend([
             "",
-            f"审核状态：{status or '—'}",
-            f"教师意见：{review_comment or '—'}",
+            f"提交版本：第{int(snap.version_no) if snap else 1}版",
+            f"审核状态：{legacy.STATUS_LABEL.get(status, '状态待确认')}",
+            f"教师意见：{(review or {}).get('comment') or (review_comment if not snap else '') or '—'}",
         ])
+        if review:
+            if kind == "PROCESS" and row.report_type == "SUMMARY":
+                score = review.get("summaryScore")
+                body_lines.append(f"总结评分：{score}分（百分制）" if score is not None else "总结评分：未评分")
+            else:
+                rating = review.get("ratingLevel")
+                body_lines.append(f"五级评价：{rating}级" if rating is not None else "五级评价：未评分")
+            body_lines.append(f"批阅教师：{review.get('reviewerName') or '—'}")
         if attachments:
             body_lines.extend(["", "附件清单"])
             for index, item in enumerate(attachments, 1):
                 body_lines.append(
                     f"{index}. {item.get('fileName') or '附件'}"
-                    f"（{item.get('kind') or 'FILE'}，SHA-256：{item.get('sha256') or '—'}）"
+                    f"（{ {'IMAGE': '图片', 'VIDEO': '视频', 'FILE': '文档'}.get(item.get('kind'), '附件')}）"
                 )
 
         watermark = (
@@ -509,6 +591,16 @@ def export_report_pdf(user: dict, *, report_kind, report_id, batch_id, internshi
         result.update({
             "reportId": str(row.id),
             "reportKind": kind,
+            "reportVersion": int(snap.version_no) if snap else 0,
+            "batchId": str(selected_batch_id),
+            "internshipId": str(record.id),
             "attachmentCount": len(attachments),
         })
+        from app.models import InternshipAuditTrail
+        db.add(InternshipAuditTrail(tenant_id=_tid(), target_id=row.id,
+            target_type="REPORT" if kind == "WEEKLY" else "PROCESS_REPORT", action="EXPORT_PDF",
+            operator_name=(user or {}).get("realName") or "学生本人", occurred_at=datetime.utcnow(),
+            detail_json={"batchId": str(selected_batch_id), "internshipId": str(record.id),
+                         "reportVersion": result["reportVersion"], "attachmentCount": len(attachments)}))
+        db.commit()
         return result

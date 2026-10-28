@@ -172,6 +172,7 @@ class InternshipEmergencyNotice(PKMixin, TenantMixin, CommonMixin, Base):
     notice_type: Mapped[str] = mapped_column(
         String(30), nullable=False, default="NOTICE",
         comment="AGREEMENT/TRAINING/SAFETY/NOTICE/OTHER")
+    school_category: Mapped[str | None] = mapped_column(String(50), comment="发布时的学校公告分类名称快照")
     urgency: Mapped[str] = mapped_column(
         String(20), nullable=False, default="NORMAL",
         comment="NORMAL/IMPORTANT/URGENT")

@@ -136,21 +136,27 @@ async function readEntry(bytes, view, entry) {
   return inflateBounded(compressed, Math.min(MAX_IMAGE_BYTES, Math.max(entry.uncompressedSize + 4096, entry.uncompressedSize * 2 + 4096)))
 }
 
+export function consumeDocxImageBudget(image, totalPixels = 0) {
+  if (image.byteLength > MAX_IMAGE_BYTES) fail('PREVIEW_DOCX_TOO_COMPLEX', '文档单张内嵌图片超过安全字节上限')
+  const dimensions = detectImageDimensions(image)
+  if (!dimensions) fail('PREVIEW_DOCX_MALFORMED', '文档内嵌图片尺寸无法安全解析')
+  if (dimensions.pixels > DOCX_PREVIEW_MAX_IMAGE_PIXELS) {
+    fail('PREVIEW_DOCX_TOO_COMPLEX', '文档单张内嵌图片解码像素超过安全上限')
+  }
+  const total = totalPixels + dimensions.pixels
+  if (total > DOCX_PREVIEW_MAX_TOTAL_IMAGE_PIXELS) {
+    fail('PREVIEW_DOCX_TOO_COMPLEX', '文档内嵌图片累计解码像素超过安全上限')
+  }
+  return total
+}
+
 export async function validateDocxImageBudget(source) {
   const bytes = await sourceBytes(source)
   const { view, media } = mediaEntries(bytes)
   let totalPixels = 0
   for (const entry of media) {
     const image = await readEntry(bytes, view, entry)
-    const dimensions = detectImageDimensions(image)
-    if (!dimensions) fail('PREVIEW_DOCX_MALFORMED', `DOCX 内嵌图片尺寸无法安全解析：${entry.name}`)
-    if (dimensions.pixels > DOCX_PREVIEW_MAX_IMAGE_PIXELS) {
-      fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 单张内嵌图片解码像素超过安全上限')
-    }
-    totalPixels += dimensions.pixels
-    if (totalPixels > DOCX_PREVIEW_MAX_TOTAL_IMAGE_PIXELS) {
-      fail('PREVIEW_DOCX_TOO_COMPLEX', 'DOCX 内嵌图片累计解码像素超过安全上限')
-    }
+    totalPixels = consumeDocxImageBudget(image, totalPixels)
   }
   return { imageCount: media.length, totalPixels }
 }

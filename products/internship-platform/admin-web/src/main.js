@@ -7,10 +7,12 @@ import { createApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'
 import router from './router'
+import { installDirtyFormGuard } from './router/dirtyFormGuard'
 import { toast } from './utils/toast'
 
 const app = createApp(App)
 app.config.globalProperties.$message = toast
 app.use(createPinia())
 app.use(router)
+installDirtyFormGuard(router)
 app.mount('#app')

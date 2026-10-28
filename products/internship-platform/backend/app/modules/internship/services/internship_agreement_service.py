@@ -14,9 +14,10 @@ from datetime import datetime
 from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, no_permission, not_found
+from app.core.timeutil import local_now
 from app.core.tenant_scoped import tenant_get
 from app.models import (InternshipAgreement, InternshipAgreementTemplate, InternshipAuditTrail,
-                        InternshipRecord, Major, SchoolClass, StudentProfile, Tenant)
+                        InternshipBatch, InternshipRecord, Major, SchoolClass, StudentProfile, Tenant)
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -126,6 +127,18 @@ def _render_body(db, tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> 
         t = db.get(Tenant, _tid())
         school_name = (t.school_name if t else "") or ""
     advisor_name = (rec.advisor_name if rec else "") or ""
+    start, end = (rec.intern_start_date, rec.intern_end_date) if rec else (None, None)
+    planned_start = planned_end = False
+    if (not start or not end) and db is not None and rec and rec.batch_id:
+        batch = tenant_get(db, InternshipBatch, rec.batch_id)
+        if batch:
+            if not start and batch.start_date:
+                start, planned_start = batch.start_date, True
+            if not end and batch.end_date:
+                end, planned_end = batch.end_date, True
+    period = (f"{_cn_date(start)} 至 {_cn_date(end)}" if start or end else "")
+    if period and (planned_start or planned_end):
+        period = "批次计划：" + period
     ctx = {
         "studentName": (stu.real_name if stu else "") or "",
         "studentNo": (stu.student_no if stu else "") or "",
@@ -140,12 +153,11 @@ def _render_body(db, tpl: "InternshipAgreementTemplate | None", rec, stu, a) -> 
         # 正文里写哪个都能替换，避免前端变量清单 key 与渲染 key 对不上。
         "teacherName": advisor_name,
         "advisorName": advisor_name,
-        "internPeriod": (f"{_cn_date(rec.intern_start_date)} 至 {_cn_date(rec.intern_end_date)}"
-                         if rec and (rec.intern_start_date or rec.intern_end_date) else ""),
-        "internStartDate": _cn_date(rec.intern_start_date) if rec else "",
-        "internEndDate": _cn_date(rec.intern_end_date) if rec else "",
+        "internPeriod": period,
+        "internStartDate": ("批次计划：" if planned_start else "") + _cn_date(start),
+        "internEndDate": ("批次计划：" if planned_end else "") + _cn_date(end),
         "schoolName": school_name,
-        "signDate": _cn_date(datetime.utcnow()),
+        "signDate": _cn_date(local_now()),
     }
     if tpl and (tpl.body or "").strip():
         text = tpl.body
@@ -216,6 +228,7 @@ def _row(db, a, rec, stu):
         "status": a.status, "statusLabel": STATUS_LABEL.get(a.status, a.status),
         "version": int(a.version or 0),
         "esignStatus": a.esign_status, "hasFile": bool(a.file_id),
+        "fileId": str(a.file_id) if a.file_id else None,
         "sourceType": a.source_type or "LEGACY_UNKNOWN",
         "sourceLabel": {
             "ENTERPRISE_ONLINE": "企业在线提交", "SCHOOL_RECORDED": "学校根据企业纸质材料录入",
@@ -334,7 +347,7 @@ def school_confirm(user, aid, body=None) -> dict:
     """学校确认：PENDING_SCHOOL → EFFECTIVE。"""
     from app.core.permissions import enforce_permission, is_super_admin
     enforce_permission(user or {}, "internship.agreement.schoolConfirm")
-    role = ((user or {}).get("currentRoleCode") or "").upper()
+    role = ((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or "").upper()
     if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
         raise no_permission("仅学校管理员可执行学校方协议确认")
     with session() as db:
@@ -518,13 +531,19 @@ def get_student_agreement(user, aid) -> dict:
     不能再用“自动选择唯一进行中批次”，否则同一学生有多个进行中批次时会误判 403。
     """
     from app.services import file_service
+    from app.services.mobile_student_service import _require_student, resolve_student
     with session() as db:
         a = _get(db, aid)
         rec, stu = _ctx(db, a)
+        bound = resolve_student(db, _require_student(user))
         if (
             not rec
             or not stu
-            or str(stu.student_no or "") != str((user or {}).get("studentNo") or "")
+            or not bound
+            or bound.is_deleted
+            or bound.tenant_id != _tid()
+            or stu.id != bound.id
+            or a.student_id != bound.id
         ):
             raise no_permission("只能查看本人的协议")
         trail = db.scalars(select(InternshipAuditTrail).where(
@@ -537,6 +556,37 @@ def get_student_agreement(user, aid) -> dict:
                                for t in trail]}
 
 
+def student_pdf(user, aid, payload) -> dict:
+    """按本人已打开的协议版本生成打印件，不使用学校文档权限。"""
+    from hashlib import sha256
+    from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+    from app.services import pdf_util
+
+    with session() as db:
+        rec, stu, _ = require_explicit_context(db, user, payload, for_write=False)
+        agreement = _get(db, aid)
+        if agreement.internship_id != rec.id or agreement.student_id != stu.id:
+            raise no_permission("只能下载当前本人实习记录的协议")
+        detail = _row(db, agreement, rec, stu)
+        if extract_expected_version(payload) != detail["version"]:
+            raise AppException("DATA_CONFLICT", "协议已更新，请重新打开正文核对后下载")
+        body = str(detail.get("renderedBody") or "").strip()
+        if not body:
+            raise AppException("DATA_CONFLICT", "协议正文为空，暂不能生成打印件")
+        body_hash = sha256(body.encode("utf8")).hexdigest()
+        watermark = (f"本人协议打印件 · 协议{detail['id']} · 第{detail['version']}版 · "
+                     f"{STATUS_LABEL.get(detail['status'], '状态待核实')} · 下载留痕")
+        result = pdf_util.pack_pdf_result(pdf_util.build_text_pdf(
+            f"{detail['studentName']} · 三方实习协议", body, watermark=watermark),
+            f"三方实习协议_{detail['id']}_第{detail['version']}版.pdf")
+        _trail(db, agreement.id, "DOWNLOAD_PDF", {"version": detail["version"],
+            "bodySha256": body_hash, "batchId": detail["batchId"],
+            "internshipId": detail["internId"]}, operator=_op_name(user))
+        db.commit()
+    return {**result, "agreementId": detail["id"], "agreementVersion": detail["version"],
+            "batchId": detail["batchId"], "internshipId": detail["internId"], "bodySha256": body_hash}
+
+
 def export_agreements(status=None, keyword=None, batch_id=None, user=None) -> dict:
     from app.services import xlsx_util
     from app.modules.internship.services.internship_export_util import require_exportable
@@ -547,16 +597,20 @@ def export_agreements(status=None, keyword=None, batch_id=None, user=None) -> di
     rows = [[it["studentNo"], it["studentName"], it["advisorName"], it["enterpriseName"],
              it["positionName"], it["studentConfirmLabel"], it["enterpriseConfirmLabel"],
              it["schoolConfirmLabel"], it["statusLabel"]] for it in items]
-    wm = f"岗位实习中心·三方协议台账 · 导出人：{_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    wm = f"岗位实习中心·三方协议台账 · 导出人：{_op_name(user)} · {local_now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("三方协议台账", headers, rows, watermark=wm)
     return xlsx_util.pack_xlsx_result(content, "三方协议台账.xlsx", len(items))
 
 
 # ═══════════ 学生本人（移动端） ═══════════
 
-def my_agreements(user) -> list[dict]:
+def my_agreements(user, *, context=None) -> list[dict]:
     with session() as db:
-        rec, stu = _student_record(db, user)
+        if context is not None:
+            from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+            rec, stu, _ = require_explicit_context(db, user, context, for_write=False)
+        else:
+            rec, stu = _student_record(db, user)
         if not rec:
             return []
         rows = db.scalars(select(InternshipAgreement).where(

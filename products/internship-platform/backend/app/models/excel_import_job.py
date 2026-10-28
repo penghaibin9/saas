@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Integer, JSON, String
+from sqlalchemy import BigInteger, DateTime, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -44,3 +44,6 @@ class ExcelImportJob(PKMixin, TenantMixin, CommonMixin, Base):
     finished_at: Mapped[datetime | None] = mapped_column(DateTime, comment="结束时间")
     confirm_at: Mapped[datetime | None] = mapped_column(DateTime, comment="确认导入时间")
     remark: Mapped[str | None] = mapped_column(String(500))
+    preview_json: Mapped[dict | None] = mapped_column(JSON, comment="持久化预检与版本快照，不存临时密码")
+    receipt_encrypted: Mapped[str | None] = mapped_column(Text, comment="限时领取的加密开户回执")
+    expires_at: Mapped[datetime | None] = mapped_column(DateTime)

@@ -3,6 +3,7 @@
     "autoscan": false,
     "custom": {
       "^MobileGlobalState$": "@/components/MobileGlobalState.vue",
+      "^MobileTaskIcon$": "@/components/MobileTaskIcon.vue",
       "^MobileInlineAlert$": "@/components/MobileInlineAlert.vue",
       "^MobileNavBar$": "@/components/MobileNavBar.vue",
       "^MobilePrivacyGate$": "@/components/MobilePrivacyGate.vue",
@@ -36,6 +37,10 @@
         "navigationBarTitleText": "岗位实习",
         "navigationStyle": "custom"
       }
+    },
+    {
+      "path": "pages/student-internship/messages/index",
+      "style": { "navigationBarTitleText": "消息通知", "navigationStyle": "custom" }
     },
     {
       "path": "pages/teacher-internship/index",
@@ -294,7 +299,7 @@
     {
       "path": "pages/teacher-internship/internship-review/index",
       "style": {
-        "navigationBarTitleText": "实习周报批阅",
+        "navigationBarTitleText": "实习过程办理",
         "navigationStyle": "custom"
       }
     },

@@ -34,7 +34,7 @@
             <span>{{ section.order }}</span>{{ section.label }}
           </button>
         </nav>
-        <p>保存为草稿后，继续选择参与班级与学生。名单预览确认后，再启用批次。</p>
+        <p>先保存草稿，再核对评分规则、选择参与学生并预览名单，最后启用批次。启用前请确认本轮安排无误。</p>
       </aside>
       <AppForm
         ref="batchForm"
@@ -88,7 +88,7 @@
           <div class="mp-card__head">
             <h2 class="mp-card__title">阶段安排</h2>
             <button type="button" class="bf-mode" @click="toggleAdvanced">
-              {{ advancedJson ? '使用分组表单' : '高级配置' }}
+              {{ advancedJson ? '使用分组表单' : '实施人员使用：高级配置' }}
             </button>
           </div>
           <div class="mp-card__body bf-json">
@@ -143,6 +143,9 @@
                 <AppFormItem label="每日必打卡">
                   <AppRadioGroup v-model="rulesForm.checkin.requireDaily" :options="boolOptions" :disabled="readonly" />
                 </AppFormItem>
+                <AppFormItem label="当天未签到提醒时间" :error="reminderTimeError" hint="按学校当地时间；留空不自动发送，每名学生每天最多提醒一次。">
+                  <AppTextInput v-model="rulesForm.checkin.reminderTime" placeholder="例如 18:00；留空不发送" :disabled="readonly || !rulesForm.checkin.requireDaily" />
+                </AppFormItem>
                 <AppFormItem label="计划要求签到天数" hint="0 表示学校暂未配置；计划书与签到统计统一读取此规则">
                   <AppNumberInput v-model="rulesForm.checkin.requiredDays" :min="0" :max="366" :step="1" :disabled="readonly" />
                 </AppFormItem>
@@ -178,7 +181,7 @@
                   <AppSelect v-model="rulesForm.weeklyReport.frequency" :options="frequencyOptions" :disabled="readonly" />
                 </AppFormItem>
                 <AppFormItem label="正文最少字数">
-                  <AppNumberInput v-model="rulesForm.weeklyReport.minWordCount" :min="1" :max="5000" :step="10" :disabled="readonly" />
+                  <AppNumberInput v-model="rulesForm.weeklyReport.minWordCount" :min="0" :max="5000" :step="10" :disabled="readonly" />
                 </AppFormItem>
                 <AppFormItem label="本批次应交周报篇数" hint="0 表示学校暂未配置，学生端不会伪造完成率">
                   <AppNumberInput v-model="rulesForm.weeklyReport.requiredCount" :min="0" :max="100" :step="1" :disabled="readonly" />
@@ -239,37 +242,8 @@
               </div>
 
               <div class="bf-rules__grp">
-                <div class="bf-rules__t">评价权重（合计须为 100%）</div>
-                <AppFormItem label="企业评价 %">
-                  <AppNumberInput v-model="rulesForm.evaluation.enterpriseWeight" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <AppFormItem label="教师评价 %">
-                  <AppNumberInput v-model="rulesForm.evaluation.teacherWeight" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <AppFormItem label="学生自评 %">
-                  <AppNumberInput v-model="rulesForm.evaluation.selfWeight" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <p :class="evalWeightSum === 100 ? 'bf-preview__note' : 'bf-preview__err'">
-                  当前合计 {{ evalWeightSum }}%
-                </p>
-              </div>
-
-              <div class="bf-rules__grp">
-                <div class="bf-rules__t">成绩规则</div>
-                <AppFormItem label="及格线">
-                  <AppNumberInput v-model="rulesForm.score.passThreshold" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <div class="bf-rows">
-                  <div v-for="(c, i) in rulesForm.score.components" :key="i" class="bf-row bf-row--score">
-                    <AppTextInput v-model="c.name" :disabled="readonly" placeholder="构成项名称" />
-                    <AppNumberInput v-model="c.weight" :min="0" :max="100" :disabled="readonly" placeholder="权重 %" />
-                    <AppButton variant="text" :disabled="readonly" @click="removeComponent(i)">删除</AppButton>
-                  </div>
-                  <AppButton variant="secondary" size="sm" :disabled="readonly" @click="addComponent">＋ 添加成绩构成项</AppButton>
-                  <p :class="componentWeightSum === 100 ? 'bf-preview__note' : 'bf-preview__err'">
-                    成绩构成合计 {{ componentWeightSum }}%（须为 100%）
-                  </p>
-                </div>
+                <div class="bf-rules__t">正式评分规则</div>
+                <p class="bf-preview__note">评分比例和及格线统一在“综合成绩 → 评分规则”维护。保存草稿后、启用批次前请先核对该处配置，再发布实习计划；计划与核分读取同一套规则。</p>
               </div>
 
               <div class="bf-rules__grp">
@@ -287,7 +261,7 @@
             </div>
             <AppFormItem
               v-else
-              label="规则 JSON"
+              label="实施人员使用：规则数据"
               prop="rulesJson"
               :error="rulesError"
               hint='JSON 对象，形如 {"checkin":{"geofenceRadiusM":500}}，未填写的分组沿用原有/默认规则'
@@ -369,7 +343,7 @@ const blankForm = () => ({
 /** 规则表单默认值（与后端 internship_service.DEFAULT_RULES 对齐；权重以百分数呈现）。 */
 const blankRulesForm = () => ({
   teacherCheckin: { maxAccuracyM: 200, locations: [] },
-  checkin: { requireDaily: true, requiredDays: 0, geofenceRadiusM: 500, maxAccuracyM: 200 },
+  checkin: { requireDaily: true, reminderTime: '', requiredDays: 0, geofenceRadiusM: 500, maxAccuracyM: 200 },
   weeklyReport: { frequency: 'WEEKLY', minWordCount: 30, requiredCount: 0, deadlineWeekday: 7, reviewSlaHours: 48 },
   teacherReport: { weeklyMaxWords: 12000, monthlyMaxWords: 12000, summaryMaxWords: 12000 },
   processReport: {
@@ -438,6 +412,10 @@ export default {
     }
   },
   computed: {
+    reminderTimeError() {
+      const value=String(this.rulesForm.checkin.reminderTime || '').trim()
+      return value && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? '提醒时间请填写小时和分钟，例如18:00，或留空不发送' : ''
+    },
     teacherLocationError() {
       const rule=this.rulesForm.teacherCheckin
       if(!Number.isInteger(Number(rule.maxAccuracyM)) || Number(rule.maxAccuracyM)<20 || Number(rule.maxAccuracyM)>2000) return '教师定位误差须为20至2000米的整数'
@@ -460,13 +438,6 @@ export default {
       { key: 'stages', label: '阶段安排', order: '02' },
       { key: 'rules', label: '业务规则', order: '03' }
     ] },
-    evalWeightSum() {
-      const e = this.rulesForm.evaluation
-      return Number(e.enterpriseWeight || 0) + Number(e.teacherWeight || 0) + Number(e.selfWeight || 0)
-    },
-    componentWeightSum() {
-      return (this.rulesForm.score.components || []).reduce((s, c) => s + Number(c.weight || 0), 0)
-    },
     stageFormError() {
       const rows = this.stageRows.filter((s) => (s.name || '').trim() || (s.code || '').trim())
       if (rows.some((s) => !(s.name || '').trim())) return '每个阶段都必须填写阶段名称'
@@ -622,14 +593,6 @@ export default {
       window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
       this.stageRows.splice(i, 1)
     },
-    addComponent() {
-      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
-      this.rulesForm.score.components.push({ name: '', weight: 0 })
-    },
-    removeComponent(i) {
-      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
-      this.rulesForm.score.components.splice(i, 1)
-    },
     /** 把后端返回的 stages / rules 回填到结构化表单（权重统一转百分数）。 */
     fillStructured(d) {
       this.stageRows = Array.isArray(d.stages)
@@ -671,12 +634,14 @@ export default {
         })) },
         checkin: {
           requireDaily: !!f.checkin.requireDaily,
+          requiredDays: Math.max(0, Number(f.checkin.requiredDays ?? 0)),
+          reminderTime: String(f.checkin.reminderTime || '').trim() || null,
           geofenceRadiusM: Number(f.checkin.geofenceRadiusM || 0),
           maxAccuracyM: Number(f.checkin.maxAccuracyM || 200)
         },
         weeklyReport: {
           frequency: f.weeklyReport.frequency,
-          minWordCount: Math.max(1, Number(f.weeklyReport.minWordCount || 30)),
+          minWordCount: Math.max(0, Number(f.weeklyReport.minWordCount ?? 30)),
           requiredCount: Math.max(0, Number(f.weeklyReport.requiredCount || 0)),
           deadlineWeekday: Number(f.weeklyReport.deadlineWeekday || 7),
           reviewSlaHours: Math.min(720, Math.max(1, Number(f.weeklyReport.reviewSlaHours || 48)))
@@ -805,9 +770,8 @@ export default {
         if (this.rulesError) return toast.error('规则配置 JSON 配置有误，请先修正')
       } else {
         if(this.teacherLocationError) { this.focusSection('rules'); return toast.error(this.teacherLocationError) }
+        if(this.reminderTimeError) { this.focusSection('rules'); return toast.error(this.reminderTimeError) }
         if (this.stageFormError) { this.focusSection('stages'); return toast.error(this.stageFormError) }
-        if (this.evalWeightSum !== 100) { this.focusSection('rules'); return toast.error(`评价权重合计须为 100%，当前 ${this.evalWeightSum}%`) }
-        if (this.componentWeightSum !== 100) { this.focusSection('rules'); return toast.error(`成绩构成权重合计须为 100%，当前 ${this.componentWeightSum}%`) }
       }
       const f = this.form
       const body = {

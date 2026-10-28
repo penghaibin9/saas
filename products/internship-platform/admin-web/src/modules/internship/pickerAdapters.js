@@ -23,10 +23,22 @@ function adapter(loader, map) {
   return { search, resolve }
 }
 
+const candidateStudentOption = row => ({ value: String(row.id), label: row.name || '学生', desc: row.studentNo ? `学号 ${row.studentNo}` : '', raw: row })
 const candidateInternshipStudent = adapter(
   (keyword) => internStudentApi.getStudentOptions(keyword, 30),
-  (row) => ({ value: row.id, label: row.name || '学生', desc: row.studentNo ? `学号 ${row.studentNo}` : '', raw: row })
+  candidateStudentOption
 )
+candidateInternshipStudent.resolve = async value => {
+  const values = (Array.isArray(value) ? value : [value]).filter(id => id !== '' && id != null).map(String)
+  const unique = [...new Set(values)], options = []
+  for (let start = 0; start < unique.length; start += 100) {
+    const response = await internStudentApi.getStudentOptionsByIds(unique.slice(start, start + 100))
+    options.push(...rowsOf(response).map(candidateStudentOption))
+  }
+  const byId = new Map(options.map(option => [option.value, option]))
+  const resolved = values.map(id => byId.get(id)).filter(Boolean)
+  return Array.isArray(value) ? resolved : resolved[0]
+}
 
 const internshipStudent = adapter(
   (keyword, query) => internshipApi.getStudents({ ...query, keyword, page: 1, pageSize: 30, batchId: query.batchId }),

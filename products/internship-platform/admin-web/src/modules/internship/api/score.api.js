@@ -8,7 +8,7 @@ import { API_BASE_URL, API_PREFIX } from '@/services/http/config'
 function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
 function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+  if (e?.biz) return Promise.resolve({code:e.code || 1,data:null,message:e.message,bizCode:e.bizCode || '',httpStatus:e.httpStatus})
   return fail(e?.message || '真实接口不可用', 503001)
 }
 async function call(fn) {

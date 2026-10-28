@@ -82,7 +82,7 @@ export default {
   computed: {
     brandTitle() {
       if (!this.ctx) return '管理端'
-      return (this.ctx.tenantBrandConfig?.schoolName || '岗位实习') + ' · 管理端'
+      return this.ctx.tenantBrandConfig?.platformName || (this.ctx.tenantBrandConfig?.schoolName || '岗位实习') + ' · 管理端'
     },
     batchStore() {
       return useInternshipBatchStore()

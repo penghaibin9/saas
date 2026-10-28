@@ -393,9 +393,8 @@ export function currentUserFromToken() {
       currentRoleCode: p.currentRoleCode,
       activeContextId: p.activeContextId || '',
       tenantId: p.tenantId,
-      // JWT 中租户编码字段名为 tid（见后端 app/core/security.py 签发的 claims）；
-      // 展示学校编码给外部协作方（如企业邀请激活链接）时需要它。
-      tenantCode: p.tid || '',
+      // 独立后端签发 tenantCode；学校编码不能由学校编号替代。
+      tenantCode: p.tenantCode || '',
       tenantName: p.tenantName
     }
   } catch {

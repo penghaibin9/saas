@@ -49,7 +49,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-standalone:fullstack-pc
       JWT_SECRET: standalone-fullstack-pc-jwt-secret-20260929
-      EXPECTED_ALEMBIC_REVISION: ix0030
+      EXPECTED_ALEMBIC_REVISION: ix0036
       FILE_STORAGE_DIR: /tmp/internship-fullstack-files
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +75,7 @@ jobs:
           npm --prefix products/internship-platform/enterprise-web ci --no-audit --no-fund
 
       - name: Verify standalone workspace navigation and revoked preferences
-        run: node --test products/internship-platform/admin-web/tests/workspace-navigation.behavior.test.mjs products/internship-platform/admin-web/tests/attendance-photo.behavior.test.mjs
+        run: node --test products/internship-platform/admin-web/tests/workspace-navigation.behavior.test.mjs products/internship-platform/admin-web/tests/attendance-photo.behavior.test.mjs products/internship-platform/admin-web/tests/handoff-navigation.behavior.test.mjs products/internship-platform/admin-web/tests/enterprise-member.behavior.test.mjs products/internship-platform/admin-web/tests/dirty-form.behavior.test.mjs products/internship-platform/admin-web/tests/copyable-handoff.behavior.test.mjs
 
       - name: Install Chromium
         working-directory: products/internship-platform/enterprise-web

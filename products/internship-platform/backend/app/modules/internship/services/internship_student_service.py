@@ -12,14 +12,16 @@ from app.core.tenant_scoped import tenant_get
 
 from datetime import datetime
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy.orm import aliased
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
-from app.models import (EmpCompany, InternshipAgreement, InternshipApplication, InternshipAuditTrail, InternshipBatch,
+from app.models import (College, EmpCompany, InternshipAgreement, InternshipApplication, InternshipAuditTrail, InternshipBatch,
+                        InternshipBatchPlan, InternshipPlanAssignment, InternshipPlacementSnapshot,
                         InternshipInsurance, InternshipPayrollStatement, InternshipPayrollVersion,
                         InternshipPosition, InternshipRecord, InternshipRotation,
-                        Major, Role, SchoolClass, StudentContact, StudentProfile, User, UserRole)
+                        Major, Role, SchoolClass, StaffProfile, StudentContact, StudentProfile, User, UserRole)
 from app.core.field_crypto import mask_phone_encrypted
 from app.services.db_service import _as_id, _iso, _tid, session
 
@@ -64,10 +66,9 @@ def _get_for_update(db, rec_id) -> InternshipRecord:
 
 
 def _require_record_version(r: InternshipRecord, expected_version) -> None:
-    if expected_version is None:
-        raise AppException("VALIDATION_ERROR", "必须提供 expectedVersion（实习记录乐观锁），请刷新后重试")
-    if int(expected_version) != int(r.version or 0):
-        raise AppException("DATA_CONFLICT", "实习记录已被其他用户修改，请刷新后重试")
+    from app.modules.internship.services.internship_version import extract_expected_version
+    if extract_expected_version({"expectedVersion": expected_version}) != int(r.version or 0):
+        raise AppException("DATA_CONFLICT", "实习记录已被其他用户修改，请刷新后重试",http_status=409)
 
 
 def _assert_write_scope(db, r: InternshipRecord, user) -> None:
@@ -83,20 +84,40 @@ def _assert_write_scope(db, r: InternshipRecord, user) -> None:
 def _students_map(db, ids: list[int]) -> dict:
     if not ids:
         return {}
-    rows = db.scalars(select(StudentProfile).where(StudentProfile.id.in_(ids))).all()
+    rows = db.scalars(select(StudentProfile).where(StudentProfile.id.in_(ids),
+                      StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))).all()
     return {s.id: s for s in rows}
 
 
 def _advisor_role_user_ids(db) -> set[int]:
-    """岗位实习指导教师必须同时具有有效账号和有效带教角色。"""
-    rows = db.scalars(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id).where(
+    """新分配共同检查账号、有效期、人员资料和带教角色；历史指导关系不受改写。"""
+    unavailable_staff = select(StaffProfile.id).where(
+        StaffProfile.tenant_id == _tid(), StaffProfile.user_id == UserRole.user_id,
+        or_(StaffProfile.status != 'ACTIVE', StaffProfile.is_deleted.is_(True))).exists()
+    rows = db.scalars(select(UserRole.user_id).join(Role, Role.id == UserRole.role_id)
+        .join(User, User.id == UserRole.user_id).where(
+        User.tenant_id == _tid(), User.is_deleted.is_(False), User.status == 'ACTIVE',
+        or_(User.expires_at.is_(None), User.expires_at > datetime.utcnow()), ~unavailable_staff,
         UserRole.tenant_id == _tid(), UserRole.is_deleted.is_(False), UserRole.status == "ACTIVE",
         Role.tenant_id == _tid(), Role.is_deleted.is_(False), Role.status == "ACTIVE",
-        Role.role_code.in_(ADVISOR_ROLE_CODES))).all()
+        or_(Role.base_role_code.in_(ADVISOR_ROLE_CODES),
+            and_(Role.base_role_code.is_(None),Role.role_code.in_(ADVISOR_ROLE_CODES))))).all()
     return {int(value) for value in rows}
 
 
-def _advisor(db, advisor_user_id=None, advisor_name=None) -> User | None:
+def _scoped_advisor_ids(db, user=None) -> set[int]:
+    from app.modules.internship.services.internship_enterprise_service import resolve_user_college_ids
+    eligible = _advisor_role_user_ids(db)
+    allowed = resolve_user_college_ids(db, user)
+    if allowed is None:
+        return eligible
+    return set(db.scalars(select(StaffProfile.user_id).where(
+        StaffProfile.tenant_id == _tid(), StaffProfile.is_deleted.is_(False),
+        StaffProfile.status == 'ACTIVE', StaffProfile.college_id.in_(allowed),
+        StaffProfile.user_id.in_(eligible))).all())
+
+
+def _advisor(db, advisor_user_id=None, advisor_name=None, user=None) -> User | None:
     """Resolve a new advisor to one active staff account; names remain display-only compatibility input."""
     if advisor_user_id:
         row = db.get(User, _as_id(advisor_user_id))
@@ -104,26 +125,17 @@ def _advisor(db, advisor_user_id=None, advisor_name=None) -> User | None:
             raise not_found("指导教师账号不存在、已停用或不在当前租户")
         if row.user_type not in ("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN"):
             raise AppException("VALIDATION_ERROR", "所选账号不是教职工，不能担任实习指导教师")
-        if row.id not in _advisor_role_user_ids(db):
-            raise AppException("VALIDATION_ERROR", "所选教师尚未分配“岗位实习指导教师”角色")
+        if row.id not in _scoped_advisor_ids(db, user):
+            raise AppException("VALIDATION_ERROR", "所选教师不在可分配的在职指导教师范围内，请核对院系及身份")
         return row
-    name = (advisor_name or "").strip()
-    if not name:
-        return None
-    eligible_ids = _advisor_role_user_ids(db)
-    rows = db.scalars(select(User).where(
-        User.tenant_id == _tid(), User.real_name == name, User.status == "ACTIVE",
-        User.id.in_(eligible_ids),
-        User.user_type.in_(("TEACHER", "STAFF", "SCHOOL_ADMIN", "ADMIN")),
-        User.is_deleted.is_(False))).all()
-    if len(rows) != 1:
-        raise AppException("VALIDATION_ERROR", "指导教师必须匹配唯一的在职岗位实习指导教师账号")
-    return rows[0]
+    if (advisor_name or "").strip():
+        raise AppException("VALIDATION_ERROR", "指导教师姓名仅用于展示，请选择正式教师账号或在导入中填写教工号")
+    return None
 
 
-def list_advisors(keyword: str | None = None) -> list[dict]:
+def list_advisors(keyword: str | None = None, user=None) -> list[dict]:
     with session() as db:
-        eligible_ids = _advisor_role_user_ids(db)
+        eligible_ids = _scoped_advisor_ids(db, user)
         q = select(User).where(User.tenant_id == _tid(), User.is_deleted.is_(False),
                                User.status == "ACTIVE",
                                User.id.in_(eligible_ids),
@@ -228,6 +240,8 @@ def _row(r: InternshipRecord, stu: StudentProfile | None, batch_name: str = "",
         "destinationLabel": DEST_LABEL.get(r.destination_type, r.destination_type),
         "internRange": (f"{_iso(r.intern_start_date)[:10]} ~ {_iso(r.intern_end_date)[:10]}"
                         if r.intern_start_date and r.intern_end_date else ""),
+        "internStartDate": _iso(r.intern_start_date)[:10] if r.intern_start_date else "",
+        "internEndDate": _iso(r.intern_end_date)[:10] if r.intern_end_date else "",
         "updatedAt": _iso(r.updated_at),
         "version": int(r.version or 0),
     }
@@ -252,117 +266,221 @@ def _row_of(db, r: InternshipRecord) -> dict:
     return _row(r, stu, batch_name, class_name=class_name)
 
 
-def _procurement_row_facts(db, records: list[InternshipRecord], students: dict[int, StudentProfile]) -> dict[int, dict]:
-    """Batch-load AP07 facts so list and Excel share one authoritative row contract."""
+def _active_roster_plans():
+    plan_batch = aliased(InternshipBatch)
+    return select(InternshipPlanAssignment, InternshipBatchPlan).join(
+        InternshipBatchPlan, InternshipBatchPlan.id == InternshipPlanAssignment.plan_id,
+    ).join(plan_batch, and_(plan_batch.id == InternshipBatchPlan.batch_id,
+        plan_batch.tenant_id == _tid(), plan_batch.is_deleted.is_(False)),
+    ).where(
+        InternshipPlanAssignment.tenant_id == _tid(), InternshipPlanAssignment.is_deleted.is_(False),
+        InternshipPlanAssignment.status == "ACTIVE", InternshipBatchPlan.tenant_id == _tid(),
+        InternshipBatchPlan.is_deleted.is_(False), InternshipBatchPlan.status == "PUBLISHED",
+        InternshipBatchPlan.batch_id == InternshipPlanAssignment.plan_batch_id,
+    )
+
+
+def _procurement_row_facts(db, records, students):
+    """Page-bounded one-to-many facts; never duplicate a student to paginate."""
+    from app.modules.internship.services.internship_plan_service import PLAN_TYPES
+    from app.modules.internship.services.internship_agreement_service import STATUS_LABEL as AGREEMENT_LABEL
     record_ids = [int(row.id) for row in records]
     if not record_ids:
         return {}
-
-    from app.modules.internship.services.internship_stats_service import _latest_approved_application_facts
-    applications = _latest_approved_application_facts(db, record_ids)
-
-    agreements = db.scalars(select(InternshipAgreement).where(
-        InternshipAgreement.tenant_id == _tid(),
-        InternshipAgreement.internship_id.in_(record_ids),
+    plans = {}
+    owners = {r.id: r for r in records}
+    for assignment, plan in db.execute(_active_roster_plans().where(
+        InternshipPlanAssignment.internship_id.in_(record_ids),
+    ).order_by(InternshipPlanAssignment.is_primary.desc(), InternshipPlanAssignment.assigned_at, InternshipPlanAssignment.id)):
+        owner = owners.get(assignment.internship_id)
+        if owner is not None and owner.student_id == assignment.student_id:
+            plans.setdefault(owner.id, []).append(plan)
+    agreements = {}
+    for row in db.scalars(select(InternshipAgreement).where(
+        InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id.in_(record_ids),
         InternshipAgreement.is_deleted.is_(False),
-    ).order_by(InternshipAgreement.internship_id, InternshipAgreement.id.desc())).all()
-    agreement_by_record = {}
-    for row in agreements:
-        agreement_by_record.setdefault(int(row.internship_id), row)
-
-    rotations = db.scalars(select(InternshipRotation).where(
-        InternshipRotation.tenant_id == _tid(),
-        InternshipRotation.internship_id.in_(record_ids),
+    ).order_by(InternshipAgreement.id.desc())):
+        owner = owners.get(row.internship_id)
+        if owner is not None and row.student_id == owner.student_id and row.batch_id in (None, owner.batch_id):
+            agreements.setdefault(row.internship_id, row)
+    rotations = {}
+    for row in db.scalars(select(InternshipRotation).where(
+        InternshipRotation.tenant_id == _tid(), InternshipRotation.internship_id.in_(record_ids),
         InternshipRotation.is_deleted.is_(False),
-    ).order_by(InternshipRotation.internship_id, InternshipRotation.rotation_seq)).all()
-    rotations_by_record = {}
-    for row in rotations:
-        rotations_by_record.setdefault(int(row.internship_id), []).append(row)
-
-    payroll_rows = db.execute(select(
-        InternshipPayrollStatement,
-        InternshipPayrollVersion,
-    ).join(
-        InternshipPayrollVersion,
-        InternshipPayrollVersion.id == InternshipPayrollStatement.current_version_id,
+    ).order_by(InternshipRotation.rotation_seq, InternshipRotation.id)):
+        rotations.setdefault(row.internship_id, []).append(row)
+    payrolls = {}
+    for statement, version in db.execute(select(InternshipPayrollStatement, InternshipPayrollVersion).join(
+        InternshipPayrollVersion, and_(InternshipPayrollVersion.id == InternshipPayrollStatement.current_version_id,
+                                      InternshipPayrollVersion.statement_id == InternshipPayrollStatement.id),
     ).where(
-        InternshipPayrollStatement.tenant_id == _tid(),
-        InternshipPayrollStatement.internship_id.in_(record_ids),
-        InternshipPayrollStatement.is_deleted.is_(False),
-        InternshipPayrollVersion.tenant_id == _tid(),
-        InternshipPayrollVersion.is_current.is_(True),
-        InternshipPayrollVersion.status == "APPROVED",
+        InternshipPayrollStatement.tenant_id == _tid(), InternshipPayrollStatement.internship_id.in_(record_ids),
+        InternshipPayrollStatement.is_deleted.is_(False), InternshipPayrollVersion.tenant_id == _tid(),
+        InternshipPayrollVersion.is_current.is_(True), InternshipPayrollVersion.status == "APPROVED",
         InternshipPayrollVersion.is_deleted.is_(False),
-    ).order_by(
-        InternshipPayrollStatement.internship_id,
-        InternshipPayrollStatement.pay_month.desc(),
-    )).all()
-    payroll_by_record = {}
-    for statement, version in payroll_rows:
-        payroll_by_record.setdefault(int(statement.internship_id), (statement, version))
-
-    # Organization labels stay in the student master domain; no orientation dependency.
-    major_ids = {int(stu.major_id) for stu in students.values() if getattr(stu, "major_id", None)}
-    class_ids = {int(stu.class_id) for stu in students.values() if getattr(stu, "class_id", None)}
-    majors = {
-        int(row.id): row for row in db.scalars(select(Major).where(
-            Major.tenant_id == _tid(), Major.id.in_(major_ids or {-1}), Major.is_deleted.is_(False)
-        )).all()
-    }
-    classes = {
-        int(row.id): row for row in db.scalars(select(SchoolClass).where(
-            SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(class_ids or {-1}), SchoolClass.is_deleted.is_(False)
-        )).all()
-    }
-
+    ).order_by(InternshipPayrollStatement.pay_month.desc(), InternshipPayrollStatement.id.desc())):
+        owner = owners.get(statement.internship_id)
+        if owner is not None and statement.student_id == owner.student_id and statement.batch_id in (None, owner.batch_id):
+            payrolls.setdefault(statement.internship_id, (statement, version))
     result = {}
     for record in records:
-        rid = int(record.id)
-        student = students.get(record.student_id)
-        app = applications.get(rid)
-        agreement = agreement_by_record.get(rid)
-        rotation_rows = rotations_by_record.get(rid, [])
-        payroll = payroll_by_record.get(rid)
-        rotation_parts = []
-        for row in rotation_rows:
-            score = "未评分" if row.total_score is None else f"{float(row.total_score):.1f}分"
-            rotation_parts.append(f"第{int(row.rotation_seq)}轮 {row.department_name} {score}")
-        major = majors.get(int(student.major_id)) if student and student.major_id else None
-        cls = classes.get(int(student.class_id)) if student and student.class_id else None
-        latest_statement, latest_version = payroll if payroll else (None, None)
+        rid = record.id
+        related_plans = plans.get(rid, [])
+        related_rotations = [r for r in rotations.get(rid, []) if r.student_id == record.student_id and r.batch_id == record.batch_id]
+        agreement = agreements.get(rid)
+        if agreement is not None and agreement.student_id != record.student_id:
+            agreement = None
+        statement, version = payrolls.get(rid, (None, None))
+        rotation_info = []
+        rotation_scores = []
+        rotation_labels = {"PLANNED":"待轮岗", "ACTIVE":"轮岗中", "COMPLETED":"已完成", "CANCELLED":"已取消"}
+        for rotation in related_rotations:
+            prefix = f"第{rotation.rotation_seq}轮 {rotation.department_name}"
+            rotation_info.append(f"{prefix} · {rotation.start_date}～{rotation.end_date} · 指导：{rotation.mentor_name} · {rotation_labels.get(rotation.status, '状态待确认')}")
+            score = '未评分' if rotation.total_score is None else f"{float(rotation.total_score):.1f}分"
+            rotation_scores.append(prefix + ' ' + score)
         result[rid] = {
-            "grade": student.grade if student else "",
-            "majorName": major.major_name if major else "",
-            "classNameFull": cls.class_name if cls else "",
-            "sourceRegion": (student.source_region or "未采集") if student else "未采集",
-            "companyCreditCode": str(app.company_credit_code or "") if app else "",
-            "companyNature": app.company_nature or "" if app else "",
-            "companyIndustry": app.company_industry or "" if app else "",
-            "companyRegisteredAddress": app.company_registered_address or "" if app else "",
-            "workCountry": app.work_country or "" if app else "",
-            "workProvince": app.work_province or "" if app else "",
-            "workCity": app.work_city or "" if app else "",
-            "workDistrict": app.work_district or "" if app else "",
-            "internshipDepartment": app.internship_department or "" if app else "",
-            "positionCategory": app.position_category or "" if app else "",
-            "majorMatch": app.major_match if app else None,
-            "majorMatchLabel": ("对口" if app and app.major_match is True else
-                                "不对口" if app and app.major_match is False else "未确认"),
-            "agreedSalary": float(app.agreed_salary) if app and app.agreed_salary is not None else None,
-            "agreedSalaryCurrency": "CNY" if app and app.agreed_salary is not None else "",
-            "registryVerificationStatus": app.registry_verification_status if app else "",
-            "agreementStatus": agreement.status if agreement else "",
-            "agreementFileId": str(agreement.file_id or "") if agreement else "",
-            "rotationCount": len(rotation_rows),
-            "rotationScoreSummary": "；".join(rotation_parts),
-            "latestPayrollMonth": latest_statement.pay_month if latest_statement else "",
-            "latestActualSalary": float(latest_version.actual_amount) if latest_version else None,
-            "latestActualSalaryCurrency": latest_version.currency if latest_version else "",
+            "planNames": "；".join(p.title for p in related_plans),
+            "planIds": [str(p.id) for p in related_plans],
+            "internshipTypes": list(dict.fromkeys(p.internship_type for p in related_plans if p.internship_type)),
+            "internshipTypeLabel": "；".join(dict.fromkeys(PLAN_TYPES.get(p.internship_type, '类型待确认') for p in related_plans)),
+            "agreementStatus": agreement.status if agreement else "NONE",
+            "agreementStatusLabel": AGREEMENT_LABEL.get(agreement.status, '状态待确认') if agreement else '未提交协议',
+            "agreementFileId": str(agreement.file_id) if agreement and agreement.file_id else None,
+            "rotationCount": len(related_rotations), "rotationInfo": "；".join(rotation_info),
+            "rotationScoreSummary": "；".join(rotation_scores),
+            "latestPayrollMonth": statement.pay_month if statement else "",
+            "latestActualSalary": float(version.actual_amount) if version and version.actual_amount is not None else None,
+            "latestActualSalaryCurrency": version.currency if version else "",
+            "latestActualSalaryCurrencyLabel": _currency_label(version.currency) if version else "",
         }
     return result
 
 
-# ═══════════ 列表 / 详情 ═══════════
+def _currency_label(currency):
+    return {"CNY":"人民币", "USD":"美元", "EUR":"欧元", "HKD":"港币", "JPY":"日元"}.get(currency, "其他币种")
+
+
+def _roster_query(db, *, batch_id=None, all_batches=False, keyword=None, class_id=None,
+                  status=None, risk_level=None, eligibility=None, destination=None,
+                  has_position=None, has_advisor=None, source_region=None, roster_filters=None, user=None):
+    """Trusted column predicates and scope are applied before COUNT/LIMIT."""
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+    R, S = InternshipRecord, StudentProfile
+    direct_major, class_major = aliased(Major), aliased(Major)
+    direct_college, major_college, class_college = aliased(College), aliased(College), aliased(College)
+    head, advisor = aliased(User), aliased(User)
+    snap = aliased(InternshipPlacementSnapshot)
+    current_app, latest_app = aliased(InternshipApplication), aliased(InternshipApplication)
+    latest_id = select(func.max(InternshipApplication.id)).where(
+        InternshipApplication.tenant_id == _tid(), InternshipApplication.record_id == R.id,
+        InternshipApplication.student_id == R.student_id, InternshipApplication.is_deleted.is_(False),
+        or_(InternshipApplication.batch_id == R.batch_id, InternshipApplication.batch_id.is_(None)),
+    ).correlate(R).scalar_subquery()
+    app_id = func.coalesce(snap.application_id, R.current_application_id)
+    fields = {
+        "grade": func.coalesce(func.nullif(S.grade, ''), SchoolClass.grade),
+        "collegeName": func.coalesce(direct_college.college_name, major_college.college_name, class_college.college_name),
+        "majorName": func.coalesce(direct_major.major_name, class_major.major_name),
+        "className": SchoolClass.class_name, "headTeacherName": head.real_name,
+        "advisorName": func.coalesce(advisor.real_name, R.advisor_name),
+        "enterpriseName": case((snap.id.is_not(None), snap.company_name), else_=R.enterprise_name),
+        "positionName": case((snap.id.is_not(None), snap.position_title), else_=R.position_name),
+        "sourceRegion": S.source_region, "batchName": InternshipBatch.batch_name,
+        "companyCreditCode": case((snap.id.is_not(None), snap.company_credit_code), else_=current_app.company_credit_code),
+        "companyNature": func.coalesce(current_app.company_nature, EmpCompany.nature),
+        "companyIndustry": func.coalesce(current_app.company_industry, EmpCompany.industry),
+        "companyRegisteredAddress": func.coalesce(current_app.company_registered_address, EmpCompany.address),
+        "workCountry": current_app.work_country, "workProvince": current_app.work_province,
+        "workCity": current_app.work_city, "workDistrict": current_app.work_district,
+        "workAddress": case((snap.id.is_not(None), snap.work_address), else_=current_app.work_address),
+        "workLocation": case((snap.id.is_not(None), snap.work_location), else_=current_app.work_address),
+        "internshipDepartment": current_app.internship_department,
+        "positionCategory": case((snap.id.is_not(None), snap.position_category), else_=current_app.position_category),
+        "majorMatch": current_app.major_match, "internshipMode": current_app.internship_mode,
+        "agreedSalary": case((snap.id.is_not(None), snap.remuneration_amount), else_=current_app.agreed_salary),
+        "agreedSalaryCycle": snap.remuneration_cycle,
+        "registryVerificationStatus": current_app.registry_verification_status,
+        "mentorName": func.coalesce(snap.enterprise_mentor_name, current_app.enterprise_mentor_name, R.enterprise_mentor_name),
+        "applicationStatus": latest_app.status, "sourceApplicationId": current_app.id,
+    }
+    location_columns = [fields[key] for key in ['workCountry','workProvince','workCity','workDistrict','workLocation','workAddress']]
+    location_parts = [func.nullif(column, '') for column in location_columns]
+    fields['workLocation'] = func.concat_ws(' ', *(func.nullif(column, location_columns[index-1]) if index else column
+        for index, column in enumerate(location_parts)))
+    q = select(R, *(value.label(key) for key, value in fields.items())).join(S, and_(
+        S.id == R.student_id, S.tenant_id == _tid(), S.is_deleted.is_(False),
+    )).join(InternshipBatch, and_(InternshipBatch.id == R.batch_id, InternshipBatch.tenant_id == _tid(), InternshipBatch.is_deleted.is_(False)))
+    for model, key in [(SchoolClass, S.class_id), (direct_major, S.major_id), (class_major, SchoolClass.major_id),
+                       (direct_college, S.college_id), (major_college, direct_major.college_id), (class_college, class_major.college_id),
+                       (head, SchoolClass.head_teacher_id), (advisor, R.advisor_user_id), (EmpCompany, R.enterprise_id)]:
+        q = q.outerjoin(model, and_(model.id == key, model.tenant_id == _tid(), model.is_deleted.is_(False)))
+    q = q.outerjoin(snap, and_(snap.id == R.current_placement_snapshot_id, snap.tenant_id == _tid(), snap.record_id == R.id,
+        snap.batch_id == R.batch_id, snap.company_id == R.enterprise_id, snap.position_id == R.position_id))
+    q = q.outerjoin(current_app, and_(current_app.id == app_id, current_app.tenant_id == _tid(), current_app.record_id == R.id,
+        current_app.student_id == R.student_id, current_app.is_deleted.is_(False), current_app.status == 'APPROVED',
+        or_(and_(R.position_id.is_not(None), current_app.position_id == R.position_id),
+            and_(R.position_id.is_(None), R.destination_type == 'SELF_ARRANGED', current_app.application_type == 'SELF_ARRANGED')),
+        or_(current_app.batch_id == R.batch_id, current_app.batch_id.is_(None))))
+    q = q.outerjoin(latest_app, and_(latest_app.id == latest_id, latest_app.record_id == R.id,
+        latest_app.tenant_id == _tid(), latest_app.student_id == R.student_id)).where(R.tenant_id == _tid(), R.is_deleted.is_(False))
+    if not all_batches:
+        q = q.where(R.batch_id == resolve_batch(db, batch_id, for_write=False).id)
+    q = apply_internship_record_scope(q, user)
+    for column, value in [(R.status,status), (R.risk_level,risk_level), (R.eligibility_status,eligibility),
+                          (R.destination_type,destination), (S.class_id,_as_id(class_id) if class_id else None)]:
+        if value is not None and value != '':
+            q = q.where(column == value)
+    if keyword:
+        q = q.where(or_(S.real_name.contains(keyword, autoescape=True), S.student_no.contains(keyword, autoescape=True)))
+    if source_region:
+        q = q.where(S.source_region.contains(source_region, autoescape=True))
+    for column, value in [(R.position_id,has_position), (R.advisor_user_id,has_advisor)]:
+        if value is not None:
+            q = q.where(column.is_not(None) if value else column.is_(None))
+    filters = roster_filters or {}
+    text_fields = {"studentName":S.real_name, "studentNo":S.student_no, **fields}
+    for key in ['studentName','studentNo','grade','collegeName','majorName','className','internshipMode','enterpriseName',
+                'companyCreditCode','positionName','headTeacherName','advisorName','mentorName','companyNature','companyIndustry',
+                'internshipDepartment','positionCategory']:
+        if filters.get(key):
+            q = q.where(text_fields[key].contains(filters[key], autoescape=True))
+    if filters.get('workLocation'):
+        q = q.where(fields['workLocation'].contains(filters['workLocation'], autoescape=True))
+    if filters.get('applicationStatus'):
+        q = q.where(func.coalesce(latest_app.status, 'NONE') == filters['applicationStatus'])
+    if filters.get('majorMatch') is not None:
+        q = q.where(fields['majorMatch'] == filters['majorMatch'])
+    for key, column, lower in [('salaryMin',fields['agreedSalary'],True), ('salaryMax',fields['agreedSalary'],False)]:
+        if filters.get(key) is not None:
+            q = q.where(column >= filters[key] if lower else column <= filters[key])
+    if filters.get('planName') or filters.get('internshipType'):
+        plans = _active_roster_plans().where(InternshipPlanAssignment.internship_id == R.id, InternshipPlanAssignment.student_id == R.student_id)
+        if filters.get('planName'):
+            plans = plans.where(InternshipBatchPlan.title.contains(filters['planName'], autoescape=True))
+        if filters.get('internshipType'):
+            plans = plans.where(InternshipBatchPlan.internship_type == filters['internshipType'])
+        q = q.where(plans.correlate(R).exists())
+    if any(filters.get(k) is not None and filters[k] != '' for k in ['rotationInfo','rotationScoreMin','rotationScoreMax']):
+        rotations = select(InternshipRotation.id).where(InternshipRotation.tenant_id == _tid(),
+            InternshipRotation.internship_id == R.id, InternshipRotation.student_id == R.student_id,
+            InternshipRotation.batch_id == R.batch_id, InternshipRotation.is_deleted.is_(False))
+        if filters.get('rotationInfo'):
+            rotations = rotations.where(or_(InternshipRotation.department_name.contains(filters['rotationInfo'], autoescape=True),
+                InternshipRotation.mentor_name.contains(filters['rotationInfo'], autoescape=True)))
+        for key, lower in [('rotationScoreMin',True),('rotationScoreMax',False)]:
+            if filters.get(key) is not None:
+                rotations = rotations.where(InternshipRotation.total_score >= filters[key] if lower else InternshipRotation.total_score <= filters[key])
+        q = q.where(rotations.correlate(R).exists())
+    if filters.get('agreementStatus'):
+        agreement_status = select(InternshipAgreement.status).where(InternshipAgreement.tenant_id == _tid(),
+            InternshipAgreement.internship_id == R.id, InternshipAgreement.student_id == R.student_id,
+            or_(InternshipAgreement.batch_id == R.batch_id, InternshipAgreement.batch_id.is_(None)),
+            InternshipAgreement.is_deleted.is_(False)).order_by(InternshipAgreement.id.desc()).limit(1).correlate(R).scalar_subquery()
+        q = q.where(func.coalesce(agreement_status, 'NONE') == filters['agreementStatus'])
+    return q
+
 
 def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status=None,
                             risk_level=None, eligibility=None, destination=None,
@@ -422,69 +540,37 @@ def _collect_scoped_records(db, *, batch_id, keyword=None, class_id=None, status
 
 def list_students(page: int, page_size: int, keyword=None, class_id=None, status=None,
                   risk_level=None, eligibility=None, destination=None,
-                  has_position=None, has_advisor=None, batch_id=None, source_region=None, user=None) -> tuple[list[dict], int]:
+                  has_position=None, has_advisor=None, batch_id=None, source_region=None, user=None,
+                  *, roster_filters=None, all_batches=False) -> tuple[list[dict], int]:
+    from app.modules.internship.services.internship_application_service import STATUS_LABEL as REVIEW_LABEL
     with session() as db:
-        scope = _current_scope(user)
-        sql_safe = scope.get("mode") != "SCOPED" or (
-            scope.get("by") == "ADVISOR" and scope.get("advisorUserIds"))
-        if sql_safe:
-            from app.modules.internship.services.internship_batch_context import resolve_batch
-            batch = resolve_batch(db, batch_id, for_write=False)
-            q = select(InternshipRecord).where(
-                InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-                InternshipRecord.batch_id == batch.id)
-            if status:
-                q = q.where(InternshipRecord.status == status)
-            if risk_level:
-                q = q.where(InternshipRecord.risk_level == risk_level)
-            if eligibility:
-                q = q.where(InternshipRecord.eligibility_status == eligibility)
-            if destination:
-                q = q.where(InternshipRecord.destination_type == destination)
-            if has_position is True:
-                q = q.where(InternshipRecord.position_id.is_not(None))
-            elif has_position is False:
-                q = q.where(InternshipRecord.position_id.is_(None))
-            if has_advisor is True:
-                q = q.where(InternshipRecord.advisor_user_id.is_not(None))
-            elif has_advisor is False:
-                q = q.where(InternshipRecord.advisor_user_id.is_(None))
-            if scope.get("mode") == "SCOPED":
-                q = q.where(InternshipRecord.advisor_user_id.in_(scope["advisorUserIds"]))
-            if keyword or class_id or source_region:
-                q = q.join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
-                    StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))
-                if source_region:
-                    q = q.where(StudentProfile.source_region.contains(source_region.strip(), autoescape=True))
-                if keyword:
-                    like = f"%{keyword.strip()}%"
-                    q = q.where(or_(StudentProfile.real_name.like(like), StudentProfile.student_no.like(like)))
-                if class_id:
-                    q = q.where(StudentProfile.class_id == _as_id(class_id))
-            total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
-            offset = (max(1, page) - 1) * page_size
-            kept = db.scalars(q.order_by(InternshipRecord.updated_at.desc(), InternshipRecord.id.desc())
-                              .offset(offset).limit(page_size)).all()
-        else:
-            kept = _collect_scoped_records(
-                db, batch_id=batch_id, keyword=keyword, class_id=class_id, status=status,
-                risk_level=risk_level, eligibility=eligibility, destination=destination,
-                has_position=has_position, has_advisor=has_advisor, source_region=source_region, user=user)
-            total = len(kept)
-            start = (max(1, page) - 1) * page_size
-            kept = kept[start:start + page_size]
-        smap = _students_map(db, [r.student_id for r in kept])
-        bmap = _batch_names(db, [r.batch_id for r in kept])
-        from app.modules.internship.services.internship_service import resolve_student_class_college_names
-        procurement = _procurement_row_facts(db, kept, smap)
+        q = _roster_query(db, batch_id=batch_id, all_batches=all_batches, keyword=keyword, class_id=class_id,
+            status=status, risk_level=risk_level, eligibility=eligibility, destination=destination,
+            has_position=has_position, has_advisor=has_advisor, source_region=source_region, roster_filters=roster_filters, user=user)
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        if page_size == 0:
+            return [], total
+        fetched = db.execute(q.order_by(InternshipRecord.updated_at.desc(), InternshipRecord.id.desc()).offset((page-1)*page_size).limit(page_size)).all()
+        records = [row[0] for row in fetched]
+        students = _students_map(db, [r.student_id for r in records])
+        facts = _procurement_row_facts(db, records, students)
         items = []
-        for r in kept:
-            stu = smap.get(r.student_id)
-            cn, college_name = resolve_student_class_college_names(db, stu)
-            row = _row(r, stu, bmap.get(r.batch_id, ""), class_name=cn)
-            row["collegeName"] = college_name or ""
-            row.update(procurement.get(int(r.id), {}))
-            items.append(row)
+        for row in fetched:
+            record = row[0]
+            values = dict(row._mapping)
+            values.pop('InternshipRecord')
+            item = _row(record, students.get(record.student_id), class_name=values.get('className') or '')
+            item.update(values)
+            item.update(facts.get(record.id, {}))
+            item['sourceRegion'] = item.get('sourceRegion') or '未采集'
+            item['sourceApplicationId'] = str(item['sourceApplicationId']) if item.get('sourceApplicationId') else None
+            item['agreedSalary'] = float(item['agreedSalary']) if item.get('agreedSalary') is not None else None
+            item['agreedSalaryCurrency'] = 'CNY' if item['agreedSalary'] is not None else ''
+            item['agreedSalaryCurrencyLabel'] = '人民币' if item['agreedSalary'] is not None else ''
+            item['majorMatchLabel'] = '对口' if item.get('majorMatch') is True else '不对口' if item.get('majorMatch') is False else '未确认'
+            item['applicationStatusLabel'] = REVIEW_LABEL.get(item.get('applicationStatus'), '无申请记录' if not item.get('applicationStatus') else '状态待确认')
+            item['registryVerificationStatusLabel'] = {'UNVERIFIED':'未核验', 'VERIFIED':'已核验', 'FAILED':'核验未通过'}.get(item.get('registryVerificationStatus'), '未核验')
+            items.append(item)
         return items, total
 
 
@@ -492,7 +578,11 @@ def get_student(rec_id, user=None) -> dict:
     """详情：主档 + 企业/岗位/导师关联 + 资格/去向/状态 + 联系电话脱敏 + 审计。"""
     with session() as db:
         r = _get(db, rec_id)
-        stu = db.get(StudentProfile, r.student_id)
+        from app.modules.internship.services.internship_batch_context import resolve_batch
+        batch = resolve_batch(db, r.batch_id, for_write=False)
+        stu = tenant_get(db, StudentProfile, r.student_id)
+        if not stu or stu.is_deleted:
+            raise not_found("学生不存在或不在当前数据范围内")
         if not _rec_in_scope(_current_scope(user), db, r, stu):
             from app.core.exceptions import no_permission
             raise no_permission("该实习学生不在你的数据范围内")
@@ -506,7 +596,7 @@ def get_student(rec_id, user=None) -> dict:
                 company = {"id": str(c.id), "name": c.name, "coopStatus": c.coop_status,
                            "blacklist": bool(c.blacklist)}
         if r.position_id:
-            p = db.get(InternshipPosition, r.position_id)
+            p = tenant_get(db, InternshipPosition, r.position_id)
             if p and not p.is_deleted:
                 position = {"id": str(p.id), "title": p.title, "status": p.status,
                             "workLocation": p.work_location or "",
@@ -517,7 +607,6 @@ def get_student(rec_id, user=None) -> dict:
             InternshipAuditTrail.target_id == r.id).order_by(
             InternshipAuditTrail.occurred_at.desc()).limit(20)).all()
         from app.modules.internship.services.internship_eligibility_result import eligibility_result
-        batch = tenant_get(db, InternshipBatch, r.batch_id) if r.batch_id else None
         return {
             **_row_of(db, r),
             "batchStatus": batch.status if batch else "",
@@ -533,6 +622,11 @@ def get_student(rec_id, user=None) -> dict:
 
 # ═══════════ 建档 / 编辑 ═══════════
 
+def _assert_profile_open_for_new_record(student):
+    if student.status != 'ACTIVE':
+        raise AppException('VALIDATION_ERROR', '学生资料已停用，不能新建实习档案，请先在系统管理核对资料状态')
+
+
 def create_student_record(body, user=None) -> dict:
     from sqlalchemy.exc import IntegrityError
     from app.modules.internship.services.internship_batch_context import resolve_batch
@@ -543,7 +637,10 @@ def create_student_record(body, user=None) -> dict:
             raise not_found("学生不存在或不在当前数据范围内")
         from app.modules.internship.services.internship_service import assert_student_in_scope
         assert_student_in_scope(db, sid, user, "该学生不在你的数据范围内")
+        _assert_profile_open_for_new_record(stu)
         batch = resolve_batch(db, getattr(body, "batchId", None), for_write=True)
+        db.refresh(batch, with_for_update=True)
+        resolve_batch(db, batch.id, for_write=True)
         batch_id = batch.id
         dup = db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == sid,
@@ -551,7 +648,7 @@ def create_student_record(body, user=None) -> dict:
             InternshipRecord.is_deleted.is_(False))).first()
         if dup:
             raise AppException("DATA_CONFLICT", "该学生在此批次已有实习记录")
-        advisor = _advisor(db, getattr(body, "advisorUserId", None), getattr(body, "advisorName", None))
+        advisor = _advisor(db, getattr(body, "advisorUserId", None), getattr(body, "advisorName", None), user=user)
         r = InternshipRecord(
             tenant_id=_tid(), student_id=sid, batch_id=batch_id,
             advisor_user_id=advisor.id if advisor else None,
@@ -560,6 +657,8 @@ def create_student_record(body, user=None) -> dict:
         db.add(r)
         try:
             db.flush()
+            from app.modules.internship.services.internship_plan_assignment_service import ensure_published_primary_for_record_in_tx
+            ensure_published_primary_for_record_in_tx(db, r, user=user)
             _trail(db, r.id, "CREATE", {"studentId": str(sid), "batchId": str(batch_id),
                                           "advisorUserId": str(advisor.id) if advisor else ""})
             db.commit()
@@ -576,9 +675,36 @@ def update_student_record(rec_id, body, user=None) -> dict:
         _require_record_version(r, getattr(body, "expectedVersion", None))
         if r.status == "ARCHIVED":
             raise AppException("DATA_CONFLICT", "已归档记录不可编辑")
+        period_detail = {}
+        start, end = getattr(body, 'internStartDate', None), getattr(body, 'internEndDate', None)
+        if start is not None or end is not None:
+            from datetime import time
+            from app.models import InternshipFinalScore
+            from app.modules.internship.services.internship_student_age import policy_today
+            reason = str(getattr(body, 'periodReason', '') or '').strip()
+            end_changed = end != (r.intern_end_date.date() if r.intern_end_date else None)
+            today = policy_today()
+            if not start or not end or end < start or start > today or (end_changed and end > today) or len(reason) < 5:
+                raise AppException('VALIDATION_ERROR', '请填写完整起止日期、正确的先后顺序和不少于5字的说明；实际开始日期和新填的实际结束日期不能晚于今天')
+            if r.status not in ('ONBOARD', 'ASSESSING'):
+                raise AppException('DATA_CONFLICT', '仅已上岗或考核中的学生可维护实际实习日期')
+            batch = tenant_get(db, InternshipBatch, r.batch_id)
+            if batch and ((batch.start_date and start < batch.start_date.date()) or (batch.end_date and end > batch.end_date.date())):
+                raise AppException('VALIDATION_ERROR', '实际实习日期须在本批次实习期间内')
+            score = db.scalar(select(InternshipFinalScore).where(
+                InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == r.id,
+                InternshipFinalScore.is_deleted.is_(False),
+                InternshipFinalScore.status.in_(('PENDING_PUBLISH', 'PUBLISHED', 'ARCHIVED'))).with_for_update())
+            if score:
+                raise AppException('DATA_CONFLICT', '请先撤回已发布成绩或退回已复核成绩，再维护日期并重新核算', details={'scoreId': str(score.id)})
+            period_detail = {'periodBefore': {'start': _iso(r.intern_start_date), 'end': _iso(r.intern_end_date)},
+                'periodAfter': {'start': start.isoformat(), 'end': end.isoformat()}, 'reason': reason}
+            r.intern_start_date = datetime.combine(start, time.min)
+            if end_changed:
+                r.intern_end_date = datetime.combine(end, time.min)
         before_advisor = r.advisor_user_id
         if getattr(body, "advisorUserId", None) is not None or getattr(body, "advisorName", None) is not None:
-            advisor = _advisor(db, getattr(body, "advisorUserId", None), getattr(body, "advisorName", None))
+            advisor = _advisor(db, getattr(body, "advisorUserId", None), getattr(body, "advisorName", None), user=user)
             r.advisor_user_id = advisor.id if advisor else None
             r.advisor_name = advisor.real_name if advisor else None
         for src, col in [("insurance", "insurance_info"), ("agreement", "agreement_info"),
@@ -587,9 +713,12 @@ def update_student_record(rec_id, body, user=None) -> dict:
             if v is not None:
                 setattr(r, col, v)
         r.version = int(r.version or 0) + 1
+        if before_advisor != r.advisor_user_id:
+            from app.modules.internship.services.internship_todo_helper import handoff_advisor_todos
+            handoff_advisor_todos(db,r,before_advisor,r.advisor_user_id)
         _trail(db, r.id, "UPDATE", {"advisorUserIdBefore": str(before_advisor or ""),
                                       "advisorUserIdAfter": str(r.advisor_user_id or ""),
-                                      "recordVersion": int(r.version or 0)})
+                                      "recordVersion": int(r.version or 0), **period_detail})
         db.commit()
         return _row_of(db, r)
 
@@ -603,17 +732,20 @@ def assign_advisor_in_tx(
     _require_record_version(r, expected_version)
     if r.status == "ARCHIVED":
         raise AppException("DATA_CONFLICT", "已归档记录不可变更指导教师")
-    advisor = _advisor(db, advisor_user_id)
+    advisor = _advisor(db, advisor_user_id, user=user)
     before = r.advisor_user_id
     if before == advisor.id:
         raise AppException("DATA_CONFLICT", "该学生已分配给此指导教师")
     r.advisor_user_id, r.advisor_name = advisor.id, advisor.real_name
     r.version = int(r.version or 0) + 1
+    from app.modules.internship.services.internship_todo_helper import handoff_advisor_todos
+    transferred=handoff_advisor_todos(db,r,before,advisor.id)
     _trail(db, r.id, "ASSIGN_ADVISOR", {
         "fromUserId": str(before or ""),
         "toUserId": str(advisor.id),
         "reason": (reason or "").strip(),
         "recordVersion": int(r.version or 0),
+        "pendingTasksTransferred": transferred,
     })
     return r
 
@@ -766,6 +898,7 @@ def unassign_position_in_tx(db, record: InternshipRecord, expected_version=None,
     record.enterprise_id = None
     record.mentor_contact_id = None
     record.current_placement_snapshot_id = None
+    record.current_application_id = None
     record.position_name = None
     record.enterprise_name = None
     record.enterprise_mentor_name = None
@@ -853,7 +986,8 @@ def set_status(rec_id, action: str, reason: str = "", user=None, expected_versio
                 raise AppException("DATA_CONFLICT", "上岗前置未完成：" + "；".join(missing))
             r.status = "ONBOARD"
             if not r.intern_start_date:
-                r.intern_start_date = datetime.utcnow()
+                from app.modules.internship.services.internship_student_age import policy_today
+                r.intern_start_date = datetime.combine(policy_today(), datetime.min.time())
         elif action == "ASSESS":
             if r.status != "ONBOARD":
                 raise AppException("DATA_CONFLICT", "仅「在岗中」可进入考核")
@@ -912,6 +1046,13 @@ def set_destination(rec_id, destination: str, reason: str = "", user=None, expec
         _require_record_version(r, expected_version)
         if r.position_id:
             raise AppException("DATA_CONFLICT", "已分配岗位，请先退岗再改去向")
+        if r.destination_type != destination:
+            r.current_application_id = None
+            r.current_placement_snapshot_id = None
+            r.enterprise_id = None
+            r.position_name = r.enterprise_name = r.enterprise_mentor_name = None
+            r.mentor_contact_id = None
+            r.intern_start_date = r.intern_end_date = None
         r.destination_type = destination
         r.version = int(r.version or 0) + 1
         _trail(db, r.id, "DESTINATION", {"destination": destination, "reason": reason,
@@ -946,11 +1087,12 @@ def student_stats(batch_id=None, keyword=None, class_id=None, status=None,
 # ═══════════ AP04 实习分配 Excel：师生分配 + 企业岗位分配 ═══════════
 
 ALLOCATION_IMPORT_HEADERS = [
-    "学号", "指导教师", "企业名称", "统一社会信用代码", "岗位名称", "备注",
+    "学号", "教工号", "指导教师", "企业名称", "统一社会信用代码", "岗位名称", "备注",
 ]
 ALLOCATION_IMPORT_REQUIRED = ["学号"]
 ALLOCATION_IMPORT_HEADER_MAP = {
     "学号": "studentNo",
+    "教工号": "teacherNo",
     "指导教师": "advisorName",
     "企业名称": "companyName",
     "统一社会信用代码": "companyCreditCode",
@@ -958,12 +1100,12 @@ ALLOCATION_IMPORT_HEADER_MAP = {
     "备注": "remark",
 }
 ALLOCATION_IMPORT_SAMPLE = [
-    "2023115001", "刘强", "湖南示例科技有限公司", "91430000EXAMPLE01", "软件开发实习生", "专业方向匹配",
+    "2023115001", "T001", "刘强", "湖南示例科技有限公司", "91430000EXAMPLE01", "软件开发实习生", "专业方向匹配",
 ]
 ALLOCATION_IMPORT_NOTES = [
     "本模板只用于当前批次的分配，不创建学生、不创建企业、不创建岗位。",
     "每行至少填写“指导教师”或“企业+岗位”中的一类；两类都填则同一事务一起办理。",
-    "指导教师须匹配唯一的在职岗位实习指导教师账号。",
+    "师生分配须填教工号，匹配唯一的在职岗位实习指导教师；姓名仅供核对，不凭同名分配。",
     "企业优先按统一社会信用代码匹配；未填信用代码时按企业名称精确匹配。",
     "岗位必须属于当前批次、所填企业，并且处于已上架且有剩余名额状态。",
     "已经上岗或进入考核的学生禁止通过本导入直接换岗，必须走正式实习变更流程。",
@@ -972,6 +1114,24 @@ ALLOCATION_IMPORT_NOTES = [
 
 def _allocation_error(errors: list[dict], row_no: int, field: str, message: str) -> None:
     errors.append({"rowNo": row_no, "field": field, "message": message})
+
+
+def _allocation_advisor(db, row, user=None):
+    staff_no = str(row.get("teacherNo") or "").strip()
+    name = str(row.get("advisorName") or "").strip()
+    if not staff_no:
+        if name:
+            raise AppException("VALIDATION_ERROR", "请填写指导教师教工号，姓名仅用于核对")
+        return None
+    staff = db.scalars(select(StaffProfile).where(
+        StaffProfile.tenant_id == _tid(), StaffProfile.staff_no == staff_no,
+        StaffProfile.status == "ACTIVE", StaffProfile.is_deleted.is_(False))).all()
+    if len(staff) != 1 or not staff[0].user_id:
+        raise AppException("VALIDATION_ERROR", "教工号未匹配到唯一的在职指导教师账号")
+    advisor = _advisor(db, staff[0].user_id, user=user)
+    if name and name != advisor.real_name:
+        raise AppException("VALIDATION_ERROR", "指导教师姓名与教工号不一致")
+    return advisor
 
 
 def _allocation_company(db, *, name: str = "", credit_code: str = ""):
@@ -1030,6 +1190,7 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
         valid = 0
         position_demand: dict[int, int] = {}
         resolved_positions: dict[int, InternshipPosition] = {}
+        preview_rows = [dict(row or {}) for row in rows or []]
 
         for index, raw in enumerate(rows or []):
             row_no = index + 1
@@ -1055,11 +1216,14 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
                 continue
             try:
                 _assert_write_scope(db, record, user)
+                if "expectedVersion" in row:
+                    _require_record_version(record, row["expectedVersion"])
             except AppException as exc:
                 _allocation_error(errors, row_no, "studentNo", exc.message)
                 continue
+            preview_rows[index]["expectedVersion"] = int(record.version or 0)
 
-            wants_advisor = bool(advisor_name)
+            wants_advisor = bool(advisor_name or row.get("teacherNo"))
             wants_position = bool(company_name or credit_code or position_name)
             advisor_changed = False
             position_changed = False
@@ -1069,7 +1233,7 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
 
             if wants_advisor:
                 try:
-                    advisor = _advisor(db, advisor_name=advisor_name)
+                    advisor = _allocation_advisor(db, row, user=user)
                     advisor_changed = int(record.advisor_user_id or 0) != int(advisor.id)
                 except AppException as exc:
                     _allocation_error(errors, row_no, "advisorName", exc.message)
@@ -1080,6 +1244,13 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
                 if not company_name and not credit_code:
                     _allocation_error(errors, row_no, "companyName", "企业分配时企业名称或统一社会信用代码至少填写一项")
                 company = _allocation_company(db, name=company_name, credit_code=credit_code)
+                if company:
+                    from app.modules.internship.services.internship_enterprise_service import assert_company_visible
+                    try:
+                        assert_company_visible(db, company.id, user)
+                    except AppException as exc:
+                        _allocation_error(errors, row_no, "companyName", exc.message)
+                        continue
                 if not company:
                     _allocation_error(errors, row_no, "companyName", "企业未唯一匹配，请核对名称/统一社会信用代码")
                 elif credit_code and company_name and company.name != company_name:
@@ -1152,6 +1323,7 @@ def allocation_import_dry_run(rows: list[dict], batch_id=None, user=None) -> dic
             "validRows": valid,
             "invalidRows": len({int(e["rowNo"]) for e in errors}),
             "errors": errors,
+            "rows": preview_rows,
             **batch_public_fields(batch),
         }
 
@@ -1162,6 +1334,8 @@ def allocation_import_confirm(rows: list[dict], batch_id=None, user=None) -> dic
         batch_public_fields, resolve_batch,
     )
 
+    if any("expectedVersion" not in (row or {}) for row in rows or []):
+        raise AppException("DATA_CONFLICT", "分配导入缺少预校验版本，请重新上传并核对后确认")
     pre = allocation_import_dry_run(rows, batch_id=batch_id, user=user)
     if pre["invalidRows"] > 0:
         raise AppException("DATA_CONFLICT", "存在未通过预校验的分配行，禁止确认导入")
@@ -1194,10 +1368,11 @@ def allocation_import_confirm(rows: list[dict], batch_id=None, user=None) -> dic
             if not record:
                 raise AppException("DATA_CONFLICT", f"确认导入时学生已不在当前批次：{student_no}")
             _assert_write_scope(db, record, user)
+            _require_record_version(record, row.get("expectedVersion"))
 
             advisor_name = str(row.get("advisorName") or "").strip()
-            if advisor_name:
-                advisor = _advisor(db, advisor_name=advisor_name)
+            if advisor_name or row.get("teacherNo"):
+                advisor = _allocation_advisor(db, row, user=user)
                 if int(record.advisor_user_id or 0) != int(advisor.id):
                     assign_advisor_in_tx(
                         db, record, advisor.id, str(row.get("remark") or "").strip(),
@@ -1225,7 +1400,7 @@ def allocation_import_confirm(rows: list[dict], batch_id=None, user=None) -> dic
             processed += 1
             _trail(db, record.id, "ALLOCATION_IMPORT", {
                 "studentNo": student_no,
-                "advisorAssigned": bool(advisor_name),
+                "advisorAssigned": bool(advisor_name or row.get("teacherNo")),
                 "positionAssigned": bool(position_name or company_name or credit_code),
                 "batchId": str(batch.id),
                 "remark": str(row.get("remark") or "").strip(),
@@ -1258,8 +1433,10 @@ def _parse_date(s):
     return False
 
 
-def import_dry_run(rows: list[dict], batch_id=None) -> dict:
+def import_dry_run(rows: list[dict], batch_id=None, user=None) -> dict:
     from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
+    from app.modules.internship.services.internship_service import assert_admin_tenant
+    assert_admin_tenant(user, '实习学生批量导入')
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=True)
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
@@ -1267,12 +1444,6 @@ def import_dry_run(rows: list[dict], batch_id=None) -> dict:
         existing_sids = {r.student_id for r in db.scalars(select(InternshipRecord).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
             InternshipRecord.batch_id == batch.id)).all()}
-        eligible_ids = _advisor_role_user_ids(db)
-        advisors_by_name: dict[str, list[User]] = {}
-        for teacher in db.scalars(select(User).where(
-                User.tenant_id == _tid(), User.id.in_(eligible_ids), User.status == "ACTIVE",
-                User.is_deleted.is_(False))).all():
-            advisors_by_name.setdefault((teacher.real_name or "").strip(), []).append(teacher)
         errors, seen, valid = [], set(), 0
         for i, r in enumerate(rows or []):
             row_no = i + 1
@@ -1284,14 +1455,20 @@ def import_dry_run(rows: list[dict], batch_id=None) -> dict:
             if not stu:
                 errors.append({"rowNo": row_no, "field": "studentNo", "message": f"未匹配到学生：{no}"})
                 continue
+            try:
+                _assert_profile_open_for_new_record(stu)
+            except AppException as exc:
+                errors.append({'rowNo':row_no,'field':'studentNo','message':exc.message})
+                continue
             if stu.id in existing_sids or no in seen:
                 errors.append({"rowNo": row_no, "field": "studentNo",
                                "message": f"该学生在本批次已有实习记录：{no}"})
                 continue
-            advisor_name = (r.get("advisorName") or "").strip()
-            if advisor_name and len(advisors_by_name.get(advisor_name, [])) != 1:
+            try:
+                _allocation_advisor(db, r, user=user)
+            except AppException as exc:
                 errors.append({"rowNo": row_no, "field": "advisorName",
-                               "message": "指导教师未匹配到唯一的在职岗位实习指导教师账号"})
+                               "message": exc.message})
                 continue
             bad_date = False
             for fld in ("startDate", "endDate"):
@@ -1313,11 +1490,13 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
     from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
     from app.modules.internship.services.internship_service import assert_admin_tenant
     assert_admin_tenant(user, "实习学生批量导入")
-    pre = import_dry_run(rows, batch_id=batch_id)
+    pre = import_dry_run(rows, batch_id=batch_id, user=user)
     if pre["invalidRows"] > 0:
         raise AppException("DATA_CONFLICT", "存在未通过预校验的行，禁止确认导入")
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=True)
+        db.refresh(batch, with_for_update=True)
+        resolve_batch(db, batch.id, for_write=True)
         profiles = {s.student_no: s for s in db.scalars(select(StudentProfile).where(
             StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))).all()}
         created, skipped, failed = 0, 0, 0
@@ -1327,6 +1506,7 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
                 if not stu:
                     failed += 1
                     continue
+                _assert_profile_open_for_new_record(stu)
                 dup = db.scalars(select(InternshipRecord).where(
                     InternshipRecord.tenant_id == _tid(), InternshipRecord.student_id == stu.id,
                     InternshipRecord.batch_id == batch.id,
@@ -1335,7 +1515,7 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
                     skipped += 1
                     continue
                 sd, ed = _parse_date(r.get("startDate")), _parse_date(r.get("endDate"))
-                advisor = _advisor(db, advisor_name=r.get("advisorName"))
+                advisor = _allocation_advisor(db, r, user=user)
                 rec = InternshipRecord(
                     tenant_id=_tid(), student_id=stu.id, batch_id=batch.id,
                     advisor_user_id=advisor.id if advisor else None,
@@ -1346,6 +1526,8 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
                     destination_type="NONE", risk_level="NONE")
                 db.add(rec)
                 db.flush()
+                from app.modules.internship.services.internship_plan_assignment_service import ensure_published_primary_for_record_in_tx
+                ensure_published_primary_for_record_in_tx(db, rec, user=user)
                 _trail(db, rec.id, "IMPORT", {"studentNo": stu.student_no,
                                               "batchId": str(batch.id),
                                               "advisorUserId": str(rec.advisor_user_id or ""),
@@ -1359,18 +1541,18 @@ def import_confirm(rows: list[dict], batch_id=None, user=None) -> dict:
                 **batch_public_fields(batch)}
 
 
-IMPORT_HEADERS = ["学号", "指导教师", "实习开始日期", "实习结束日期", "备注"]
+IMPORT_HEADERS = ["学号", "教工号", "指导教师", "实习开始日期", "实习结束日期", "备注"]
 IMPORT_REQUIRED = ["学号"]
 IMPORT_HEADER_MAP = {
-    "学号": "studentNo", "指导教师": "advisorName",
+    "学号": "studentNo", "教工号": "teacherNo", "指导教师": "advisorName",
     "实习开始日期": "startDate", "实习结束日期": "endDate", "备注": "remark",
 }
-IMPORT_SAMPLE = ["2023115001", "刘强", "2026-03-02", "2026-08-28", ""]
+IMPORT_SAMPLE = ["2023115001", "T001", "刘强", "2026-03-02", "2026-08-28", ""]
 IMPORT_NOTES = [
     "学号必填，且必须是本校已有学生。",
     "导入归属当前页面所选批次（必选），本模板不包含企业/岗位/状态等字段。",
     "本次导入仅建立实习学生名单，不自动分岗、不自动上岗。",
-    "指导教师须为本校已有教师姓名（可选）。",
+    "导师可选；填写时须提供本校在职教师教工号，姓名仅作核对。",
     "日期格式：YYYY-MM-DD（如 2026-03-02）。",
     "仅导入「导入模板」页。",
 ]
@@ -1382,56 +1564,49 @@ def _row_values_for_error(r: dict) -> list:
 
 def export_students(keyword=None, status=None, eligibility=None, batch_id=None,
                     class_id=None, risk_level=None, destination=None, has_position=None,
-                    has_advisor=None, source_region=None, user=None) -> dict:
-    from app.modules.internship.services.internship_batch_context import batch_public_fields, resolve_batch
-    from app.services import xlsx_util
-    with session() as db:
-        batch = resolve_batch(db, batch_id, for_write=False)
-        batch_meta = batch_public_fields(batch)
+                    has_advisor=None, source_region=None, user=None, *, roster_filters=None, all_batches=False) -> dict:
+    from app.modules.internship.services.internship_batch_context import resolve_batch
     from app.modules.internship.services.internship_export_util import load_export_rows, pack_export_meta
-    items, total = load_export_rows(
-        list_students, keyword=keyword, status=status, eligibility=eligibility,
-        batch_id=batch_id, class_id=class_id, risk_level=risk_level,
-        destination=destination, has_position=has_position, has_advisor=has_advisor, source_region=source_region, user=user)
-    headers = [
-        "学号", "姓名", "年级", "学院", "专业", "班级", "生源地", "实习批次",
-        "校内指导教师", "企业名称", "统一社会信用代码", "单位性质", "行业分类",
-        "企业注册地址", "实际工作国家/地区", "实际工作省份", "实际工作城市", "实际工作区县",
-        "实习部门", "岗位名称", "岗位类别", "专业对口", "约定报酬", "约定报酬币种",
-        "工商核验状态", "三方协议状态", "轮岗次数", "轮岗成绩", "最近工资月份",
-        "最近实发工资", "实发工资币种", "实习状态", "实习资格", "实习去向", "风险",
+    from app.services import xlsx_util
+    filters = dict(keyword=keyword, status=status, eligibility=eligibility, batch_id=batch_id,
+        class_id=class_id, risk_level=risk_level, destination=destination, has_position=has_position,
+        has_advisor=has_advisor, source_region=source_region, roster_filters=roster_filters, all_batches=all_batches, user=user)
+    with session() as db:
+        batch = None if all_batches else resolve_batch(db, batch_id, for_write=False)
+        batch_meta = {"batchId":str(batch.id) if batch else None, "batchName":batch.batch_name if batch else '跨批次汇总'}
+    items, total = load_export_rows(list_students, **filters)
+    columns = [
+        ('学号','studentNo'), ('姓名','name'), ('年级','grade'), ('学院','collegeName'), ('专业','majorName'),
+        ('班级','className'), ('生源地','sourceRegion'), ('实习批次','batchName'), ('实习计划','planNames'),
+        ('实习类型','internshipTypeLabel'), ('实习方式','internshipMode'), ('班主任','headTeacherName'),
+        ('校内指导教师','advisorName'), ('企业老师','mentorName'), ('企业名称','enterpriseName'),
+        ('统一社会信用代码','companyCreditCode'), ('单位性质','companyNature'), ('行业分类','companyIndustry'),
+        ('企业注册地址','companyRegisteredAddress'), ('实际工作国家/地区','workCountry'),
+        ('实际工作省份','workProvince'), ('实际工作城市','workCity'), ('实际工作区县','workDistrict'),
+        ('实习地点','workLocation'), ('详细工作地址','workAddress'), ('实习部门','internshipDepartment'),
+        ('岗位名称','positionName'), ('岗位类别','positionCategory'), ('专业对口','majorMatchLabel'),
+        ('约定报酬','agreedSalary'), ('约定报酬币种','agreedSalaryCurrencyLabel'),
+        ('工商核验状态','registryVerificationStatusLabel'), ('审核状态','applicationStatusLabel'),
+        ('三方协议状态','agreementStatusLabel'), ('轮岗次数','rotationCount'), ('部门轮岗信息','rotationInfo'),
+        ('轮岗成绩','rotationScoreSummary'), ('最近工资月份','latestPayrollMonth'),
+        ('最近实发工资','latestActualSalary'), ('实发工资币种','latestActualSalaryCurrencyLabel'),
+        ('实习状态','statusLabel'), ('实习资格','eligibilityLabel'), ('实习去向','destinationLabel'), ('风险','riskLabel'),
     ]
-    data_rows = [[
-        it["studentNo"], it["name"], it.get("grade") or "", it.get("collegeName") or "",
-        it.get("majorName") or "", it["className"], it.get("sourceRegion") or "未采集",
-        batch_meta["batchName"], it["advisorName"], it["enterpriseName"],
-        # Keep credit code as a text value; xlsx must never coerce it to scientific notation.
-        str(it.get("companyCreditCode") or ""), it.get("companyNature") or "",
-        it.get("companyIndustry") or "", it.get("companyRegisteredAddress") or "",
-        it.get("workCountry") or "", it.get("workProvince") or "", it.get("workCity") or "",
-        it.get("workDistrict") or "", it.get("internshipDepartment") or "", it["positionName"],
-        it.get("positionCategory") or "", it.get("majorMatchLabel") or "未确认",
-        "" if it.get("agreedSalary") is None else it.get("agreedSalary"),
-        it.get("agreedSalaryCurrency") or "", it.get("registryVerificationStatus") or "",
-        it.get("agreementStatus") or "", int(it.get("rotationCount") or 0),
-        it.get("rotationScoreSummary") or "", it.get("latestPayrollMonth") or "",
-        "" if it.get("latestActualSalary") is None else it.get("latestActualSalary"),
-        it.get("latestActualSalaryCurrency") or "", it["statusLabel"], it["eligibilityLabel"],
-        it["destinationLabel"], it["riskLabel"],
-    ] for it in items]
-    user_ctx = get_current_user_ctx() or {}
-    bname = batch_meta["batchName"] or "未命名批次"
-    wm = (f"岗位实习中心·实习学生台账 · 批次：{bname} · 导出人：{user_ctx.get('realName', '-')} · "
-          f"{datetime.now():%Y-%m-%d %H:%M} · 敏感字段已脱敏，导出留痕")
-    content = xlsx_util.build_ledger_xlsx("实习学生台账", headers, data_rows, watermark=wm)
-    safe_name = "".join(c if c.isalnum() or c in "-_" else "_" for c in bname)[:40] or "batch"
-    packed = xlsx_util.pack_xlsx_result(content, f"实习学生台账_{safe_name}.xlsx", len(items))
+    headers = [label for label, key in columns]
+    data_rows = [[item.get(key) if item.get(key) is not None else '' for label,key in columns] for item in items]
+    actor = user or get_current_user_ctx() or {}
+    bname = batch_meta['batchName'] or '未命名批次'
+    watermark = f"岗位实习中心·实习学生台账 · 批次：{bname} · 导出人：{actor.get('realName', '-')} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
+    content = xlsx_util.build_ledger_xlsx('实习学生台账', headers, data_rows, watermark=watermark)
+    safe_name = ''.join(c if c.isalnum() or c in '-_' else '_' for c in bname)[:40] or 'batch'
+    packed = xlsx_util.pack_xlsx_result(content, f'实习学生台账_{safe_name}.xlsx', len(items))
     packed.update(batch_meta)
     packed.update(pack_export_meta(total, len(items)))
     from app.modules.internship.services.internship_audit_service import add_audit
     with session() as db:
-        add_audit(db, target_type='STUDENT_LEDGER', target_id=batch.id, action='STUDENT_LEDGER_EXPORT',
-                  user=user, batch_id=batch.id, detail={'rowCount': len(items), 'matchedCount': total,
-                  'filteredBySourceRegion': bool(source_region), 'columns': headers})
+        audit_filters = {key:value for key,value in filters.items() if key != 'user' and value is not None and value != ''}
+        add_audit(db, target_type='STUDENT_LEDGER', target_id=batch.id if batch else 0, action='STUDENT_LEDGER_EXPORT',
+            user=user, batch_id=batch.id if batch else None, detail={'rowCount':len(items),'matchedCount':total,
+            'filteredBySourceRegion':bool(source_region),'filters':audit_filters,'columns':headers})
         db.commit()
     return packed

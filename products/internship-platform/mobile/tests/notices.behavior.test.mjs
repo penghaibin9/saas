@@ -2,6 +2,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 import { checkinLocationPolicy } from '../src/services/checkinPresentation.mjs'
+import { reportFileState, reportFilesReady, refreshReportFiles } from '../src/services/weeklyReportPresentation.mjs'
+import * as Vue from 'vue'
+import { compile } from '@vue/compiler-dom'
+import { renderToString } from '@vue/server-renderer'
 
 const batch = '9007199254740993001'
 const notice = id => ({ id:String(id), batchId:batch, title:'合成重要通知', urgency:'IMPORTANT' })
@@ -12,19 +16,126 @@ function page(api={},teacher=false,pathOverride='',files={}) {
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import[^\n]+\n/gm,'').replace('export default','return')
   let generation=0
   const memory=new Map(), messages=[]
-  const context={batches:[],selectedBatchId:batch,restore(){},load:async()=>{},can:()=>false}
+  if(teacher)memory.set('gx_session_v1',{logged:true,isTeacher:true,identity:{tenantId:'1',userId:'2',roleCode:'INTERN_MENTOR',activeContextId:'teacher:2'}})
+  const context={batches:[],selectedBatchId:batch,restore(){},load:async()=>{},can:key=>teacher && ['internship.guidance.view','internship.guidance.manage'].includes(key)}
   const uni={getStorageSync:k=>memory.get(k),setStorageSync:(k,v)=>memory.set(k,v),removeStorageSync:k=>memory.delete(k)}
   const names=['studentApi','teacherApi','currentSessionGeneration','formatDateTime','openBusinessFile','toast','go','uni',
-    'useInternshipContextStore','normalizeError','reportTypeLabel','reportPeriodLabel','localizedMakeupStatus','chooseSingleFile','uploadBusinessFile','ReportFilePreview','checkinLocationPolicy']
+    'useInternshipContextStore','normalizeError','reportTypeLabel','reportPeriodLabel','localizedMakeupStatus','chooseSingleFile','uploadBusinessFile','ReportFilePreview','checkinLocationPolicy','SchoolServiceInfo','reportFileState','reportFilesReady','refreshReportFiles','fileSdk','currentMobileSession']
   const component=new Function(...names,script)(api,api,()=>generation,x=>x,async()=>{},x=>messages.push(x),()=>{},
-    uni,()=>context,()=>({text:'操作未完成'}),()=>'',()=>'',()=>'',async()=>null,files.uploadBusinessFile || (async()=>null),{},checkinLocationPolicy)
-  const vm={}
+    uni,()=>context,()=>({text:'操作未完成'}),()=>'',()=>'',()=>'',files.chooseSingleFile || (async()=>null),files.uploadBusinessFile || (async()=>null),{},checkinLocationPolicy,{},reportFileState,reportFilesReady,refreshReportFiles,files.fileSdk||{},()=>memory.get('gx_session_v1')||{})
+  const vm={$refs:{},$nextTick:async callback=>callback?.()}
   for(const [name,method] of Object.entries(component.methods)) vm[name]=(...args)=>method.apply(vm,args)
   Object.assign(vm,component.data.call(vm))
   for(const [name,getter] of Object.entries(component.computed || {})) Object.defineProperty(vm,name,{get:()=>getter.call(vm)})
   vm.state='ready';vm.i={hasBatch:true,batchId:batch};vm.selectedBatchId=batch;vm.batchId=batch
-  return {vm,component,messages,uni,switchAccount:()=>generation++}
+  return {vm,component,messages,uni,context,switchAccount:()=>generation++}
 }
+
+async function activityNodes(vm) {
+  const source=fs.readFileSync(new URL('../src/pages/teacher-internship/activity/index.vue',import.meta.url),'utf8')
+  const template=source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1]
+  const render=new Function('Vue',compile(template,{prefixIdentifiers:true,isCustomElement:()=>true}).code)(Vue)
+  const nodes=[]
+  const walk=node=>{if(!node||typeof node!=='object')return;nodes.push(node);if(Array.isArray(node.children))node.children.forEach(walk)}
+  await renderToString(Vue.createSSRApp({render(){const tree=render(vm,[]);walk(tree);return tree}}));return nodes
+}
+
+test('教师周期取消修改的真实点击保留报告类型，不把事件当成类型',async()=>{
+  const p=page({},true);p.vm.periodForm={...p.vm.periodForm,reportType:'MONTHLY',periodKey:'2026-10',expectedVersion:2,content:'原草稿'}
+  const cancel=(await activityNodes(p.vm)).find(node=>node.children==='取消修改')
+  assert.ok(cancel);cancel.props.onClick({type:'click'})
+  assert.equal(p.vm.periodForm.reportType,'MONTHLY');assert.match(p.vm.periodForm.periodKey,/^\d{4}-\d{2}$/);assert.equal(p.vm.periodForm.expectedVersion,null)
+})
+
+test('教师周期只读身份不展示写入口且方法拒绝提交和上传',async()=>{
+  let writes=0,uploads=0
+  const p=page({saveMyInternshipPeriodReport:async()=>writes++},true,'',{chooseSingleFile:async()=>({name:'a.pdf'}),uploadBusinessFile:async()=>{uploads++;return {fileId:'1'}}})
+  p.context.can=key=>key==='internship.guidance.view';p.vm.periodForm.content='指导工作'.repeat(20)
+  const nodes=await activityNodes(p.vm)
+  assert.equal(nodes.some(node=>node.children==='保存周期报告'),false)
+  await p.vm.savePeriodReport();await p.vm.addPeriodAttachment()
+  assert.equal(writes,0);assert.equal(uploads,0)
+})
+
+test('教师周期无可用批次说明前置条件，禁用填写保存和附件操作',async()=>{
+  let writes=0,choices=0,uploads=0
+  const p=page({saveMyInternshipPeriodReport:async()=>writes++},true,'',{
+    chooseSingleFile:async()=>{choices++;return {name:'a.pdf'}},uploadBusinessFile:async()=>{uploads++;return {fileId:'2'}}})
+  p.vm.batchId='';p.context.selectedBatchId='';p.vm.periodForm.content='指导工作'.repeat(20)
+  p.vm.periodForm.attachments=[reportFileState({fileId:'1',status:'AVAILABLE',scanStatus:'CLEAN',readyForBusiness:true})];p.vm.periodForm.attachmentFileIds=['1']
+  assert.equal(p.vm.canManagePeriodReports,true)
+  const nodes=await activityNodes(p.vm)
+  assert.equal(nodes.find(node=>node.children==='保存周期报告')?.props.disabled,true)
+  assert.equal(nodes.find(node=>typeof node.children==='string'&&node.children.trim()==='添加照片 / 附件')?.props.disabled,true)
+  assert.equal(nodes.find(node=>node.type==='textarea'&&node.props?.placeholder===p.vm.periodContentHint)?.props.disabled,true)
+  assert.ok(nodes.some(node=>typeof node.children==='string'&&node.children.includes('当前身份没有可用实习批次')))
+  await p.vm.savePeriodReport();await p.vm.addPeriodAttachment();p.vm.removePeriodAttachment(0)
+  assert.equal(writes,0);assert.equal(choices,0);assert.equal(uploads,0);assert.deepEqual(p.vm.periodForm.attachmentFileIds,['1'])
+})
+
+test('教师周期分页可读取第二页且失败保留原页和草稿，重试后恢复',async()=>{
+  const calls=[];let fail=true
+  const p=page({getMyInternshipPeriodReports:async(...args)=>{calls.push(args);if(fail)throw Error('offline');return {items:[{id:'21'}],total:24,page:2,pageSize:20,rules:{}}}},true)
+  p.vm.periodReports=[{id:'1'}];p.vm.periodTotal=24;p.vm.periodPage=1;p.vm.periodForm.content='未提交草稿';p.vm.periodForm.expectedVersion=3
+  await p.vm.loadPeriodReports(2)
+  assert.equal(p.vm.periodPage,1);assert.equal(p.vm.periodReports[0].id,'1');assert.ok(p.vm.periodListError)
+  fail=false;await p.vm.loadPeriodReports(2)
+  assert.deepEqual(calls,[[batch,2,20],[batch,2,20]]);assert.equal(p.vm.periodPage,2);assert.equal(p.vm.periodReports[0].id,'21');assert.equal(p.vm.periodListError,'')
+  assert.equal(p.vm.periodForm.content,'未提交草稿');assert.equal(p.vm.periodForm.expectedVersion,3)
+})
+
+test('教师周期分页迟到响应不能覆盖切换账号后的名单',async()=>{
+  const pending=deferred(),p=page({getMyInternshipPeriodReports:()=>pending.promise},true)
+  p.vm.periodTotal=24;const run=p.vm.loadPeriodReports(2);p.switchAccount();p.vm.clearAccountContext();p.vm.periodReports=[{id:'new-account'}]
+  pending.resolve({items:[{id:'old-account'}],total:24,page:2,pageSize:20});await run
+  assert.equal(p.vm.periodReports[0].id,'new-account')
+})
+
+test('教师周期扫描未就绪不提交，刷新失败保留草稿，安全可用后提交原附件',async()=>{
+  let writes=0,fail=true;const pending={fileId:'9',fileName:'指导.pdf',status:'QUARANTINED',scanStatus:'PENDING',readyForBusiness:false}
+  const p=page({saveMyInternshipPeriodReport:async body=>{writes++;assert.deepEqual(body.attachmentFileIds,['9'])}},true,'',{
+    chooseSingleFile:async()=>({name:'指导.pdf'}),uploadBusinessFile:async()=>pending,
+    fileSdk:{metadata:async()=>{if(fail)throw Error('offline');return {...pending,status:'AVAILABLE',scanStatus:'CLEAN',readyForBusiness:true}}}})
+  p.vm.periodForm.content='指导工作'.repeat(20);p.vm.load=async()=>{}
+  await p.vm.addPeriodAttachment();assert.equal(p.vm.periodForm.attachments[0].statusText,'等待安全扫描')
+  await p.vm.savePeriodReport();assert.equal(writes,0)
+  await p.vm.refreshPeriodAttachments();assert.ok(p.vm.periodError);assert.equal(p.vm.periodForm.content,'指导工作'.repeat(20))
+  fail=false;await p.vm.refreshPeriodAttachments();assert.equal(p.vm.periodAttachmentsReady,true)
+  await p.vm.savePeriodReport();assert.equal(writes,1)
+})
+
+const periodPageApi = read => ({getMyInternshipCheckins:async()=>[],getMyInternshipCheckinRule:async()=>({configured:false,locations:[]}),getMyInternshipMakeups:async()=>({items:[]}),getMyInternshipWorkReports:async()=>({items:[]}),getMyInternshipPeriodReports:read,getInternshipEmergencyNotices:async()=>[],getPendingInternshipEmergencyNotices:async()=>[]})
+const periodPageResult = currentPage => ({items:[{id:currentPage===2?'21':'1'}],total:24,page:currentPage,pageSize:20,rules:{}})
+
+test('教师周期页码刷新及返回恢复，失败不覆盖已保存页码或当前草稿',async()=>{
+  let fail=false;const reads=[],api=periodPageApi(async(b,p)=>{reads.push(p);if(fail)throw Error('offline');return periodPageResult(p)})
+  const first=page(api,true);await first.vm.loadPeriodReports(2)
+  const refreshed=page(api,true);refreshed.uni.setStorageSync('gx_session_v1',JSON.parse(JSON.stringify(first.uni.getStorageSync('gx_session_v1'))))
+  await refreshed.vm.load();assert.equal(reads.at(-1),2);assert.equal(refreshed.vm.periodPage,2);assert.equal(refreshed.vm.periodReports[0].id,'21')
+  refreshed.vm.periodForm.content='保留未提交正文';refreshed.vm.periodForm.expectedVersion=3
+  refreshed.component.onHide.call(refreshed.vm);refreshed.component.onShow.call(refreshed.vm);await new Promise(resolve=>setImmediate(resolve))
+  assert.equal(refreshed.vm.periodPage,2);assert.equal(refreshed.vm.periodForm.content,'保留未提交正文')
+  const saved=JSON.stringify(refreshed.uni.getStorageSync('gx_session_v1').teacherPeriodReportPage)
+  fail=true;await refreshed.vm.loadPeriodReports(1)
+  assert.equal(refreshed.vm.periodPage,2);assert.equal(refreshed.vm.periodForm.expectedVersion,3)
+  assert.equal(JSON.stringify(refreshed.uni.getStorageSync('gx_session_v1').teacherPeriodReportPage),saved)
+})
+
+test('教师周期页码学校账号角色身份和批次隔离，坏值与退出会话回第一页',async()=>{
+  const api=periodPageApi(async(b,p)=>periodPageResult(p)),first=page(api,true);await first.vm.loadPeriodReports(2)
+  const original=JSON.stringify(first.uni.getStorageSync('gx_session_v1'))
+  for(const field of ['tenantId','userId','roleCode','activeContextId','batch']){
+    const p=page(api,true),session=JSON.parse(original)
+    if(field==='batch')p.context.selectedBatchId='another-batch';else session.identity[field]='another-identity'
+    p.uni.setStorageSync('gx_session_v1',session);await p.vm.load();assert.equal(p.vm.periodPage,1,field)
+  }
+  for(const value of [0,-1,1.5,'2',Number.MAX_SAFE_INTEGER,{},null]){
+    const p=page(api,true),session=JSON.parse(original)
+    session.teacherPeriodReportPage.page=value;p.uni.setStorageSync('gx_session_v1',session)
+    await p.vm.load();assert.equal(p.vm.periodPage,1,String(value))
+  }
+  const signedOut=page(api,true);signedOut.uni.removeStorageSync('gx_session_v1');await signedOut.vm.load();assert.equal(signedOut.vm.periodPage,1)
+})
 function active(vm,teacher=false) {
   const rows=[notice('9007199254740993011'),notice('9007199254740993012')]
   if(teacher) {vm.pendingNotices=rows;vm.activeNotice=rows[0]}

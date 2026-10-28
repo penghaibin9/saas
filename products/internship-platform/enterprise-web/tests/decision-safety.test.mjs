@@ -41,5 +41,5 @@ test('A02-7 withdrawal confirmation remains reachable on short viewports without
   assert.match(list,/\.detail-pane\{[^}]*height:100%;overflow:hidden/)
   assert.match(detail,/\.detail\{height:100%;overflow:auto;/)
   assert.match(detail,/\.sticky\{[^}]*max-height:min\(60vh,430px\);overflow:auto;/)
-  assert.match(page,/if\(!props\.campaignWritable\|\|!activeAcceptIntent\.value\)return/)
+  assert.match(page,/if\(!activeAcceptIntent\.value\|\|!availableActions\.value\.some\(item=>item\[0\]==='REJECTED'\)\)return/)
 })

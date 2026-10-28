@@ -86,7 +86,7 @@ def test_admin_scope_filter_keeps_global_templates_visible():
 
 
 def test_agreement_view_loads_templates_after_real_internship_selection():
-    view = (Path(__file__).parents[2] / "frontend/src/modules/internship/views/AgreementView.vue").read_text(
+    view = (Path(__file__).parents[2] / "admin-web/src/modules/internship/views/AgreementView.vue").read_text(
         encoding="utf-8"
     )
     watcher = view.split("'genForm.internshipId'", 1)[1].split("'genForm.templateId'", 1)[0]

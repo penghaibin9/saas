@@ -52,6 +52,7 @@ export default {
   data() {
     return { controlId: `app-fi-${++uid}` }
   },
+  provide() { return { appField: this } },
   computed: {
     layout() {
       return this.appForm ? this.appForm.layout : 'vertical'

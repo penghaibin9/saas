@@ -15,7 +15,7 @@
     <section class="profile-card">
       <div class="section-heading">
         <div><h2>学校正式信息</h2><p>来自学校学生主档，学生不可修改。</p></div>
-        <span class="verified-badge">学校已核验</span>
+        <span class="verified-badge">学校正式资料</span>
       </div>
       <div class="school-grid">
         <div v-for="field in schoolFields" :key="field.key"><span>{{ field.label }}</span><strong>{{ profile.school[field.key] || '—' }}</strong></div>
@@ -31,7 +31,7 @@
       <div class="form-grid">
         <label class="field field--full"><span>自我介绍</span><textarea v-model.trim="draft.selfIntroduction" rows="5" maxlength="1000" placeholder="介绍你的专业方向、学习经历和实习目标" /></label>
         <label class="field field--full"><span>个人优势</span><textarea v-model.trim="draft.strengths" rows="4" maxlength="1000" placeholder="如设备操作、沟通协作、竞赛经历等" /></label>
-        <label class="field"><span>技能标签</span><input v-model="skillText" placeholder="用逗号分隔，如 CAD, PLC, 数控编程" /></label>
+        <label class="field"><span>技能标签</span><input v-model="skillText" placeholder="用逗号分隔，如机械制图、设备维护、数控编程" /></label>
         <label class="field"><span>可到岗时间</span><AppDatePicker v-model="draft.availableFrom" aria-label="可到岗时间" /></label>
         <label class="field field--full"><span>地点偏好</span><input v-model="locationText" placeholder="用逗号分隔，如 长沙, 株洲" /></label>
       </div>
@@ -56,25 +56,31 @@
               <p v-if="item.description">{{ item.description }}</p>
               <span>{{ [item.issuedBy, item.occurredAt, item.fileName].filter(Boolean).join(' · ') }}</span>
             </div>
-            <button type="button" :disabled="busy" @click="$emit('delete-item', item)">删除</button>
+            <div class="item-actions"><button v-for="fileId in item.fileIds" :key="fileId" type="button" :disabled="busy" @click="$emit('open-file', fileId)">查看证明附件</button><template v-if="item.sourceType === 'STUDENT_ENTERED'"><button type="button" :disabled="busy || uploading || profileDirty" @click="editItem(item)">编辑</button><button type="button" :disabled="busy || profileDirty" @click="$emit('delete-item', item)">删除</button></template><span v-else>学校记录，只读</span></div>
           </div>
         </div>
       </div>
 
-      <div class="new-item">
+      <p v-if="fileError" role="alert">{{ fileError }}</p>
+      <p v-if="profileDirty" role="status">介绍尚未保存，请先保存上方实习档案，再维护实践或证明材料。</p>
+      <fieldset class="new-item" :disabled="busy || profileDirty || uploading">
         <select v-model="newItem.type"><option v-for="type in itemTypes" :key="type.value" :value="type.value">{{ type.label }}</option></select>
         <input v-model.trim="newItem.title" placeholder="名称 / 标题" />
         <input v-model.trim="newItem.issuedBy" placeholder="组织 / 发证单位（可选）" />
         <AppDatePicker v-model="newItem.occurredAt" aria-label="发生日期" />
         <textarea v-model.trim="newItem.description" rows="3" placeholder="简要说明你做了什么、掌握了什么" />
-        <button type="button" class="secondary" :disabled="busy || !newItem.title" @click="addItem">添加</button>
-      </div>
+        <div class="evidence"><label>证明附件<input type="file" :disabled="busy || uploading" @change="uploadEvidence" /></label><p v-for="file in pendingFiles" :key="file.fileId">{{ file.fileName || '证明附件' }} · {{ file.statusText }} <button type="button" :disabled="busy || uploading" @click="removeFile(file.fileId)">移除</button></p><button v-if="pendingFiles.length" type="button" :disabled="busy || uploading" @click="refreshEvidence">重新读取安全检查</button><p v-if="uploading">正在处理附件，请稍候…</p><p>附件安全检查通过并保存条目后，才会关联到本人的实习档案。</p></div>
+        <button type="button" class="secondary" :disabled="busy || uploading || !newItem.title || !filesReady" @click="addItem">{{ newItem.id ? '保存材料修改' : '添加材料' }}</button><button v-if="newItem.id" type="button" :disabled="busy || uploading" @click="clearItem">取消编辑</button>
+      </fieldset>
     </section>
   </div>
 </template>
 
 <script setup>
-import { computed, reactive, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
+import { fileSdk } from '../../services/fileSdk'
+import { currentSessionGeneration } from '../../services/request'
+import { refreshScanFiles } from '../../services/fileScanState'
 import AppDatePicker from '../AppDatePicker.vue'
 import { PROFILE_ITEM_TYPES, buildInternshipProfileUpdate } from '../../modules/internshipRecruitment/profileModel'
 
@@ -82,9 +88,10 @@ const props = defineProps({
   profile: { type: Object, required: true },
   completeness: { type: Object, required: true },
   items: { type: Array, default: () => [] },
-  busy: { type: Boolean, default: false }
+  busy: { type: Boolean, default: false },
+  savedItemVersion: { type: Number, default: 0 }
 })
-const emit = defineEmits(['save', 'add-item', 'delete-item'])
+const emit = defineEmits(['save', 'add-item', 'update-item', 'delete-item', 'open-file'])
 const itemTypes = PROFILE_ITEM_TYPES
 const schoolFields = [
   { key: 'name', label: '姓名' }, { key: 'studentNo', label: '学号' }, { key: 'college', label: '学院' },
@@ -93,16 +100,21 @@ const schoolFields = [
 const draft = reactive({ ...props.profile })
 const skillText = ref((props.profile.skillTags || []).join(', '))
 const locationText = ref((props.profile.locationPreferences || []).join(', '))
-const newItem = reactive({ type: 'PROJECT', title: '', description: '', issuedBy: '', occurredAt: '' })
+const newItem = reactive({ id: '', type: 'PROJECT', title: '', description: '', issuedBy: '', occurredAt: '' })
+const pendingFiles = ref([]), uploading = ref(false), fileError = ref('')
+const filesReady = computed(() => pendingFiles.value.every(file => file.readyForBusiness === true))
+let alive = true, fileSequence = 0
 
 watch(() => props.profile, (value) => {
   Object.assign(draft, value || {})
   skillText.value = (value?.skillTags || []).join(', ')
   locationText.value = (value?.locationPreferences || []).join(', ')
-}, { deep: true })
+})
+watch(() => props.savedItemVersion, clearItem)
 
 const normalizedSkills = computed(() => skillText.value.split(/[,，]/).map((item) => item.trim()).filter(Boolean))
 const normalizedLocations = computed(() => locationText.value.split(/[,，]/).map((item) => item.trim()).filter(Boolean))
+const profileDirty = computed(() => JSON.stringify([draft.selfIntroduction,draft.strengths,draft.availableFrom,normalizedSkills.value,normalizedLocations.value]) !== JSON.stringify([props.profile.selfIntroduction,props.profile.strengths,props.profile.availableFrom,props.profile.skillTags,props.profile.locationPreferences]))
 
 function itemsByType(type) {
   return props.items.filter((item) => item.type === type)
@@ -110,15 +122,50 @@ function itemsByType(type) {
 function save() {
   emit('save', buildInternshipProfileUpdate({
     ...draft,
+    version: props.profile.version,
     skillTags: normalizedSkills.value,
     locationPreferences: normalizedLocations.value
   }))
 }
-function addItem() {
-  if (!newItem.title) return
-  emit('add-item', { ...newItem })
-  Object.assign(newItem, { type: newItem.type, title: '', description: '', issuedBy: '', occurredAt: '' })
+function clearItem() {
+  fileSequence++; pendingFiles.value = []; fileError.value = ''; uploading.value = false
+  Object.assign(newItem, { id: '', type: newItem.type, title: '', description: '', issuedBy: '', occurredAt: '' })
 }
+function editItem(item) {
+  if (props.busy || uploading.value || profileDirty.value) return
+  clearItem(); Object.assign(newItem, { ...item, id: String(item.id) })
+}
+function removeFile(id) { if (!props.busy && !uploading.value) pendingFiles.value = pendingFiles.value.filter(file => file.fileId !== id) }
+async function uploadEvidence(event) {
+  const file = event.target.files?.[0]; event.target.value = ''
+  if (!file || props.busy || uploading.value || profileDirty.value) return
+  const seq = ++fileSequence, generation = currentSessionGeneration()
+  const current = () => alive && seq === fileSequence && generation === currentSessionGeneration()
+  uploading.value = true; fileError.value = ''
+  try {
+    const meta = await fileSdk.upload(file, {bizType:'TEMP_PRIVATE'})
+    if (!current()) return
+    if (!/^[1-9]\d*$/.test(String(meta?.fileId || ''))) throw new Error('附件未返回有效编号，请重新上传')
+    pendingFiles.value.push(meta)
+  } catch (e) { if (current()) fileError.value = e?.message || '附件上传失败，填写内容已保留' }
+  finally { if (current()) uploading.value = false }
+}
+async function refreshEvidence() {
+  if (props.busy || uploading.value || profileDirty.value) return
+  const seq = ++fileSequence, generation = currentSessionGeneration()
+  const current = () => alive && seq === fileSequence && generation === currentSessionGeneration()
+  uploading.value = true; fileError.value = ''
+  try { const rows = await refreshScanFiles(pendingFiles.value, id => fileSdk.metadata(id), current); if (rows) pendingFiles.value = rows }
+  catch (e) { if (current()) fileError.value = e?.message || '安全检查读取失败，附件已保留' }
+  finally { if (current()) uploading.value = false }
+}
+function addItem() {
+  if (!newItem.title || props.busy || uploading.value || profileDirty.value || !filesReady.value) return
+  const payload = { ...newItem, [newItem.id ? 'appendFileIds' : 'fileIds']: pendingFiles.value.map(file => String(file.fileId)) }
+  emit(newItem.id ? 'update-item' : 'add-item', payload)
+}
+onBeforeUnmount(() => { alive = false; fileSequence++ })
+
 </script>
 
 <style scoped>
@@ -174,3 +221,5 @@ function addItem() {
   .new-item textarea { grid-column:auto; }
 }
 </style>
+
+<style scoped>.new-item{border:0;padding-left:0;padding-right:0;min-width:0}.evidence{grid-column:1/-1;font-size:14px;color:var(--t2)}.evidence p{margin:8px 0;line-height:1.6}.item-actions{display:flex;flex-wrap:wrap;gap:8px}.item-actions button,.evidence button{min-height:36px}.profile-item>div:first-child{min-width:0;overflow-wrap:anywhere}</style>

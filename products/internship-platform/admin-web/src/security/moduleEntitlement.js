@@ -51,6 +51,8 @@ export function moduleCodeForNav(groupKey, path) {
 }
 
 export function moduleEntitled(moduleCode, entitlements, healthy = true) {
+  // Standalone school administration is a product foundation, gated by actions, not a purchasable module.
+  if (moduleCode === 'SYSTEM') return true
   if (healthy === false) return true
   if (!Array.isArray(entitlements)) return true
   if (entitlements.includes('*')) return true

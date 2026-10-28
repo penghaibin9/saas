@@ -35,6 +35,9 @@ export default {
 .mseg { width: 100%; white-space: nowrap; }
 .mseg__inner { display: inline-flex; gap: var(--space-2); padding: 2px 0; }
 .mseg__item {
+  min-height:var(--touch-target-min) !important;
+  min-width:var(--touch-target-min);
+  box-sizing:border-box;
   display: inline-flex;
   align-items: center;
   gap: 4px;

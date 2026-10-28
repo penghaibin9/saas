@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, no_permission, not_found
@@ -21,7 +21,7 @@ from app.modules.internship.services.internship_version import extract_expected_
 from app.services.db_service import _as_id, _iso, _tid, session
 
 STATUS_LABEL = {"PENDING": "待审核", "APPROVED": "已通过", "REJECTED": "已驳回", "WITHDRAWN": "已撤回"}
-TYPE_LABEL = {"MISSING": "缺卡补录", "OUT_OF_RANGE": "超范围补录"}
+TYPE_LABEL = {"MISSING": "缺卡补录", "OUT_OF_RANGE": "定位异常补录"}
 _ALLOWED_TYPES = set(TYPE_LABEL)
 _EVIDENCE_ACTIONS = ("APPLY_CONTEXT", "APPLY")
 
@@ -79,7 +79,7 @@ def _evidence_required(makeup_type: str | None) -> bool:
 
 
 def _evidence_requirement_label(makeup_type: str | None) -> str:
-    return "超范围补卡必须上传现场、考勤或定位佐证" if _evidence_required(makeup_type) else "可选上传考勤或现场佐证"
+    return "定位异常补卡必须上传现场、考勤或定位佐证" if _evidence_required(makeup_type) else "可选上传考勤或现场佐证"
 
 
 def _evidence_file_id(db, m: InternshipMakeup) -> str:
@@ -95,6 +95,76 @@ def _evidence_file_id(db, m: InternshipMakeup) -> str:
         if fid:
             return fid
     return ""
+
+
+def bind_makeup_evidence(db, file_id, makeup, record, user):
+    from app.services.file_business_binding_service import bind_file_to_business
+    return bind_file_to_business(db, file_id=file_id, biz_type="INTERNSHIP_MAKEUP", biz_id=str(makeup.id),
+        actor=user, subject_type="STUDENT", subject_id=str(record.student_id), module_code="INTERNSHIP",
+        student_id=record.student_id, batch_id=str(record.batch_id),
+        scope={"internshipId": str(record.id), "batchId": str(record.batch_id), "studentId": str(record.student_id)})
+
+
+def authorize_makeup_file(db, file, bindings, user, action):
+    """None只表示无法识别为补卡的泛用文件，不授予任何额外权限。"""
+    from app.core.permissions import has_permission
+    from app.services.file_access_service import _scan_ready
+    explicit = file.biz_type == "INTERNSHIP_MAKEUP" or any(b.biz_type == "INTERNSHIP_MAKEUP" for b in bindings)
+    if not db or not str(file.biz_id or "").isdigit():
+        return False if explicit else None
+    if not explicit:
+        if file.biz_type != "INTERNSHIP":
+            return None
+        evidence = db.scalar(select(InternshipAuditTrail.id).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "MAKEUP",
+            InternshipAuditTrail.target_id == int(file.biz_id), InternshipAuditTrail.action.in_(_EVIDENCE_ACTIONS),
+            or_(InternshipAuditTrail.detail_json['evidenceFileId'].as_string() == str(file.id),
+                InternshipAuditTrail.detail_json['fileId'].as_string() == str(file.id))).limit(1))
+        if not evidence:
+            return None
+    if (action not in {"meta", "preview", "download"} or file.is_deleted or file.tenant_id != _tid()
+            or file.biz_type not in {"INTERNSHIP", "INTERNSHIP_MAKEUP"} or not _scan_ready(file)):
+        return False
+    makeup = db.scalar(select(InternshipMakeup).where(InternshipMakeup.id == int(file.biz_id),
+        InternshipMakeup.tenant_id == _tid(), InternshipMakeup.is_deleted.is_(False)))
+    if (not makeup or makeup.is_deleted or makeup.tenant_id != _tid()
+            or _evidence_file_id(db, makeup) != str(file.id)):
+        return False
+    record = tenant_get(db, InternshipRecord, makeup.internship_id)
+    student = tenant_get(db, StudentProfile, makeup.student_id)
+    if (not record or record.is_deleted or not student or student.is_deleted
+            or record.student_id != makeup.student_id or record.tenant_id != _tid() or student.tenant_id != _tid()):
+        return False
+    matching = [b for b in bindings if b.tenant_id == _tid() and b.file_id == file.id
+                and b.biz_type == file.biz_type and str(b.biz_id) == str(makeup.id)
+                and b.status == "ACTIVE" and b.is_current and not b.is_deleted]
+    if explicit:
+        matching = [b for b in matching if b.subject_type == "STUDENT" and str(b.subject_id) == str(student.id)
+                    and b.student_id == student.id and str(b.batch_id) == str(record.batch_id)
+                    and all(str((b.scope_json or {}).get(key)) == str(value) for key, value in
+                            {"internshipId": record.id, "batchId": record.batch_id, "studentId": student.id}.items())]
+    if not matching:
+        return False
+    if str(user.get("userType") or "").upper() == "STUDENT":
+        from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+        try:
+            current, actor_student, _ = require_explicit_context(db, user,
+                {"batchId": record.batch_id, "internshipId": record.id}, for_write=False)
+            return actor_student.id == student.id and current.id == record.id
+        except AppException:
+            return False
+    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    return has_permission(user, "internship.makeup.view") and _rec_in_scope(_current_scope(user), db, record, student)
+
+
+def _readable_evidence(db, file_id, user):
+    from app.services import file_access_service as access
+    if not str(file_id or "").isdigit():
+        return None
+    file, bindings = access._load(db, _tid(), int(file_id))
+    if not file or not access.authorize_file_object(file, bindings, user or {}, "meta", db=db):
+        return None
+    return access.file_view(file, user=user, bindings=bindings, db=db)
 
 
 def _previous_rejection(db, m: InternshipMakeup):
@@ -239,8 +309,7 @@ def apply(user, checkin_date: str = "", reason: str = "", makeup_type: str = "MI
             db.rollback()
             raise AppException("DATA_CONFLICT", "该日期已有待审核补卡申请") from exc
         if evidence_file_id:
-            from app.services import file_service
-            file_service.bind_file_biz(evidence_file_id, "INTERNSHIP", str(m.id), user=user, db=db)
+            bind_makeup_evidence(db, evidence_file_id, m, rec, user)
         _trail(db, m.id, "APPLY", {
             "date": m.checkin_date, "makeupType": makeup_type,
             "evidenceFileId": evidence_file_id or "",
@@ -379,7 +448,6 @@ def list_makeups(page, page_size, status=None, batch_id=None, user=None) -> tupl
 
 def get_makeup(makeup_id, user=None) -> dict:
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
-    from app.services import file_service
     with session() as db:
         m = _get(db, makeup_id)
         rec = tenant_get(db, InternshipRecord, m.internship_id)
@@ -391,7 +459,7 @@ def get_makeup(makeup_id, user=None) -> dict:
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "MAKEUP",
             InternshipAuditTrail.target_id == m.id).order_by(InternshipAuditTrail.id)).all()
         return {**_row(m, rec, stu, db=db, user=user),
-                "attachment": file_service.attachment_view(evidence_file_id),
+                "attachment": _readable_evidence(db, evidence_file_id, user),
                 "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                                 "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
                                for t in trail]}
@@ -399,7 +467,6 @@ def get_makeup(makeup_id, user=None) -> dict:
 
 def mark_evidence_viewed(user, makeup_id) -> dict:
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
-    from app.services import file_service
     with session() as db:
         m = _get(db, makeup_id)
         rec = tenant_get(db, InternshipRecord, m.internship_id)
@@ -407,7 +474,7 @@ def mark_evidence_viewed(user, makeup_id) -> dict:
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("该补卡申请不在你的数据范围内")
         evidence_file_id = _evidence_file_id(db, m)
-        if not evidence_file_id or not file_service.get_file_meta(evidence_file_id, user=user):
+        if not evidence_file_id or not _readable_evidence(db, evidence_file_id, user):
             raise not_found("补卡证据不存在或无权查看")
         _trail(db, m.id, "EVIDENCE_VIEW", {
             "version": int(m.version or 0),
@@ -426,9 +493,10 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
     if action == "REJECT" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
     from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
+    from app.modules.internship.services.internship_leave_service import lock_attendance_record
     with session() as db:
         m = _get(db, makeup_id)
-        rec = tenant_get(db, InternshipRecord, m.internship_id)
+        rec = lock_attendance_record(db, m.internship_id)
         stu = tenant_get(db, StudentProfile, m.student_id)
         if not _rec_in_scope(_current_scope(user), db, rec, stu):
             raise no_permission("只能审批本人指导学生的补卡申请")
@@ -439,7 +507,9 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
         evidence_file_id = _evidence_file_id(db, m)
         if action == "APPROVE":
             if _evidence_required(m.makeup_type) and not evidence_file_id:
-                raise AppException("DATA_CONFLICT", "超范围补卡缺少证据材料，不能通过")
+                raise AppException("DATA_CONFLICT", "定位异常补卡缺少证据材料，不能通过")
+            if evidence_file_id and not _readable_evidence(db, evidence_file_id, user):
+                raise AppException("DATA_CONFLICT", "补卡证明已不可读取，请核对有效材料后再审批")
             if evidence_file_id and not _evidence_viewed(db, m, user, evidence_file_id):
                 raise AppException("DATA_CONFLICT", "请先查看补卡证据材料，再执行通过")
         status = "APPROVED" if action == "APPROVE" else "REJECTED"
@@ -452,7 +522,12 @@ def review(user, makeup_id, action: str, comment: str = "", *, expected_version=
         if action == "APPROVE":
             exist = db.scalars(select(InternshipCheckin).where(
                 InternshipCheckin.tenant_id == _tid(), InternshipCheckin.internship_id == rec.id,
-                InternshipCheckin.checkin_date == m.checkin_date)).first()
+                InternshipCheckin.checkin_date == m.checkin_date).with_for_update()).first()
+            if exist and exist.is_deleted and exist.result == 'LEAVE':
+                exist.is_deleted = False
+                exist.result = 'RECORDED'
+                exist.checkin_at = datetime.utcnow()
+                exist.note = f"补卡通过：{(m.reason or '')[:100]}"
             if not exist:
                 db.add(InternshipCheckin(tenant_id=_tid(), internship_id=rec.id,
                                          checkin_date=m.checkin_date, checkin_at=datetime.utcnow(),

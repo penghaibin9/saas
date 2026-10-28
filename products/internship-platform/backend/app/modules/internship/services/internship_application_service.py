@@ -9,7 +9,8 @@ import re
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy.orm import aliased
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
@@ -325,6 +326,41 @@ def _clear_exemption_company_snapshot(app: InternshipApplication) -> None:
     app.registry_verified_at = None
 
 
+def authorize_application_file(db, file, bindings, user, action) -> bool:
+    from app.core.permissions import has_permission
+    from app.services.message_identity import resolve_message_user_id
+    kinds = {'INTERNSHIP_APPLICATION_EVIDENCE', 'INTERNSHIP_APPLICATION_AGREEMENT'}
+    relevant = [binding for binding in bindings if binding.biz_type in kinds]
+    if not relevant:
+        # Unbound uploads remain private to their uploader until the application is saved.
+        actor = str(resolve_message_user_id(user) or '')
+        return bool(actor and str(file.owner_user_id or file.created_by or '') == actor)
+    for binding in relevant:
+        if (binding.tenant_id != _tid() or binding.is_deleted or not binding.is_current
+                or binding.status != 'ACTIVE' or not str(binding.biz_id or '').isdigit()):
+            continue
+        app = db.scalar(select(InternshipApplication).where(
+            InternshipApplication.id == int(binding.biz_id), InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None), InternshipApplication.is_deleted.is_(False)))
+        if not app:
+            continue
+        members = [app.evidence_file_id] if binding.biz_type == 'INTERNSHIP_APPLICATION_EVIDENCE' else list(app.agreement_file_ids or [])
+        if str(file.id) not in {str(value) for value in members if value}:
+            continue
+        rec = db.get(InternshipRecord, app.record_id); stu = db.get(StudentProfile, app.student_id)
+        if str(user.get('userType') or '').upper() == 'STUDENT':
+            if str(user.get('studentId') or '') != str(app.student_id):
+                continue
+            from app.modules.internship.services.internship_student_application_context_service import _student_record
+            record, student = _student_record(db, user, for_write=False, payload={'batchId':str(app.batch_id or rec.batch_id), 'internshipId':str(app.record_id)})
+            return bool(_application_matches_record(app, record, student))
+        if not has_permission(user, 'internship.application.view'):
+            return False
+        _scope_check(db, rec, stu, user, app)
+        return True
+    return False
+
+
 def _bind_application_files(db, app: InternshipApplication, user=None) -> None:
     """Bind uploaded evidence to the application business object after the row has an id."""
     from app.services import file_service
@@ -413,66 +449,20 @@ def _apply_position_snapshot(app: InternshipApplication, pos: InternshipPosition
     app.registry_verified_at = None
 
 def _student_org_context(db, students) -> dict[int, dict]:
-    """Batch-resolve class/major/college labels for list/export; no per-row org queries."""
-    students = [student for student in students or [] if student is not None]
-    if not students:
+    """Use the same valid organization projection for labels, filtering and export."""
+    student_ids = {int(student.id) for student in students or [] if student is not None}
+    if not student_ids:
         return {}
-    class_ids = {int(student.class_id) for student in students if getattr(student, "class_id", None)}
-    major_ids = {int(student.major_id) for student in students if getattr(student, "major_id", None)}
-    college_ids = {int(student.college_id) for student in students if getattr(student, "college_id", None)}
-
-    classes = {}
-    class_major_ids = {}
-    if class_ids:
-        class_rows = db.scalars(select(SchoolClass).where(
-            SchoolClass.tenant_id == _tid(),
-            SchoolClass.id.in_(class_ids),
-            SchoolClass.is_deleted.is_(False),
-        )).all()
-        classes = {int(row.id): row.class_name or "" for row in class_rows}
-        class_major_ids = {
-            int(row.id): int(row.major_id) for row in class_rows if row.major_id
-        }
-        major_ids.update(class_major_ids.values())
-
-    majors = {}
-    major_college_ids = {}
-    if major_ids:
-        major_rows = db.scalars(select(Major).where(
-            Major.tenant_id == _tid(),
-            Major.id.in_(major_ids),
-            Major.is_deleted.is_(False),
-        )).all()
-        majors = {int(row.id): row.major_name or "" for row in major_rows}
-        major_college_ids = {
-            int(row.id): int(row.college_id) for row in major_rows if row.college_id
-        }
-        college_ids.update(major_college_ids.values())
-
-    colleges = {}
-    if college_ids:
-        college_rows = db.scalars(select(College).where(
-            College.tenant_id == _tid(),
-            College.id.in_(college_ids),
-            College.is_deleted.is_(False),
-        )).all()
-        colleges = {int(row.id): row.college_name or "" for row in college_rows}
-
-    result = {}
-    for student in students:
-        class_id = int(student.class_id) if getattr(student, "class_id", None) else None
-        major_id = int(student.major_id) if getattr(student, "major_id", None) else None
-        if not major_id and class_id:
-            major_id = class_major_ids.get(class_id)
-        college_id = int(student.college_id) if getattr(student, "college_id", None) else None
-        if not college_id and major_id:
-            college_id = major_college_ids.get(major_id)
-        result[int(student.id)] = {
-            "className": classes.get(class_id, "") if class_id else "",
-            "majorName": majors.get(major_id, "") if major_id else "",
-            "collegeName": colleges.get(college_id, "") if college_id else "",
-        }
-    return result
+    query, org = _application_org_query(select(StudentProfile).where(
+        StudentProfile.id.in_(student_ids), StudentProfile.tenant_id == _tid(),
+        StudentProfile.is_deleted.is_(False),
+    ))
+    rows = db.execute(query.with_only_columns(
+        StudentProfile.id, org['className'], org['majorName'], org['collegeName'],
+    )).all()
+    return {int(student_id): {'className': class_name or '', 'majorName': major_name or '',
+                             'collegeName': college_name or ''}
+            for student_id, class_name, major_name, college_name in rows}
 
 
 def _row(db, app: InternshipApplication, rec=None, stu=None, *,
@@ -482,6 +472,11 @@ def _row(db, app: InternshipApplication, rec=None, stu=None, *,
     if not preloaded:
         pos = tenant_get(db, InternshipPosition, app.position_id, tenant_id=app.tenant_id) if app.position_id else None
         company = tenant_get(db, EmpCompany, pos.company_id, tenant_id=app.tenant_id) if pos else None
+    if pos and (pos.is_deleted or pos.tenant_id != app.tenant_id):
+        pos = None
+        company = None
+    if company and (company.is_deleted or company.tenant_id != app.tenant_id):
+        company = None
     if org is None:
         org = _student_org_context(db, [stu]).get(int(stu.id), {}) if stu else {}
     return {
@@ -543,10 +538,44 @@ def _row(db, app: InternshipApplication, rec=None, stu=None, *,
     }
 
 
-def _scope_check(db, rec, stu, user):
-    from app.modules.internship.services.internship_service import _current_scope, _rec_in_scope
-    if not _rec_in_scope(_current_scope(user), db, rec, stu):
+def _application_matches_record(app, rec, stu):
+    return bool(app and rec and stu and app.record_id == rec.id and app.student_id == stu.id
+                and (app.batch_id is None or app.batch_id == rec.batch_id))
+
+
+def _scope_check(db, rec, stu, user, app):
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    if (not rec or not stu or rec.is_deleted or stu.is_deleted
+            or rec.tenant_id != _tid() or stu.tenant_id != _tid()
+            or rec.student_id != stu.id
+            or not _application_matches_record(app, rec, stu)):
+        raise not_found("实习申请关联的学生或批次不存在")
+    batch = resolve_batch(db, rec.batch_id)
+    if db.scalar(_scoped_record_ids(batch, user).where(InternshipRecord.id == rec.id)) is None:
         raise no_permission("不在当前教师数据范围内")
+
+
+def _scoped_record_ids(batch, user):
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+    return apply_internship_record_scope(select(InternshipRecord.id).join(
+        StudentProfile, and_(StudentProfile.id == InternshipRecord.student_id,
+                             StudentProfile.tenant_id == InternshipRecord.tenant_id,
+                             StudentProfile.is_deleted.is_(False)),
+    ).where(InternshipRecord.tenant_id == _tid(), InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False)), user)
+
+
+def _legacy_application_ids(scoped_ids):
+    return select(InternshipApplication.id).join(
+        InternshipRecord, and_(InternshipRecord.id == InternshipApplication.record_id,
+                              InternshipRecord.student_id == InternshipApplication.student_id,
+                              InternshipRecord.tenant_id == InternshipApplication.tenant_id,
+                              or_(InternshipApplication.batch_id.is_(None),
+                                  InternshipApplication.batch_id == InternshipRecord.batch_id)),
+    ).where(InternshipApplication.tenant_id == _tid(),
+            InternshipApplication.campaign_id.is_(None),
+            InternshipApplication.is_deleted.is_(False),
+            InternshipApplication.record_id.in_(scoped_ids))
 
 
 def save_my(user: dict, body: dict) -> dict:
@@ -563,7 +592,7 @@ def save_my(user: dict, body: dict) -> dict:
             raise AppException("DATA_CONFLICT", "实习去向已落实，不可再新增或修改申请")
         if app_id:
             app = _get_legacy_student_application(db, app_id, lock=True)
-            if app.record_id != rec.id or app.student_id != stu.id:
+            if not _application_matches_record(app, rec, stu):
                 raise no_permission("只能修改本人的实习申请")
             if app.status not in ("DRAFT", "REJECTED", "WITHDRAWN"):
                 raise AppException("DATA_CONFLICT", "当前状态不可修改申请")
@@ -644,7 +673,7 @@ def submit_my(user: dict, app_id) -> dict:
     with session() as db:
         rec, stu = _record_for_student(db, user.get("studentNo"))
         app = _get_legacy_student_application(db, app_id, lock=True)
-        if app.record_id != rec.id or app.student_id != stu.id:
+        if not _application_matches_record(app, rec, stu):
             raise no_permission("只能提交本人的实习申请")
         if app.status not in ("DRAFT", "REJECTED", "WITHDRAWN"):
             raise AppException("DATA_CONFLICT", "当前申请不可提交")
@@ -674,7 +703,7 @@ def withdraw_my(user: dict, app_id) -> dict:
     with session() as db:
         rec, stu = _record_for_student(db, user.get("studentNo"))
         app = _get_legacy_student_application(db, app_id, lock=True)
-        if app.record_id != rec.id or app.student_id != stu.id:
+        if not _application_matches_record(app, rec, stu):
             raise no_permission("只能撤回本人的实习申请")
         if app.status != "PENDING_REVIEW":
             raise AppException("DATA_CONFLICT", "仅待审核申请可撤回")
@@ -692,24 +721,90 @@ def my_applications(user: dict) -> list[dict]:
         rec, stu = _record_for_student(db, user.get("studentNo"))
         rows = db.scalars(select(InternshipApplication).where(
             InternshipApplication.tenant_id == _tid(), InternshipApplication.record_id == rec.id,
+            InternshipApplication.student_id == stu.id,
+            or_(InternshipApplication.batch_id.is_(None), InternshipApplication.batch_id == rec.batch_id),
             InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False)).order_by(
                 InternshipApplication.volunteer_no, InternshipApplication.id.desc())).all()
         return [_row(db, app, rec, stu) for app in rows]
 
 
-def list_applications(page: int, page_size: int, status=None, application_type=None, keyword=None,
-                      batch_id=None, user: dict | None = None) -> tuple[list[dict], int]:
+def _application_org_query(query):
+    class_major = aliased(Major)
+    major_college, class_college = aliased(College), aliased(College)
+    query = query.outerjoin(SchoolClass, and_(
+        SchoolClass.id == StudentProfile.class_id, SchoolClass.tenant_id == _tid(),
+        SchoolClass.is_deleted.is_(False),
+    )).outerjoin(Major, and_(
+        Major.id == StudentProfile.major_id,
+        Major.tenant_id == _tid(), Major.is_deleted.is_(False),
+    )).outerjoin(class_major, and_(
+        class_major.id == SchoolClass.major_id,
+        class_major.tenant_id == _tid(), class_major.is_deleted.is_(False),
+    )).outerjoin(College, and_(
+        College.id == StudentProfile.college_id,
+        College.tenant_id == _tid(), College.is_deleted.is_(False),
+    )).outerjoin(major_college, and_(
+        major_college.id == Major.college_id,
+        major_college.tenant_id == _tid(), major_college.is_deleted.is_(False),
+    )).outerjoin(class_college, and_(
+        class_college.id == class_major.college_id,
+        class_college.tenant_id == _tid(), class_college.is_deleted.is_(False),
+    ))
+    # Coalesce valid joined organizations, exactly as the shared scope guard does.
+    return query, {
+        'grade': func.coalesce(func.nullif(StudentProfile.grade, ''), SchoolClass.grade),
+        'collegeId': func.coalesce(College.id, major_college.id, class_college.id),
+        'collegeName': func.coalesce(College.college_name, major_college.college_name, class_college.college_name),
+        'collegeCode': case((College.id.is_not(None), College.code), (major_college.id.is_not(None), major_college.code), else_=class_college.code),
+        'majorId': func.coalesce(Major.id, class_major.id),
+        'majorName': func.coalesce(Major.major_name, class_major.major_name),
+        'majorCode': case((Major.id.is_not(None), Major.code), else_=class_major.code),
+        'classId': SchoolClass.id, 'className': SchoolClass.class_name, 'classCode': SchoolClass.class_code,
+    }
+
+
+def _application_org_label(name, code, value):
+    return f"{name}（{code}，编号{value}）" if code else f"{name}（编号{value}）"
+
+
+def application_filter_options(*, batch_id=None, user=None):
     from app.modules.internship.services.internship_batch_context import resolve_batch
-    from app.modules.internship.services.internship_scope import apply_internship_record_scope
 
     with session() as db:
         batch = resolve_batch(db, batch_id)
-        scoped = apply_internship_record_scope(
-            select(InternshipRecord.id).where(
-                InternshipRecord.tenant_id == _tid(),
-                InternshipRecord.batch_id == batch.id,
-                InternshipRecord.is_deleted.is_(False)), user).subquery()
+        query = select(StudentProfile).select_from(InternshipRecord).join(StudentProfile, and_(
+            StudentProfile.id == InternshipRecord.student_id,
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+        )).where(InternshipRecord.id.in_(_scoped_record_ids(batch, user)))
+        query, org = _application_org_query(query)
+        rows = db.execute(query.with_only_columns(*org.values()).distinct()).all()
+        options = {key: {} for key in ('grades', 'colleges', 'majors', 'classes')}
+        for grade, college_id, college_name, college_code, major_id, major_name, major_code, class_id, class_name, class_code in rows:
+            if grade:
+                options['grades'][grade] = {'value': grade, 'label': grade}
+            for key, value, label, code in (
+                ('colleges', college_id, college_name, college_code), ('majors', major_id, major_name, major_code),
+                ('classes', class_id, class_name, class_code),
+            ):
+                if value and label:
+                    options[key][str(value)] = {'value': str(value), 'label': _application_org_label(label, code, value)}
+        result = {key: sorted(items.values(), key=lambda item: (item['label'], item['value']))
+                  for key, items in options.items()}
+        result['academicYears'] = ([{'value': batch.academic_year, 'label': batch.academic_year}]
+                                   if rows and batch.academic_year else [])
+        return result
+
+
+def list_applications(page: int, page_size: int, status=None, application_type=None, keyword=None,
+                      batch_id=None, user: dict | None = None, *, academic_year=None,
+                      grade=None, college_id=None, major_id=None, class_id=None,
+                      student_name=None, student_no=None, exemption_type=None, application_id=None) -> tuple[list[dict], int]:
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+
+    with session() as db:
+        batch = resolve_batch(db, batch_id)
+        scoped = _scoped_record_ids(batch, user).subquery()
         query = select(
             InternshipApplication, InternshipRecord, StudentProfile,
             InternshipPosition, EmpCompany,
@@ -718,20 +813,41 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
         ).join(
             StudentProfile, StudentProfile.id == InternshipApplication.student_id
         ).outerjoin(
-            InternshipPosition, InternshipPosition.id == InternshipApplication.position_id
+            InternshipPosition, and_(InternshipPosition.id == InternshipApplication.position_id,
+                                     InternshipPosition.tenant_id == _tid(),
+                                     InternshipPosition.is_deleted.is_(False))
         ).outerjoin(
-            EmpCompany, EmpCompany.id == InternshipPosition.company_id
+            EmpCompany, and_(EmpCompany.id == InternshipPosition.company_id,
+                             EmpCompany.tenant_id == _tid(), EmpCompany.is_deleted.is_(False))
         ).where(
             InternshipApplication.tenant_id == _tid(),
             InternshipApplication.campaign_id.is_(None),
             InternshipApplication.is_deleted.is_(False),
-            InternshipApplication.record_id.in_(select(scoped.c.id)),
+            InternshipApplication.id.in_(_legacy_application_ids(select(scoped.c.id))),
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.batch_id == batch.id,
             InternshipRecord.is_deleted.is_(False),
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
         )
+        if application_id is not None:
+            query = query.where(InternshipApplication.id == _as_id(application_id))
+        query, org = _application_org_query(query)
+        if academic_year:
+            query = query.where(batch.academic_year == academic_year)
+        if grade:
+            query = query.where(org['grade'] == grade)
+        for column, value in ((org['collegeId'], college_id), (org['majorId'], major_id), (org['classId'], class_id)):
+            if value:
+                query = query.where(column == _as_id(value))
+        for column, value in ((StudentProfile.real_name, student_name), (StudentProfile.student_no, student_no)):
+            if value:
+                query = query.where(column.contains(str(value).strip(), autoescape=True))
+        if exemption_type:
+            if exemption_type not in ('FURTHER_STUDY', 'MILITARY', 'HEALTH', 'OTHER'):
+                raise AppException("VALIDATION_ERROR", "不支持的免实习类别")
+            query = query.where(InternshipApplication.application_type == 'EXEMPTION',
+                                InternshipApplication.exemption_type == exemption_type)
         status_value = str(status or "").strip().upper()
         if status_value and status_value != "ALL":
             if status_value == "REVIEWED":
@@ -760,26 +876,26 @@ def list_applications(page: int, page_size: int, status=None, application_type=N
         if size == 0:
             return [], total
         rows = db.execute(
-            query.order_by(
+            query.add_columns(org['className'], org['majorName'], org['collegeName']).order_by(
                 InternshipApplication.submitted_at.desc(),
                 InternshipApplication.id.desc(),
             ).offset((max(1, int(page or 1)) - 1) * size).limit(size)
         ).all()
-        org_map = _student_org_context(
-            db, [student for _application, _record, student, _position, _company in rows])
         return [
             _row(
                 db, application, record, student,
                 pos=position, company=company, preloaded=True,
-                org=org_map.get(int(student.id), {}),
+                org={'className': class_name, 'majorName': major_name, 'collegeName': college_name},
             )
-            for application, record, student, position, company in rows
+            for application, record, student, position, company, class_name, major_name, college_name in rows
         ], total
 
 
 def export_applications(
     *, status: str | None = None, application_type: str | None = None,
     keyword: str | None = None, batch_id=None, user: dict | None = None,
+    academic_year=None, grade=None, college_id=None, major_id=None, class_id=None,
+    student_name=None, student_no=None, exemption_type=None,
 ) -> tuple[bytes, str, int]:
     """Export the complete scoped result set, never just the current page."""
     from app.services import xlsx_util
@@ -787,6 +903,8 @@ def export_applications(
     rows, total = list_applications(
         1, 20000, status, application_type, keyword,
         batch_id=batch_id, user=user,
+        academic_year=academic_year, grade=grade, college_id=college_id, major_id=major_id,
+        class_id=class_id, student_name=student_name, student_no=student_no, exemption_type=exemption_type,
     )
     if total > 20000:
         raise AppException(
@@ -855,37 +973,79 @@ def export_applications(
 _CURRENT_FILLED_STATUSES = ("DRAFT", "PENDING_REVIEW", "APPROVED", "REJECTED")
 
 
+def _recruitment_groups(scoped_ids, user):
+    from app.models.internship_enterprise_portal import InternshipRecruitmentCampaign as campaign
+    from app.models.internship_volunteer_group import InternshipVolunteerGroup as group
+    from app.modules.internship.services.internship_school_volunteer_service import _query
+    return _query(None, user).with_only_columns(
+        group.id, group.record_id, group.campaign_id, group.status, campaign.campaign_name,
+    ).join(campaign, and_(
+        campaign.id == group.campaign_id, campaign.tenant_id == group.tenant_id,
+        campaign.batch_id == group.batch_id, campaign.is_deleted.is_(False),
+    )).where(group.record_id.in_(scoped_ids))
+
+
+def _filled_recruitment_groups(scoped_ids, user):
+    """Read saved choices from the V3 authority; never expose them to legacy review."""
+    from app.models.internship_volunteer_group import InternshipVolunteerGroup as group
+    return _recruitment_groups(scoped_ids, user).join(InternshipApplication, and_(
+        InternshipApplication.campaign_record_id == group.record_id,
+        InternshipApplication._legacy_record_id.is_(None),
+        InternshipApplication.campaign_id == group.campaign_id,
+        InternshipApplication.student_id == group.student_id,
+        InternshipApplication.batch_id == group.batch_id,
+        InternshipApplication.tenant_id == group.tenant_id,
+        InternshipApplication.application_type == 'POSITION',
+        InternshipApplication.volunteer_no.in_((1, 2, 3)),
+        InternshipApplication.position_id.is_not(None),
+        InternshipApplication.status.in_(_CURRENT_FILLED_STATUSES),
+        InternshipApplication.is_deleted.is_(False),
+    )).where(group.tenant_id == _tid(), group.record_id.in_(scoped_ids),
+             group.is_deleted.is_(False),
+             group.status.in_(('DRAFT', 'SUBMITTED', 'LOCKED', 'NEEDS_REVISION', 'APPROVED'))).distinct()
+
+
+def _filled_record_ids(scoped_ids, user):
+    legacy = select(InternshipApplication.record_id.label('record_id')).where(
+        InternshipApplication.id.in_(_legacy_application_ids(scoped_ids)),
+        InternshipApplication.status.in_(_CURRENT_FILLED_STATUSES),
+    )
+    groups = _filled_recruitment_groups(scoped_ids, user).subquery()
+    return legacy.union(select(groups.c.record_id))
+
+
 def application_summary(batch_id=None, user: dict | None = None) -> dict:
     """Yiyang C04/G10: authoritative full-scope application coverage and review counts.
 
     filledStudents is student/record based, never page based. A current application in
     DRAFT/PENDING_REVIEW/APPROVED/REJECTED counts as filled; WITHDRAWN/CANCELLED does not.
-    Review counters are application based so approved/rejected history stays auditable.
+    Saved recruitment choices count once per record, including draft/revision groups.
+    Legacy review counters stay application based; recruitment school work stays group based.
     """
     from app.modules.internship.services.internship_batch_context import resolve_batch
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
 
     with session() as db:
         batch = resolve_batch(db, batch_id)
-        scoped = apply_internship_record_scope(
-            select(InternshipRecord.id).where(
-                InternshipRecord.tenant_id == _tid(),
-                InternshipRecord.batch_id == batch.id,
-                InternshipRecord.is_deleted.is_(False),
-            ),
-            user,
-        ).subquery()
+        scoped = _scoped_record_ids(batch, user).subquery()
         scoped_ids = select(scoped.c.id)
         total_students = int(db.scalar(select(func.count()).select_from(scoped)) or 0)
 
-        filled = select(InternshipApplication.record_id).where(
-            InternshipApplication.tenant_id == _tid(),
-            InternshipApplication.campaign_id.is_(None),
-            InternshipApplication.is_deleted.is_(False),
-            InternshipApplication.record_id.in_(scoped_ids),
-            InternshipApplication.status.in_(_CURRENT_FILLED_STATUSES),
-        ).distinct().subquery()
+        filled = _filled_record_ids(scoped_ids, user).subquery()
         filled_students = int(db.scalar(select(func.count()).select_from(filled)) or 0)
+        legacy_filled = int(db.scalar(select(func.count(func.distinct(InternshipApplication.record_id))).where(
+            InternshipApplication.id.in_(_legacy_application_ids(scoped_ids)),
+            InternshipApplication.status.in_(_CURRENT_FILLED_STATUSES),
+        )) or 0)
+        groups = _filled_recruitment_groups(scoped_ids, user).subquery()
+        recruitment_filled = int(db.scalar(select(func.count(func.distinct(groups.c.record_id)))) or 0)
+        all_groups = _recruitment_groups(scoped_ids, user).subquery()
+        recruitment_counts = db.execute(select(
+            all_groups.c.campaign_id, all_groups.c.campaign_name,
+            func.sum(case((all_groups.c.id.in_(select(groups.c.id)), 1), else_=0)),
+            func.sum(case((all_groups.c.status.in_(('SUBMITTED', 'LOCKED')), 1), else_=0)),
+        ).group_by(all_groups.c.campaign_id, all_groups.c.campaign_name).order_by(all_groups.c.campaign_id)).all()
+        pending_groups = sum(int(row[3] or 0) for row in recruitment_counts)
 
         status_rows = db.execute(
             select(InternshipApplication.status, func.count(InternshipApplication.id))
@@ -893,7 +1053,7 @@ def application_summary(batch_id=None, user: dict | None = None) -> dict:
                 InternshipApplication.tenant_id == _tid(),
                 InternshipApplication.campaign_id.is_(None),
                 InternshipApplication.is_deleted.is_(False),
-                InternshipApplication.record_id.in_(scoped_ids),
+                InternshipApplication.id.in_(_legacy_application_ids(scoped_ids)),
             )
             .group_by(InternshipApplication.status)
         ).all()
@@ -909,6 +1069,12 @@ def application_summary(batch_id=None, user: dict | None = None) -> dict:
             "filledStudents": filled_students,
             "unfilledStudents": unfilled_students,
             "filledRate": filled_rate,
+            "legacyFilledStudents": legacy_filled,
+            "recruitmentFilledStudents": recruitment_filled,
+            "pendingRecruitmentGroups": pending_groups,
+            "recruitmentCampaigns": [{"campaignId": str(cid), "name": name,
+                "filledGroups": int(total), "pendingGroups": int(pending or 0)}
+                for cid, name, total, pending in recruitment_counts],
             "pendingReviewApplications": counts.get("PENDING_REVIEW", 0),
             "reviewedApplications": approved + rejected,
             "approvedApplications": approved,
@@ -917,7 +1083,7 @@ def application_summary(batch_id=None, user: dict | None = None) -> dict:
             "withdrawnApplications": counts.get("WITHDRAWN", 0),
             "cancelledApplications": counts.get("CANCELLED", 0),
             "definition": {
-                "filled": "当前批次数据范围内存在草稿、待审核、已通过或已驳回的正式实习申请",
+                "filled": "当前批次范围内已保存普通申请或招聘季岗位志愿，含草稿及待补正；同一学生记录只计一人",
                 "unfilled": "当前批次数据范围内不存在上述当前填报事实；已撤回/已取消不计当前填报",
                 "reviewed": "已通过 + 已驳回申请数",
             },
@@ -937,22 +1103,9 @@ def list_application_students(page: int, page_size: int, state: str, *, batch_id
 
     with session() as db:
         batch = resolve_batch(db, batch_id)
-        scoped = apply_internship_record_scope(
-            select(InternshipRecord.id).where(
-                InternshipRecord.tenant_id == _tid(),
-                InternshipRecord.batch_id == batch.id,
-                InternshipRecord.is_deleted.is_(False),
-            ),
-            user,
-        ).subquery()
+        scoped = _scoped_record_ids(batch, user).subquery()
         scoped_ids = select(scoped.c.id)
-        filled_record_ids = select(InternshipApplication.record_id).where(
-            InternshipApplication.tenant_id == _tid(),
-            InternshipApplication.campaign_id.is_(None),
-            InternshipApplication.is_deleted.is_(False),
-            InternshipApplication.record_id.in_(scoped_ids),
-            InternshipApplication.status.in_(_CURRENT_FILLED_STATUSES),
-        ).distinct()
+        filled_record_ids = _filled_record_ids(scoped_ids, user)
 
         query = select(InternshipRecord, StudentProfile).join(
             StudentProfile, StudentProfile.id == InternshipRecord.student_id
@@ -971,12 +1124,11 @@ def list_application_students(page: int, page_size: int, state: str, *, batch_id
 
         term = str(keyword or "").strip()
         if term:
-            like = f"%{term}%"
             query = query.where(or_(
-                StudentProfile.real_name.like(like),
-                StudentProfile.student_no.like(like),
-                InternshipRecord.enterprise_name.like(like),
-                InternshipRecord.position_name.like(like),
+                StudentProfile.real_name.contains(term, autoescape=True),
+                StudentProfile.student_no.contains(term, autoescape=True),
+                InternshipRecord.enterprise_name.contains(term, autoescape=True),
+                InternshipRecord.position_name.contains(term, autoescape=True),
             ))
 
         total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
@@ -1006,7 +1158,7 @@ def get_application(app_id, user: dict | None = None) -> dict:
     with session() as db:
         app = _get_legacy_application(db, app_id)
         rec, stu = db.get(InternshipRecord, app.record_id), db.get(StudentProfile, app.student_id)
-        _scope_check(db, rec, stu, user)
+        _scope_check(db, rec, stu, user, app)
         item = _row(db, app, rec, stu)
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "APPLICATION",
@@ -1091,7 +1243,7 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False)).with_for_update())
         stu = db.get(StudentProfile, app.student_id)
-        _scope_check(db, rec, stu, user)
+        _scope_check(db, rec, stu, user, app)
         from app.modules.internship.services.internship_batch_context import assert_record_batch
         assert_record_batch(rec, expected_batch_id)
         if app.status != "PENDING_REVIEW":
@@ -1138,6 +1290,8 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
                 rec.position_name = None
                 rec.enterprise_mentor_name = None
             else:
+                if rec.position_id or rec.destination_type not in ("NONE", ""):
+                    raise AppException("DATA_CONFLICT", "学生已有实习去向，请通过正式实习变更流程办理，不能覆盖当前落岗", http_status=409)
                 rec.destination_type = "SELF_ARRANGED"
                 rec.enterprise_name = app.company_name
                 rec.position_name = app.position_name
@@ -1145,6 +1299,7 @@ def review_application(app_id, action: str, comment: str = "", user: dict | None
                 rec.intern_start_date = app.internship_start_date
                 rec.intern_end_date = app.internship_end_date
             rec.version = record_ver + 1
+        rec.current_application_id = app.id
         new_ver = versioned_update(
             db, InternshipApplication, entity_id=app.id, tenant_id=_tid(),
             expected_version=ver, expected_status="PENDING_REVIEW",

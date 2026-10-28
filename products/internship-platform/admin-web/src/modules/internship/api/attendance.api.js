@@ -27,7 +27,11 @@ export const attendanceApi = {
   getCheckins(params = {}) { return callList(`${B}/checkins`, params) },
   exportCheckins(params = {}) { return call(() => request(`${B}/checkins/export`, { method: 'POST', params })) },
   // 打卡异常
-  getExceptions(params = {}) { return callList(`${B}/exceptions`, params) },
+  async getExceptions(params = {}) {
+    const result = await callList(`${B}/exceptions`, params)
+    if (result.code === 0) result.data.list = result.data.list.map(row => ({ ...row, deviceRiskLabel: ({ mock:'客户端报告模拟定位', rooted:'客户端报告设备风险', not_available:'未提供可信检测' })[row.deviceRisk] || '设备信号待确认' }))
+    return result
+  },
   getExceptionDetail(id) { return call(() => request(`${B}/exceptions/${id}`)) },
   handleException(id, { action, comment, expectedVersion, version }) {
     return call(() => request(`${B}/exceptions/${id}/handle`, {

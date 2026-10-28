@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import inspect
 
-from app.api.v1 import route_registration
+from app.main import app
 from app.modules.internship.dependencies import enterprise_context
 from app.modules.internship.routers import internship_enterprise_portal
 from app.modules.internship.schemas.internship_recruitment_campaign import (
@@ -111,11 +111,12 @@ def test_enterprise_context_revalidates_user_member_company_admission_grant_and_
 
 
 def test_enterprise_router_is_mounted_outside_staff_bundle_with_explicit_auth_policy():
-    register_source = inspect.getsource(route_registration.register_internship_routes)
     router_source = inspect.getsource(internship_enterprise_portal)
-    assert "internship_enterprise_portal" in register_source
-    assert "api_router.include_router(internship_enterprise_portal.router)" in register_source
-    assert "api_router.include_router(internship_enterprise_portal.router, dependencies=d)" not in register_source
+    paths = app.openapi()['paths']
+    prefix = '/api/v1/internship/enterprise-portal'
+    assert paths[prefix+'/auth/login']['post']['x-internship-auth']=='public'
+    assert paths[prefix+'/auth/invite/accept']['post']['x-internship-auth']=='public'
+    assert 'get' in paths[prefix+'/campaigns']
     assert "require_staff" not in router_source
     assert "require_enterprise_permission as require_permission" in router_source
     assert router_source.count('openapi_extra={"x-internship-auth": "public"}') == 4

@@ -16,7 +16,7 @@
 </template>
 
 <script setup>
-import { onMounted, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import EnterprisePublicProfile from '../../components/recruitment/EnterprisePublicProfile.vue'
 import { normalizeEnterprisePublic } from '../../modules/internshipRecruitment/companyModel'
@@ -27,7 +27,7 @@ const router = useRouter()
 const loading = ref(true)
 const error = ref('')
 const company = ref(normalizeEnterprisePublic())
-let requestSeq = 0
+let requestSeq = 0, alive = true
 
 async function load() {
   const companyId = route.params.companyId
@@ -41,18 +41,19 @@ async function load() {
   error.value = ''
   try {
     const data = await internshipSelectionApi.forScope(route.query).company(companyId)
-    if (requestId !== requestSeq) return
+    if (!alive || requestId !== requestSeq) return
     company.value = normalizeEnterprisePublic(data || {})
   } catch (err) {
-    if (requestId !== requestSeq) return
+    if (!alive || requestId !== requestSeq) return
     error.value = err?.message || '请稍后重试'
   } finally {
-    if (requestId === requestSeq) loading.value = false
+    if (alive && requestId === requestSeq) loading.value = false
   }
 }
 
 watch(() => [route.params.companyId, route.query.batchId, route.query.campaignId, route.query.recordId], load)
 onMounted(load)
+onBeforeUnmount(()=>{alive=false;requestSeq++})
 </script>
 
 <style scoped>

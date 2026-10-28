@@ -2,13 +2,12 @@
   <ModulePageShell
     class="fdw"
     title="正式文书"
-    subtitle="按已审核、已发布的正式业务事实生成版本化 PDF；源数据变化会生成新版本，历史文件不覆盖。"
+    subtitle="按已审核、已发布的正式业务事实生成版本化文件；源数据变化会生成新版本，历史文件不覆盖。"
   >
     <section class="mp-card">
       <div class="mp-card__head">
         <div>
           <span class="mp-card__title">选择学生实习记录</span>
-          <p class="fdw-sub">只显示当前批次和当前账号数据范围内的学生。</p>
         </div>
       </div>
       <div class="mp-card__body fdw-select">
@@ -32,6 +31,7 @@
     <ErrorState v-else-if="error" :description="error" @retry="loadSelected" />
 
     <template v-else-if="internshipId && student">
+      <p v-if="sharedBlocker" class="fdw-notice">{{ sharedBlocker }}</p>
       <section class="fdw-grid">
         <article v-for="item in readinessItems" :key="item.documentType" class="mp-card fdw-doc">
           <div class="mp-card__head">
@@ -44,19 +44,20 @@
             </AppStatusTag>
           </div>
           <div class="mp-card__body fdw-doc__body">
-            <div v-if="item.ready" class="fdw-facts">
+            <details v-if="item.ready" class="fdw-facts">
+              <summary>实施人员使用：来源与文件指纹</summary>
               <span>当前源数据哈希</span>
               <code>{{ item.currentSourceHash || '—' }}</code>
-            </div>
+              <code>{{ item.latestFileSha256 || '尚未生成' }}</code>
+            </details>
             <div v-if="item.latestVersion" class="fdw-facts">
               <span>最新文书</span>
-              <strong>V{{ item.latestVersion }} · {{ item.latestStatus || '—' }}</strong>
-              <code v-if="item.latestFileSha256">{{ item.latestFileSha256 }}</code>
+              <strong>第 {{ item.latestVersion }} 版 · {{ statusLabel(item.latestStatus) }}</strong>
             </div>
-            <p v-if="!item.ready" class="fdw-blocker">{{ item.reason || '正式业务事实尚不完整。' }}</p>
-            <p v-else-if="item.upToDate" class="fdw-ready">当前正式事实与最新 PDF 一致，无需重复生成。</p>
-            <p v-else class="fdw-ready is-warning">当前正式事实已满足条件，且与历史版本不同，可生成新版本。</p>
-            <p v-if="item.missingFields?.length" class="fdw-blocker">待完善资料：{{ item.missingFields.join("、") }}。PDF将如实标注缺项，请核实后重新生成。</p>
+            <p v-if="!item.ready && !sharedBlocker" class="fdw-blocker">{{ item.reason || '正式业务事实尚不完整。' }}</p>
+            <p v-else-if="item.ready && item.upToDate" class="fdw-ready">当前正式事实与最新文件一致，无需重复生成。</p>
+            <p v-else-if="item.ready" class="fdw-ready is-warning">当前正式事实已满足条件，且与历史版本不同，可生成新版本。</p>
+            <p v-if="item.missingFields?.length" class="fdw-blocker">待完善资料：{{ item.missingFields.join("、") }}。文书将如实标注缺项，请核实后重新生成。</p>
             <div class="fdw-actions">
               <AppButton
                 v-if="item.latestDocumentId"
@@ -64,7 +65,7 @@
                 variant="ghost"
                 :disabled="busyType === item.documentType"
                 @click="downloadLatest(item)"
-              >下载最新 V{{ item.latestVersion }}</AppButton>
+              >下载最新第 {{ item.latestVersion }} 版</AppButton>
               <AppButton
                 v-if="item.ready && !item.upToDate"
                 size="sm"
@@ -80,7 +81,7 @@
         <div class="mp-card__head">
           <div>
             <span class="mp-card__title">历史版本</span>
-            <p class="fdw-sub">每次正式事实变化后重新生成都会形成新版本，旧 PDF 永不覆盖。</p>
+            <p class="fdw-sub">每次正式事实变化后重新生成都会形成新版本，旧文件永不覆盖。</p>
           </div>
           <AppButton size="sm" variant="ghost" :disabled="loading" @click="loadSelected">刷新</AppButton>
         </div>
@@ -88,18 +89,19 @@
           <EmptyState v-if="!documents.length" title="尚未生成正式文书" description="上方满足条件的文书可直接生成。" />
           <DataTable v-else :columns="columns" :rows="documents" row-key="id">
             <template #cell-type="{ row }">
-              <div class="fdw-cell"><strong>{{ row.documentTypeLabel }}</strong><span>{{ row.documentType }}</span></div>
+              <strong>{{ row.documentTypeLabel }}</strong>
             </template>
-            <template #cell-version="{ row }">V{{ row.documentVersion }}</template>
+            <template #cell-version="{ row }">第 {{ row.documentVersion }} 版</template>
+            <template #cell-generatedAt="{ row }">{{ formatDateTime(row.generatedAt, '时间未记录') }}</template>
             <template #cell-file="{ row }">
-              <div class="fdw-cell"><span>fileId {{ row.fileId || '—' }}</span><code>{{ row.fileSha256 || '—' }}</code></div>
+              <details class="fdw-cell"><summary>实施人员使用</summary><span>文件编号 {{ row.fileId || '—' }}</span><code>{{ row.fileSha256 || '—' }}</code></details>
             </template>
             <template #cell-status="{ row }">
-              <AppStatusTag :type="row.status === 'GENERATED' ? 'success' : 'default'">{{ row.status }}</AppStatusTag>
+              <AppStatusTag :type="row.status === 'GENERATED' ? 'success' : 'default'">{{ statusLabel(row.status) }}</AppStatusTag>
             </template>
             <template #cell-actions="{ row }">
               <AppButton size="sm" variant="ghost" :disabled="downloadingId === String(row.id)" @click="download(row)">
-                {{ downloadingId === String(row.id) ? '下载中…' : '下载 PDF' }}
+                {{ downloadingId === String(row.id) ? '下载中…' : '下载文书' }}
               </AppButton>
             </template>
           </DataTable>
@@ -110,7 +112,7 @@
     <EmptyState
       v-else-if="batchId"
       title="请选择学生"
-      description="选择学生后，系统会先检查企业评价、实习结束事实、最终成绩和实习总结是否满足正式文书生成条件。"
+      description="选择学生后查看可用文书。"
     />
   </ModulePageShell>
 </template>
@@ -124,13 +126,14 @@ import { internStudentApi } from '@/modules/internship/api/internship-student.ap
 import { formalDocumentApi } from '@/modules/internship/api/formal-document.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 
 const COLUMNS = [
   { key: 'type', title: '文书类型', width: '220px' },
   { key: 'version', title: '版本', width: '80px' },
   { key: 'generatedByName', title: '生成人', width: '130px' },
   { key: 'generatedAt', title: '生成时间', width: '170px' },
-  { key: 'file', title: '冻结文件 / SHA-256' },
+  { key: 'file', title: '文件核对信息' },
   { key: 'status', title: '状态', width: '100px' },
   { key: 'actions', title: '操作', width: '110px' }
 ]
@@ -159,9 +162,14 @@ export default {
   computed: {
     batchStore() { return useInternshipBatchStore() },
     batchId() { return this.batchStore.selectedBatchId || '' },
-    canGenerate() { return canCode(this.ctx, 'internship.archive.execute') }
+    canGenerate() { return canCode(this.ctx, 'internship.archive.execute') },
+    sharedBlocker() {
+      const reason = this.readinessItems[0]?.reason
+      return reason && this.readinessItems.every(item => !item.ready && item.reason === reason) ? reason : ''
+    }
   },
   watch: {
+    '$route.query.internshipId'() { this.applyRouteRecord() },
     'batchStore.selectedBatchId'() {
       this.loadSeq++
       this.internshipId = ''
@@ -169,10 +177,20 @@ export default {
       this.readinessItems = []
       this.documents = []
       this.error = ''
+      this.applyRouteRecord()
     }
   },
+  mounted() { this.applyRouteRecord() },
   beforeUnmount() { this.loadSeq++ },
   methods: {
+    formatDateTime,
+    statusLabel(status) { return { GENERATED: '已生成', SUPERSEDED: '历史版本' }[status] || '尚未生成' },
+    applyRouteRecord() {
+      const query = this.$route?.query || {}
+      if (String(query.batchId || '') !== String(this.batchId || '')) return
+      this.internshipId = String(query.internshipId || '')
+      if (this.internshipId) this.loadSelected()
+    },
     documentHint(type) {
       return {
         ENTERPRISE_EVALUATION: '包含性别、学生及校企导师电话、签到补签、四类报告数量、企业评分与等级。',

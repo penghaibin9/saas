@@ -1,25 +1,51 @@
 """Existing enterprise accounts join another round without credential or role changes."""
 from datetime import datetime, timedelta
 import uuid
+import pytest
 
 from sqlalchemy import select
 from app.db.session import get_sessionmaker
 from app.models import EmpCompany, Tenant, User
 from app.models.internship_enterprise_portal import InternshipCampaignEnterprise, InternshipEnterpriseMember, InternshipEnterpriseAccessGrant
-from tests.test_internship_student import TID, _mk_batch
+from test_student_support_story_mysql import result, seed_support
+from test_yiyang_plan_export_options_mysql import login
 
 SCHOOL = '/api/v1/internship/recruitment-campaigns'
 PORTAL = '/api/v1/internship/enterprise-portal'
 
 
+@pytest.fixture
+def client(record_property):
+    story = seed_support()
+    record_property('tenantId', story['tenantId'])
+    with login(story) as school:
+        yield school
+
+
+@pytest.fixture
+def auth_headers(client):
+    return {'Authorization': client.headers['Authorization']}
+
+
+def _mk_batch(client, headers):
+    now = datetime.utcnow()
+    data = result(client.post('/api/v1/internship/batches', headers=headers, json={
+        'batchName': '往期企业合成批次', 'batchNo': 'INVITE-' + uuid.uuid4().hex[:16],
+        'startDate': now.date().isoformat(), 'endDate': (now + timedelta(days=60)).date().isoformat(),
+        'plannedCount': 10,
+    }))
+    result(client.post('/api/v1/internship/batches/' + data['id'] + '/activate', headers=headers,
+        json={'expectedVersion': data['version']}))
+    return data['id']
+
+
 def _fixture(client, headers, *, windows=None):
+    tenant_id = int(result(client.get('/api/v1/auth/me', headers=headers))['tenantId'])
     with get_sessionmaker()() as db:
-        tenant = db.get(Tenant, TID)
-        if tenant is None:
-            tenant = Tenant(id=TID, tenant_code='existing-invite-fixture', school_name='虚构邀请验收学校', status='ACTIVE')
-            db.add(tenant); db.flush()
+        tenant = db.get(Tenant, tenant_id)
+        assert tenant is not None
         code = tenant.tenant_code
-        company = EmpCompany(tenant_id=TID, name='虚构往期企业', credit_code=uuid.uuid4().hex[:18],
+        company = EmpCompany(tenant_id=tenant_id, name='虚构往期企业', credit_code=uuid.uuid4().hex[:18],
                              status='ACTIVE', coop_status='ACTIVE', qualification_status='PASSED',
                              access_valid_until=datetime.utcnow() + timedelta(days=100))
         db.add(company); db.commit(); company_id = str(company.id)
@@ -56,7 +82,7 @@ def _fixture(client, headers, *, windows=None):
     return code, body, password, campaign, invite.json()['data']['memberId'], auth
 
 
-def test_existing_member_accepts_new_round_without_password_role_or_session_change(client, auth_headers, db_mode):
+def test_existing_member_accepts_new_round_without_password_role_or_session_change(client, auth_headers):
     code, body, password, campaign, member_id, existing_auth = _fixture(client, auth_headers)
     with get_sessionmaker()() as db:
         member = db.get(InternshipEnterpriseMember, int(member_id)); user = db.get(User, member.user_id)
@@ -89,7 +115,7 @@ def test_existing_member_accepts_new_round_without_password_role_or_session_chan
         assert grant and grant.company_id == int(body['companyId']) and grant.status == 'ACTIVE'
 
 
-def test_existing_invite_wrong_member_reissue_expiry_and_revocation_fail_closed(client, auth_headers, db_mode):
+def test_existing_invite_wrong_member_reissue_expiry_and_revocation_fail_closed(client, auth_headers):
     code, body, _, campaign, member_id, own = _fixture(client, auth_headers)
     _, _, _, _, _, other = _fixture(client, auth_headers)
     second = campaign()
@@ -112,7 +138,7 @@ def test_existing_invite_wrong_member_reissue_expiry_and_revocation_fail_closed(
     assert client.post(PORTAL + '/auth/invite/accept-existing', headers=own, json={'tenantCode': code, 'token': token}).status_code == 401
 
 
-def test_existing_account_cannot_be_reactivated_or_bound_to_another_company_by_password_reset(client, auth_headers, db_mode):
+def test_existing_account_cannot_be_reactivated_or_bound_to_another_company_by_password_reset(client, auth_headers):
     code, body, _, campaign, member_id, _ = _fixture(client, auth_headers)
     _, other_body, _, other_campaign, _, _ = _fixture(client, auth_headers)
     foreign_round = other_campaign()
@@ -133,7 +159,7 @@ def test_existing_account_cannot_be_reactivated_or_bound_to_another_company_by_p
         assert db.get(User, member.user_id).password_hash == original
 
 
-def test_campaign_duplicate_round_and_code_return_correctable_validation_errors(client, auth_headers, db_mode):
+def test_campaign_duplicate_round_and_code_return_correctable_validation_errors(client, auth_headers):
     batch = _mk_batch(client, auth_headers)
     body = {'batchId': batch, 'campaignCode': uuid.uuid4().hex, 'campaignName': '虚构唯一约束验收', 'roundNo': 1}
     first = client.post(SCHOOL, headers=auth_headers, json=body)
@@ -149,7 +175,7 @@ def test_campaign_duplicate_round_and_code_return_correctable_validation_errors(
     assert reread['roundNo'] == 2 and reread['version'] == second['version']
 
 
-def test_concurrent_invite_reissue_and_accept_leave_one_consistent_participation(client, auth_headers, db_mode):
+def test_concurrent_invite_reissue_and_accept_leave_one_consistent_participation(client, auth_headers):
     from concurrent.futures import ThreadPoolExecutor
     from threading import Barrier
     code, body, _, campaign, member_id, own = _fixture(client, auth_headers)

@@ -4,7 +4,7 @@
     :class="[`is-${size}`, { 'is-disabled': disabled, 'is-error': status === 'error', 'is-placeholder': isEmpty }]"
   >
     <select
-      :id="id"
+      :id="controlId"
       class="app-select__el"
       :value="modelValue"
       :disabled="disabled"
@@ -35,6 +35,7 @@
  */
 export default {
   name: 'AppSelect',
+  inject: { appField: { default: null } },
   props: {
     modelValue: { type: [String, Number], default: '' },
     id: { type: String, default: '' },
@@ -48,6 +49,7 @@ export default {
   },
   emits: ['update:modelValue', 'change'],
   computed: {
+    controlId() { return this.id || this.appField?.controlId || undefined },
     normalizedOptions() {
       return this.options.map((o) => (
         typeof o === 'object'

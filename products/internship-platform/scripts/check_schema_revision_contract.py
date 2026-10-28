@@ -95,8 +95,9 @@ def current_consumers(repository: Path) -> list[Path]:
 
 
 def check_contract(repository: Path) -> tuple[str, list[Path], list[str]]:
-    head = migration_head(repository / PRODUCT / "backend/alembic/versions")
-    paths = current_consumers(repository)
+    standalone = not (repository / PRODUCT / "backend/alembic/versions").is_dir() and (repository / "backend/alembic/versions").is_dir()
+    head = migration_head(repository / (Path() if standalone else PRODUCT) / "backend/alembic/versions")
+    paths = [path.relative_to(PRODUCT) for path in CURRENT_PRODUCT_FILES] if standalone else current_consumers(repository)
     errors = []
     for relative in paths:
         path = repository / relative
@@ -118,7 +119,10 @@ def check_contract(repository: Path) -> tuple[str, list[Path], list[str]]:
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="核对独立岗位实习当前数据库迁移版本约定")
-    parser.add_argument("--repo-root", type=Path, default=Path(__file__).resolve().parents[3])
+    product = Path(__file__).resolve().parents[1]
+    repository = product.parent.parent
+    default_root = repository if (repository / PRODUCT).resolve() == product else product
+    parser.add_argument("--repo-root", type=Path, default=default_root)
     args = parser.parse_args(argv)
     try:
         head, paths, errors = check_contract(args.repo_root.resolve())

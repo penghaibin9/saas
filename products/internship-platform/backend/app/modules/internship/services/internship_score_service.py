@@ -40,7 +40,7 @@ def _user_id(user) -> str:
 
 
 def _role_code(user) -> str:
-    return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
+    return str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
 
 
 def _assert_reviewer(user, *, final=False):

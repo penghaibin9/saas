@@ -7,7 +7,7 @@
       <slot name="prefix">{{ prefixIcon }}</slot>
     </span>
     <input
-      :id="id"
+      :id="controlId"
       ref="input"
       class="app-text-input__el"
       :type="type"
@@ -43,6 +43,7 @@
  */
 export default {
   name: 'AppTextInput',
+  inject: { appField: { default: null } },
   props: {
     modelValue: { type: [String, Number], default: '' },
     id: { type: String, default: '' },
@@ -60,6 +61,7 @@ export default {
   data() {
     return { focused: false }
   },
+  computed: { controlId() { return this.id || this.appField?.controlId || undefined } },
   methods: {
     onInput(e) {
       this.$emit('update:modelValue', e.target.value)

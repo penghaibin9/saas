@@ -48,6 +48,7 @@ def _trail(db, target_id, action, detail, user=None):
 
 
 def _extensions(value) -> list[str]:
+    from app.services.internship_file_transfer_service import ALLOWED_EXTENSIONS
     if value in (None, ""):
         return ["pdf", "doc", "docx", "jpg", "jpeg", "png"]
     raw = value if isinstance(value, list) else str(value).split(",")
@@ -56,6 +57,8 @@ def _extensions(value) -> list[str]:
         ext = str(item or "").strip().lower().lstrip(".")
         if not ext or not re.fullmatch(r"[a-z0-9]{1,12}", ext):
             raise AppException("VALIDATION_ERROR", "材料格式只允许扩展名，如 pdf、docx、jpg")
+        if ext not in ALLOWED_EXTENSIONS:
+            raise AppException("VALIDATION_ERROR", "所选材料格式不受文件服务支持，请使用学校支持的文件格式")
         if ext not in out:
             out.append(ext)
     if not out:
@@ -302,12 +305,19 @@ def attach_template(requirement_id, file_id, user=None):
 
 
 def publish_requirement(requirement_id, user=None):
+    from app.modules.internship.services.internship_material_center_service import _file_ready
     with session() as db:
         row = _requirement(db, requirement_id, lock=True)
         if row.status == "CLOSED":
             raise AppException("DATA_CONFLICT", "已关闭收件要求不可重新发布")
-        if not _template(db, row):
+        template = _template(db, row)
+        if not template:
             raise AppException("DATA_CONFLICT", "发布前必须上传至少一个材料模板版本")
+        file_obj = file_access_service.require_file_access(str(template.file_id), user=user, action="download")
+        if not _file_ready(file_obj):
+            raise AppException("FILE_NOT_READY", "模板文件尚未安全就绪，不能发布收件要求", http_status=409)
+        if not template.sha256_snapshot or file_obj.sha256 != template.sha256_snapshot:
+            raise AppException("DATA_CONFLICT", "模板文件与当前版本校验不一致，不能发布收件要求", http_status=409)
         row.status = "PUBLISHED"
         row.version = int(row.version or 0) + 1
         _trail(db, row.id, "REQUIREMENT_PUBLISH", {
@@ -327,12 +337,14 @@ def _submission(db, requirement_id, record_id, *, lock=False):
     return db.scalar(query.with_for_update() if lock else query)
 
 
-def _submission_files(db, submission_id):
-    return db.scalars(select(InternshipMaterialSubmissionFile).where(
+def _submission_files(db, submission_id, *, include_deleted=False):
+    query = select(InternshipMaterialSubmissionFile).where(
         InternshipMaterialSubmissionFile.tenant_id == _tid(),
         InternshipMaterialSubmissionFile.submission_id == int(submission_id),
-        InternshipMaterialSubmissionFile.is_deleted.is_(False),
-    ).order_by(InternshipMaterialSubmissionFile.slot_no)).all()
+    )
+    if not include_deleted:
+        query = query.where(InternshipMaterialSubmissionFile.is_deleted.is_(False))
+    return db.scalars(query.order_by(InternshipMaterialSubmissionFile.slot_no)).all()
 
 
 def _submission_file_views(db, submission_ids):
@@ -492,14 +504,14 @@ def submit_material(user: dict, requirement_id, body: dict):
             db.add(submission)
             db.flush()
 
-        existing = {int(item.slot_no): item for item in _submission_files(db, submission.id)}
+        existing = {int(item.slot_no): item for item in _submission_files(db, submission.id, include_deleted=True)}
         touched = set()
         for slot_no, file_obj in enumerate(validated, start=1):
             touched.add(slot_no)
             asset = _asset(db, requirement, record, slot_no)
             old = existing.get(slot_no)
             old_version = db.get(FileVersion, old.current_version_id) if old else None
-            if old_version:
+            if old_version and old_version.is_current:
                 old_version.is_current = False
                 old_version.status = "REJECTED" if submission.status == "RETURNED" else "INVALIDATED"
                 old_version.invalidated_at = datetime.utcnow()
@@ -558,6 +570,7 @@ def submit_material(user: dict, requirement_id, body: dict):
                     "batchId": str(record.batch_id),
                     "requirementId": str(requirement.id),
                     "materialCode": requirement.material_code,
+                    "reviewStatus": "SUBMITTED",
                     "slotNo": slot_no,
                 },
             )
@@ -566,6 +579,7 @@ def submit_material(user: dict, requirement_id, body: dict):
             binding.version_no = version.version_no
 
             if old:
+                old.is_deleted = False
                 old.asset_id = asset.id
                 old.current_version_id = version.id
                 old.file_id = file_obj.id
@@ -581,7 +595,25 @@ def submit_material(user: dict, requirement_id, body: dict):
                 ))
 
         for slot_no, old in existing.items():
-            if slot_no not in touched:
+            if slot_no not in touched and not old.is_deleted:
+                old_version = db.get(FileVersion, old.current_version_id)
+                if old_version:
+                    old_version.is_current = False
+                    old_version.status = "REJECTED" if submission.status == "RETURNED" else "INVALIDATED"
+                    old_version.invalidated_at = datetime.utcnow()
+                    old_version.invalidated_by = _op_name(user)
+                    old_version.invalid_reason = "RESUBMITTED"
+                for binding in db.scalars(select(FileBinding).where(
+                    FileBinding.tenant_id == _tid(), FileBinding.asset_id == old.asset_id,
+                    FileBinding.is_current.is_(True), FileBinding.is_deleted.is_(False),
+                ).with_for_update()).all():
+                    binding.is_current = False
+                    binding.status = "SUPERSEDED"
+                    binding.invalidated_at = datetime.utcnow()
+                asset = db.get(FileAsset, old.asset_id)
+                if asset and asset.current_version_id == old.current_version_id:
+                    asset.current_version_id = None
+                    asset.version = int(asset.version or 0) + 1
                 old.is_deleted = True
                 old.version = int(old.version or 0) + 1
 
@@ -645,10 +677,55 @@ def _scoped_student_query(requirement, user=None):
     return query.where(false())
 
 
-def coverage(requirement_id, user=None):
+def _filter_organization(query, *, college_id=None, major_id=None, class_id=None):
+    if all(value in (None, "") for value in (college_id, major_id, class_id)):
+        return query
+    from app.models import Major, SchoolClass
+    class_major = select(SchoolClass.major_id).where(
+        SchoolClass.tenant_id == _tid(), SchoolClass.id == StudentProfile.class_id,
+        SchoolClass.is_deleted.is_(False)).correlate(StudentProfile).scalar_subquery()
+    major = func.coalesce(StudentProfile.major_id, class_major)
+    college = func.coalesce(StudentProfile.college_id, select(Major.college_id).where(
+        Major.tenant_id == _tid(), Major.id == major, Major.is_deleted.is_(False)
+        ).correlate(StudentProfile).scalar_subquery())
+    for value, column in ((college_id, college), (major_id, major), (class_id, StudentProfile.class_id)):
+        if value not in (None, ""):
+            if not str(value).isdigit() or int(value) < 1:
+                raise AppException("VALIDATION_ERROR", "请选择有效的组织范围")
+            query = query.where(column == int(value))
+    return query
+
+
+def _filter_students(query, *, state="ALL", keyword="", college_id=None, major_id=None, class_id=None):
+    state_value = str(state or "ALL").upper()
+    status = InternshipMaterialSubmission.status
+    if state_value == "PENDING_REVIEW":
+        query = query.where(status == "SUBMITTED")
+    elif state_value == "SUBMITTED":
+        query = query.where(status.in_(_SUBMITTED))
+    elif state_value == "REVIEWED":
+        query = query.where(status.in_(_REVIEWED))
+    elif state_value == "MISSING":
+        query = query.where(or_(status.is_(None), status.not_in(_SUBMITTED)))
+    elif state_value in {"APPROVED", "RETURNED", "DRAFT", "WITHDRAWN"}:
+        query = query.where(status == state_value)
+    elif state_value != "ALL":
+        raise AppException("VALIDATION_ERROR", "请选择有效的材料审核状态")
+    query = _filter_organization(query, college_id=college_id, major_id=major_id, class_id=class_id)
+    term = str(keyword or "").strip().lower()
+    if term:
+        text = func.lower(func.coalesce(StudentProfile.real_name, "") + " "
+            + func.coalesce(StudentProfile.student_no, "") + " "
+            + func.coalesce(InternshipRecord.enterprise_name, ""))
+        query = query.where(text.contains(term, autoescape=True))
+    return query
+
+
+def coverage(requirement_id, user=None, *, college_id=None, major_id=None, class_id=None, keyword=""):
     with session() as db:
         requirement = _requirement(db, requirement_id)
-        query = _scoped_student_query(requirement, user)
+        query = _filter_students(_scoped_student_query(requirement, user),
+            college_id=college_id, major_id=major_id, class_id=class_id, keyword=keyword)
         grouped = db.execute(query.with_only_columns(
             InternshipMaterialSubmission.status, func.count(InternshipRecord.id),
             maintain_column_froms=True).group_by(InternshipMaterialSubmission.status)).all()
@@ -672,26 +749,12 @@ def coverage(requirement_id, user=None):
         }
 
 
-def list_students(requirement_id, *, state="ALL", page=1, page_size=20, keyword="", user=None):
+def list_students(requirement_id, *, state="ALL", page=1, page_size=20, keyword="", user=None,
+                  college_id=None, major_id=None, class_id=None):
     with session() as db:
         requirement = _requirement(db, requirement_id)
-        query = _scoped_student_query(requirement, user)
-        state_value = str(state or "ALL").upper()
-        term = str(keyword or "").strip().lower()
-        status = InternshipMaterialSubmission.status
-        if state_value == "PENDING_REVIEW":
-            query = query.where(status == "SUBMITTED")
-        elif state_value == "SUBMITTED":
-            query = query.where(status.in_(_SUBMITTED))
-        elif state_value == "MISSING":
-            query = query.where(or_(status.is_(None), status.not_in(_SUBMITTED)))
-        elif state_value != "ALL":
-            query = query.where(status == state_value)
-        if term:
-            text = func.lower(func.coalesce(StudentProfile.real_name, "") + " "
-                + func.coalesce(StudentProfile.student_no, "") + " "
-                + func.coalesce(InternshipRecord.enterprise_name, ""))
-            query = query.where(text.contains(term, autoescape=True))
+        query = _filter_students(_scoped_student_query(requirement, user), state=state,
+            keyword=keyword, college_id=college_id, major_id=major_id, class_id=class_id)
         total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
         size = min(200, max(1, int(page_size)))
         start = (max(1, int(page)) - 1) * size
@@ -714,6 +777,7 @@ def list_students(requirement_id, *, state="ALL", page=1, page_size=20, keyword=
 
 
 def review_submission(submission_id, body: dict, user=None):
+    from app.modules.internship.services.internship_material_center_service import _file_ready
     payload = body or {}
     action = str(payload.get("action") or "").strip().upper()
     if action not in {"APPROVE", "RETURN"}:
@@ -744,10 +808,20 @@ def review_submission(submission_id, body: dict, user=None):
             file_obj = db.get(FileObject, item.file_id)
             if not version or not file_obj:
                 raise AppException("DATA_CONFLICT", "材料文件版本不存在")
+            if not _file_ready(file_obj):
+                raise AppException("FILE_NOT_READY", "材料文件尚未安全就绪，不能审核", http_status=409)
             if not file_service.get_file_meta(str(file_obj.id), user, require_ready=True):
                 raise AppException("FILE_NOT_READY", "材料文件尚未安全就绪", http_status=409)
             version.status = "APPROVED" if action == "APPROVE" else "REJECTED"
             version.version = int(version.version or 0) + 1
+            for binding in db.scalars(select(FileBinding).where(
+                    FileBinding.tenant_id == _tid(), FileBinding.version_id == version.id,
+                    FileBinding.biz_type == "INTERNSHIP_CUSTOM_MATERIAL",
+                    FileBinding.biz_id == f"{row.id}:{item.slot_no}",
+                    FileBinding.is_current.is_(True), FileBinding.is_deleted.is_(False))):
+                scope = dict(binding.data_scope_snapshot_json or binding.scope_json or {})
+                scope["reviewStatus"] = "APPROVED" if action == "APPROVE" else "RETURNED"
+                binding.data_scope_snapshot_json = scope
 
         row.status = "APPROVED" if action == "APPROVE" else "RETURNED"
         row.reviewed_by_name = _op_name(user)
@@ -763,7 +837,8 @@ def review_submission(submission_id, body: dict, user=None):
         return _submission_view(db, row)
 
 
-def template_download(requirement_id, user: dict, *, batch_id=None, internship_id=None):
+def template_download(requirement_id, user: dict, *, batch_id=None, internship_id=None,
+                      template_version_id=None):
     with session() as db:
         requirement = _requirement(db, requirement_id)
         if str((user or {}).get("userType") or "").upper() == "STUDENT":
@@ -773,13 +848,120 @@ def template_download(requirement_id, user: dict, *, batch_id=None, internship_i
                 raise AppException("NO_PERMISSION", "该模板不适用于当前学生", http_status=403)
             if requirement.status != "PUBLISHED":
                 raise not_found("材料模板不存在")
-        template = _template(db, requirement)
+        elif not db.scalar(_scoped_student_query(requirement, user).with_only_columns(
+                InternshipRecord.id, maintain_column_froms=True).limit(1)):
+            raise AppException("NO_PERMISSION", "该模板不在你的收件学生范围内", http_status=403)
+        if template_version_id is None:
+            template = _template(db, requirement)
+        else:
+            template = db.scalar(select(InternshipMaterialTemplateVersion).where(
+                InternshipMaterialTemplateVersion.id == _as_id(template_version_id),
+                InternshipMaterialTemplateVersion.tenant_id == _tid(),
+                InternshipMaterialTemplateVersion.requirement_id == requirement.id,
+                InternshipMaterialTemplateVersion.status.in_(("ACTIVE", "SUPERSEDED")),
+                InternshipMaterialTemplateVersion.is_deleted.is_(False),
+            ))
         if not template:
             raise not_found("材料模板尚未上传")
+        binding = db.scalar(select(FileBinding.id).where(
+            FileBinding.tenant_id == _tid(), FileBinding.file_id == template.file_id,
+            FileBinding.biz_type == "INTERNSHIP_MATERIAL_TEMPLATE",
+            FileBinding.biz_id == str(requirement.id), FileBinding.status == "ACTIVE",
+            FileBinding.is_deleted.is_(False)))
+        if not binding:
+            raise not_found("材料模板版本绑定不存在")
         resolved = file_service.resolve_download(str(template.file_id), user=user)
         if not resolved:
             raise not_found("材料模板文件不存在或尚未安全就绪")
+        from app.services.streaming_archive_service import sha256_path
+        digest, _size = sha256_path(resolved[0])
+        if not template.sha256_snapshot or digest != template.sha256_snapshot:
+            raise AppException("DATA_CONFLICT", "模板文件与指定版本校验不一致，禁止下载", http_status=409)
         return resolved[0], template.file_name_snapshot or resolved[1]
+
+
+def build_material_package(requirement_id, user=None, *, state="SUBMITTED", keyword="",
+                           college_id=None, major_id=None, class_id=None):
+    """Download current process submissions; no archive transition or generated file binding."""
+    from app.modules.internship.services.internship_audit_service import assert_high_risk_write_available
+    from app.modules.internship.services.internship_material_center_service import _file_ready
+    from app.services.storage import get_backend
+    from app.services.streaming_archive_service import add_json, add_path, temporary_zip
+
+    # ponytail: bounded synchronous download; use the existing job center above 200 files/90 MiB.
+    max_files, max_bytes = 200, 90 * 1024 * 1024
+    if str((user or {}).get("userType") or "").upper() in {"STUDENT", "ENTERPRISE"}:
+        raise AppException("NO_PERMISSION", "仅授权学校人员可下载材料文件包", http_status=403)
+    package_path = None
+    try:
+        with session() as db:
+            assert_high_risk_write_available(db)
+            requirement = _requirement(db, requirement_id, lock=True)
+            students = _filter_students(_scoped_student_query(requirement, user), state=state,
+                keyword=keyword, college_id=college_id, major_id=major_id, class_id=class_id)
+            scoped_ids = students.with_only_columns(InternshipMaterialSubmission.id,
+                maintain_column_froms=True).where(InternshipMaterialSubmission.status.in_(
+                    ("SUBMITTED", "APPROVED", "RETURNED")))
+            rows = db.execute(select(InternshipMaterialSubmissionFile, InternshipMaterialSubmission,
+                FileVersion, FileObject).join(InternshipMaterialSubmission,
+                    InternshipMaterialSubmission.id == InternshipMaterialSubmissionFile.submission_id)
+                .join(FileVersion, FileVersion.id == InternshipMaterialSubmissionFile.current_version_id)
+                .join(FileObject, FileObject.id == InternshipMaterialSubmissionFile.file_id)
+                .where(InternshipMaterialSubmissionFile.tenant_id == _tid(),
+                    InternshipMaterialSubmissionFile.is_deleted.is_(False),
+                    InternshipMaterialSubmission.id.in_(scoped_ids),
+                    FileVersion.tenant_id == _tid(), FileVersion.is_deleted.is_(False),
+                    FileObject.tenant_id == _tid(), FileObject.is_deleted.is_(False))
+                .order_by(InternshipMaterialSubmission.internship_id,
+                    InternshipMaterialSubmissionFile.slot_no).limit(max_files + 1).with_for_update()).all()
+            if not rows:
+                raise AppException("DATA_CONFLICT", "当前筛选范围没有已提交的材料文件")
+            if len(rows) > max_files or sum(int(row[3].size_bytes or 0) for row in rows) > max_bytes:
+                raise AppException("VALIDATION_ERROR", "材料文件包过大，请缩小组织或状态筛选范围")
+            package_path, archive = temporary_zip(prefix="internship-materials-")
+            manifest = []
+            with archive:
+                for item, submission, version, file_obj in rows:
+                    binding = db.scalar(select(FileBinding.id).where(
+                        FileBinding.tenant_id == _tid(), FileBinding.module_code == "INTERNSHIP",
+                        FileBinding.biz_type == "INTERNSHIP_CUSTOM_MATERIAL",
+                        FileBinding.biz_id == f"{submission.id}:{item.slot_no}",
+                        FileBinding.student_id == submission.student_id,
+                        FileBinding.batch_id == str(requirement.batch_id),
+                        FileBinding.file_id == file_obj.id, FileBinding.asset_id == item.asset_id,
+                        FileBinding.version_id == version.id, FileBinding.is_current.is_(True),
+                        FileBinding.status == "ACTIVE", FileBinding.is_deleted.is_(False)))
+                    if (not binding or not version.is_current or version.asset_id != item.asset_id
+                            or version.file_object_id != file_obj.id
+                            or version.status not in {"SUBMITTED", "APPROVED", "REJECTED"}
+                            or not file_obj.scan_status or not _file_ready(file_obj) or not file_obj.sha256):
+                        raise AppException("DATA_CONFLICT", "材料版本、绑定或安全状态已变化，请刷新核对", http_status=409)
+                    file_access_service.require_file_access(str(file_obj.id), user=user, action="download")
+                    source = get_backend().fetch_local(file_obj.file_key)
+                    if not source or not source.is_file():
+                        raise AppException("DATA_CONFLICT", "材料原文件不存在，禁止下载不完整文件包")
+                    name = re.sub(r'[\\/:*?"<>|\x00-\x1f]', "_", file_obj.file_name or "材料文件")
+                    archive_name = f"材料/{submission.id}/{item.slot_no}_第{version.version_no}版_{name}"
+                    digest, size = add_path(archive, archive_name, source,
+                        expected_sha256=file_obj.sha256, expected_size=int(file_obj.size_bytes or 0))
+                    manifest.append({"submissionId": str(submission.id),
+                        "internshipId": str(submission.internship_id), "requirementId": str(requirement.id),
+                        "submissionVersion": int(submission.version or 0), "reviewStatus": submission.status,
+                        "fileId": str(file_obj.id), "fileVersionId": str(version.id),
+                        "versionNo": int(version.version_no), "fileName": file_obj.file_name,
+                        "archivePath": archive_name, "sha256": digest, "sizeBytes": size})
+                add_json(archive, "实施人员使用-版本与校验清单.json", {"items": manifest})
+            _trail(db, requirement.id, "MATERIAL_PACKAGE_DOWNLOAD", {
+                "state": state, "collegeId": str(college_id or ""),
+                "majorId": str(major_id or ""), "classId": str(class_id or ""),
+                "items": manifest,
+            }, user)
+            db.commit()
+            return package_path, f"材料文件包_{requirement.id}.zip"
+    except Exception:
+        if package_path is not None:
+            package_path.unlink(missing_ok=True)
+        raise
 
 
 def approved_custom_sources(db, record: InternshipRecord) -> list[dict]:

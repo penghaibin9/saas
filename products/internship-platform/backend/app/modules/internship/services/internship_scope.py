@@ -40,7 +40,7 @@ def assert_internship_record_scope(db, internship_id, user, action,
     return rec
 
 
-def apply_internship_record_scope(query, user):
+def apply_internship_record_scope(query, user=None, *, resolved_scope=None):
     """在 SQL 层收敛实习记录聚合，避免先加载全租户学生再用 Python 过滤。
 
     学院范围必须与 legacy/Python scope 完全同口径：学生直挂学院优先，其次学生专业所属
@@ -52,11 +52,12 @@ def apply_internship_record_scope(query, user):
     from app.models import College, Major, SchoolClass, StudentProfile
     from app.modules.internship.services.internship_student_service import _current_scope
 
-    scope = _current_scope(user)
+    scope = resolved_scope if resolved_scope is not None else _current_scope(user)
     if scope.get("mode") != "SCOPED":
         return query
     role = (scope.get("roleCode") or "").upper()
-    advisor_roles = {"INTERN_MENTOR", "INTERNSHIP_MENTOR", "INTERN_ADVISOR", "GD_MENTOR", "MENTOR"}
+    from app.services.mobile_teacher_service import _ADVISOR_ROLES
+    advisor_roles = _ADVISOR_ROLES | {"GD_MENTOR"}
     advisor_ids = [int(x) for x in scope.get("advisorUserIds", set()) if str(x).isdigit()]
     if role in advisor_roles:
         # 运行时授权只认稳定 user_id；历史只有 advisor_name 的记录必须先治理数据，
@@ -128,6 +129,14 @@ def apply_internship_record_scope(query, user):
     )
 
     student_clauses = []
+    if scope.get('studentIds'):
+        student_clauses.append(StudentProfile.id.in_(scope['studentIds']))
+    if scope.get('classIds'):
+        student_clauses.append(StudentProfile.class_id.in_(scope['classIds']))
+    if scope.get('majorIds'):
+        student_clauses.append(func.coalesce(direct_major.id, class_major.id).in_(scope['majorIds']))
+    if scope.get('collegeIds'):
+        student_clauses.append(func.coalesce(direct_college.id, major_college.id, class_college.id).in_(scope['collegeIds']))
     if scope.get("studentNos"):
         student_clauses.append(StudentProfile.student_no.in_(scope["studentNos"]))
     if scope.get("classNames"):

@@ -15,8 +15,10 @@
           {{ t.label }}
         </button>
       </div>
-      <AppSearchBox v-model="filters.keyword" placeholder="搜索学生姓名或学号" @search="search" />
+      <AppSearchBox :key="`${ctx.ctxKey}:${batchStore.selectedBatchId}`" v-model="filters.keyword" placeholder="搜索学生姓名或学号" @search="search" />
+      <AppExportButton :export-fn="exportChanges" :has-permission="canExport" :disabled="Boolean(exportBlockedReason)">导出当前条件台账</AppExportButton>
       </div>
+      <p v-if="exportBlockedReason" class="mp-note">{{ exportBlockedReason }}</p>
 
       <DualPaneWorkspace aside-title="变更申请" :aside-count="pagination.total">
         <!-- 左栏：变更申请队列（紧凑列表，连续审核） -->
@@ -32,7 +34,7 @@
                   <AppStatusTag :status="r.status">{{ r.statusLabel }}</AppStatusTag>
                 </div>
                 <div class="lv-item__sub">{{ r.studentNo }} · {{ r.changeTypeLabel }}</div>
-                <div class="lv-item__sub">{{ r.currentEnterprise }} / {{ r.currentPosition }}<template v-if="r.targetEnterpriseName"> → {{ r.targetEnterpriseName }}</template></div>
+                <div class="lv-item__sub">{{ routeSummary(r) }}</div>
               </button>
             </li>
           </ul>
@@ -66,14 +68,23 @@
               <div class="sec-t">变更申请</div>
               <AppDescriptionList :items="detailItems" :columns="2" />
 
-              <h2 class="sec-t">当前去向与申请目标</h2>
+              <h2 class="sec-t">{{ detail.data.status === 'APPROVED' ? '本次变更记录' : '当前去向与申请目标' }}</h2>
               <div class="change-impact">
-                <div class="change-impact__route">
+                <template v-if="detail.data.status === 'APPROVED'">
+                  <div v-if="detail.data.approvedHistory" class="change-impact__route">
+                    <div><small>本次变更前</small><strong>{{ detail.data.approvedHistory.before.enterpriseName || '未落实单位' }}</strong><span>{{ detail.data.approvedHistory.before.positionName || '未落实岗位' }}</span></div>
+                    <b>→</b>
+                    <div class="is-target"><small>本次变更后</small><strong>{{ detail.data.approvedHistory.after.enterpriseName || '未落实单位' }}</strong><span>{{ detail.data.approvedHistory.after.positionName || '未落实岗位' }}</span></div>
+                  </div>
+                  <p v-if="!detail.data.approvedHistory?.applicationBasisMatched" class="mp-note">{{ historyExplanation(detail.data) }}</p>
+                  <p v-if="!detail.data.approvedHistory || detail.data.currentEnterprise !== detail.data.approvedHistory.after.enterpriseName || detail.data.currentPosition !== detail.data.approvedHistory.after.positionName" class="change-impact__next">当前实习去向：{{ detail.data.currentEnterprise || '未落实单位' }} / {{ detail.data.currentPosition || '未落实岗位' }}</p>
+                </template>
+                <div v-else class="change-impact__route">
                   <div><small>当前实习去向</small><strong>{{ detail.data.currentEnterprise || '未落实单位' }}</strong><span>{{ detail.data.currentPosition || '未落实岗位' }}</span></div>
                   <b>→</b>
                   <div class="is-target"><small>本次申请目标</small><strong>{{ targetEnterpriseLabel(detail.data) }}</strong><span>{{ detail.data.targetPositionName || (detail.data.changeType === 'WITHDRAW_POST' ? '结束当前岗位' : '未填写岗位') }}</span></div>
                 </div>
-                <div v-if="detail.data.targetPosition" class="change-impact__truth">
+                <div v-if="detail.data.targetPosition && detail.data.status !== 'APPROVED'" class="change-impact__truth">
                   <span>目标岗位：{{ detail.data.targetPosition.exists ? '存在' : '已失效' }}</span>
                   <span>状态：{{ positionStatusLabel(detail.data.targetPosition.status) }}</span>
                   <span>剩余：{{ detail.data.targetPosition.remaining }} / {{ detail.data.targetPosition.headcount || 0 }}</span>
@@ -122,7 +133,7 @@
  * 页签（panel 深链 pending/approved/rejected/all）沿用原映射。
  */
 import { ModulePageShell, EmptyState } from '@/components/business'
-import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination, AppSearchBox, AppInlineAlert } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination, AppSearchBox, AppInlineAlert, AppExportButton } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import DualPaneWorkspace from './components/DualPaneWorkspace.vue'
 import ActionReceipt from './components/ActionReceipt.vue'
@@ -130,19 +141,21 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 import { REJECT_CHANGE } from '@/modules/internship/constants/presetPrompts'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 
 export default {
   name: 'ChangeRequestListView',
   components: { ModulePageShell, EmptyState, DualPaneWorkspace, AppStatusTag, AppConfirmDialog,
-    AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination, ActionReceipt, AppSearchBox, AppInlineAlert, AppButton },
+    AppDescriptionList, AppAuditTrail, AppPermissionButton, AppPagination, ActionReceipt, AppSearchBox, AppInlineAlert, AppButton, AppExportButton },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       REJECT_CHANGE,
       loading: true, error: '', rows: [], listSequence: 0,
       filters: { status: 'PENDING', keyword: '' },
+      appliedFilters: null,
       pagination: { page: 1, pageSize: 10, total: 0 },
       tabs: [
         { value: 'PENDING', label: '待审核' },
@@ -159,6 +172,15 @@ export default {
   computed: {
     batchStore() { return useInternshipBatchStore() },
     canReview() { return canCode(this.ctx, 'internship.change.review') },
+    canExport() { return canCode(this.ctx, 'internship.change.view') },
+    exportBlockedReason() {
+      if (!this.canExport) return '当前账号无变更查询及台账导出权限'
+      if (!this.batchStore.selectedBatchId) return '请先选择实习批次'
+      if (this.loading) return '列表加载完成后可导出当前条件台账'
+      if (this.error) return '列表读取失败，请重试成功后再导出'
+      if (!this.appliedFilters || this.appliedFilters.batchId !== this.batchStore.selectedBatchId || this.appliedFilters.ctxKey !== this.ctx.ctxKey) return '请先加载当前范围的变更申请'
+      return ''
+    },
     approvalBlockers() {
       const d = this.detail.data
       if (!d || d.status !== 'PENDING') return []
@@ -173,7 +195,7 @@ export default {
       return [
         { label: '申请编号', value: d.id },
         { label: '变更类型', value: d.changeTypeLabel },
-        { label: '申请时间', value: d.createdAt },
+        { label: '申请时间', value: formatDateTime(d.createdAt) },
         { label: '申请原因', value: d.reason },
         { label: '审核意见', value: d.reviewComment || '—' }
       ]
@@ -186,6 +208,12 @@ export default {
     }
   },
   watch: {
+    'ctx.ctxKey'() {
+      this.appliedFilters = null
+      this.lastReceipt = null
+      this.clearSelection()
+      this.applyQuery()
+    },
     'batchStore.selectedBatchId'() {
       this.pagination.page = 1
       this.doneHint = false
@@ -208,6 +236,27 @@ export default {
   },
   beforeUnmount() { this.listSequence++; this.resetDetail() },
   methods: {
+    async exportChanges() {
+      if (this.exportBlockedReason) throw new Error(this.exportBlockedReason)
+      const applied = this.appliedFilters
+      const sequence = this.listSequence
+      const { batchId, status, keyword, ctxKey } = applied
+      const res = await internshipApi.exportChangeRequests({ batchId, status, keyword })
+      if (sequence !== this.listSequence || applied !== this.appliedFilters || batchId !== this.batchStore.selectedBatchId || ctxKey !== this.ctx.ctxKey || !this.canExport) throw new Error('当前查询范围已变化，请在新范围重新导出')
+      return res
+    },
+    routeSummary(row) {
+      if (row.status !== 'APPROVED') return `${row.currentEnterprise || '未落实单位'} / ${row.currentPosition || '未落实岗位'} → ${this.targetEnterpriseLabel(row)}`
+      const history = row.approvedHistory
+      if (!history) return '历史去向未记录'
+      return `${history.before.enterpriseName || '未落实单位'} / ${history.before.positionName || '未落实岗位'} → ${history.after.enterpriseName || '未落实单位'} / ${history.after.positionName || '未落实岗位'}`
+    },
+    historyExplanation(row) {
+      if (!row.approvedHistory) return '历史去向未记录，无法核实本次审批前后去向。'
+      return row.approvedHistory.applicationBasisMatched
+        ? '以上为本次审批记录；审批前去向与本申请依据的实习记录版本一致。'
+        : '以上仅记录本次审批前后去向，不能确认申请时去向。'
+    },
     positionStatusLabel(value) { return ({ PUBLISHED: '招聘中', DRAFT: '草稿', OPEN: '招聘中', ACTIVE: '招聘中', PAUSED: '已暂停', CLOSED: '已关闭', FILLED: '已招满', CANCELLED: '已取消', MISSING: '已失效' })[value] || (value ? '状态待确认' : '—') },
     targetEnterpriseLabel(row) { return row.targetEnterpriseName || ({ WITHDRAW_POST: '退岗', SELF_ARRANGED: '自主实习' })[row.changeType] || '未填写目标单位' },
     applyQuery() {
@@ -218,19 +267,19 @@ export default {
       this.doneHint = false
       this.load()
     },
-    syncQuery() {
-      const query = this.batchStore.withBatchQuery({ ...this.$route.query, keyword: this.filters.keyword, page: String(this.pagination.page) })
+    syncQuery(keyword = String(this.$route.query.keyword || '')) {
+      const query = this.batchStore.withBatchQuery({ ...this.$route.query, keyword, page: String(this.pagination.page) })
       if (Object.keys(query).every(key => String(query[key] ?? '') === String(this.$route.query[key] ?? ''))) this.load()
       else this.$router.replace({ query })
     },
-    search() { this.pagination.page = 1; this.doneHint = false; this.syncQuery() },
+    search(value = this.filters.keyword) { this.filters.keyword = String(value || ''); this.pagination.page = 1; this.doneHint = false; this.syncQuery(this.filters.keyword) },
     clearSearch() { this.filters.keyword = ''; this.search() },
     onPageChange({ page }) { this.pagination.page = page; this.syncQuery() },
     switchTab(v) {
       const map = { PENDING: 'pending', APPROVED: 'approved', REJECTED: 'rejected', '': 'all' }
       const panel = map[v] || 'all'
       if (this.$route.query.panel !== panel) {
-        this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery({ panel, keyword: this.filters.keyword, page: '1' }) })
+        this.$router.replace({ path: this.$route.path, query: this.batchStore.withBatchQuery({ panel, keyword: String(this.$route.query.keyword || ''), page: '1' }) })
       } else {
         this.filters.status = v
         this.pagination.page = 1
@@ -240,6 +289,9 @@ export default {
     async load() {
       const sequence = ++this.listSequence
       const batchId = this.batchStore.selectedBatchId
+      const ctxKey = this.ctx.ctxKey
+      const applied = { status: this.filters.status, keyword: String(this.$route.query.keyword || ''), batchId, ctxKey }
+      this.appliedFilters = null
       this.rows = []; this.pagination.total = 0
       if (!this.batchStore.selectedBatchId) {
         this.loading = false
@@ -251,14 +303,15 @@ export default {
       this.loading = true
       this.error = ''
       const res = await internshipApi.getChangeRequests({
-        status: this.filters.status,
-        keyword: this.filters.keyword,
+        status: applied.status,
+        keyword: applied.keyword,
         page: this.pagination.page,
         pageSize: this.pagination.pageSize,
         batchId: this.batchStore.selectedBatchId
       })
-      if (sequence !== this.listSequence || batchId !== this.batchStore.selectedBatchId) return
+      if (sequence !== this.listSequence || batchId !== this.batchStore.selectedBatchId || ctxKey !== this.ctx.ctxKey) return
       if (res.code === 0) {
+        this.appliedFilters = applied
         this.rows = res.data.list
         this.pagination.total = res.data.total
       } else {
@@ -306,7 +359,7 @@ export default {
       this.detail.data = res.data
     },
     goStudent() {
-      if (this.detail.data?.internId) this.$router.push({ path: `/admin/internship/students/${this.detail.data.internId}`, query: this.batchStore.withBatchQuery({}) })
+      if (this.detail.data?.internId) this.$router.push({ path: `/admin/internship/students/${this.detail.data.internId}`, query: this.batchStore.withBatchQuery({ returnTo: this.$route.fullPath }) })
     },
     openReview(row, action) {
       if (!this.canReview) return toast.error('无实习变更审核权限')

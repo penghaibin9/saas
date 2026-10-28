@@ -69,6 +69,7 @@ def _notice_view(row: InternshipEmergencyNotice, *, acknowledged_at=None) -> dic
         "title": row.title,
         "content": row.content,
         "noticeType": row.notice_type or "NOTICE",
+        "schoolCategory": row.school_category or "",
         "urgency": row.urgency or "NORMAL",
         "validFrom": _iso(row.valid_from) or "",
         "validUntil": _iso(row.valid_until) or "",

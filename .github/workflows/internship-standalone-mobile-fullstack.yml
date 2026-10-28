@@ -48,7 +48,7 @@ jobs:
       REDIS_URL: redis://127.0.0.1:6379/0
       REDIS_KEY_PREFIX: internship-standalone:mobile-fullstack
       JWT_SECRET: ci-only-not-production
-      EXPECTED_ALEMBIC_REVISION: ix0030
+      EXPECTED_ALEMBIC_REVISION: ix0036
       FILE_STORAGE_DIR: /tmp/internship-mobile-fullstack-files
     steps:
       - uses: actions/checkout@v4

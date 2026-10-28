@@ -20,6 +20,7 @@ from app.modules.internship.services.internship_student_context_guard import (
 )
 from app.services import file_access_service, file_business_binding_service
 from app.services.db_service import _as_id, _iso, _tid, session
+from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 
 
 def _row(item, student=None):
@@ -95,8 +96,8 @@ def apply(user: dict, body: dict):
         if start > end:
             raise AppException("VALIDATION_ERROR", "免签结束日期不能早于开始日期")
         reason = str(payload.get("reason") or "").strip()
-        if len(reason) < 5:
-            raise AppException("VALIDATION_ERROR", "免签理由不少于5个字")
+        if not 5 <= len(reason) <= 500:
+            raise AppException("VALIDATION_ERROR", "免签理由请填写5到500个字")
         lower = record.intern_start_date.date() if record.intern_start_date else (
             batch.start_date.date() if batch and batch.start_date else None)
         upper = record.intern_end_date.date() if record.intern_end_date else (
@@ -117,36 +118,48 @@ def apply(user: dict, body: dict):
         if exists:
             raise AppException("DATA_CONFLICT", "当前已有待审核免签申请，请先等待处理")
 
-        item = InternshipCheckinExemption(
-            tenant_id=_tid(),
-            internship_id=record.id,
-            student_id=student.id,
-            batch_id=record.batch_id,
-            start_date=start.isoformat(),
-            end_date=end.isoformat(),
-            reason=reason,
-            evidence_file_id=file_id,
-            status="PENDING",
-            apply_by_name=student.real_name or str((user or {}).get("realName") or "学生"),
-        )
-        db.add(item)
-        try:
-            db.flush()
-        except IntegrityError:
-            db.rollback()
-            raise AppException("DATA_CONFLICT", "当前已有待审核免签申请，请刷新后重试") from None
+        previous = None
+        if payload.get('id'):
+            item = db.scalar(select(InternshipCheckinExemption).where(
+                InternshipCheckinExemption.id == _as_id(payload['id']),
+                InternshipCheckinExemption.tenant_id == _tid(),
+                InternshipCheckinExemption.is_deleted.is_(False)).with_for_update())
+            if (not item or item.internship_id != record.id or item.student_id != student.id
+                    or item.batch_id != record.batch_id):
+                raise no_permission('只能补正本人的原免签申请')
+            if item.status not in {'REJECTED', 'WITHDRAWN'}:
+                raise AppException('DATA_CONFLICT', '仅已驳回或已撤回的原单可补正重交')
+            previous = _row(item, student)
+            versioned_update(db, InternshipCheckinExemption, entity_id=item.id, tenant_id=_tid(),
+                expected_version=extract_expected_version(payload), expected_status=item.status,
+                values={'start_date':start.isoformat(), 'end_date':end.isoformat(), 'reason':reason,
+                    'evidence_file_id':file_id, 'status':'PENDING', 'review_by_name':None,
+                    'review_comment':None, 'reviewed_at':None})
+            db.refresh(item)
+        else:
+            item = InternshipCheckinExemption(tenant_id=_tid(), internship_id=record.id,
+                student_id=student.id, batch_id=record.batch_id, start_date=start.isoformat(),
+                end_date=end.isoformat(), reason=reason, evidence_file_id=file_id, status='PENDING',
+                apply_by_name=student.real_name or str((user or {}).get('realName') or '学生'))
+            db.add(item)
+            try:
+                db.flush()
+            except IntegrityError:
+                db.rollback()
+                raise AppException('DATA_CONFLICT', '当前已有待审核免签申请，请刷新后重试') from None
         if file_id:
             file_business_binding_service.bind_file_to_business(db, file_id=file_id,
                 biz_type='INTERNSHIP_CHECKIN_EXEMPTION', biz_id=item.id, actor=user,
                 subject_type='STUDENT', subject_id=student.id, student_id=student.id,
                 batch_id=str(record.batch_id), module_code='INTERNSHIP',
                 scope={'internshipId':str(record.id),'studentId':str(student.id),'batchId':str(record.batch_id)})
-        _trail(db, item, "EXEMPTION_APPLY", user, {
+        _trail(db, item, "EXEMPTION_RESUBMIT" if previous else "EXEMPTION_APPLY", user, {
             "batchId": str(record.batch_id or ""),
             "internshipId": str(record.id),
             "startDate": item.start_date,
             "endDate": item.end_date,
             "fileIds": [file_id] if file_id else [],
+            "previous": previous,
         })
         from app.modules.internship.services import internship_todo_helper as ix_todo
         ix_todo.push_checkin_exemption_todo(db, item, record)
@@ -179,7 +192,7 @@ def withdraw(user: dict, exemption_id, body: dict):
         return _row(item, student)
 
 
-def list_for_teacher(page: int, page_size: int, *, batch_id, status=None, user=None):
+def list_for_teacher(page: int, page_size: int, *, batch_id, status=None, user=None, exemption_id=None):
     with session() as db:
         scoped = apply_internship_record_scope(
             select(InternshipRecord.id).where(
@@ -203,6 +216,8 @@ def list_for_teacher(page: int, page_size: int, *, batch_id, status=None, user=N
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
         )
+        if exemption_id is not None:
+            query = query.where(InternshipCheckinExemption.id == _as_id(exemption_id))
         status_value = str(status or "").strip().upper()
         if status_value and status_value != "ALL":
             if status_value not in {"PENDING", "APPROVED", "REJECTED", "WITHDRAWN"}:
@@ -231,21 +246,31 @@ def review(exemption_id, body: dict, user: dict):
             InternshipCheckinExemption.id == _as_id(exemption_id),
             InternshipCheckinExemption.tenant_id == _tid(),
             InternshipCheckinExemption.is_deleted.is_(False),
-        ).with_for_update())
+        ))
         if not item:
             raise AppException("NOT_FOUND", "免签申请不存在", http_status=404)
         record = assert_internship_record_scope(
             db, item.internship_id, user, "审核免签申请", lock=True)
+        item = db.scalar(select(InternshipCheckinExemption).where(
+            InternshipCheckinExemption.id == _as_id(exemption_id),
+            InternshipCheckinExemption.tenant_id == _tid(),
+            InternshipCheckinExemption.internship_id == record.id,
+            InternshipCheckinExemption.student_id == record.student_id,
+            InternshipCheckinExemption.batch_id == record.batch_id,
+            InternshipCheckinExemption.is_deleted.is_(False)).with_for_update().execution_options(populate_existing=True))
+        if not item:
+            raise no_permission('免签原单关联已变化，请重新核对')
         expected = payload.get("expectedVersion")
         if expected is None or int(expected) != int(item.version or 0):
             raise AppException("DATA_CONFLICT", "免签申请已变化，请刷新后重试")
         if item.status != "PENDING":
             raise AppException("DATA_CONFLICT", "仅待审核免签申请可处理")
-        item.status = "APPROVED" if action == "APPROVE" else "REJECTED"
-        item.review_by_name = str((user or {}).get("realName") or "教师")
-        item.review_comment = comment or None
-        item.reviewed_at = datetime.utcnow()
-        item.version = int(item.version or 0) + 1
+        versioned_update(db, InternshipCheckinExemption, entity_id=item.id, tenant_id=_tid(),
+            expected_version=extract_expected_version(payload), expected_status='PENDING',
+            values={'status':'APPROVED' if action == 'APPROVE' else 'REJECTED',
+                'review_by_name':str((user or {}).get('realName') or '教师'),
+                'review_comment':comment or None, 'reviewed_at':datetime.utcnow()})
+        db.refresh(item)
         _trail(db, item, f"EXEMPTION_{action}", user, {
             "batchId": str(record.batch_id or ""),
             "internshipId": str(record.id),

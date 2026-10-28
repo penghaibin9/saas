@@ -36,6 +36,7 @@ class Major(PKMixin, TenantMixin, CommonMixin, Base):
 
     college_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     major_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    national_code: Mapped[str | None] = mapped_column(String(20), comment="国家专业目录代码，与学校组织代码分别维护")
     code: Mapped[str | None] = mapped_column(String(50))
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE")
     remark: Mapped[str | None] = mapped_column(String(500))

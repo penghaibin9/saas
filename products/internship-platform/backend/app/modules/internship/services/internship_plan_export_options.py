@@ -33,7 +33,7 @@ def list_options(user, *, page=1, page_size=20, keyword=''):
         items = []
         for plan, batch in candidates[:page_size]:
             try:
-                _assert_plan_batch_scope(db, batch, user, '选择待导出计划')
+                _assert_plan_batch_scope(db, batch, user, '选择待导出计划', read_only=True)
             except AppException as exc:
                 if exc.http_status != 403:
                     raise

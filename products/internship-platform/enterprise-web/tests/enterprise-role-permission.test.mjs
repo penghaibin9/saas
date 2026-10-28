@@ -14,7 +14,7 @@ test('A02 mirrors A01 applicant role permission contract for UX without replacin
   assert.match(store,/Every backend request still revalidates/i)
   assert.match(layout,/applicationPermission:true/)
   assert.match(layout,/aria-disabled="true"/)
-  assert.match(layout,/仅企业管理员或 HR 可处理报名学生/)
+  assert.match(layout,/仅企业管理员或招聘对接人可处理报名学生/)
 })
 
 test('MENTOR applicant UI fails closed before canonical applicant calls and no longer touches an unfrozen position facade',()=>{

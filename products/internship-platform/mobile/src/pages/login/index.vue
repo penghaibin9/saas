@@ -1,21 +1,20 @@
 <template>
-  <view class="login-page">
+  <view class="mobile-page mobile-shared login-page" :class="{ 'is-teacher': mode === 'TEACHER_MINI' }">
     <view class="login-card">
-      <text class="login-brand">跃科岗位实习管理平台</text>
-      <text class="login-title">{{ mode==='STUDENT_MINI'?'学生移动端':'教师移动端' }}</text>
-      <text class="login-sub">使用学校分配的账号密码登录，只进入岗位实习业务。</text>
+      <text class="login-title">{{ mode==='STUDENT_MINI'?'学生登录':'教师登录' }}</text>
 
       <view class="login-switch">
-        <button :class="{on:mode==='STUDENT_MINI'}" @click="mode='STUDENT_MINI'">学生</button>
-        <button :class="{on:mode==='TEACHER_MINI'}" @click="mode='TEACHER_MINI'">教师</button>
+        <button class="mobile-control" :class="{on:mode==='STUDENT_MINI'}" @click="mode='STUDENT_MINI'">学生</button>
+        <button class="mobile-control" :class="{on:mode==='TEACHER_MINI'}" @click="mode='TEACHER_MINI'">教师</button>
       </view>
 
       <view class="login-form">
-        <label><text>学校编码</text><input id="mobile-login-school" v-model.trim="tenantCode" placeholder="例如 YIYANG" /></label>
-        <label><text>{{ mode==='STUDENT_MINI'?'学号 / 登录账号':'工号 / 登录账号' }}</text><input id="mobile-login-account" v-model.trim="loginName" /></label>
-        <label><text>密码</text><input id="mobile-login-password" v-model="password" password /></label>
+        <label><text>学校编码</text><input class="mobile-input" id="mobile-login-school" v-model.trim="tenantCode" placeholder="请输入学校编码" /><text class="login-help">学校编码请向学校获取。</text></label>
+        <label><text>{{ mode==='STUDENT_MINI'?'学号 / 登录账号':'工号 / 登录账号' }}</text><input class="mobile-input" id="mobile-login-account" v-model.trim="loginName" /></label>
+        <label><text>密码</text><input class="mobile-input" id="mobile-login-password" v-model="password" password /></label>
         <MobileInlineAlert v-if="error" type="danger" title="登录失败" :description="error" />
-        <button class="btn btn-primary" aria-label="登录" data-testid="mobile-login-submit" :disabled="loading" @click="submit">{{ loading?'登录中…':'登录' }}</button>
+        <button class="mobile-control btn btn-primary" aria-label="登录" data-testid="mobile-login-submit" :disabled="loading" @click="submit">{{ loading?'登录中…':'登录' }}</button>
+        <text class="login-help">账号或密码问题请联系学校管理员；首次使用临时密码须本人修改。</text>
       </view>
     </view>
   </view>
@@ -52,11 +51,12 @@ export default {
 </script>
 
 <style scoped>
-.login-page{min-height:100vh;box-sizing:border-box;padding:56px 22px;background:#f4f7fb;display:flex;align-items:center;justify-content:center}
+.login-page{--login-accent:var(--brand-primary);min-height:100vh;box-sizing:border-box;padding:40px 22px;background:#f4f7fb;display:flex;align-items:center;justify-content:center}.login-page.is-teacher{--login-accent:var(--teacher-600)}
 .login-card{width:100%;max-width:480px;background:#fff;border:1px solid #e5eaf1;border-radius:18px;padding:28px;box-sizing:border-box;box-shadow:0 18px 48px rgba(15,23,42,.08)}
-.login-brand{display:block;color:var(--brand-primary);font-size:13px;font-weight:600}.login-title{display:block;margin-top:8px;font-size:26px;font-weight:700;color:var(--text-primary)}
-.login-sub{display:block;margin-top:8px;color:var(--text-tertiary);font-size:13px;line-height:1.7}.login-switch{display:flex;gap:8px;margin:24px 0 18px;padding:4px;background:#f1f5f9;border-radius:10px}
-.login-switch button{flex:1;margin:0;background:transparent;font-size:14px;color:var(--text-secondary)}.login-switch button::after{border:0}.login-switch button.on{background:#fff;color:var(--brand-primary);font-weight:600;box-shadow:0 2px 8px rgba(15,23,42,.06)}
-.login-form{display:flex;flex-direction:column;gap:15px}.login-form label text{display:block;margin-bottom:6px;font-size:13px;color:var(--text-secondary)}
-.login-form input{height:44px;border:1px solid #dbe3ec;border-radius:9px;padding:0 12px;box-sizing:border-box;background:#fff}.login-form .btn{width:100%;margin-top:4px}
+.login-title{display:block;font-size:var(--font-size-xl);font-weight:700;color:var(--text-primary)}
+.login-switch{display:flex;gap:8px;margin:20px 0;padding:4px;background:#f1f5f9;border-radius:10px}
+.login-switch button{flex:1;min-height:44px;margin:0;background:transparent;font-size:var(--font-size-md);color:var(--text-secondary)}.login-switch button::after{border:0}.login-switch button.on{background:#fff;color:var(--login-accent);font-weight:600;box-shadow:0 2px 8px rgba(15,23,42,.06)}
+.login-form{display:flex;flex-direction:column;gap:16px}.login-form label text{display:block;margin-bottom:6px;font-size:var(--font-size-base);color:var(--text-secondary)}
+.login-form input{height:44px;font-size:var(--font-size-md);border:1px solid #dbe3ec;border-radius:9px;padding:0 12px;box-sizing:border-box;background:#fff}.login-form .btn{width:100%;min-height:44px;margin-top:4px;background:var(--login-accent);font-size:var(--font-size-md)}
+.login-page{align-items:flex-start;padding-top:max(24px,6vh);padding-bottom:32px}.login-help{display:block;font-size:var(--font-size-sm)!important;line-height:1.7;color:var(--text-secondary)!important;overflow-wrap:anywhere}.login-form label .login-help{margin:6px 0 0}
 </style>

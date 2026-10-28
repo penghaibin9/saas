@@ -52,15 +52,31 @@ def stats_metric_drilldown(metricKey: str, subset: str = Query(..., pattern="^(n
 @router.get("/stats/procurement-overview", summary="益阳采购口径四组统计（概况/去向/活动/质量）")
 def stats_procurement_overview(
     batchId: str = Query(..., min_length=1, max_length=64),
+    college: Optional[str] = None, major: Optional[str] = None, className: Optional[str] = None,
     user=Depends(require_permission(_P_VIEW)),
 ):
     from app.modules.internship.services import internship_procurement_stats_service as procurement
-    return success(procurement.overview(user, batch_id=batchId))
+    return success(procurement.overview(user, batch_id=batchId, college=college, major=major, class_name=className))
+
+
+@router.post('/stats/metrics/{metricKey}/drilldown/export',summary='导出同条件指标学生贡献明细')
+def export_metric_drilldown(metricKey:str,subset:str=Query(...,pattern='^(numerator|denominator)$'),
+    college:Optional[str]=None,major:Optional[str]=None,className:Optional[str]=None,batchId:Optional[str]=None,
+    user=Depends(require_permission(_P_EXPORT))):
+    return success(svc.export_metric_drilldown(user,metricKey,subset,college=college,major=major,class_name=className,batch_id=batchId))
+
+
+@router.post('/stats/procurement-overview/export',summary='导出同条件质量与工资统计')
+def export_procurement_overview(batchId:str=Query(...,min_length=1,max_length=64),college:Optional[str]=None,
+    major:Optional[str]=None,className:Optional[str]=None,user=Depends(require_permission(_P_EXPORT))):
+    from app.modules.internship.services import internship_procurement_stats_service as procurement
+    return success(procurement.export(user,batch_id=batchId,college=college,major=major,class_name=className))
 
 
 @router.get("/stats/process-analytics", summary="益阳采购 AP19-AP24 过程统计与绩效汇总")
 def stats_process_analytics(
     batchId: str = Query(..., min_length=1, max_length=64),
+    college: Optional[str] = None, major: Optional[str] = None, className: Optional[str] = None,
     groupBy: str = Query("STUDENT", pattern="^(STUDENT|ADVISOR|HOMEROOM|COLLEGE|MAJOR|CLASS)$"),
     period: str = Query("ALL", pattern="^(WEEK|MONTH|ALL)$"),
     anchor: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
@@ -79,12 +95,14 @@ def stats_process_analytics(
         columns=columns,
         page=page,
         page_size=pageSize,
+        college=college, major=major, class_name=className,
     ))
 
 
 @router.post("/stats/process-analytics/export", summary="导出益阳采购 AP19-AP24 同条件 Excel")
 def stats_process_analytics_export(
     batchId: str = Query(..., min_length=1, max_length=64),
+    college: Optional[str] = None, major: Optional[str] = None, className: Optional[str] = None,
     groupBy: str = Query("STUDENT", pattern="^(STUDENT|ADVISOR|HOMEROOM|COLLEGE|MAJOR|CLASS)$"),
     period: str = Query("ALL", pattern="^(WEEK|MONTH|ALL)$"),
     anchor: Optional[str] = Query(None, pattern=r"^\d{4}-\d{2}-\d{2}$"),
@@ -99,6 +117,7 @@ def stats_process_analytics_export(
         period=period,
         anchor=anchor,
         columns=columns,
+        college=college, major=major, class_name=className,
     ))
 
 

@@ -31,6 +31,7 @@ function normalizeField(item, index) {
 }
 
 export function normalizeMaterialPreview(raw = {}) {
+  const modes = raw.materialPolicySnapshot?.allowedContactSharingModes ?? raw.allowedContactSharingModes
   const sharedFields = list(raw, 'sharedFields', 'fields', 'materialFields').map(normalizeField)
   const schoolFields = list(raw, 'schoolFields', 'verifiedFields').map(normalizeField)
   const studentFields = list(raw, 'studentFields', 'selfFilledFields').map(normalizeField)
@@ -43,6 +44,7 @@ export function normalizeMaterialPreview(raw = {}) {
     schoolFields,
     studentFields,
     maskedContact: String(raw.maskedContact || raw.contactPreview || ''),
+    allowedContactSharingModes: Array.isArray(modes) ? modes.filter(mode => CONTACT_SHARING_MODES.includes(mode)) : ['MASKED_ONLY'],
     statementCount: Number(raw.statementCount || raw.applicationStatementCount || 0),
     pdfPreviewUrl: String(raw.pdfPreviewUrl || raw.previewUrl || '')
   }

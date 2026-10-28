@@ -17,6 +17,8 @@ router = APIRouter(prefix="/rbac", tags=["Standalone RBAC"])
 
 @router.get("/current-context", summary="Standalone 当前角色、岗位实习权限与模块授权")
 def current_context(user=Depends(get_current_user)):
+    from app.services.system_settings import school_service_config
+    presentation=school_service_config(user)
     access = get_effective_access_context(user)
     role_code = str(access.get("roleCode") or "")
     role_name = str(
@@ -29,6 +31,7 @@ def current_context(user=Depends(get_current_user)):
         or (f"role-{role_code.lower()}" if role_code else "")
     )
     return success({
+        **presentation,
         "tenantId": str((user or {}).get("tenantId") or ""),
         "userId": str((user or {}).get("userId") or ""),
         "permissionPatterns": list(access.get("permissions") or []),
@@ -41,6 +44,7 @@ def current_context(user=Depends(get_current_user)):
             "roleCode": role_code,
             "roleName": role_name,
             "contextId": context_id,
-            "permissionVersion": str((user or {}).get("credentialVersion") or 0),
+            "permissionVersion": str((user or {}).get("permissionVersion") or 0),
+            "baseRoleCode": (user or {}).get("currentRoleBaseCode") or role_code,
         },
     })

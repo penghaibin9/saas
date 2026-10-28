@@ -4,11 +4,18 @@
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <form v-else-if="profile" class="basic-editor" @submit.prevent="save">
       <p>{{ profile.name }} · {{ profile.studentNo }} · {{ profile.statusLabel }}</p>
-      <p class="hint">维护本批次学生的生源地、民族与性别，学生首页及实习台账同步使用当前资料。</p>
+      <p class="hint">{{ canManage ? '维护本批次学生的生源地、民族与性别。' : '当前仅可查看；资料补充请联系学校经办人。' }}</p>
+      <template v-if="canManage">
       <div class="field"><span>生源地</span><AppChinaRegionPicker v-model="form.sourceRegion" :disabled="!canManage || saving" level="city" @change="markDirty" /><AppInput v-model="form.sourceRegion" :disabled="!canManage || saving" :maxlength="100" placeholder="不在选择列表中的地区可在此填写，不填详细家庭住址" @update:model-value="markDirty" /></div>
       <label class="field"><span>民族</span><AppInput v-model="form.nation" :disabled="!canManage || saving" :maxlength="50" placeholder="按实际资料填写，暂未采集保持空白" @update:model-value="markDirty" /></label>
       <div class="field"><span>性别</span><AppSelect v-model="form.gender" :disabled="!canManage || saving" :options="genderOptions" placeholder="暂未采集" @update:model-value="markDirty" /></div>
-      <p class="hint">空白保存后仍会显示待完善。此处更新资料，不替代学校对身份材料的核验。</p>
+      <p v-if="canManage" class="hint">空白项仍为待完善；资料更新不替代身份材料核验。</p>
+      </template>
+      <template v-else>
+        <div class="field"><span>生源地</span><strong>{{ form.sourceRegion || '未采集' }}</strong></div>
+        <div class="field"><span>民族</span><strong>{{ form.nation || '未采集' }}</strong></div>
+        <div class="field"><span>性别</span><strong>{{ form.gender || '未采集' }}</strong></div>
+      </template>
       <p v-if="conflict" class="warning">资料已更新，当前输入已保留。最新生源地：{{ profile.sourceRegion || '未采集' }}；民族：{{ profile.nation || '未采集' }}；性别：{{ profile.gender || '未采集' }}。</p>
       <p v-if="formError" class="warning" role="alert">{{ formError }}</p>
       <p v-if="receipt" class="success">资料已保存；学生基础资料{{ receipt.complete ? '已完善' : '仍有待办' }}。</p>

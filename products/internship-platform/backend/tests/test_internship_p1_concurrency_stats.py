@@ -49,7 +49,8 @@ def test_stats_rate_integrity_and_empty_denominator():
     assert empty["rate"] is None and empty["anomaly"] is False
     anomaly = _metric("arrivalRate", "到岗率", 2, 1, 90)
     assert anomaly["rate"] is None and anomaly["anomaly"] is True
-    assert METRIC_VERSION == "internship-stats-v1"
+    assert METRIC_VERSION == "internship-stats-v2"
+    assert '已分配' in METRIC_DEFINITIONS['guidanceCoverRate']['denominatorLabel']
     assert {"arrivalRate", "weeklySubmitRate", "placementRate"} <= set(METRIC_DEFINITIONS)
 
 

@@ -5,7 +5,7 @@
       <AppButton v-if="makeupDetail.visible" variant="ghost" :disabled="dlg.submitting" @click="closeMakeupDetail(false)">返回补卡台账</AppButton>
       <template v-else>
       <AppButton variant="ghost" @click="$router.push({ path: '/admin/internship/leaves', query: batchStore.withBatchQuery() })">请假审批</AppButton>
-      <AppExportButton :export-fn="exportFn" @exported="onExported">导出 Excel 台账</AppExportButton>
+      <AppExportButton :export-fn="exportFn" @exported="onExported">导出考勤台账</AppExportButton>
       </template>
     </template>
 
@@ -14,22 +14,10 @@
     <template v-if="!makeupDetail.visible">
     <ModuleSummaryStrip :metrics="summaryMetrics" :note="summaryMetrics.length ? '' : '暂无统计口径'" />
 
-    <section class="purpose" aria-label="当前办理说明">
-      <div>
-        <span class="purpose__eyebrow">{{ panelPurpose.step }}</span>
-        <strong>{{ panelPurpose.title }}</strong>
-        <p>{{ panelPurpose.description }}</p>
-      </div>
-      <dl>
-        <div><dt>当前责任人</dt><dd>{{ panelPurpose.actor }}</dd></div>
-        <div><dt>办结结果</dt><dd>{{ panelPurpose.result }}</dd></div>
-      </dl>
-    </section>
-
     <div class="tabs" aria-label="出勤业务切换">
       <span class="tabs__caption">出勤处置台</span>
       <div class="tabs__list">
-        <button v-for="t in tabs" :key="t.key" class="tabs__btn" :class="{ 'is-active': activePanel === t.key }"
+        <button v-for="t in visibleTabs" :key="t.key" class="tabs__btn" :class="{ 'is-active': activePanel === t.key }"
           @click="switchPanel(t.key)">{{ t.label }}</button>
       </div>
     </div>
@@ -59,6 +47,8 @@
       <template #cell-status="{ row }">
         <AppStatusTag :status="row.status" />
       </template>
+      <template #cell-at="{ row }">{{ formatDateTime(row.at, '时间未记录') }}</template>
+      <template #cell-date="{ row }">{{ tab === 'exceptions' ? formatDateTime(row.date, '时间未记录') : row.date }}</template>
       <template #cell-result="{ row }">
         <AppStatusTag :type="row.tone === 'danger' ? 'danger' : 'success'">{{ row.resultLabel }}</AppStatusTag>
       </template>
@@ -102,11 +92,11 @@
             {{ makeupEvidenceLabel }}
           </AppStatusTag>
         </section>
-        <AppFilePreview v-if="makeupDetail.data.attachment" :files="makeupAttachmentFiles" @download="downloadMakeupEvidence" />
+        <AppFilePreview v-if="makeupDetail.data.attachment" :files="makeupAttachmentFiles" @preview="downloadMakeupEvidence(true)" @download="downloadMakeupEvidence()" />
         <p v-else-if="makeupDetail.data.evidenceRequired" class="mk-detail__blocker">按规则必须有证据，当前不可通过。</p>
         <section v-if="makeupDetail.data.previousReviewComment" class="mk-detail__previous">
           <strong>上次退回与本次修正</strong>
-          <p>{{ makeupDetail.data.previousReviewComment }} · {{ makeupDetail.data.previousReviewAt || '时间未记录' }}</p>
+          <p>{{ makeupDetail.data.previousReviewComment }} · {{ formatDateTime(makeupDetail.data.previousReviewAt, '时间未记录') }}</p>
         </section>
         <section>
           <h3 class="mk-detail__title">审批留痕</h3>
@@ -152,6 +142,7 @@ import { fileSdk } from '@/services/file/fileSdk'
 import FilePreviewer from '@/components/file/FilePreviewer.vue'
 import { currentSessionGeneration } from '@/services/http/client'
 import { normalizeUiError } from '@/utils/presentationSafety'
+import { formatDateTime } from '@/utils/dateUtils'
 
 // U8：页签由 URL 的 panel 承载，这里补上 applyPanel 会重置掉的关键词/状态/页码
 const WORK_FIELDS = ['keyword', 'statusFilter', 'page']
@@ -218,6 +209,7 @@ export default {
     }
   },
   computed: {
+    visibleTabs() { return this.tabs.filter(t => !t.key.startsWith('makeup-') || (this.canBtn('internship.makeup.view') && (t.key !== 'makeup-review' || this.canBtn('internship.makeup.review')))) },
     batchStore() { return useInternshipBatchStore() },
     columns() { return COLS[this.tab] },
     statusOptions() { return STATUS_OPTS[this.tab] || [] },
@@ -229,7 +221,7 @@ export default {
         checkins: { step: '01 · 考勤事实', title: '先看真实打卡结果', description: '按当前批次查询学生打卡时间、结果与地点；异常记录转入独立核验工作区。', actor: '指导教师 / 学校管理员只读核对', result: '确认考勤事实，异常进入核验', empty: '当前没有考勤记录', emptyHint: '学生完成打卡或补卡通过后，记录会出现在这里。' },
         exceptions: { step: '02 · 异常核验', title: '逐条核对异常证据', description: '从薄表进入完整证据页，核对定位、设备和学生说明后再定性。', actor: '有考勤核验权限的教师', result: '合理说明、确认异常或转风险', empty: '当前没有待核验异常', emptyHint: '可切换“已处理”回看历史处置记录。' },
         'makeup-apply': { step: '03 · 申请台账', title: '查看全部补卡申请', description: '按状态回看学生申请、证据和审批结果；该入口保留完整台账口径。', actor: '指导教师 / 学校管理员查询', result: '申请过程可追溯、结果可回读', empty: '当前没有补卡申请', emptyHint: '学生提交补卡后会进入本台账。' },
-        'makeup-review': { step: '04 · 补卡审批', title: '集中办理待审补卡', description: '先读完整申请与当前版本证据，再通过补写打卡或驳回给学生修改。', actor: '有补卡审批权限的教师', result: '补写打卡或退回学生', empty: '当前没有待审补卡', emptyHint: '本批次待办已清空，可到申请台账回看结果。' }
+        'makeup-review': { step: '04 · 补卡审批', title: '集中办理待审补卡', description: '先读完整申请与当前版本证据，再通过补写打卡或驳回给学生修改。', actor: '有补卡审批权限的人员', result: '补写打卡或退回学生', empty: '当前没有待审补卡', emptyHint: '本批次待办已清空，可到申请台账回看结果。' }
       }[this.activePanel] || {}
     },
     makeupSummaryItems() {
@@ -240,9 +232,9 @@ export default {
         { label: '补卡日期', value: d.checkinDate || '-' },
         { label: '补卡类型', value: d.makeupTypeLabel || d.makeupType || '-' },
         { label: '申请理由', value: d.reason || '-' },
-        { label: '申请时间', value: d.submittedAt || d.createdAt || '-' },
+        { label: '申请时间', value: formatDateTime(d.submittedAt || d.createdAt, '时间未记录') },
         { label: '当前状态', value: d.statusLabel || d.status || '-' },
-        { label: '服务端版本', value: d.version == null ? '-' : `v${d.version}` }
+        { label: '申请版本', value: d.version == null ? '未记录' : String(d.version) === '0' ? '初始版本' : `第 ${d.version} 版` }
       ]
     },
     makeupAttachmentFiles() {
@@ -323,6 +315,7 @@ export default {
     }
   },
   methods: {
+    formatDateTime(value, fallback) { return formatDateTime(value, fallback) },
     clearPhoto() { this.photoSequence++; this.photoRecord = null; this.photoFile = null; this.photoLoading = false; this.photoError = '' },
     photoFailed(error) { if (this.photoRecord && !this.disposed) this.photoError = normalizeUiError(error).userMessage },
     async openPhoto(row, original = false) {
@@ -433,27 +426,28 @@ export default {
       if (res.code !== 0) { this.makeupDetail.error = res.message || '补卡详情加载失败'; return }
       this.makeupDetail.data = res.data
     },
-    async downloadMakeupEvidence() {
+    async downloadMakeupEvidence(preview = false) {
       const d = this.makeupDetail.data
       const a = d?.attachment
       if (!a) return
       try {
-        await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName)
+        if (preview) await fileSdk.preview(a.fileId)
+        else await guidanceVisitApi.downloadAttachment(a.fileId, a.fileName)
         if (this.makeupDetail.data !== d) return
         const viewed = await attendanceApi.markMakeupEvidenceViewed(d.id)
         if (this.makeupDetail.data !== d) return
-        if (viewed.code !== 0) return toast.error(viewed.message || '证据已下载，但查看留痕失败')
+        if (viewed.code !== 0) return toast.error(viewed.message || '证据已打开，但查看留痕失败')
         this.makeupDetail.data = { ...d, evidenceViewed: true }
         const row = this.rows.find((item) => String(item.id) === String(d.id))
         if (row) row.evidenceViewed = true
-        toast.success('证据已下载，当前版本查看动作已留痕')
-      } catch (e) { toast.error('下载失败：' + (e.message || '')) }
+        toast.success('证据已打开，当前版本查看动作已留痕')
+      } catch (e) { toast.error(normalizeUiError(e).userMessage || '证据暂时无法打开，请重试') }
     },
     openApprove(r) {
       if (!this.canBtn('internship.makeup.review') || !this.makeupCanApprove) return
       this.conflict = emptyConflict()
       this.pending = { kind: 'approve', id: r.id, expectedVersion: r.version, studentName: r.studentName, checkinDate: r.checkinDate }
-      this.dlg = { visible: true, title: '补卡 · 通过', content: `通过「${r.studentName}」${r.checkinDate} 的补卡，将真实补写一条打卡留痕并写审计。`,
+      this.dlg = { visible: true, title: '补卡 · 通过', content: `通过「${r.studentName}」${r.checkinDate} 的补卡后计入有效出勤；原有定位事实保留，办理结果写入审计。`,
         danger: false, confirmText: '通过', requireReason: false, submitting: false }
     },
     openReject(r) {

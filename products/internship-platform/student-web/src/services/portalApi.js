@@ -10,6 +10,37 @@ const q = (obj = {}) => {
   return text ? '?' + text : ''
 }
 
+const intentionPath = '/mobile/internship/context/intention'
+function intentionView(data, context) {
+  if (!context?.batchId || !context?.internshipId || data?.hasData !== true
+    || String(data.batchId) !== String(context.batchId) || String(data.internshipId) !== String(context.internshipId)) {
+    throw new Error('意向不属于当前实习，请重新读取')
+  }
+  const row = data.intention
+  if (row && (!/^\d+$/.test(String(row.id || '')) || String(row.recordId) !== String(context.internshipId)
+    || String(row.batchId) !== String(context.batchId) || !Number.isInteger(row.version) || row.version < 0)) {
+    throw new Error('意向原单或版本不完整，请重新读取')
+  }
+  const labels = { DRAFT: '草稿', SUBMITTED: '已提交', WITHDRAWN: '已撤回' }
+  const known = !row || Object.hasOwn(labels, row.status)
+  return { ...data,
+    intention: row ? { ...row, statusLabel: labels[row.status] || '状态待学校核对' } : null,
+    canEdit: known && data.canEdit === true, canSubmit: known && data.canSubmit === true,
+    canWithdraw: known && data.canWithdraw === true, canCreateNew: known && data.canCreateNew === true,
+    readOnlyReason: data.readOnlyReason === '' ? '' : /[\u4e00-\u9fff]/.test(data.readOnlyReason || '') ? data.readOnlyReason : '当前暂不能办理，请重新读取或联系学校核对。' }
+}
+async function intentionRequest(path, options, context) {
+  try { return intentionView(await request(path, options), context) }
+  catch (error) {
+    const code = error?.bizCode || error?.code
+    const message = code === 'DATA_CONFLICT' ? '意向版本或办理条件已变化，未提交内容已保留，请重新读取并核对。'
+      : code === 'NO_PERMISSION' || error?.status === 403 ? '当前账号无权办理此意向，请联系学校核对。'
+        : code === 'VALIDATION_ERROR' ? '意向内容或所选岗位不符合要求，请核对后重试。'
+          : '意向暂时无法读取或保存，未提交内容仍保留，请重试。'
+    throw Object.assign(new Error(message), error, { message })
+  }
+}
+
 export const portalApi = {
   login: (loginName, password, tenantCode, challenge = {}) =>
     request('/auth/login', {
@@ -29,6 +60,10 @@ export const portalApi = {
     }),
   me: () => request('/auth/me'),
   portalConfig: () => request('/mobile/me/portal-config'),
+  messages: (params = {}) => request('/mobile/me/messages' + q(params)),
+  messageCount: () => request('/mobile/me/messages/count'),
+  messageDetail: (id) => request('/mobile/me/messages/' + encodeURIComponent(String(id))),
+  readMessage: (id) => request('/mobile/me/messages/' + encodeURIComponent(String(id)) + '/read', { method: 'POST' }),
 
   internshipMy: (batchId = '') =>
     request('/portal/internship/my' + q({ batchId })),
@@ -39,19 +74,19 @@ export const portalApi = {
   internshipScoreAppeal: (body) =>
     request('/portal/internship/score/appeal', { method: 'POST', body }),
   internshipCheckin: (body) =>
-    request('/portal/internship/checkin', { method: 'POST', body }),
-  internshipIntentionMy: () =>
-    request('/portal/internship/intention'),
+    request('/mobile/internship/checkin' + q({ batchId: body.batchId }), { method: 'POST', body }),
+  internshipIntentionMy: (context) =>
+    intentionRequest(intentionPath + q(context), {}, context),
   internshipIntentionSave: (body) =>
-    request('/portal/internship/intention', { method: 'POST', body }),
-  internshipIntentionSubmit: () =>
-    request('/portal/internship/intention/submit', { method: 'POST' }),
-  internshipIntentionWithdraw: () =>
-    request('/portal/internship/intention/withdraw', { method: 'POST' }),
-  internshipEnterprises: (city = '') =>
-    request('/portal/internship/enterprises' + (city ? q({ city }) : '')),
+    intentionRequest(intentionPath, { method: 'PUT', body }, body),
+  internshipIntentionSubmit: (body) =>
+    intentionRequest(intentionPath + '/submit', { method: 'POST', body }, body),
+  internshipIntentionWithdraw: (body) =>
+    intentionRequest(intentionPath + '/withdraw', { method: 'POST', body }, body),
+  internshipHelpMy: (context) =>
+    request('/mobile/internship/context/help' + q(context)),
   internshipHelp: (body) =>
-    request('/portal/internship/help', { method: 'POST', body })
+    request('/mobile/internship/context/help', { method: 'POST', body })
 }
 
 export default portalApi

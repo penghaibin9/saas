@@ -24,6 +24,7 @@ export function internshipWorkspaces(ctx) {
   if (!Array.isArray(ctx?.permissionPatterns) || ctx.permissionServiceError) return []
   const group = getVisibleNavPlan({
     permissionPatterns: ctx.permissionPatterns,
+    currentRole: ctx.currentRole,
     ctxKey: ctx.ctxKey || ''
   }).find((item) => item.key === 'internship')
   return (group?.children || []).map((item) => ({
@@ -51,7 +52,7 @@ export function internshipBatchListReturn(query = {}, batchId) {
 // A new batch must not reuse the previous batch's object id or review queue.
 export function internshipBatchSwitch(ref, batchId) {
   const current = new URL(ref, 'https://local.invalid')
-  const owner = internshipLocation(ref, internshipWorkspaces({ permissionPatterns: ['*'] }))
+  const owner = internshipLocation(ref)
   const landing = new URL(owner.path || '/admin/internship', 'https://local.invalid')
   const target = current.pathname === landing.pathname ? current : landing
   for (const key of [

@@ -11,6 +11,7 @@ function normalizeUser(data = {}) {
     userType: String(raw.userType || '').toUpperCase(),
     roleCode: currentRole.roleCode || raw.roleCode || '',
     studentNo: raw.studentNo || data.studentNo || null,
+    mustChangePassword: !!(data.mustChangePassword ?? raw.mustChangePassword),
     tenantId: data.tenantId ?? raw.tenantId ?? null
   }
 }
@@ -37,6 +38,7 @@ export const useSessionStore = defineStore('internship-student-session', {
     async login(loginName, password, tenantCode = '') {
       const data = await portalApi.login(loginName, password, tenantCode)
       const user = assertStudent(normalizeUser(data))
+      clearSession()
       setToken(data.accessToken || '')
       setRefreshToken(data.refreshToken || '')
       this.token = data.accessToken || ''
@@ -62,7 +64,7 @@ export const useSessionStore = defineStore('internship-student-session', {
       }
     },
     async logout() {
-      try { await request('/auth/browser-logout', { method: 'POST', auth: true }) } catch {}
+      try { await request('/auth/browser-logout', { method: 'POST', auth: true }) } catch { /* 网络失败时仍清除本机登录状态。 */ }
       clearSession()
       this.user = null
       this.token = ''

@@ -24,12 +24,16 @@
         <section v-show="activePanel === 'plan'" class="card card--editor">
           <div class="card__head">
             <div>
-              <h3 class="card__title">计划编制</h3>
-              <span class="card__sub">AP03 · 计划正文、批次规则和导出文书使用同一份正式事实</span>
+              <h3 class="card__title">{{ canEdit ? '计划编制' : '实习计划' }}</h3>
             </div>
           </div>
 
-          <div v-if="canEdit" class="plan-template">
+          <p v-if="!canEdit && !plan" class="hint">本批次尚未发布实习计划。</p>
+          <dl v-if="!canEdit && plan" class="plan-readonly">
+            <div v-for="field in readonlyPlanFields" :key="field.label"><dt>{{ field.label }}</dt><dd>{{ field.value || '未填写' }}</dd></div>
+          </dl>
+          <template v-if="canEdit">
+          <div class="plan-template">
             <AppFormItem label="内置专业方案模板" hint="套用后只是预填草稿，仍可逐项修改；保存时记录模板来源。">
               <div class="plan-template__row">
                 <AppSelect v-model="form.templateCode" :options="templateOptions" placeholder="选择模板（可选）" />
@@ -77,27 +81,29 @@
           <AppFormItem label="考核内容" required>
             <AppTextarea v-model="form.assessmentContent" :rows="4" :disabled="!canEdit" placeholder="说明本计划考核内容；分数比例读取当前批次成绩规则" />
           </AppFormItem>
+          </template>
 
+          <template v-if="canEdit || plan">
           <section class="plan-source">
-            <h4>批次基本信息与执行规则（同源）</h4>
+            <h4>实习安排与执行规则</h4>
             <div class="plan-source__grid">
               <span>计划人数 <b>{{ planBasic.plannedCount ?? 0 }}</b></span>
               <span>开始 <b>{{ planBasic.startDate || '未配置' }}</b></span>
               <span>结束 <b>{{ planBasic.endDate || '未配置' }}</b></span>
               <span>实习周数 <b>{{ planBasic.internshipWeeks ?? '未配置' }}</b></span>
-              <span>签到天数 <b>{{ planRules.requiredCheckinDays || '未配置' }}</b></span>
-              <span>周记篇数 <b>{{ planRules.weeklyRequiredCount || '未配置' }}</b></span>
-              <span>周记字数 <b>{{ planRules.weeklyMinWordCount || '未配置' }}</b></span>
+              <span>签到天数 <b>{{ planRules.requiredCheckinDays ?? '未配置' }}</b></span>
+              <span>周记篇数 <b>{{ planRules.weeklyRequiredCount ?? '未配置' }}</b></span>
+              <span>周记字数 <b>{{ planRules.weeklyMinWordCount ?? '未配置' }}</b></span>
               <span>及格线 <b>{{ planRules.scorePassThreshold ?? '未配置' }}</b></span>
             </div>
             <div class="plan-score-components">
-              <span>考核比例：</span>
+              <span>本计划的考核约定：</span>
               <b v-for="(item, index) in planRules.scoreComponents || []" :key="index">
                 {{ item.name }} {{ Math.round(Number(item.weight || 0) * 100) }}%
               </b>
               <span v-if="!(planRules.scoreComponents || []).length">未配置</span>
+              <RouterLink v-if="canViewScores" class="mp-link" :to="{ path:'/admin/internship/scores', query:{ batchId:String(batchId), stage:'config' } }">查看正式评分规则 →</RouterLink>
             </div>
-            <p class="hint">签到天数、周记篇数/字数、考核比例由“实习批次 → 业务规则”统一维护；计划发布时冻结规则版本，避免两套口径。</p>
           </section>
 
           <AppFormItem label="计划附件" hint="最多 20 个文件；上传后保存草稿时正式绑定本计划。">
@@ -113,15 +119,18 @@
           </AppFormItem>
 
           <AppButton v-if="canEdit" variant="secondary" :loading="saving" @click="save">保存草稿</AppButton>
-          <p v-if="plan" class="hint">状态：{{ plan.statusLabel }} · 版本 V{{ plan.version }} · {{ plan.publishedAt || '未发布' }}</p>
+          <p v-if="plan" class="hint">状态：{{ plan.statusLabel }} · 第{{ plan.version }}版 · <AppDateDisplay v-if="plan.publishedAt" :value="plan.publishedAt" mode="datetime" /><span v-else>未发布</span></p>
           <AppInlineAlert v-else-if="canEdit" type="info" class="hint">尚未保存计划，填写完整字段并至少配置一项任务后保存草稿。</AppInlineAlert>
+          </template>
         </section>
         <section v-show="activePanel === 'acks'" class="card">
           <h3 class="card__title">学生确认台账</h3>
           <AppQuickFilterChips v-model="ackStatus" :options="ackOptions" allow-clear @change="resetAcks" />
           <ErrorState v-if="ackError" :message="ackError" @retry="loadAcks" />
           <DataTable v-else :columns="ackCols" :rows="acks" row-key="id" :loading="ackLoading"
-            :pagination="ackPagination" @page-change="onAckPage" />
+            :pagination="ackPagination" @page-change="onAckPage">
+            <template #cell-acknowledgedAt="{ row }"><AppDateDisplay :value="row.acknowledgedAt" mode="datetime" /></template>
+          </DataTable>
         </section>
       </template>
 
@@ -179,7 +188,7 @@
             <h3 class="card__title">{{ reviewRow.studentName }} · {{ reviewRow.taskName }}</h3>
             <AppStatusTag :status="reviewRow.status">{{ reviewRow.statusLabel }}</AppStatusTag>
           </div>
-          <p class="hint">学号 {{ reviewRow.studentNo }} · 提交时间 {{ reviewRow.submittedAt || '尚未提交' }}</p>
+          <p class="hint">学号 {{ reviewRow.studentNo }} · 提交时间 <AppDateDisplay :value="reviewRow.submittedAt" mode="datetime" empty-text="尚未提交" /></p>
           <div class="task-review__columns">
             <section class="review-evidence"><h4>任务要求</h4><p>{{ reviewTask?.requirement || '未填写完成要求' }}</p>
               <AppDateDisplay :value="reviewTask?.deadline" mode="deadline" />
@@ -191,7 +200,7 @@
           </div>
           <AppInlineAlert v-if="evidenceError" type="warning" :description="evidenceError" />
           <section v-if="reviewRow.reviewedAt" class="review-evidence"><h4>最近批阅</h4>
-            <p>{{ reviewRow.reviewedByName }} · {{ reviewRow.reviewedAt }}</p><p>{{ reviewRow.reviewComment || '未填写意见' }}</p>
+            <p>{{ reviewRow.reviewedByName }} · <AppDateDisplay :value="reviewRow.reviewedAt" mode="datetime" /></p><p>{{ reviewRow.reviewComment || '未填写意见' }}</p>
           </section>
           <div v-if="canReview && reviewRow.status === 'SUBMITTED'" class="task-review__actions">
             <AppButton variant="primary" @click="openReview(reviewRow, 'APPROVE')">确认完成</AppButton>
@@ -227,6 +236,7 @@
           <template #cell-studentNote="{ row }">
             <span class="req-text">{{ row.studentNote || '—' }}</span>
           </template>
+          <template #cell-submittedAt="{ row }"><AppDateDisplay :value="row.submittedAt" mode="datetime" /></template>
           <template #cell-actions="{ row }">
             <AppButton variant="secondary" size="sm" @click="openTaskReview(row)">{{ row.status === 'SUBMITTED' && canReview ? '查看并批阅' : '查看提交' }}</AppButton>
           </template>
@@ -335,10 +345,15 @@ export default {
     }
   },
   computed: {
+    readonlyPlanFields() {
+      const labels = { title:'计划标题', internshipType:'实习类别', planNo:'计划编号', majorName:'适用专业', educationLevel:'培养层次', subsidyStandard:'补贴标准', targetAudience:'实习对象', responsibleName:'负责人', objectives:'实习目的', requirements:'实习要求', content:'实习内容', assessmentContent:'考核内容' }
+      return Object.entries(labels).map(([key,label]) => ({ label, value: key === 'internshipType' ? this.planTypeOptions.find(item => item.value === this.form[key])?.label || '待确认' : this.form[key] }))
+    },
     reviewId() { return this.$route.query.reviewId == null ? '' : String(this.$route.query.reviewId) },
     reviewRow() { return this.progRows.find(row => String(row.id) === this.reviewId) || null },
     reviewTask() { return this.tasks.find(task => Number(task.sortOrder) === Number(this.reviewRow?.taskSortOrder)) || null },
     canReview() { return canCode(this.ctx, 'internship.task.review') },
+    canViewScores() { return canCode(this.ctx, 'internship.score.view') },
     canExportPlan() { return canCode(this.ctx, 'internship.plan.view') },
     templateOptions() {
       return this.templates.map(item => ({ label: item.name, value: item.code }))
@@ -693,6 +708,8 @@ export default {
 </script>
 
 <style scoped>
+.plan-readonly{display:grid;gap:16px}.plan-readonly div{display:grid;grid-template-columns:100px minmax(0,1fr);gap:12px}.plan-readonly dt{color:var(--t3)}.plan-readonly dd{margin:0;white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}
+
 @import '@/styles/module-page.css';
 .task-review__columns { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-top: 20px; }
 .task-review h4 { margin: 0; }

@@ -2,10 +2,7 @@ import { selectionScope, selectionScopePath, selectionScopeBody } from '../../..
 /**
  * E-A03 学生选岗 API facade。
  *
- * A01 已落 StudentInternshipProfile / immutable ApplicationMaterialSnapshot /
- * InternshipVolunteerGroup canonical services，但 student/mobile Catalog/Profile/Volunteer HTTP
- * facade 尚未完整注册。本文件只负责冻结 endpoint，并把 A03 兼容字段收敛到 A01 canonical
- * service payload；禁止回落旧 InternshipApplication 三次写入，也禁止前端自造第二套真值。
+ * 复用独立后端已注册的目录、档案和志愿接口，保持页面所属招聘季与服务端版本。
  */
 import { request as baseRequest } from './request'
 import { normalizeCatalogQuery } from '../modules/internshipRecruitment/selectionContract.js'

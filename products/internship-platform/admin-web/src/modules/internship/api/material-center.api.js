@@ -38,8 +38,8 @@ export const internshipMaterialCenterApi = {
   publishRequirement(requirementId) {
     return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/publish`, { method: 'POST' })
   },
-  requirementCoverage(requirementId) {
-    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/coverage`)
+  requirementCoverage(requirementId, params = {}) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/coverage`, { params })
   },
   requirementStudents(requirementId, params = {}) {
     return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/students`, { params })
@@ -50,7 +50,14 @@ export const internshipMaterialCenterApi = {
     })
   },
   uploadRequirementTemplate(file, onProgress) {
-    return fileSdk.upload(file, { bizType: 'TEMP_PRIVATE', bizId: '', onProgress })
+    return fileSdk.upload(file, { bizType: 'INTERNSHIP_MATERIAL_TEMPLATE', bizId: '', onProgress })
+  },
+  downloadRequirementTemplate(requirementId, templateVersionId) {
+    return fileSdk.downloadFrom(`/internship/material-requirements/${encodeURIComponent(requirementId)}/template/download?templateVersionId=${encodeURIComponent(templateVersionId)}`, '材料模板')
+  },
+  downloadRequirementPackage(requirementId, params = {}) {
+    const query = new URLSearchParams(Object.entries(params).filter(([,value]) => value !== undefined && value !== null && value !== ''))
+    return fileSdk.downloadFrom(`/internship/material-requirements/${encodeURIComponent(requirementId)}/package/download?${query}`, '材料文件包.zip')
   },
   list(params = {}) { return request(BASE, { params }) },
   detail(internshipId) { return request(`${BASE}/${encodeURIComponent(internshipId)}`) },

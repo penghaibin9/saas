@@ -52,6 +52,7 @@ def me(user=Depends(get_current_user)):
             "credentialVersion": int(row.credential_version or 0),
             "tenantId": str(row.tenant_id),
             "currentRole": {"roleCode": role_code, "roleName": role_name},
+            "activeContextId": f"role-{role_code.lower()}",
             "user": {
                 "userId": f"db-{row.id}",
                 "loginName": row.login_name,
@@ -61,6 +62,20 @@ def me(user=Depends(get_current_user)):
                 "tenantId": str(row.tenant_id),
             },
         }
+        from app.services.system_authorization import active_roles
+        from app.models import Permission, RolePermission
+        roles = active_roles(db, row.tenant_id, row.id)
+        patterns = {r.id: [] for r in roles}
+        if patterns:
+            for role_id, code in db.execute(select(RolePermission.role_id, Permission.permission_code)
+                .join(Permission, RolePermission.permission_id == Permission.id)
+                .where(RolePermission.tenant_id == row.tenant_id, RolePermission.role_id.in_(patterns),
+                       RolePermission.status == 'ACTIVE', RolePermission.is_deleted.is_(False))):
+                patterns[role_id].append(code)
+        # Discovery only: every business request still authorizes the active role.
+        payload['contexts'] = [{'contextId': f'role-{r.role_code.lower()}', 'roleCode': r.role_code,
+                                'roleName': r.role_name, 'enabled': True, 'permissionPatterns': patterns[r.id]}
+                               for r in roles]
         return success(payload)
     finally:
         db.close()

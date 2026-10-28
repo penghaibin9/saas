@@ -8,10 +8,10 @@ from app.core.tenant_scoped import tenant_get
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import and_, func, or_, select
 
 from app.core.exceptions import AppException, not_found
-from app.models import InternshipAuditTrail, InternshipProcessReport, InternshipRecord, StudentProfile
+from app.models import InternshipAuditTrail, InternshipProcessReport, InternshipRecord, SchoolClass, StudentProfile
 from app.modules.internship.services.internship_version import extract_expected_version, versioned_update
 from app.modules.internship.services import internship_report_quality_service as quality
 from app.services import xlsx_util
@@ -45,13 +45,14 @@ def _row(r, rec, stu, class_name=None):
     return {
         "id": str(r.id), "internId": str(r.internship_id),
         "batchId": str(rec.batch_id) if rec and rec.batch_id else "",
-        "reportType": r.report_type, "reportTypeLabel": TYPE_LABEL.get(r.report_type, r.report_type),
+        "reportType": r.report_type, "reportTypeLabel": TYPE_LABEL.get(r.report_type, "过程报告"),
         "periodKey": r.period_key,
+        "periodLabel": "实习总结" if r.report_type == "SUMMARY" else r.period_key,
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
         "className": class_name or "-",
         "enterpriseName": rec.enterprise_name if rec else "",
         "wordCount": r.word_count, "submitAt": _iso(r.submitted_at) or "",
-        "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, r.status),
+        "status": r.status, "statusLabel": STATUS_LABEL.get(r.status, "状态待确认"),
         "version": int(r.version or 0),
         "reviewComment": r.review_comment or "", "reviewedByName": r.reviewed_by_name or "",
         "reviewedAt": _iso(r.reviewed_at) or "",
@@ -87,38 +88,43 @@ def my_reports(user) -> dict:
         return {"items": [_row(r, rec, stu) for r in rows]}
 
 
-def list_reports(page, page_size, report_type=None, status=None, keyword=None, batch_id=None, user=None):
+def list_reports(page, page_size, report_type=None, status=None, keyword=None, batch_id=None, user=None,
+                 start_date=None, end_date=None):
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
     with session() as db:
-        from app.modules.internship.services.internship_batch_context import batch_record_ids
-        _, record_ids = batch_record_ids(db, batch_id)
-        if not record_ids:
-            return [], 0
-        q = select(InternshipProcessReport).where(
+        batch = resolve_batch(db, batch_id)
+        q = select(InternshipProcessReport, InternshipRecord, StudentProfile, SchoolClass.class_name).join(
+            InternshipRecord, and_(InternshipRecord.id == InternshipProcessReport.internship_id,
+                InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False)),
+        ).join(StudentProfile, and_(StudentProfile.id == InternshipRecord.student_id,
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)),
+        ).outerjoin(SchoolClass, and_(SchoolClass.id == StudentProfile.class_id,
+            SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False)),
+        ).where(
             InternshipProcessReport.tenant_id == _tid(),
             InternshipProcessReport.is_deleted.is_(False),
-            InternshipProcessReport.internship_id.in_(record_ids))
+            InternshipRecord.batch_id == batch.id)
+        q = apply_internship_record_scope(q, user)
+        q = quality.filter_submission_dates(q, InternshipProcessReport, start_date, end_date)
         if report_type:
             q = q.where(InternshipProcessReport.report_type == report_type)
         if status:
             q = q.where(InternshipProcessReport.status == status)
-        rows = db.scalars(q.order_by(InternshipProcessReport.submitted_at.desc(),
-                                     InternshipProcessReport.id.desc())).all()
-        scope, in_scope = _scope(user)
-        items = []
-        for r in rows:
-            rec = tenant_get(db, InternshipRecord, r.internship_id)
-            stu = tenant_get(db, StudentProfile, rec.student_id) if rec else None
-            if keyword and (not stu or keyword.strip() not in (stu.real_name or "")):
-                continue
-            if not in_scope(scope, db, rec, stu):
-                continue
-            from app.modules.internship.services.internship_service import (
-                resolve_student_class_college_names)
-            cn, _ = resolve_student_class_college_names(db, stu)
-            items.append(_row(r, rec, stu, class_name=cn))
-        total = len(items)
-        start = (max(1, page) - 1) * page_size
-        return items[start:start + page_size], total
+        if keyword and keyword.strip():
+            term = keyword.strip()
+            q = q.where(or_(StudentProfile.real_name.contains(term, autoescape=True),
+                StudentProfile.student_no.contains(term, autoescape=True)))
+        total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
+        if page_size <= 0:
+            return [], total
+        rows = db.execute(q.order_by(InternshipProcessReport.submitted_at.desc(), InternshipProcessReport.id.desc())
+            .offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        reviews = quality.latest_review_map(db, "PROCESS", [r.id for r, *_ in rows])
+        snapshots = quality.latest_snapshot_map(db, "PROCESS", [r.id for r, *_ in rows])
+        return [{**_row(r, rec, stu, class_name=cn), "review": reviews.get(r.id),
+                 "reportVersion": int(snapshots[r.id].version_no) if r.id in snapshots else 0}
+                for r, rec, stu, cn in rows], total
 
 
 def get_report(rid, user=None):
@@ -136,11 +142,13 @@ def get_report(rid, user=None):
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "PROCESS_REPORT",
             InternshipAuditTrail.target_id == r.id).order_by(InternshipAuditTrail.id)).all()
         quality_view = quality.snapshot_view(db, r.id)
+        versions = quality_view.get("versions") or []
         return {
             **_row(r, rec, stu),
             "content": r.content or "",
             "reviewComment": r.review_comment or "",
-            "versions": quality_view.get("versions") or [],
+            "versions": versions,
+            "reportVersion": versions[0]["versionNo"] if versions else 0,
             "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
                             "detail": t.detail_json or {}, "occurredAt": _iso(t.occurred_at)}
                            for t in trail],
@@ -264,33 +272,37 @@ def review_report(rid, action: str, comment: str = "", user=None, *, expected_ve
         }
 
 
-def export_reports(report_type=None, status=None, keyword=None, batch_id=None, user=None) -> dict:
-    from app.modules.internship.services.internship_export_util import load_export_rows
+def export_reports(report_type=None, status=None, keyword=None, batch_id=None, user=None,
+                   start_date=None, end_date=None) -> dict:
+    from app.modules.internship.services.internship_export_util import load_export_rows, write_export_audit
 
     items, _ = load_export_rows(
         list_reports, report_type=report_type, status=status, keyword=keyword,
-        batch_id=batch_id, user=user)
-    with session() as db:
-        reviews = quality.latest_review_map(db, "PROCESS", [it.get("id") for it in items])
+        batch_id=batch_id, user=user, start_date=start_date, end_date=end_date)
 
     label = TYPE_LABEL.get((report_type or "").upper(), "过程报告")
     headers = [
-        "学号", "姓名", "企业", "报告类型", "周期", "字数", "提交时间", "状态",
+        "学号", "姓名", "企业", "报告类型", "周期", "提交版本", "字数", "提交时间", "状态",
         "五级评价", "总结评分(0-100)", "批阅教师", "批阅时间", "批阅意见",
     ]
     rows = []
     for it in items:
-        review = reviews.get(int(it["id"])) if str(it.get("id") or "").isdigit() else None
+        review = it.get("review")
         rows.append([
             it["studentNo"], it["studentName"], it["enterpriseName"],
-            it["reportTypeLabel"], it["periodKey"], it["wordCount"], it["submitAt"],
+            it["reportTypeLabel"], it.get("periodLabel") or ("实习总结" if it.get("reportType") == "SUMMARY" else it["periodKey"]), it.get("reportVersion") or "版本待核实", it["wordCount"], quality.format_report_time(it["submitAt"]),
             it["statusLabel"],
             review.get("ratingLevel") if review else "",
             review.get("summaryScore") if review and review.get("summaryScore") is not None else "",
             review.get("reviewerName") if review else "",
-            review.get("reviewedAt") if review else "",
+            quality.format_report_time(review.get("reviewedAt")) if review else "",
             review.get("comment") if review else "",
         ])
     wm = f"岗位实习中心·{label}台账 · {_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M}"
     content = xlsx_util.build_ledger_xlsx(f"{label}台账", headers, rows, watermark=wm)
+    with session() as db:
+        write_export_audit(db, '过程报告台账', len(items), user=user,
+            filters={'batchId': str(batch_id or ''), 'reportType': report_type, 'status': status,
+                     'keyword': keyword, 'startDate': str(start_date or ''), 'endDate': str(end_date or '')})
+        db.commit()
     return xlsx_util.pack_xlsx_result(content, f"{label}台账.xlsx", len(items))

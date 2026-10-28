@@ -184,7 +184,7 @@
     <AppConfirmDialog
       v-model:visible="removeVisible"
       title="移出正式参与学生"
-      :message="removeRow ? ('将 ' + removeRow.name + ' 从当前批次正式名单移出。仅 PREPARING 且尚未落实实习去向的学生允许直接移出。') : ''"
+      :message="removeRow ? ('将 ' + removeRow.name + ' 从当前批次正式名单移出。仅处于准备中、尚未落实实习去向且没有计划任务办理记录的学生允许直接移出，原记录保留供追溯。') : ''"
       type="danger"
       confirm-text="确认移出"
       require-reason
@@ -224,7 +224,7 @@ export default {
     batchStatus: { type: String, default: '' },
     readonly: { type: Boolean, default: false }
   },
-  emits: ['frozen'],
+  emits: ['frozen', 'changed'],
   data() {
     return {
       loading: true,
@@ -408,6 +408,7 @@ export default {
         + ((data.rejectedOutOfScope || []).length ? `，越权/不符合条件 ${data.rejectedOutOfScope.length} 人未加入` : '')
       )
       await this.load()
+      if (batchId === this.batchId) this.$emit('changed')
     },
     openRemove(row) {
       if (!this.canAdjustRoster || this.manualActing) return
@@ -430,6 +431,7 @@ export default {
       this.removeRow = null
       toast.success('学生已从正式名单移出，原参与记录和审计仍保留')
       await this.load()
+      if (batchId === this.batchId) this.$emit('changed')
     },
     async freezeParticipants() {
       if (this.readonly) return

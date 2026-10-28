@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime
 
-from sqlalchemy import BigInteger, DateTime, Index, String, UniqueConstraint
+from sqlalchemy import BigInteger, Computed, DateTime, Index, String, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.models.base import Base, CommonMixin, PKMixin, TenantMixin
@@ -37,13 +37,9 @@ class StudentAccountLink(PKMixin, TenantMixin, CommonMixin, Base):
     """t_student_account_link：学生主档与登录账号的稳定关系。"""
     __tablename__ = "t_student_account_link"
     __table_args__ = (
-        # 唯一约束只约束 ACTIVE 行不现实（MySQL 无部分索引），因此用
-        # (tenant_id, student_id, link_status) 与 (tenant_id, user_id, link_status)
-        # 组合：同一学生/账号可以有多条历史行，但 ACTIVE 只能有一条。
-        UniqueConstraint("tenant_id", "student_id", "link_status",
-                         name="uk_sal_tenant_student_status"),
-        UniqueConstraint("tenant_id", "user_id", "link_status",
-                         name="uk_sal_tenant_user_status"),
+        # Generated nullable keys enforce active uniqueness without limiting retained history.
+        UniqueConstraint("tenant_id", "active_student_id", name="uk_sal_tenant_active_student"),
+        UniqueConstraint("tenant_id", "active_user_id", name="uk_sal_tenant_active_user"),
         Index("ix_sal_tenant_student_status", "tenant_id", "student_id", "link_status"),
         Index("ix_sal_tenant_user_status", "tenant_id", "user_id", "link_status"),
     )
@@ -54,6 +50,10 @@ class StudentAccountLink(PKMixin, TenantMixin, CommonMixin, Base):
     user_id: Mapped[int] = mapped_column(
         BigInteger, nullable=False, index=True,
         comment="= t_user.id（登录账号）")
+    active_student_id: Mapped[int | None] = mapped_column(BigInteger, Computed(
+        "CASE WHEN link_status = 'ACTIVE' AND is_deleted = 0 THEN student_id ELSE NULL END", persisted=True))
+    active_user_id: Mapped[int | None] = mapped_column(BigInteger, Computed(
+        "CASE WHEN link_status = 'ACTIVE' AND is_deleted = 0 THEN user_id ELSE NULL END", persisted=True))
     link_status: Mapped[str] = mapped_column(
         String(20), nullable=False, default=LINK_ACTIVE, index=True,
         comment="ACTIVE/SUSPENDED/REVOKED/MERGED")

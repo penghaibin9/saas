@@ -6,7 +6,7 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models.internship import InternshipSupportSession
+from app.models.internship import InternshipAuditTrail, InternshipSupportSession
 from app.modules.internship.services import internship_risk_service as risks
 from app.modules.internship.services.internship_audit_service import add_audit
 from app.modules.internship.services.internship_student_context_guard import (
@@ -42,7 +42,7 @@ def _faq_answer(message: str) -> tuple[str, str, bool]:
         return best[0], best[1], True
     return (
         "GENERAL",
-        "我暂时无法从岗位实习 FAQ 中准确定位这个问题。你可以补充“哪一步、页面提示什么、希望学校怎么处理”。如果连续三次仍未解决，系统会自动携带对话上下文转给指导教师。",
+        "我暂时无法从岗位实习常见问题中准确定位这个问题。你可以补充“哪一步、页面提示什么、希望学校怎么处理”。如果连续三次仍未解决，系统会登记人工求助并附上最近对话。",
         False,
     )
 
@@ -71,7 +71,32 @@ def _owned_session(db, session_id, record, student, *, lock: bool = False):
     return row
 
 
-def _view(row: InternshipSupportSession) -> dict:
+def _answer_state(db, row) -> dict:
+    history = list(row.context_json or [])
+    last = history[-1] if history else {}
+    version = last.get("answerVersion")
+    feedback = last.get("feedback")
+    if type(version) is int and version > 0 and feedback in (None, "UNRESOLVED", "SOLVED"):
+        return {"answerVersion": version, "feedback": feedback, "known": True}
+    # 旧会话用原审计确认末轮事实，不能用累计次数猜测是否已评价。
+    trail = db.scalar(select(InternshipAuditTrail).where(
+        InternshipAuditTrail.tenant_id == _tid(),
+        InternshipAuditTrail.target_type == "SUPPORT_SESSION",
+        InternshipAuditTrail.target_id == row.id,
+    ).order_by(InternshipAuditTrail.id.desc()).limit(1))
+    try:
+        asked_at = datetime.fromisoformat(str(last.get("askedAt") or "").replace("Z", "+00:00")).replace(tzinfo=None)
+    except ValueError:
+        asked_at = None
+    actions = {"SUPPORT_FAQ_ASK": None, "SUPPORT_UNRESOLVED": "UNRESOLVED",
+               "SUPPORT_SOLVED": "SOLVED", "SUPPORT_TRANSFER_TO_HUMAN": "UNRESOLVED"}
+    if (last.get("question") and last.get("answer") and asked_at and trail
+            and trail.action in actions and trail.occurred_at >= asked_at.replace(microsecond=0)):
+        return {"answerVersion": int(row.version or 0), "feedback": actions[trail.action], "known": True}
+    return {"answerVersion": None, "feedback": None, "known": False}
+
+
+def _view(row: InternshipSupportSession, answer: dict) -> dict:
     history = list(row.context_json or [])
     return {
         "sessionId": str(row.id),
@@ -79,6 +104,9 @@ def _view(row: InternshipSupportSession) -> dict:
         "unresolvedCount": int(row.unresolved_count or 0),
         "remainingBeforeHuman": max(0, TRANSFER_AFTER_UNRESOLVED - int(row.unresolved_count or 0)),
         "history": history,
+        "awaitingFeedback": row.status == "ACTIVE" and answer["known"] and answer["feedback"] is None,
+        "answerVersion": answer["answerVersion"],
+        "feedbackNotice": "" if answer["known"] or row.status != "ACTIVE" else "这段历史回答的评价状态未能确认，请重新提问；原记录会保留。",
         "lastQuestion": row.last_question or "",
         "lastAnswer": row.last_answer or "",
         "transferredRiskId": str(row.transferred_risk_id or ""),
@@ -96,10 +124,11 @@ def current(user: dict, *, batch_id, internship_id) -> dict:
             InternshipSupportSession.student_id == student.id,
             InternshipSupportSession.is_deleted.is_(False),
         ).order_by(InternshipSupportSession.id.desc()).limit(1)).first()
-        return _view(row) if row else {
+        return _view(row, _answer_state(db, row)) if row else {
             "sessionId": "", "status": "NEW", "unresolvedCount": 0,
             "remainingBeforeHuman": 3, "history": [], "transferredRiskId": "",
             "transferredAt": "",
+            "awaitingFeedback": False, "answerVersion": None, "feedbackNotice": "",
         }
 
 
@@ -129,19 +158,23 @@ def ask(user: dict, body: dict) -> dict:
             )
             db.add(row)
             db.flush()
+        elif _view(row, _answer_state(db, row))["awaitingFeedback"]:
+            raise AppException("DATA_CONFLICT", "请先评价当前回答，再继续提问", http_status=409)
 
         history = list(row.context_json or [])
+        answer_version = int(row.version or 0) + 1
         history.append({
             "question": question,
             "answer": answer,
             "faqCode": faq_code,
             "matched": bool(matched),
             "askedAt": datetime.utcnow().isoformat() + "Z",
+            "answerVersion": answer_version,
         })
         row.context_json = history[-12:]
         row.last_question = question
         row.last_answer = answer
-        row.version = int(row.version or 0) + 1
+        row.version = answer_version
         add_audit(
             db,
             target_type="SUPPORT_SESSION",
@@ -152,111 +185,72 @@ def ask(user: dict, body: dict) -> dict:
             detail={"faqCode": faq_code, "matched": bool(matched)},
         )
         db.commit()
-        result = _view(row)
+        result = _view(row, _answer_state(db, row))
         result.update({"answer": answer, "faqCode": faq_code, "matched": bool(matched)})
         return result
 
 
-def solved(user: dict, session_id, body: dict) -> dict:
-    payload = body or {}
+def _feedback(user: dict, session_id, payload: dict, action: str) -> dict:
+    expected = payload.get("answerVersion")
+    if type(expected) is not int or expected < 1:
+        raise AppException("DATA_CONFLICT", "缺少有效回答版本，请重新读取当前回答后评价", http_status=409)
+    outbox_ids = []
     with session() as db:
         record, student, batch_id = _context(db, user, payload, for_write=True)
         row = _owned_session(db, session_id, record, student, lock=True)
-        if row.status == "TRANSFERRED":
-            return _view(row)
-        row.status = "SOLVED"
+        answer = _answer_state(db, row)
+        if not answer["known"] or answer["answerVersion"] != expected:
+            raise AppException("DATA_CONFLICT", "回答已变化，请重新读取后评价；本次未修改结果", http_status=409)
+        if answer["feedback"]:
+            if answer["feedback"] != action:
+                raise AppException("DATA_CONFLICT", "这个回答已登记其他评价，不能重复修改", http_status=409)
+            result = _view(row, answer)
+            result["transferred"] = row.status == "TRANSFERRED"
+            return result
+        if row.status != "ACTIVE":
+            raise AppException("DATA_CONFLICT", "当前客服会话已结束，请重新提问", http_status=409)
+        history = [dict(item) for item in (row.context_json or [])]
+        history[-1].update(answerVersion=expected, feedback=action,
+                           feedbackAt=datetime.utcnow().isoformat() + "Z")
+        row.context_json = history
         row.version = int(row.version or 0) + 1
-        add_audit(
-            db, target_type="SUPPORT_SESSION", target_id=row.id,
-            action="SUPPORT_SOLVED", user=user, batch_id=batch_id,
-            detail={"unresolvedCount": int(row.unresolved_count or 0)},
-        )
+        if action == "SOLVED":
+            row.status = "SOLVED"
+            audit_action = "SUPPORT_SOLVED"
+        else:
+            row.unresolved_count = int(row.unresolved_count or 0) + 1
+            audit_action = "SUPPORT_UNRESOLVED"
+            if row.unresolved_count >= TRANSFER_AFTER_UNRESOLVED:
+                context_lines = []
+                for item in history[-6:]:
+                    context_lines.extend([f"学生：{item.get('question', '')}", f"客服：{item.get('answer', '')}"])
+                ticket, outbox_ids = risks.student_help_in_session(db, user, {
+                    "batchId": str(batch_id), "internshipId": str(record.id),
+                    "riskLevel": "MEDIUM", "title": "智能客服三次未解决转人工",
+                    "content": "智能客服连续三次未解决，自动转人工。\n" + "\n".join(context_lines),
+                }, support_session_id=row.id)
+                row.status = "TRANSFERRED"
+                row.transferred_risk_id = int(ticket["id"])
+                row.transferred_at = datetime.utcnow()
+                audit_action = "SUPPORT_TRANSFER_TO_HUMAN"
+        add_audit(db, target_type="SUPPORT_SESSION", target_id=row.id,
+                  action=audit_action, user=user, batch_id=batch_id,
+                  expected_version=expected, new_version=row.version,
+                  detail={"answerVersion": expected, "feedback": action,
+                          "unresolvedCount": int(row.unresolved_count or 0),
+                          "riskId": str(row.transferred_risk_id or "")})
         db.commit()
-        return _view(row)
+        result = _view(row, _answer_state(db, row))
+        result["transferred"] = row.status == "TRANSFERRED"
+        if result["transferred"]:
+            result["message"] = "最近对话已附到人工求助记录，可查看后续处理进度。"
+    risks.deliver_student_help_events(outbox_ids)
+    return result
+
+
+def solved(user: dict, session_id, body: dict) -> dict:
+    return _feedback(user, session_id, body or {}, "SOLVED")
 
 
 def unresolved(user: dict, session_id, body: dict) -> dict:
-    payload = body or {}
-    transfer_payload = None
-    with session() as db:
-        record, student, batch_id = _context(db, user, payload, for_write=True)
-        row = _owned_session(db, session_id, record, student, lock=True)
-        if row.status == "TRANSFERRED":
-            result = _view(row)
-            result["transferred"] = True
-            return result
-        if row.status != "ACTIVE":
-            raise AppException("DATA_CONFLICT", "当前客服会话已结束，请重新提问")
-        next_count = int(row.unresolved_count or 0) + 1
-        if next_count < TRANSFER_AFTER_UNRESOLVED:
-            row.unresolved_count = next_count
-            row.version = int(row.version or 0) + 1
-            add_audit(
-                db, target_type="SUPPORT_SESSION", target_id=row.id,
-                action="SUPPORT_UNRESOLVED", user=user, batch_id=batch_id,
-                detail={"unresolvedCount": next_count},
-            )
-            db.commit()
-            result = _view(row)
-            result["transferred"] = False
-            return result
-
-        history = list(row.context_json or [])[-6:]
-        context_lines = []
-        for item in history:
-            context_lines.append(f"学生：{item.get('question', '')}")
-            context_lines.append(f"客服：{item.get('answer', '')}")
-        transfer_payload = {
-            "batchId": str(batch_id),
-            "internshipId": str(record.id),
-            "riskLevel": "MEDIUM",
-            "title": "智能客服三次未解决转人工",
-            "content": ("智能客服连续三次未解决，自动转人工。\n" + "\n".join(context_lines))[:1800],
-            "_sessionId": int(row.id),
-            "_studentId": int(student.id),
-            "_batchId": int(batch_id),
-            "_recordId": int(record.id),
-        }
-
-    try:
-        ticket = risks.student_help_report(user, transfer_payload)
-    except AppException as exc:
-        if "已有未办结的求助单" not in str(getattr(exc, "message", "") or ""):
-            raise
-        existing = risks.my_student_help(
-            user,
-            batch_id=transfer_payload["batchId"],
-            internship_id=transfer_payload["internshipId"],
-        )
-        open_items = [
-            item for item in (existing.get("items") or [])
-            if item.get("status") in ("PENDING_HANDLE", "PROCESSING")
-        ]
-        if not open_items:
-            raise
-        ticket = open_items[0]
-
-    with session() as db:
-        record, student, batch_id = _context(db, user, payload, for_write=True)
-        row = _owned_session(
-            db, transfer_payload["_sessionId"], record, student, lock=True)
-        row.unresolved_count = max(TRANSFER_AFTER_UNRESOLVED, int(row.unresolved_count or 0))
-        row.status = "TRANSFERRED"
-        row.transferred_risk_id = int(ticket["id"])
-        row.transferred_at = datetime.utcnow()
-        row.version = int(row.version or 0) + 1
-        add_audit(
-            db, target_type="SUPPORT_SESSION", target_id=row.id,
-            action="SUPPORT_TRANSFER_TO_HUMAN", user=user, batch_id=batch_id,
-            detail={
-                "unresolvedCount": int(row.unresolved_count or 0),
-                "riskId": str(ticket["id"]),
-            },
-        )
-        db.commit()
-        result = _view(row)
-        result.update({
-            "transferred": True,
-            "message": "已自动携带最近对话转给指导教师，无需重复描述。",
-        })
-        return result
+    return _feedback(user, session_id, body or {}, "UNRESOLVED")

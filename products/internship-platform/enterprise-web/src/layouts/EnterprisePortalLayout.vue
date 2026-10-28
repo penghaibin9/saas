@@ -3,6 +3,7 @@ import { computed, onMounted, ref } from 'vue'
 import { RouterLink, RouterView, useRouter } from 'vue-router'
 import { useEnterpriseContextStore } from '../stores/enterpriseContext'
 import { clearEnterpriseSession } from '../services/request'
+import { enterpriseRoleLabel } from '../services/enterpriseInternshipApi'
 
 const nav = [
   {to:'/home',label:'首页'}, {to:'/messages',label:'消息通知',messageBadge:true}, {to:'/company',label:'企业资料'}, {to:'/positions',label:'我的岗位'},
@@ -12,7 +13,7 @@ const router = useRouter()
 const context = useEnterpriseContextStore()
 const mobileOpen = ref(false)
 const title = computed(() => context.campaign?.name || context.campaign?.campaignName || (context.campaign?.id ? `招聘季 #${context.campaign.id}` : '当前招聘季尚未加载'))
-const roleLabel = computed(() => ({COMPANY_ADMIN:'企业管理员',HR:'企业 HR',MENTOR:'企业导师'}[String(context.memberRole||'').toUpperCase()] || context.memberRole || '企业成员'))
+const roleLabel = computed(() => enterpriseRoleLabel(context.memberRole))
 function navAllowed(item){return !item.applicationPermission||context.applicationViewAllowed}
 function logout(){
   clearEnterpriseSession()
@@ -32,12 +33,12 @@ onMounted(() => context.load())
     </header>
     <div class="body">
       <aside class="sidebar" :class="{open:mobileOpen}">
-        <div class="workspace-card"><span>当前工作区</span><strong>{{ context.companyName || '企业协同中心' }}</strong><small>{{ title }}</small></div>
+        <div class="workspace-card"><span>当前工作区</span><strong>{{ context.companyName || '企业协同中心' }}</strong><small>{{ title }}</small><RouterLink to="/campaign-select" class="ep-btn" @click="mobileOpen=false">切换办理范围</RouterLink></div>
         <div class="nav-title">招聘与实习协同</div>
         <nav class="nav-list" aria-label="企业协同中心导航">
           <template v-for="item in nav" :key="item.to">
             <RouterLink v-if="navAllowed(item)" :to="item.to" class="nav-item" @click="mobileOpen=false"><span class="nav-dot"></span><span>{{ item.label }}</span><span v-if="item.messageBadge&&context.unreadMessages" class="nav-count" :aria-label="`${context.unreadMessages} 条未读消息`">{{ context.unreadMessages>99?'99+':context.unreadMessages }}</span></RouterLink>
-            <span v-else class="nav-item nav-disabled" aria-disabled="true" title="仅企业管理员或 HR 可处理报名学生"><span class="nav-dot"></span><span>{{ item.label }}</span><small>管理员/HR</small></span>
+            <span v-else class="nav-item nav-disabled" aria-disabled="true" title="仅企业管理员或招聘对接人可处理报名学生"><span class="nav-dot"></span><span>{{ item.label }}</span><small>管理员/招聘对接人</small></span>
           </template>
         </nav>
         <div class="sidebar-foot">所有数据范围由学校、招聘季、企业成员关系与授权共同校验。</div>

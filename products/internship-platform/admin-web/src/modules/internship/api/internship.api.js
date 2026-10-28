@@ -30,8 +30,8 @@ function fail(message, code = 1) {
   return Promise.resolve({ code, data: null, message })
 }
 
-function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+async function toErr(e) {
+  if (e?.biz) return { ...await fail(e.message, e.code || 1), bizCode:e.bizCode || '', httpStatus:e.httpStatus || 0 }
   return fail(e?.message || '真实接口不可用', 503001)
 }
 
@@ -63,6 +63,7 @@ function clone(v) {
 
 export const internshipApi = {
   listEmploymentRegistrations: params => call(()=>request('/teacher-mobile/internship/employment',{params})),
+  exportEmploymentRegistrations: params => call(()=>request('/teacher-mobile/internship/employment/export',{method:'POST',params})),
   getEmploymentRegistration: id => call(()=>request('/teacher-mobile/internship/employment/'+encodeURIComponent(String(id)))),
   discloseEmploymentRegistration: (id,purpose) => call(()=>request('/teacher-mobile/internship/employment/'+encodeURIComponent(String(id))+'/disclose',{method:'POST',body:{purpose}})),
   reviewEmploymentRegistration: (id,body) => call(()=>request('/teacher-mobile/internship/employment/'+encodeURIComponent(String(id))+'/review',{method:'POST',body})),
@@ -75,6 +76,7 @@ export const internshipApi = {
     let roleName = isTeacher ? '实习指导教师' : '实习管理员'
     const scopeName = isTeacher ? '本人指导的实习学生' : '本校实习数据（按后端数据范围）'
     const brand = { ...tenantBrandConfig }
+    let schoolService = {}, announcementCategories = []
     // permissionPatterns：当前身份的权限码模式集，来自后端 /rbac/current-context（与 enforce_permission 同一套码）。
     // 角色菜单投影(getVisibleNavPlan/canSeeLeaf)与按钮态(permissionActions)据此收敛；取不到时降级（离线/兼容）。
     let permissionPatterns = null
@@ -95,6 +97,9 @@ export const internshipApi = {
         const realName = me?.realName || me?.user?.realName
         try {
           const rc = await request('/rbac/current-context')
+          Object.assign(brand, rc?.brand || {})
+          schoolService = rc?.service || {}
+          announcementCategories = rc?.announcementCategories || []
           setRbacLoadFailed(false)
           if (rc && rc.moduleAccessHealthy === false) {
             moduleAccessHealthy = false
@@ -116,7 +121,9 @@ export const internshipApi = {
             // 优先用后端返回的真实角色名，退回 userType 猜测名仅作离线兜底。
             if (cr.roleName && /[\u3400-\u9fff]/.test(cr.roleName)) roleName = cr.roleName
             else roleName = ({SCHOOL_ADMIN:'学校管理员',INTERN_MENTOR:'实习指导教师',CLASS_ADVISOR:'辅导员',INTERN_ENTERPRISE_TUTOR:'企业导师',INTERN_STUDENT:'实习学生'})[cr.roleCode] || '实习工作人员'
-            roleCtx = { ...currentRole, roleCode: cr.roleCode || roleCtx.roleCode }
+            roleCtx = { ...currentRole, roleCode: cr.roleCode || roleCtx.roleCode,
+              baseRoleCode: cr.baseRoleCode || cr.roleCode || '', contextId: cr.contextId || '',
+              permissionVersion: cr.permissionVersion ?? '' }
             const tid = me?.tenantId || me?.user?.tenantId || ''
             ctxKey = `${tid}|${cr.contextId || ''}|${cr.permissionVersion || ''}`
           }
@@ -150,6 +157,8 @@ export const internshipApi = {
     })
     return ok({
       tenantBrandConfig: brand,
+      service: schoolService,
+      announcementCategories,
       currentRole: roleCtx,
       dataScope: { ...dataScope, scopeName, name: scopeName },
       permissionActions: pa,
@@ -171,6 +180,13 @@ export const internshipApi = {
 
   getBatches(params = {}) {
     return callList('/internship/batches', params)
+  },
+
+  getBatchOptions(params = {}) {
+    return call(async () => {
+      const data = await request('/internship/batch-options', { params })
+      return { ...data, list: data.items || [] }
+    })
   },
 
   getBatchDetail(id) {
@@ -303,10 +319,11 @@ export const internshipApi = {
     return call(() => request('/internship/reports/export', { method: 'POST', params }))
   },
 
-  batchReviewWeeklyReports(itemsOrIds, { action = 'APPROVE', comment = '', versions } = {}) {
+  batchReviewWeeklyReports(itemsOrIds, { action = 'APPROVE', comment = '', versions, ratingLevel } = {}) {
     const items = Array.isArray(itemsOrIds) && itemsOrIds.length && typeof itemsOrIds[0] === 'object'
       ? itemsOrIds.map((it) => ({
         id: it.id,
+        ratingLevel: it.ratingLevel ?? ratingLevel,
         expectedVersion: it.expectedVersion ?? it.version
       }))
       : (itemsOrIds || []).map((id, i) => ({
@@ -314,13 +331,19 @@ export const internshipApi = {
         expectedVersion: Array.isArray(versions) ? versions[i] : undefined
       }))
     return call(() => request('/internship/reports/batch-review', {
-      method: 'POST', body: { items, action, comment }
+      method: 'POST', body: { items, action, comment, ratingLevel }
     }))
   },
 
   remindWeeklyReport(id, { channel = '站内消息' } = {}) {
     return call(() => request(`/internship/reports/${id}/remind`, {
       method: 'POST', body: { channel }
+    }))
+  },
+
+  remindReportObligation(id, { batchId, reportType } = {}) {
+    return call(() => request(`/internship/report-obligations/${encodeURIComponent(String(id))}/remind`, {
+      method: 'POST', params: { batchId }, body: { reportType }
     }))
   },
 
@@ -372,6 +395,10 @@ export const internshipApi = {
 
   getChangeRequests(params = {}) {
     return callList('/internship/change-requests', params)
+  },
+
+  exportChangeRequests(params = {}) {
+    return call(() => request('/internship/change-requests/export', { method: 'POST', params }))
   },
 
   getChangeRequestDetail(id) {

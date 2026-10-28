@@ -12,8 +12,10 @@ from app.core.context import set_current_user, set_tenant
 from app.core.exceptions import register_exception_handlers
 from app.core.security import decode_token
 from app.db.session import get_engine
+from app.services.system_import_runner import lifespan
 
 app = FastAPI(
+    lifespan=lifespan,
     title=settings.APP_NAME,
     version="0.2.0-w2",
     description="跃科岗位实习管理平台 Standalone。W2 开始挂载独立岗位实习生产路由。",

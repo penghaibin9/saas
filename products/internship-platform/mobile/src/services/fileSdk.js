@@ -27,6 +27,17 @@ export function previewIdentity(file = {}) {
 
 export function chooseSingleFile({ count = 1, kind = 'file' } = {}) {
   return new Promise((resolve, reject) => {
+    const imagePicked = res => {
+      const source = res.tempFiles?.[0] || {}, path = res.tempFilePaths?.[0] || source.path
+      if (!path) { resolve(null); return }
+      const name = source.name || String(path).split(/[\\/]/).pop().split('?')[0]
+      if (IMAGE_EXTENSIONS.has(fileExtension(name))) { resolve({ path, name, size: source.size || 0 }); return }
+      uni.getImageInfo({ src: path, success: info => {
+        const extension = String(info.type || '').toLowerCase()
+        if (IMAGE_EXTENSIONS.has(extension)) resolve({ path, name: '实习照片.' + extension, size: source.size || 0 })
+        else reject({ message: '图片格式无法识别，请选择原始照片文件' })
+      }, fail: reject })
+    }
     if (kind === 'video') {
       uni.chooseVideo({
         sourceType: ['album', 'camera'], compressed: false,
@@ -38,7 +49,7 @@ export function chooseSingleFile({ count = 1, kind = 'file' } = {}) {
     if (kind === 'image') {
       uni.chooseImage({
         count, sizeType: ['compressed', 'original'],
-        success: (res) => resolve({ path: res.tempFilePaths?.[0], name: '实习照片.jpg', size: res.tempFiles?.[0]?.size || 0 }),
+        success: imagePicked,
         fail: reject
       })
       return
@@ -59,11 +70,7 @@ export function chooseSingleFile({ count = 1, kind = 'file' } = {}) {
     uni.chooseImage({
       count,
       sizeType: ['compressed', 'original'],
-      success: (res) => resolve({
-        path: (res.tempFilePaths || [])[0],
-        name: 'attachment.jpg',
-        size: (res.tempFiles || [])[0]?.size || 0
-      }),
+      success: imagePicked,
       fail: reject
     })
   })
@@ -112,29 +119,34 @@ function openDownloaded(downloaded, fileName = '', { strictNative = false } = {}
   })
 }
 
-export async function openBusinessFile(fileId) {
+export async function openBusinessFile(fileId, _fileName, { isCurrent = () => true } = {}) {
   const id = String(fileId || '').trim()
   if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
   const meta = normalizeFile(await realRequest(`/files/${enc(id)}`))
+  if (!isCurrent()) return null
   if (!meta.canPreview && !meta.canDownload) {
     throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
   }
   const downloaded = await realDownload(`/files/download/${enc(id)}`)
+  if (!isCurrent()) return null
   await openDownloaded(downloaded, meta.fileName)
   return meta
 }
 
-export async function openBusinessFileInline(fileId) {
+export async function openBusinessFileInline(fileId, { isCurrent = () => true } = {}) {
   const id = String(fileId || '').trim()
   if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
   const meta = normalizeFile(await realRequest(`/files/${enc(id)}`))
+  if (!isCurrent()) return null
   if (!meta.canPreview && !meta.canDownload) {
     throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
   }
   const downloaded = await realDownload(`/files/download/${enc(id)}`)
   if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    if (!isCurrent()) { if (downloaded?.tempFilePath?.startsWith?.('blob:')) URL.revokeObjectURL(downloaded.tempFilePath); return null }
     return { ...meta, inlineUrl: downloaded.tempFilePath }
   }
+  if (!isCurrent()) return null
   await openDownloaded(downloaded, meta.fileName)
   return meta
 }
@@ -208,8 +220,8 @@ export const fileSdk = {
   async open(fileId) {
     return openBusinessFile(fileId)
   },
-  async openInline(fileId) {
-    return openBusinessFileInline(fileId)
+  async openInline(fileId, options) {
+    return openBusinessFileInline(fileId, options)
   },
   async download(fileId) {
     return realDownload(`/files/download/${enc(fileId)}`)

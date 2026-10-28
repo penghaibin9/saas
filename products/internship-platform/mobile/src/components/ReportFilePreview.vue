@@ -4,7 +4,7 @@
     <text v-if="state === 'loading'">正在安全读取附件…</text>
     <text v-else-if="state === 'error'" class="report-preview__error">{{ errorText }}</text>
     <template v-else-if="state === 'ready'">
-      <image v-if="kind === 'image'" :src="url" class="report-preview__image" mode="widthFix" />
+      <image v-if="kind === 'image'" :src="url" class="report-preview__image" mode="widthFix" @load="revealRequested && reveal()" />
       <video v-else-if="kind === 'video'" :key="url" :src="url" controls class="report-preview__video" @error="playbackError" />
       <view v-else>
         <text>文件已安全读取，可打开或保存后查看。</text>
@@ -20,13 +20,26 @@ import { currentSessionGeneration } from '@/services/sessionGeneration.mjs'
 import { loadReportMedia, releasePreview } from '@/services/reportMedia.mjs'
 
 export default {
-  data() { return { visible: false, state: 'loading', name: '', kind: '', url: '', file: null, errorText: '', sequence: 0 } },
+  data() { return { visible: false, state: 'loading', name: '', kind: '', url: '', file: null, errorText: '', sequence: 0, revealRequested: false } },
   beforeUnmount() { this.reset() },
   methods: {
     reset() {
       this.sequence += 1
       releasePreview(this.url)
-      this.url = ''; this.file = null; this.visible = false
+      this.url = ''; this.file = null; this.visible = false; this.revealRequested = false
+    },
+    async reveal() {
+      this.revealRequested = true
+      const sequence = this.sequence
+      await this.$nextTick()
+      if (!this.visible || sequence !== this.sequence) return
+      // #ifdef H5
+      this.$el?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+      return
+      // #endif
+      // #ifndef H5
+      uni.pageScrollTo({ selector: '.report-preview', duration: 200 })
+      // #endif
     },
     async open(file) {
       this.reset()
@@ -60,7 +73,7 @@ export default {
 }
 </script>
 <style scoped>
-.report-preview { margin-top: var(--card-gap-mobile); padding: 14px; }
+.report-preview { margin-top: var(--card-gap-mobile); padding: 14px; scroll-margin-top: 72px; scroll-margin-bottom: 90px; }
 .report-preview__name { min-width: 0; word-break: break-all; font-weight: 600; }
 .report-preview__close { flex-shrink: 0; margin: 0; padding: 0 10px; font-size: 13px; background: transparent; }
 .report-preview__image { width: 100%; margin-top: 12px; }

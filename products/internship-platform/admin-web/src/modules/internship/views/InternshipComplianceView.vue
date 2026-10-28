@@ -4,6 +4,7 @@
     :subtitle="activeTab === 'incidents' ? '跟进事故处置，维护当前批次的应急预案。' : '核对学生上岗条件，查看缺项并继续办理。'"
   >
     <template #actions>
+      <AppButton v-if="archiveReturnTo" variant="ghost" :disabled="loading || acting" @click="$router.push(archiveReturnTo)">返回归档核验</AppButton>
       <template v-if="!reviewRequested && !consentEditor && !safetyEditor && !filingEditor && !incidentEditor && !exemptionEditor && batchStore.selectedBatchId">
         <span class="compliance-updated">最近核验 {{ fmt(workbench.generatedAt || stats.evaluatedAt) }}</span>
         <AppButton variant="ghost" :disabled="loading || acting" @click="load">刷新核验</AppButton>
@@ -27,6 +28,8 @@
       <AppButton v-if="consentEditor" variant="ghost" @click="closeConsentEditor">返回知情台账</AppButton>
       </template>
     </template>
+    <p v-if="incidentScopeError" role="alert">{{ incidentScopeError }}</p>
+    <p v-else-if="activeTab === 'incidents' && $route.query.internshipId" role="status">仅显示归档学生尚未关闭的事故；办理完成后返回归档重新核验。</p>
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="reviewRequested && (reviewError || groupError || !dialog.open)" class="review-state">
@@ -194,7 +197,7 @@
                       <strong>{{ row.studentNo }} · {{ row.studentName }}</strong>
                       <div class="cell-sub">{{ row.consentType === 'GUARDIAN' ? `${row.participantName || '监护人'} · ${row.contactMasked || '手机号未显示'}` : '学生本人' }}</div>
                     </td>
-                    <td><span :class="['state-tag', stateTone(row.status)]">{{ consentStatusText(row.status) }}</span></td>
+                    <td><span :class="['state-tag', stateTone(row.status)]">{{ consentStatusText(row.status) }}</span><p v-if="row.status === 'REJECTED' && row.rejectionReason" class="cell-sub">无法确认原因：{{ row.rejectionReason }}</p></td>
                     <td>
                       <span v-if="row.consentType === 'STUDENT'" class="cell-sub">站内任务</span>
                       <template v-else>
@@ -315,7 +318,7 @@
                 <button v-if="row.status === 'CLOSED' && row.evidenceTarget?.targetId && can('internship.evidence.export')" type="button" class="mp-link" @click="generateIncidentEvidence(row)">生成监管证据包</button>
               </td>
             </tr>
-            <tr v-if="showEmpty(workbench.incidents)"><td colspan="5" class="empty-cell">暂无事故记录</td></tr>
+            <tr v-if="!incidentScopeError && showEmpty(incidentRows)"><td colspan="5" class="empty-cell">{{ $route.query.internshipId ? '该生已无未关闭事故，请返回归档重新核验。' : '暂无事故记录' }}</td></tr>
           </tbody></table></div></section>
 
           <section v-if="incidentEditor === 'emergency' && can('internship.incident.handle')" class="mp-card incident-editor">
@@ -508,6 +511,15 @@ export default {
     loadSeq: 0
   }),
   computed: {
+    archiveReturnTo() {
+      const ref = this.$route.query.returnTo
+      if (typeof ref !== 'string' || !/^\/admin\/internship\/archive(?:\?|$)/.test(ref)) return ''
+      return new URL(ref, 'https://local.invalid').searchParams.get('batchId') === String(this.batchStore.selectedBatchId) ? ref : ''
+    },
+    incidentScopeError() {
+      const id = this.$route.query.internshipId
+      return id != null && (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) ? '事故定位参数无效，请返回归档核验重新进入。' : ''
+    },
     auditNotice() {
       if (this.auditHealthError) return {
         type: 'warning', title: '暂未取得审计状态',
@@ -538,7 +550,9 @@ export default {
     students() { return this.stats.drilldowns?.ALL || [] },
     overviewMetrics() { return this.metrics.filter(item => ['TOTAL', 'ONBOARD_READY', 'BLOCKED', 'ARCHIVE_READY', 'ARCHIVE_BLOCKED'].includes(item.metricCode)) },
     incidentRows() {
-      const rows = [...(this.workbench.incidents || [])]
+      let rows = [...(this.workbench.incidents || [])]
+      const recordId = this.$route.query.internshipId
+      if (recordId != null) rows = this.incidentScopeError ? [] : rows.filter(row => String(row.internshipId) === recordId && row.status !== 'CLOSED')
       const focusId = String(this.$route.query.id || '')
       return focusId ? rows.sort((a, b) => Number(String(b.id) === focusId) - Number(String(a.id) === focusId)) : rows
     },

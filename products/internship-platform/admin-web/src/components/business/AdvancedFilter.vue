@@ -22,7 +22,7 @@
           :value="modelValue[f.key] ?? ''"
           @change="update(f.key, $event.target.value)"
         >
-          <option value="">全部</option>
+          <option value="">{{ f.emptyLabel || '全部' }}</option>
           <option v-for="o in f.options || []" :key="o.value" :value="o.value">{{ o.label }}</option>
         </select>
         <AppDatePicker

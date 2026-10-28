@@ -1,8 +1,10 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import internshipRoutes from '@/modules/internship/routes'
+import systemRoutes from '@/modules/system/routes'
 import { request } from '@/services/http/client'
 import { checkRouteAccess } from '@/security/guards/route.guard'
-import { ensurePermissionPatterns, getRbacLoadFailed } from '@/security/permissionGate'
+import { ensurePermissionPatterns, getPermissionPatterns, getRbacLoadFailed } from '@/security/permissionGate'
+import { getVisibleNavPlan } from '@/config/navPlan'
 
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
@@ -15,6 +17,8 @@ const router = createRouter({
       meta: { public: true, title: '登录' }
     },
     internshipRoutes,
+    { path: '/account/security', component: () => import('@/views/auth/PasswordChangeView.vue'), meta: { public: true, title: '修改密码' } },
+    systemRoutes,
     {
       path: '/security/:status(401|403|419|500)',
       name: 'standalone-security-error',
@@ -27,6 +31,10 @@ const router = createRouter({
 
 router.beforeEach(async (to) => {
   if (to.meta?.public === true) return true
+  try {
+    const me = await request('/auth/me')
+    if (me.mustChangePassword) return '/account/security'
+  } catch { /* 下方正式权限门继续区分未登录与服务故障。 */ }
 
   // Permission bootstrap also exercises browser-refresh. A page refresh therefore restores
   // the HttpOnly staff session before evaluating route permissions; an expired/missing cookie
@@ -52,6 +60,12 @@ router.beforeEach(async (to) => {
       path: '/security/500',
       query: { from: redirect, reason: 'permission-service' }
     }
+  }
+
+  if (result.failure === 'FORBIDDEN' && to.redirectedFrom?.path === '/' && Array.isArray(getPermissionPatterns())) {
+    const group = getVisibleNavPlan({ permissionPatterns: getPermissionPatterns() })[0]
+    const path = group?.children?.[0]?.children?.[0]?.path || group?.children?.[0]?.path
+    if (path) return path
   }
 
   return {

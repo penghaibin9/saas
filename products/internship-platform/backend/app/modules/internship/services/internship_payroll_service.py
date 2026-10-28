@@ -6,7 +6,7 @@ import re
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, or_, select
 from sqlalchemy.exc import IntegrityError
 
 from app.core.exceptions import AppException, not_found
@@ -17,7 +17,7 @@ from app.models import (
     InternshipPayrollVersion,
 )
 from app.modules.internship.services.internship_scope import assert_internship_record_scope
-from app.modules.internship.services.internship_student_context_guard import require_explicit_context
+from app.modules.internship.services.internship_student_context_guard import require_explicit_context, require_expected_version
 from app.services import file_access_service, file_business_binding_service
 from app.services.db_service import _as_id, _tid, session
 
@@ -34,7 +34,7 @@ def _money(value, label="实发金额") -> Decimal:
         amount = Decimal(str(value))
     except (InvalidOperation, TypeError, ValueError):
         raise AppException("VALIDATION_ERROR", f"{label}必须是合法金额") from None
-    if amount < 0 or amount > Decimal("9999999999.99"):
+    if not amount.is_finite() or amount < 0 or amount > Decimal("9999999999.99"):
         raise AppException("VALIDATION_ERROR", f"{label}超出允许范围")
     return amount.quantize(Decimal("0.01"))
 
@@ -49,11 +49,14 @@ def _date_value(value):
         raise AppException("VALIDATION_ERROR", "发薪日期格式必须为 YYYY-MM-DD") from None
 
 
-def _current(db, statement):
+def _current(db, statement, *, lock=False):
     if not statement.current_version_id:
         return None
-    row = db.get(InternshipPayrollVersion, statement.current_version_id)
-    if not row or row.tenant_id != _tid() or row.is_deleted or not row.is_current:
+    query = select(InternshipPayrollVersion).where(InternshipPayrollVersion.id == statement.current_version_id)
+    if lock:
+        query = query.with_for_update().execution_options(populate_existing=True)
+    row = db.scalar(query)
+    if not row or row.tenant_id != _tid() or row.statement_id != statement.id or row.is_deleted or not row.is_current:
         return None
     return row
 
@@ -99,8 +102,8 @@ def _version_view(row):
     }
 
 
-def _view(db, statement, include_history=True):
-    current = _current(db, statement)
+def _view(db, statement, include_history=True, current=None):
+    current = current if current is not None else _current(db, statement)
     versions = []
     if include_history:
         rows = db.scalars(select(InternshipPayrollVersion).where(
@@ -200,7 +203,9 @@ def submit_my(user: dict, body: dict):
         elif statement.student_id != student.id or statement.batch_id != record.batch_id:
             raise AppException("DATA_CONFLICT", "工资单上下文与当前实习记录不一致")
 
-        current = _current(db, statement)
+        current = _current(db, statement, lock=True)
+        if current:
+            require_expected_version(payload.get("expectedVersion"), statement.version, entity_name="工资单")
         correction_reason = str(payload.get("correctionReason") or "").strip()
         if current and current.status == "SUBMITTED":
             raise AppException("DATA_CONFLICT", "该月份已有待审核工资单，请等待处理后再更正")
@@ -273,8 +278,17 @@ def submit_my(user: dict, body: dict):
 
 
 def list_for_teacher(*, batch_id, page=1, page_size=20, status="ALL", user=None):
+    return list_payrolls(page, page_size, batch_id=batch_id, status=status, user=user)
+
+
+def list_payrolls(page=1, page_size=20, *, batch_id, status="ALL", pay_month=None,
+                 keyword=None, college_id=None, user=None):
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
-    from app.models import InternshipRecord, StudentProfile
+    from app.models import College, Major, SchoolClass, InternshipRecord, StudentProfile
+
+    month = str(pay_month or "").strip()
+    if month and not _MONTH.fullmatch(month):
+        raise AppException("VALIDATION_ERROR", "工资月份格式应为年-月")
 
     with session() as db:
         scoped = apply_internship_record_scope(select(InternshipRecord.id).where(
@@ -282,12 +296,25 @@ def list_for_teacher(*, batch_id, page=1, page_size=20, status="ALL", user=None)
             InternshipRecord.batch_id == int(batch_id),
             InternshipRecord.is_deleted.is_(False),
         ), user).subquery()
-        query = select(InternshipPayrollStatement, InternshipPayrollVersion, StudentProfile).join(
+        query = select(InternshipPayrollStatement, InternshipPayrollVersion, StudentProfile,
+                       InternshipRecord, College.college_name, Major.major_name, SchoolClass.class_name).join(
             InternshipPayrollVersion,
             InternshipPayrollVersion.id == InternshipPayrollStatement.current_version_id,
         ).join(
             StudentProfile,
             StudentProfile.id == InternshipPayrollStatement.student_id,
+        ).join(
+            InternshipRecord, and_(InternshipRecord.id == InternshipPayrollStatement.internship_id,
+                                  InternshipRecord.student_id == StudentProfile.id),
+        ).outerjoin(
+            SchoolClass, and_(SchoolClass.id == StudentProfile.class_id,
+                             SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False)),
+        ).outerjoin(
+            Major, and_(Major.id == func.coalesce(StudentProfile.major_id, SchoolClass.major_id),
+                        Major.tenant_id == _tid(), Major.is_deleted.is_(False)),
+        ).outerjoin(
+            College, and_(College.id == func.coalesce(StudentProfile.college_id, Major.college_id),
+                          College.tenant_id == _tid(), College.is_deleted.is_(False)),
         ).where(
             InternshipPayrollStatement.tenant_id == _tid(),
             InternshipPayrollStatement.batch_id == int(batch_id),
@@ -298,7 +325,18 @@ def list_for_teacher(*, batch_id, page=1, page_size=20, status="ALL", user=None)
             InternshipPayrollVersion.is_deleted.is_(False),
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
+            InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == InternshipPayrollStatement.batch_id,
+            InternshipPayrollVersion.statement_id == InternshipPayrollStatement.id,
         )
+        if month:
+            query = query.where(InternshipPayrollStatement.pay_month == month)
+        if college_id:
+            query = query.where(College.id == _as_id(college_id))
+        term = str(keyword or "").strip()
+        if term:
+            query = query.where(or_(StudentProfile.real_name.contains(term, autoescape=True),
+                                    StudentProfile.student_no.contains(term, autoescape=True)))
         status_value = str(status or "ALL").upper()
         if status_value != "ALL":
             if status_value not in {"SUBMITTED", "APPROVED", "RETURNED"}:
@@ -309,17 +347,63 @@ def list_for_teacher(*, batch_id, page=1, page_size=20, status="ALL", user=None)
             query.order_by(
                 InternshipPayrollStatement.pay_month.desc(),
                 StudentProfile.student_no,
+                InternshipPayrollStatement.id,
             ).offset((max(1, int(page)) - 1) * int(page_size)).limit(int(page_size))
         ).all()
         items = []
-        for statement, version, student in rows:
-            item = _view(db, statement, include_history=False)
+        for statement, version, student, record, college, major, class_name in rows:
+            item = _view(db, statement, include_history=False, current=version)
             item.update({
                 "studentName": student.real_name,
                 "studentNo": student.student_no,
+                "college": college or "", "major": major or "", "className": class_name or "",
+                "enterpriseName": record.enterprise_name or "", "positionName": record.position_name or "",
             })
             items.append(item)
         return items, total
+
+
+def get_payroll(statement_id, user=None):
+    with session() as db:
+        statement = db.scalar(select(InternshipPayrollStatement).where(
+            InternshipPayrollStatement.id == _as_id(statement_id),
+            InternshipPayrollStatement.tenant_id == _tid(),
+            InternshipPayrollStatement.is_deleted.is_(False)))
+        if not statement:
+            raise not_found("工资单不存在")
+        assert_internship_record_scope(db, statement.internship_id, user, "查看工资单")
+        return _view(db, statement)
+
+
+def export_payrolls(*, batch_id, status="ALL", pay_month=None, keyword=None, college_id=None, user=None):
+    from app.modules.internship.services.internship_export_util import load_export_rows, write_export_audit
+    from app.modules.internship.services.internship_report_quality_service import format_report_time
+    from app.modules.internship.services.internship_student_service import _currency_label
+    from app.services import xlsx_util
+
+    filters = dict(batch_id=batch_id, status=status, pay_month=pay_month, keyword=keyword, college_id=college_id)
+    items, total = load_export_rows(list_payrolls, **filters, user=user)
+    headers = ["工资单编号", "实习记录编号", "学号", "姓名", "院系", "专业", "班级", "工资月份",
+               "当前实习单位", "当前实习岗位", "实发金额", "币种", "发薪日期", "状态", "版本",
+               "提交时间", "更正原因", "审核人", "审核时间", "审核意见"]
+    rows = []
+    for item in items:
+        version = item["current"]
+        currency = _currency_label(version["currency"])
+        if currency == "其他币种":
+            currency = f'{version["currency"]}（其他币种）'
+        rows.append([item["id"], item["internshipId"], item["studentNo"], item["studentName"],
+                     item["college"], item["major"], item["className"], item["payMonth"],
+                     item["enterpriseName"], item["positionName"], version["actualAmount"], currency,
+                     version["paidOn"], version["statusLabel"], version["revisionNo"],
+                     format_report_time(version["submittedAt"]), version["correctionReason"],
+                     version["reviewedBy"], format_report_time(version["reviewedAt"]), version["reviewComment"]])
+    content = xlsx_util.build_ledger_xlsx("月度工资台账", headers, rows,
+        watermark=f"岗位实习中心·月度工资台账 · {_op(user)} · {datetime.now():%Y-%m-%d %H:%M}")
+    with session() as db:
+        write_export_audit(db, "月度工资台账", total, user=user, filters=filters)
+        db.commit()
+    return xlsx_util.pack_xlsx_result(content, "月度工资台账.xlsx", total)
 
 
 def review(version_id, body: dict, user: dict):
@@ -336,20 +420,26 @@ def review(version_id, body: dict, user: dict):
             InternshipPayrollVersion.id == _as_id(version_id),
             InternshipPayrollVersion.tenant_id == _tid(),
             InternshipPayrollVersion.is_deleted.is_(False),
-        ).with_for_update())
+        ))
         if not version:
             raise not_found("工资单版本不存在")
+        statement = db.get(InternshipPayrollStatement, version.statement_id)
+        if not statement or statement.tenant_id != _tid() or statement.is_deleted:
+            raise not_found("工资单不存在")
+        # 学生更正与教师审核统一按实习记录、工资单、版本加锁。
+        assert_internship_record_scope(db, statement.internship_id, user, "审核学生工资单", lock=True)
         statement = db.scalar(select(InternshipPayrollStatement).where(
             InternshipPayrollStatement.id == version.statement_id,
             InternshipPayrollStatement.tenant_id == _tid(),
             InternshipPayrollStatement.is_deleted.is_(False),
-        ).with_for_update())
+        ).with_for_update().execution_options(populate_existing=True))
+        version = db.scalar(select(InternshipPayrollVersion).where(
+            InternshipPayrollVersion.id == version.id,
+            InternshipPayrollVersion.tenant_id == _tid(),
+        ).with_for_update().execution_options(populate_existing=True))
         if not statement or statement.current_version_id != version.id or not version.is_current:
             raise AppException("DATA_CONFLICT", "该工资单已产生新版本，请刷新后重试")
-        assert_internship_record_scope(db, statement.internship_id, user, "审核学生工资单", lock=True)
-        expected = payload.get("expectedVersion")
-        if expected is None or int(expected) != int(version.version or 0):
-            raise AppException("DATA_CONFLICT", "工资单版本已变化，请刷新后重试")
+        require_expected_version(payload.get("expectedVersion"), version.version, entity_name="工资审核")
         if version.status != "SUBMITTED":
             raise AppException("DATA_CONFLICT", "仅待审核工资单可处理")
         version.status = "APPROVED" if action == "APPROVE" else "RETURNED"
@@ -357,6 +447,7 @@ def review(version_id, body: dict, user: dict):
         version.reviewed_at = datetime.utcnow()
         version.review_comment = comment or None
         version.version = int(version.version or 0) + 1
+        statement.version = int(statement.version or 0) + 1
         _trail(db, statement, f"PAYROLL_{action}", {
             "versionId": str(version.id),
             "revisionNo": int(version.revision_no),

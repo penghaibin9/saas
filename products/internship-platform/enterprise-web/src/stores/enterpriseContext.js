@@ -48,7 +48,9 @@ export const useEnterpriseContextStore=defineStore('enterpriseContext',{
         if(selected)this.campaign={...selected,id:selected.id||selected.campaignId||campaignId}
 
         let authContext=null,mode='NONE',recruitmentError=null
-        try{authContext=await enterpriseInternshipApi.context(campaignId);mode='RECRUITMENT'}catch(error){recruitmentError=error}
+        if(selected?.scopeType!=='BATCH'){
+          try{authContext=await enterpriseInternshipApi.context(campaignId);mode='RECRUITMENT'}catch(error){recruitmentError=error}
+        }
         if(!authContext&&selectedBatchId){
           try{authContext=await enterpriseInternshipApi.collaborationContext(selectedBatchId);mode='COLLABORATION'}catch{/* fail closed below */}
         }

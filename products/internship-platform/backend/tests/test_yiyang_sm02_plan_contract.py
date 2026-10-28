@@ -40,8 +40,15 @@ def test_sm02_plan_fields_are_normalized_for_persistence():
     assert data["subsidyStandard"] == "按学校实习补贴管理办法执行"
 
 
-def test_sm02_report_requirements_snapshot_preserves_zero_and_counts():
+def test_sm02_report_requirements_snapshot_preserves_zero_and_counts(monkeypatch):
+    from app.modules.internship.services import internship_score_service
+    def score_config(*, batch_id):
+        assert batch_id == 17
+        return {"checkinWeight": 0, "weeklyWeight": 20, "monthlyWeight": 10,
+                "enterpriseWeight": 50, "schoolWeight": 20, "passLine": 65}
+    monkeypatch.setattr(internship_score_service, "get_config", score_config)
     batch = SimpleNamespace(
+        id=17,
         rules_version=7,
         rules_config={
             "checkin": {"requiredDays": 88},
@@ -64,3 +71,5 @@ def test_sm02_report_requirements_snapshot_preserves_zero_and_counts():
     assert snap["summaryRequiredCount"] == 1
     assert snap["monthlyMinWordCount"] == 500
     assert snap["summaryMinWordCount"] == 1000
+    assert snap["scorePassThreshold"] == 65
+    assert [item["weight"] for item in snap["scoreComponents"]] == [0, .2, .1, .5, .2]

@@ -26,16 +26,16 @@ export const NAV_PLAN = [{
       leaf('实习中心大屏', '/admin/internship/command-screen', 'internship.stats.view', 'ANALYTICS_VIEW')
     ]),
     mod('in-batch-rules', '批次与学生', '/admin/internship/batches', [
-      leaf('批次管理', '/admin/internship/batches?panel=list', 'internship.batch.view'),
-      leaf('学生名单', '/admin/internship/students?panel=roster', 'internship.student.view'),
+      leaf('批次管理', '/admin/internship/batches?panel=list', 'internship.batch.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/batches'] }),
+      leaf('学生名单', '/admin/internship/students?panel=roster', 'internship.student.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/students'] }),
       leaf('资格认定', '/admin/internship/students?panel=eligibility', 'internship.student.eligibility.review', 'TASK_QUEUE'),
       hidden('参与学生配置', '/admin/internship/batches?panel=participants', 'internship.batch.manage', 'CONFIG_VIEW'),
       hidden('阶段与规则配置', '/admin/internship/batches?panel=configuration', 'internship.batch.manage', 'CONFIG_VIEW'),
       hidden('学生材料', '/admin/internship/archive?panel=materials', 'internship.student.material.view')
     ]),
     mod('in-enterprise-position', '企业与岗位', '/admin/internship/enterprises', [
-      leaf('企业库', '/admin/internship/enterprises?panel=list', 'internship.enterprise.view'),
-      leaf('岗位库', '/admin/internship/positions?panel=list', 'internship.position.view'),
+      leaf('企业库', '/admin/internship/enterprises?panel=list', 'internship.enterprise.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/enterprises'] }),
+      leaf('岗位库', '/admin/internship/positions?panel=list', 'internship.position.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/positions'] }),
       leaf('招聘与邀请', '/admin/internship/recruitment-campaigns', 'internship.recruitment.view'),
       leaf('企业准入', '/admin/internship/enterprises?panel=qualification', 'internship.enterprise.manage', 'TASK_QUEUE'),
       hidden('企业联系人', '/admin/internship/enterprises?panel=contacts', 'internship.enterprise.contact.view'),
@@ -46,22 +46,23 @@ export const NAV_PLAN = [{
       leaf('申请审核', '/admin/internship/applications?status=PENDING_REVIEW', 'internship.application.view', 'TASK_QUEUE'),
       leaf('岗位匹配', '/admin/internship/match?panel=intention', 'internship.match.intention.view'),
       leaf('导师分配', '/admin/internship/students?panel=mentor', 'internship.student.view', 'TASK_QUEUE'),
-      leaf('三方协议', '/admin/internship/agreements?panel=confirm', 'internship.agreement.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/agreement-templates'] }),
+      leaf('三方协议', '/admin/internship/agreements?panel=confirm', 'internship.agreement.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/agreements', '/admin/internship/agreement-templates'] }),
       leaf('保险核验', '/admin/internship/insurance', 'internship.insurance.view', 'TASK_QUEUE'),
       leaf('上岗核验', '/admin/internship/compliance?tab=overview', 'internship.compliance.view'),
       leaf('分配记录', '/admin/internship/assignment-logs', 'internship.match.log.view', 'ANALYTICS_VIEW')
     ]),
     mod('in-attendance-leave', '实习过程', '/admin/internship/attendance', [
-      leaf('考勤记录', '/admin/internship/attendance?panel=checkins', 'internship.attendance.view'),
+      leaf('考勤记录', '/admin/internship/attendance?panel=checkins', 'internship.attendance.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/attendance?panel=makeup-apply', '/admin/internship/attendance?panel=makeup-review'] }),
+      leaf('月度工资台账', '/admin/internship/payroll', 'internship.payroll.view'),
       leaf('异常核验', '/admin/internship/attendance?panel=exceptions', 'internship.attendance.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/exceptions'] }),
-      leaf('请假与返岗', '/admin/internship/leaves?panel=pending', 'internship.leave.view', 'TASK_QUEUE'),
+      leaf('请假与返岗', '/admin/internship/leaves?panel=pending', 'internship.leave.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/leaves'] }),
       leaf('通知公告', '/admin/internship/notices', 'internship.communication.view'),
       leaf('计划任务', '/admin/internship/plans', 'internship.plan.view', 'CONFIG_VIEW'),
-      leaf('报告批阅', '/admin/internship/reports?panel=review', 'internship.report.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/process-reports'] }),
-      leaf('指导巡访', '/admin/internship/guidance?panel=guidance', 'internship.guidance.view'),
+      leaf('报告批阅', '/admin/internship/reports?panel=review', 'internship.report.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/reports', '/admin/internship/process-reports'] }),
+      leaf('指导巡访', '/admin/internship/guidance?panel=guidance', 'internship.guidance.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/guidance/new', '/admin/internship/guidance?panel=communication', '/admin/internship/guidance?panel=visit', '/admin/internship/guidance?panel=visit-plan'] }),
       leaf('我的指导报告', '/admin/internship/my-reports', 'internship.guidance.view'),
-      leaf('教师本人报告', '/admin/internship/teacher-reports', 'internship.stats.view'),
-      leaf('教师管理', '/admin/internship/teacher-management', 'internship.stats.view', 'WORKBENCH'),
+      leaf('教师本人报告', '/admin/internship/teacher-reports', 'internship.stats.view', 'WORKBENCH', { schoolAdminOnly: true }),
+      leaf('教师工作台账', '/admin/internship/teacher-management', 'internship.stats.view', 'WORKBENCH', { schoolAdminOnly: true }),
       leaf('指导计划', '/admin/internship/guidance-plan', 'internship.guidance.view', 'CONFIG_VIEW')
     ]),
     mod('in-risk', '风险与变更', '/admin/internship/risks', [
@@ -73,17 +74,43 @@ export const NAV_PLAN = [{
     ]),
     mod('in-eval-score', '评价与成绩', '/admin/internship/enterprise-evals', [
       leaf('企业评价', '/admin/internship/enterprise-evals', 'internship.eval.enterprise.view'),
-      leaf('学生与教师评价', '/admin/internship/student-evals?view=self', 'internship.eval.self.view'),
-      leaf('综合成绩', '/admin/internship/scores?stage=overview', 'internship.score.view'),
+      leaf('学生与教师评价', '/admin/internship/student-evals?view=self', 'internship.eval.self.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/student-evals'] }),
+      leaf('综合成绩', '/admin/internship/scores?stage=overview', 'internship.score.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/scores'] }),
       leaf('成绩申诉', '/admin/internship/scores?stage=appeal', 'internship.score.publish', 'TASK_QUEUE')
     ]),
     mod('in-archive-stats', '归档与分析', '/admin/internship/archive', [
       leaf('就业上报', '/admin/internship/employment', 'internship.employment.view', 'TASK_QUEUE'),
-      leaf('材料归档', '/admin/internship/archive?panel=records', 'internship.archive.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/material-center', '/admin/internship/material-requirements'] }),
+      leaf('材料归档', '/admin/internship/archive?panel=records', 'internship.archive.view', 'WORKBENCH', { workspacePaths: ['/admin/internship/archive', '/admin/internship/material-center', '/admin/internship/material-requirements'] }),
       leaf('正式文书', '/admin/internship/formal-documents', 'internship.archive.view', 'WORKBENCH'),
       leaf('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW'),
       leaf('监管上报', '/admin/internship/regulatory-reporting', 'internship.reporting.view', 'WORKBENCH')
     ])
+  ]
+}, {
+  key: 'system', label: '系统管理', moduleKey: 'system', children: [
+    mod('sys-overview', '管理概览', '/admin/system', [leaf('系统管理概览', '/admin/system', 'system.overview.view')]),
+    mod('sys-people', '组织与人员', '/admin/system/organizations', [
+      leaf('组织架构', '/admin/system/organizations', 'system.org.view'),
+      leaf('教职工资料', '/admin/system/staff', 'system.staff.view'),
+      leaf('学生资料', '/admin/system/students', 'system.student.view')]),
+    mod('sys-identity', '账号与权限', '/admin/system/accounts', [
+      leaf('用户账号', '/admin/system/accounts', 'system.account.view'),
+      leaf('角色与权限', '/admin/system/roles', 'system.role.view'),
+      leaf('管理范围与责任关系', '/admin/system/scopes', 'system.scope.view')]),
+    mod('sys-rules', '规则与基础配置', '/admin/system/brand', [
+      leaf('学校资料与品牌', '/admin/system/brand', 'system.brand.view'),
+      leaf('基础字典', '/admin/system/dictionary', 'system.dictionary.view'),
+      leaf('请假审批配置', '/admin/system/leave-policy', 'system.leave-policy.view'),
+      leaf('通知与服务设置', '/admin/system/notification', 'system.notification.view')]),
+    mod('sys-data', '数据与对接', '/admin/system/identity-import/students', [
+      leaf('师生导入与账号开通', '/admin/system/identity-import/students', 'system.identity-import.view', 'WORKBENCH', { workspacePaths: ['/admin/system/identity-import/staff'] }),
+      leaf('导入导出任务', '/admin/system/tasks', 'system.task.view'),
+      leaf('历史数据迁移', '/admin/system/migration', 'system.migration.view'),
+      leaf('外部服务与对接', '/admin/system/integrations', 'system.integration.view')]),
+    mod('sys-security', '安全与运维', '/admin/system/audit', [
+      leaf('登录与操作审计', '/admin/system/audit', 'system.audit.view'),
+      leaf('运行与备份状态', '/admin/system/runtime', 'system.runtime.view'),
+      leaf('版本与交付资料', '/admin/system/delivery', 'system.delivery.view')])
   ]
 }]
 
@@ -94,8 +121,9 @@ export function matchPermission(patterns, code) {
     (p.startsWith('*.') && code.endsWith(p.slice(1))))
 }
 
-function leafVisible(leaf, patterns) {
+function leafVisible(leaf, patterns, currentRole) {
   if (leaf.hidden) return false
+  if (leaf.schoolAdminOnly && !['SCHOOL_ADMIN', 'PLATFORM_SUPER_ADMIN'].includes(currentRole?.baseRoleCode || currentRole?.roleCode)) return false
   if (!Array.isArray(patterns)) return true
   if (leaf.permissionKey && !matchPermission(patterns, leaf.permissionKey)) return false
   if (Array.isArray(leaf.permissionAny) && leaf.permissionAny.length &&
@@ -103,12 +131,12 @@ function leafVisible(leaf, patterns) {
   return true
 }
 
-export function getVisibleNavPlan({ permissionPatterns = null } = {}) {
+export function getVisibleNavPlan({ permissionPatterns = null, currentRole = null } = {}) {
   return NAV_PLAN.map((group) => ({
     ...group,
     children: group.children.map((m) => ({
       ...m,
-      children: m.children.filter((item) => leafVisible(item, permissionPatterns))
+      children: m.children.filter((item) => leafVisible(item, permissionPatterns, currentRole))
     })).filter((m) => m.children.length > 0)
   })).filter((group) => group.children.length > 0)
 }

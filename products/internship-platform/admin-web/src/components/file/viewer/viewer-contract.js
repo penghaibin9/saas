@@ -80,8 +80,8 @@ export function normalizePreviewError(error) {
   const code = String(error?.bizCode || error?.code || 'PREVIEW_FAILED')
   return {
     code,
-    message: error?.message || '文件预览失败，请重试',
-    retryable: ![
+    message: safeBusinessMessage({ ...error, bizCode: code, message: error?.message }, '文件预览失败，请重试或下载原文查看'),
+    retryable: error?.retryable !== false && ![
       'NO_PERMISSION', 'FILE_INFECTED', 'PREVIEW_UNSUPPORTED', 'PREVIEW_UNSUPPORTED_TYPE',
       'PREVIEW_TOO_LARGE', 'PREVIEW_TOO_COMPLEX', 'PREVIEW_IMAGE_MALFORMED', 'PREVIEW_DOCX_MALFORMED', 'PREVIEW_DOCX_TOO_COMPLEX',
       'PREVIEW_DOCX_DECOMPRESSION_UNSUPPORTED'
@@ -97,3 +97,4 @@ export function buildPreviewDescriptorFromFile(file = {}) {
     versionNo: file.versionNo ?? null
   })
 }
+import { safeBusinessMessage } from '../../../utils/presentationSafety.js'

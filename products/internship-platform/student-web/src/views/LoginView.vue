@@ -35,6 +35,7 @@ async function submit() {
   submitting.value = true
   try {
     await session.login(form.loginName, form.password, form.tenantCode)
+    if (session.user.mustChangePassword) return await router.replace('/account/security')
     await config.load()
     const target = typeof route.query.redirect === 'string' && route.query.redirect.startsWith('/')
       ? route.query.redirect : '/internship'

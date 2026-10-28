@@ -1,5 +1,5 @@
 """Authenticated local evidence transport; no public object keys or implicit binding."""
-from fastapi import APIRouter, Depends, File, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from fastapi.responses import FileResponse
 from app.core.security import get_current_user
 from app.core.response import success
@@ -12,12 +12,16 @@ from app.modules.internship.services.internship_audit_service import add_audit
 router=APIRouter(prefix='/files',tags=['Standalone evidence files'])
 
 @router.post('')
-def upload(file: UploadFile=File(...),bizType: str=Query('ATTACHMENT',max_length=80),
-           bizId: str|None=Query(None,max_length=64),user=Depends(get_current_user)):
+def upload(file: UploadFile=File(...),bizType: str|None=Query(None,max_length=80),
+           bizId: str|None=Query(None,max_length=64),user=Depends(get_current_user),
+           form_biz_type: str|None=Form(None,alias='bizType',max_length=80)):
     # A supplied purpose/id never grants file access or binds a business record.
     try:
+        if bizType and form_biz_type and bizType.upper()!=form_biz_type.upper():
+            raise AppException('VALIDATION_ERROR','附件业务类型不一致，请重新选择文件')
+        purpose=bizType or form_biz_type or 'ATTACHMENT'
         data=file.file.read(transfer.MAX_UPLOAD_BYTES+1)
-        return success(transfer.store_upload(data,file.filename,file.content_type,bizType,user))
+        return success(transfer.store_upload(data,file.filename,file.content_type,purpose,user))
     finally:
         file.file.close()
 

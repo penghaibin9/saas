@@ -164,9 +164,12 @@ def _msg_dict(row, *, detail: bool = False) -> dict:
 
 
 def _filter_conds(vis, *, category: str | None = None, read_status: str | None = None,
-                  priority: str | None = None, pending_ack: bool | None = None) -> list:
+                  priority: str | None = None, pending_ack: bool | None = None,
+                  source_module: str | None = None) -> list:
     from app.models import UnifiedMessage
     conds = [UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False), vis]
+    if source_module is not None:
+        conds.append(UnifiedMessage.source_module == source_module)
     if read_status:
         conds.append(UnifiedMessage.status == read_status.upper())
     if priority:
@@ -245,6 +248,7 @@ def list_messages(
     pending_ack: bool | None = None,
     page: int = 1,
     page_size: int = 20,
+    source_module: str | None = None,
 ) -> tuple[list[dict], int]:
     from app.models import UnifiedMessage
     _require_inbox_perm(user, "workbench.message.view")
@@ -254,7 +258,7 @@ def list_messages(
             return [], 0
         conds = _filter_conds(
             vis, category=category, read_status=read_status,
-            priority=priority, pending_ack=pending_ack)
+            priority=priority, pending_ack=pending_ack, source_module=source_module)
         total = db.scalar(select(func.count()).select_from(UnifiedMessage).where(*conds)) or 0
         rows = db.scalars(
             select(UnifiedMessage).where(*conds)
@@ -264,7 +268,7 @@ def list_messages(
         return [_msg_dict(r) for r in rows], int(total)
 
 
-def count_messages(user: dict) -> dict:
+def count_messages(user: dict, *, source_module: str | None = None) -> dict:
     """未读 + 待确认。铃铛与收件箱同口径。"""
     from app.models import UnifiedMessage
     _require_inbox_perm(user, "workbench.message.view")
@@ -272,7 +276,7 @@ def count_messages(user: dict) -> dict:
         vis = _visibility(user)
         if vis is None:
             return {"unread": 0, "pendingAck": 0}
-        base = [UnifiedMessage.tenant_id == _tid(), UnifiedMessage.is_deleted.is_(False), vis]
+        base = _filter_conds(vis, source_module=source_module)
         unread = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
             *base, UnifiedMessage.status == "UNREAD")) or 0
         pending_ack = db.scalar(select(func.count()).select_from(UnifiedMessage).where(
@@ -304,7 +308,7 @@ def category_counts(user: dict) -> dict:
         return out
 
 
-def get_message(user: dict, message_id: str) -> dict | None:
+def get_message(user: dict, message_id: str, *, source_module: str | None = None) -> dict | None:
     """详情：严格本人；不自动已读。"""
     from app.models import UnifiedMessage
     _require_inbox_perm(user, "workbench.message.view")
@@ -318,16 +322,14 @@ def get_message(user: dict, message_id: str) -> dict | None:
             return None
         row = db.scalar(select(UnifiedMessage).where(
             UnifiedMessage.id == mid,
-            UnifiedMessage.tenant_id == _tid(),
-            UnifiedMessage.is_deleted.is_(False),
-            vis,
+            *_filter_conds(vis, source_module=source_module),
         ))
         if not row:
             return None
         return _msg_dict(row, detail=True)
 
 
-def read_message(user: dict, message_id: str) -> dict | None:
+def read_message(user: dict, message_id: str, *, source_module: str | None = None) -> dict | None:
     from app.models import UnifiedMessage
     _require_inbox_perm(user, "workbench.message.read")
     with session() as db:
@@ -340,9 +342,7 @@ def read_message(user: dict, message_id: str) -> dict | None:
             return None
         row = db.scalar(select(UnifiedMessage).where(
             UnifiedMessage.id == mid,
-            UnifiedMessage.tenant_id == _tid(),
-            UnifiedMessage.is_deleted.is_(False),
-            vis,
+            *_filter_conds(vis, source_module=source_module),
         ))
         if not row:
             return None

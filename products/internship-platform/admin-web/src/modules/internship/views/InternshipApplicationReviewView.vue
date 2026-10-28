@@ -7,21 +7,29 @@
         variant="ghost"
         :disabled="loading || exporting || !batchStore.selectedBatchId"
         @click="exportCurrent"
-      >{{ exporting ? '正在导出…' : '导出当前筛选 Excel' }}</AppButton>
+      >{{ exporting ? '正在导出…' : '导出当前筛选表格' }}</AppButton>
     </template>
     <section v-if="!isDetail" class="iar-card iar-list">
       <nav class="iar-tabs" aria-label="申请审核状态">
         <button v-for="item in statusOptions" :key="item.value" type="button" :class="{ 'is-active': status === item.value }" :aria-current="status === item.value ? 'page' : undefined" @click="setStatus(item.value)">{{ item.label }}</button>
       </nav>
       <div class="iar-filters">
-        <AppSearchBox v-model="keyword" placeholder="搜索学生、企业或岗位" aria-label="搜索申请" @search="reload" />
+        <AppSearchBox :key="searchScopeKey + ':keyword'" v-model="keyword" placeholder="搜索学生、企业或岗位" aria-label="搜索申请" @search="searchField('keyword', $event)" />
         <AppSelect v-model="applicationType" class="iar-type-filter" :options="typeOptions" placeholder="全部申请类型" aria-label="申请类型" @change="reload" />
+        <label v-for="field in organizationFilters" :key="field.key" class="iar-filter-field">{{ field.label }}
+          <AppSelect v-model="filters[field.key]" placeholder="" :options="[{ value: '', label: `全部${field.label}` }, ...filterOptions[field.options]]" :aria-label="field.label" :disabled="optionsLoading" @change="reload" />
+        </label>
+        <label class="iar-filter-field">学生姓名<AppSearchBox :key="searchScopeKey + ':studentName'" v-model="filters.studentName" placeholder="按姓名筛选" aria-label="学生姓名" @search="searchField('studentName', $event)" /></label>
+        <label class="iar-filter-field">学号<AppSearchBox :key="searchScopeKey + ':studentNo'" v-model="filters.studentNo" placeholder="按学号筛选" aria-label="学号" @search="searchField('studentNo', $event)" /></label>
+        <label v-if="!applicationType || applicationType === 'EXEMPTION'" class="iar-filter-field">免实习类别<AppSelect v-model="filters.exemptionType" placeholder="" :options="exemptionOptions" aria-label="免实习类别" @change="reload" /></label>
         <span v-if="!loading && !error" class="iar-count">{{ total }} 条申请</span>
       </div>
+      <p v-if="optionsError" class="iar-review-error" role="alert">{{ optionsError }} <AppButton variant="ghost" @click="loadFilterOptions">重试筛选选项</AppButton></p>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <DataTable v-else-if="rows.length" :columns="columns" :rows="rows" row-key="id" :pagination="pagination" @page-change="onPageChange">
         <template #cell-applicationType="{ row }"><AppStatusTag :type="row.applicationType === 'SELF_ARRANGED' ? 'warning' : 'info'">{{ row.applicationTypeLabel }}</AppStatusTag></template>
+        <template #cell-submittedAt="{ row }">{{ formatDateTime(row.submittedAt, '未提交') }}</template>
         <template #cell-applicant="{ row }"><div class="iar-cell"><strong>{{ row.studentName }}</strong><span>{{ row.studentNo }}<template v-if="row.collegeName"> · {{ row.collegeName }}</template><template v-if="row.advisorName"> · {{ row.advisorName }}</template></span></div></template>
         <template #cell-destination="{ row }"><div class="iar-cell"><strong>{{ row.applicationType === 'EXEMPTION' ? '免实习' : (row.companyName || '—') }}</strong><span>{{ row.applicationType === 'EXEMPTION' ? (row.exemptionDestination || '去向待补充') : (row.positionName || '—') }}</span></div></template>
         <template #cell-status="{ row }"><AppStatusTag :type="statusTone(row.status)">{{ row.statusLabel }}</AppStatusTag></template>
@@ -75,6 +83,7 @@ import { toast } from '@/utils/toast'
 import { fileSdk } from '@/services/file/fileSdk'
 import { REJECT_APPLICATION } from '@/modules/internship/constants/presetPrompts'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { formatDateTime } from '@/utils/dateUtils'
 
 
 const TYPE_OPTIONS = [
@@ -89,6 +98,14 @@ const EXEMPTION_TYPE_LABEL = {
   HEALTH: '健康原因',
   OTHER: '其他'
 }
+const ORGANIZATION_FILTERS = [
+  { key: 'academicYear', options: 'academicYears', label: '学年' },
+  { key: 'grade', options: 'grades', label: '年级' },
+  { key: 'collegeId', options: 'colleges', label: '院系' },
+  { key: 'majorId', options: 'majors', label: '专业' },
+  { key: 'classId', options: 'classes', label: '班级' }
+]
+const FILTER_KEYS = [...ORGANIZATION_FILTERS.map(field => field.key), 'studentName', 'studentNo', 'exemptionType']
 const STATUS_OPTIONS = [
   { value: 'ALL', label: '全部' },
   { value: 'PENDING_REVIEW', label: '未审核' },
@@ -120,6 +137,11 @@ export default {
       REJECT_APPLICATION,
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, exporting: false, error: '',
       applicationType: '', status: 'PENDING_REVIEW', keyword: '',
+      filters: Object.fromEntries(FILTER_KEYS.map(key => [key, ''])),
+      organizationFilters: ORGANIZATION_FILTERS,
+      exemptionOptions: [{ value: '', label: '全部免实习类别' }, ...Object.entries(EXEMPTION_TYPE_LABEL).map(([value, label]) => ({ value, label }))],
+      filterOptions: Object.fromEntries(ORGANIZATION_FILTERS.map(field => [field.options, []])),
+      optionsLoading: false, optionsError: '', optionsBatchId: '', optionsTicket: 0,
       typeOptions: TYPE_OPTIONS, statusOptions: STATUS_OPTIONS, columns: COLUMNS,
       drawer: { visible: false, id: '', loading: false, error: '', data: null },
       confirm: { visible: false, title: '', content: '', danger: false, confirmText: '', requireReason: false, submitting: false, action: '' },
@@ -130,6 +152,7 @@ export default {
   },
   computed: {
     batchStore() { return useInternshipBatchStore() },
+    searchScopeKey() { return `${this.ctx.ctxKey || ''}|${this.batchStore.selectedBatchId || ''}` },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
     drawerTitle() {
       const data = this.drawer.data
@@ -145,11 +168,11 @@ export default {
           { label: '专业 / 班级', value: [data.majorName, data.className].filter(Boolean).join(' / ') || '—' },
           { label: '校内指导教师', value: data.advisorName || '—' },
           { label: '申请类型', value: data.applicationTypeLabel || '免实习申请' },
-          { label: '免实习类型', value: EXEMPTION_TYPE_LABEL[data.exemptionType] || data.exemptionType || '—' },
+          { label: '免实习类型', value: EXEMPTION_TYPE_LABEL[data.exemptionType] || '待核实' },
           { label: '免实习后去向', value: data.exemptionDestination || '—' },
           { label: '申请原因', value: data.exemptionReason || '—' },
           { label: '佐证材料', value: data.evidenceFileId ? '已上传' : '未上传' },
-          { label: '提交时间', value: data.submittedAt || '未提交' },
+          { label: '提交时间', value: formatDateTime(data.submittedAt, '未提交') },
           { label: '当前状态', value: data.statusLabel || '—' }
         ]
       }
@@ -190,7 +213,7 @@ export default {
         { label: '专业是否对口', value: data.majorMatch === true ? '是' : (data.majorMatch === false ? '否' : '—') },
         { label: '约定实习薪资', value: data.agreedSalary == null ? '—' : `${data.agreedSalary} 元/月` },
         { label: '三方协议材料', value: `${(data.agreementFileIds || []).length} 份` },
-        { label: '提交时间', value: data.submittedAt || '未提交' },
+        { label: '提交时间', value: formatDateTime(data.submittedAt, '未提交') },
         { label: '当前状态', value: data.statusLabel || '—' }
       ]
     },
@@ -198,7 +221,7 @@ export default {
       const data = this.drawer.data || {}
       return [
         { label: '审核人', value: data.reviewedBy || '—' },
-        { label: '审核时间', value: data.reviewedAt || '—' },
+        { label: '审核时间', value: formatDateTime(data.reviewedAt, '未审核') },
         { label: '审核意见', value: data.reviewComment || '—' }
       ]
     },
@@ -220,10 +243,13 @@ export default {
   },
   watch: {
     '$route.fullPath': { immediate: true, handler() { this.restoreLocation() } },
-    'batchStore.selectedBatchId'() { this.restoreLocation() }
+    'batchStore.selectedBatchId'() { this.restoreLocation() },
+    'ctx.ctxKey'() { this.optionsBatchId = ''; this.restoreLocation() }
   },
-  beforeUnmount() { this.listTicket++; this.detailTicket++ },
+  beforeUnmount() { this.listTicket++; this.detailTicket++; this.optionsTicket++ },
   methods: {
+    formatDateTime,
+    searchField(field, value) { if (field === 'keyword') this.keyword = value; else this.filters[field] = value; this.reload() },
     canBtn(code) { return canCode(this.ctx, code) },
     statusTone(value) {
       if (value === 'APPROVED') return 'success'
@@ -236,6 +262,9 @@ export default {
       this.applicationType = ['POSITION', 'SELF_ARRANGED', 'EXEMPTION'].includes(q.type) ? q.type : ''
       this.status = STATUS_OPTIONS.some(item => item.value === q.status) ? q.status : 'PENDING_REVIEW'
       this.keyword = String(q.keyword || '')
+      this.filters = Object.fromEntries(FILTER_KEYS.map(key => [key, typeof q[key] === 'string' ? q[key] : '']))
+      if (this.applicationType && this.applicationType !== 'EXEMPTION') this.filters.exemptionType = ''
+      if (this.optionsBatchId !== this.batchStore.selectedBatchId) this.loadFilterOptions()
       const page = Number(q.page); this.page = Number.isSafeInteger(page) && page > 0 ? page : 1
       this.confirm.visible = false; this.conflict = emptyConflict()
       this.reviewError = ''; this.queueError = ''; this.confirm = { ...this.confirm, visible: false, submitting: false, snapshot: null }
@@ -245,21 +274,39 @@ export default {
       this.detailTicket++
       if (id) this.loadDetail(id)
     },
-    listQuery() { return this.batchStore.withBatchQuery({ type: this.applicationType || undefined, status: this.status || 'ALL', keyword: this.keyword || undefined, page: this.page > 1 ? this.page : undefined }) },
-    backToList() { return this.$router.push({ path: '/admin/internship/applications', query: this.listQuery() }) },
-    updateLocation() { const to = { path: '/admin/internship/applications', query: this.listQuery() }; if (this.$router.resolve(to).fullPath === this.$route.fullPath) this.load(); else this.$router.replace(to) },
+    listQuery(applied = false) {
+      const filters = applied ? this.$route.query : this.filters
+      return this.batchStore.withBatchQuery({ ...Object.fromEntries(FILTER_KEYS.map(key => [key, key === 'exemptionType' && this.applicationType && this.applicationType !== 'EXEMPTION' ? undefined : (filters[key] || undefined)])), type: this.applicationType || undefined, status: this.status || 'ALL', keyword: (applied ? this.$route.query.keyword : this.keyword) || undefined, page: this.page > 1 ? this.page : undefined })
+    },
+    requestFilters() {
+      const q = this.$route.query
+      return { batchId: this.batchStore.selectedBatchId, keyword: q.keyword || undefined,
+        applicationType: this.applicationType || undefined,
+        status: this.status && this.status !== 'ALL' ? this.status : undefined,
+        ...Object.fromEntries(FILTER_KEYS.map(key => [key, key === 'exemptionType' && this.applicationType && this.applicationType !== 'EXEMPTION' ? undefined : (q[key] || undefined)])) }
+    },
+    async loadFilterOptions() {
+      const ticket = ++this.optionsTicket, batchId = this.batchStore.selectedBatchId
+      this.optionsBatchId = batchId
+      this.filterOptions = Object.fromEntries(ORGANIZATION_FILTERS.map(field => [field.options, []]))
+      this.optionsError = ''; this.optionsLoading = false
+      if (!batchId) return
+      this.optionsLoading = true
+      const result = await internshipApplicationApi.getFilterOptions(batchId)
+      if (ticket !== this.optionsTicket || batchId !== this.batchStore.selectedBatchId) return
+      this.optionsLoading = false
+      if (result.code !== 0) { this.optionsError = result.message || '筛选选项读取失败，请重试'; return }
+      this.filterOptions = result.data
+    },
+    backToList() { return this.$router.push({ path: '/admin/internship/applications', query: this.listQuery(true) }) },
+    updateLocation(applied = false) { const to = { path: '/admin/internship/applications', query: this.listQuery(applied) }; if (this.$router.resolve(to).fullPath === this.$route.fullPath) this.load(); else this.$router.replace(to) },
     setStatus(value) { this.status = value; this.reload() },
-    reload() { this.page = 1; this.updateLocation() },
-    onPageChange(page) { this.page = page; this.updateLocation() },
+    reload() { this.page = 1; if (this.applicationType && this.applicationType !== 'EXEMPTION') this.filters.exemptionType = ''; this.updateLocation() },
+    onPageChange(page) { this.page = page; this.updateLocation(true) },
     async exportCurrent() {
       if (!this.batchStore.selectedBatchId || this.exporting) return
       this.exporting = true
-      const params = {
-        batchId: this.batchStore.selectedBatchId,
-        keyword: this.keyword || undefined,
-        applicationType: this.applicationType || undefined,
-        status: this.status && this.status !== 'ALL' ? this.status : undefined
-      }
+      const params = this.requestFilters()
       const result = await internshipApplicationApi.exportApplications(params)
       this.exporting = false
       if (result.code !== 0) {
@@ -280,10 +327,9 @@ export default {
       this.loading = true; this.rows = []; this.total = 0
       this.error = ''
       const params = {
+        ...this.requestFilters(),
         page: this.page,
         pageSize: this.pageSize,
-        keyword: this.keyword,
-        batchId: this.batchStore.selectedBatchId
       }
       if (this.applicationType) params.applicationType = this.applicationType
       if (this.status && this.status !== 'ALL') params.status = this.status
@@ -302,7 +348,7 @@ export default {
       this.total = result.data.total
     },
     openDetail(id) {
-      return this.$router.push({ path: '/admin/internship/applications', query: { ...this.listQuery(), id: String(id) } })
+      return this.$router.push({ path: '/admin/internship/applications', query: { ...this.listQuery(true), id: String(id) } })
     },
     async previewEvidence(file) {
       try { await fileSdk.preview(String(file.id)) } catch { toast.error('证明材料暂时无法预览，请重试或下载查看。') }
@@ -438,6 +484,9 @@ export default {
 .iar-list { overflow: hidden; }.iar-tabs { display: flex; gap: 24px; overflow-x: auto; padding: 0 20px; border-bottom: 1px solid var(--card-b, #e2e8f0); }
 .iar-tabs button { flex: none; padding: 16px 0 14px; font: inherit; font-size: 14px; border: 0; border-bottom: 3px solid transparent; background: transparent; color: var(--t2, #526077); cursor: pointer; }.iar-tabs button.is-active { border-color: var(--pri, #315fba); color: var(--pri, #315fba); font-weight: 600; }.iar-tabs button:hover { color: var(--pri, #315fba); }.iar-tabs button:focus-visible { outline: 2px solid var(--pri, #315fba); outline-offset: -4px; }
 .iar-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 18px 20px; }.iar-type-filter { width: 180px; flex: 0 0 180px; }.iar-count { margin-left: auto; font-size: 13px; color: var(--text-tertiary); }
+.iar-filter-field { display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; width: 180px; min-width: 0; max-width: 100%; box-sizing: border-box; font-size: 13px; color: var(--text-secondary); }
+.iar-filter-field :deep(.app-search-box), .iar-filter-field :deep(.app-select) { width: 100%; min-width: 0; max-width: 100%; box-sizing: border-box; }
+.iar-filter-field :deep(.app-search-box__el), .iar-filter-field :deep(.app-select__el) { min-width: 0; max-width: 100%; box-sizing: border-box; }
 .iar-cell { display: grid; gap: 5px; line-height: 1.6; overflow-wrap: anywhere; }.iar-cell strong { font-size: 13px; font-weight: 500; }.iar-cell span { font-size: 12px; color: var(--text-tertiary); }
 .iar-empty { padding: 48px 24px; margin: 0; text-align: center; color: var(--text-tertiary); font-size: 13px; }
 .iar-review-error { color:var(--danger,#dc2626);font-size:13px;line-height:1.7; }.iar-conflict{padding:14px;border:1px solid var(--warning-300,#fcd34d);border-radius:8px;background:var(--warning-50,#fffbeb);font-size:13px;line-height:1.7}.iar-conflict p{margin:8px 0}

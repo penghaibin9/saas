@@ -42,15 +42,16 @@ def _get_company(db, company_id: int, *, tenant_id: int):
     return company
 
 
-def _get_contact(db, contact_id: int, *, tenant_id: int, company_id: int):
-    contact = db.scalar(
-        select(InternshipEnterpriseContact).where(
+def _get_contact(db, contact_id: int, *, tenant_id: int, company_id: int, lock: bool = False):
+    stmt = select(InternshipEnterpriseContact).where(
             InternshipEnterpriseContact.id == _as_id(contact_id),
             InternshipEnterpriseContact.tenant_id == tenant_id,
             InternshipEnterpriseContact.company_id == company_id,
             InternshipEnterpriseContact.is_deleted.is_(False),
         )
-    )
+    if lock:
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
+    contact = db.scalar(stmt)
     if not contact:
         raise AppException("VALIDATION_ERROR", "企业联系人不存在或不属于该企业")
     return contact
@@ -63,7 +64,7 @@ def _get_member(db, member_id: int, *, tenant_id: int, lock: bool = False):
         InternshipEnterpriseMember.is_deleted.is_(False),
     )
     if lock:
-        stmt = stmt.with_for_update()
+        stmt = stmt.with_for_update().execution_options(populate_existing=True)
     member = db.scalar(stmt)
     if not member:
         raise not_found("企业成员不存在或不在当前租户")

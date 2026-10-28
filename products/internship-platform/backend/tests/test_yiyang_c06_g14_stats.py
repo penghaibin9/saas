@@ -71,6 +71,7 @@ def test_g14_assignment_is_not_major_match_and_one_of_ten_reports_is_ten_percent
             rules_config={
                 "weeklyReport": {
                     "frequency": "WEEKLY",
+                    "requiredCount": 10,
                     "minWordCount": 800,
                     "deadlineWeekday": 7,
                 }
@@ -144,7 +145,7 @@ def test_g14_assignment_is_not_major_match_and_one_of_ten_reports_is_ten_percent
     assert major["denominator"] == 1
     assert major["rate"] == 0.0
 
-    # Sep 1 through Nov 9 = 70 days = exactly ten weekly tasks.
+    # Ten configured tasks remain ten regardless of the calendar span.
     assert reports["numerator"] == 1
     assert reports["denominator"] == 10
     assert reports["rate"] == 10.0
@@ -202,5 +203,6 @@ def test_g14_metric_definitions_expose_procurement_meaning():
     from app.modules.internship.services import internship_stats_service as stats
     definitions = {item["key"]: item for item in stats.metric_definitions()["definitions"]}
     assert definitions["majorMatchRate"]["label"] == "专业对口率"
-    assert "major_match" in definitions["majorMatchRate"]["note"]
-    assert definitions["reportTaskCompletionRate"]["denominatorLabel"] == "按实习周期和批次频率应交篇数"
+    assert definitions["majorMatchRate"]["sourceField"] == "major_match"
+    assert "专业对口事实" in definitions["majorMatchRate"]["note"]
+    assert definitions["reportTaskCompletionRate"]["denominatorLabel"] == "按批次配置应交篇数"

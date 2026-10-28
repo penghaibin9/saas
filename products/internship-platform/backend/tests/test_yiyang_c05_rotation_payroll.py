@@ -309,6 +309,7 @@ def test_g13_monthly_payroll_duplicate_correction_photo_currency_and_agreed_sala
         "paidOn": "2026-10-01",
         "evidenceFileId": photo_v2["fileId"],
         "correctionReason": "按老师要求重新拍摄清晰工资凭证",
+        "expectedVersion": returned["version"],
         "submitNote": "更正版本",
     })
     assert corrected["revisionCount"] == 2

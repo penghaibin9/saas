@@ -26,12 +26,14 @@ from app.models import EmpCompany, Tenant, User
 from app.models.internship_enterprise_portal import (
     InternshipCampaignEnterprise,
     InternshipEnterpriseMember,
+    InternshipEnterpriseAccessGrant,
 )
 from app.modules.internship.services import internship_enterprise_access_service as access_svc
 from app.modules.internship.services import internship_recruitment_window_guard as window_guard
 from app.modules.internship.services.internship_campaign_enterprise_service import _get_company
 from app.modules.internship.services.internship_recruitment_campaign_service import _get_campaign
-from app.services.db_service import _as_id, _tid
+from app.services.db_service import _as_id, _tid, audit_insert_in_session
+from app.modules.internship.services.internship_enterprise_member_service import _get_contact
 
 _INVITE_PREFIX = "ei"
 _INVITE_TTL = timedelta(days=7)
@@ -128,10 +130,8 @@ def _ensure_campaign_invitation_in_tx(db, *, campaign, company, invite_source: s
         ).with_for_update()
     )
     if item:
-        if item.status == "INVITED":
+        if item.status in {"INVITED", "ACCEPTED"}:
             return item
-        if item.status == "ACCEPTED":
-            raise AppException("DATA_CONFLICT", "该企业已经接受当前招聘季邀请")
         raise AppException("DATA_CONFLICT", "该企业在当前招聘季已有终态/暂停记录，不可覆盖")
     item = InternshipCampaignEnterprise(
         tenant_id=campaign.tenant_id,
@@ -203,6 +203,7 @@ def issue_company_invite(
     member_role: str = "COMPANY_ADMIN",
     invite_source: str = "MANUAL",
     actor_user_id: int | None = None,
+    contact_id: str | None = None,
 ):
     tenant_id = _tid()
     role = (member_role or "").upper()
@@ -218,7 +219,7 @@ def issue_company_invite(
         now = _now()
         expires_at = _invite_expiry(campaign, now)
         company = _get_company(db, company_id, tenant_id=tenant_id, require_admission=True)
-        _ensure_campaign_invitation_in_tx(
+        participation = _ensure_campaign_invitation_in_tx(
             db,
             campaign=campaign,
             company=company,
@@ -243,7 +244,7 @@ def issue_company_invite(
         if member and member.status == "DISABLED":
             raise AppException("NO_PERMISSION", "企业成员已被学校停用，不能重新发放邀请")
         if user.status == "ACTIVE" and (not member or member.status != "ACTIVE"):
-            raise AppException("DATA_CONFLICT", "该账号已激活，请先核对其在本企业的有效成员关系后再邀请")
+            raise AppException("DATA_CONFLICT", "该账号已激活，请先核对其在本企业的有效成员关系后再邀请", http_status=409)
         if not member:
             member = InternshipEnterpriseMember(
                 tenant_id=tenant_id,
@@ -259,6 +260,22 @@ def issue_company_invite(
         elif member.status == "ACTIVE" and user.status != "ACTIVE":
             raise AppException("NO_PERMISSION", "现有企业账号已停用，不能接受新招聘季邀请")
 
+        if participation.status == "ACCEPTED" and db.scalar(select(InternshipEnterpriseAccessGrant.id).where(
+            InternshipEnterpriseAccessGrant.tenant_id == tenant_id,
+            InternshipEnterpriseAccessGrant.member_id == member.id,
+            InternshipEnterpriseAccessGrant.campaign_id == campaign.id,
+            InternshipEnterpriseAccessGrant.grant_type == "RECRUITMENT",
+            InternshipEnterpriseAccessGrant.is_deleted.is_(False),
+        )):
+            raise AppException("DATA_CONFLICT", "该成员已有本轮招聘授权，请直接登录；其他成员可单独邀请", http_status=409)
+        if contact_id is not None:
+            contact = _get_contact(db, contact_id, tenant_id=tenant_id, company_id=company.id, lock=True)
+            if contact.status != "ACTIVE" or (role == "MENTOR" and contact.contact_type != "MENTOR"):
+                raise AppException("VALIDATION_ERROR", "请选择本企业有效的导师联系人")
+            if member.status == "ACTIVE" and member.contact_id != contact.id:
+                raise AppException("DATA_CONFLICT", "已有成员的联系人请从企业成员工作区明确调整")
+            member.contact_id = contact.id
+
         raw = f"{_INVITE_PREFIX}.{campaign.id}.{member.id}.{secrets.token_urlsafe(32)}"
         existing_member = member.status == "ACTIVE"
         if not existing_member:
@@ -270,6 +287,9 @@ def issue_company_invite(
         # A new round invitation does not alter an active member's permission identity.
         if not existing_member:
             member.version = int(member.version or 0) + 1
+        audit_insert_in_session(db, "INVITE_RECRUITMENT_ENTERPRISE", "internship-enterprise-member",
+            {"campaignId": str(campaign.id), "companyId": str(company.id)}, "SUCCESS",
+            tenant_id=tenant_id, resource_id=str(member.id))
         db.commit()
         return {
             "campaignId": str(campaign.id),
@@ -324,7 +344,7 @@ def _load_invite_in_tx(db, *, tenant_id: int, token: str, lock: bool, allow_acti
     if lock:
         participation_stmt = participation_stmt.with_for_update()
     participation = db.scalar(participation_stmt)
-    if not participation or participation.status != "INVITED":
+    if not participation or participation.status not in {"INVITED", "ACCEPTED"}:
         raise unauthorized("企业邀请已撤销、已接受或状态已变化")
     company = _get_company(db, member.company_id, tenant_id=tenant_id, require_admission=True)
     if not user or user.id != member.user_id or (user.user_type or "").upper() != "ENTERPRISE_MENTOR":
@@ -380,8 +400,9 @@ def _claims(*, tenant, user, member) -> dict:
     }
 
 
-def _token_result(*, tenant, user, member) -> dict:
+def _token_result(*, tenant, user, member, auth_session_id=None) -> dict:
     claims = _claims(tenant=tenant, user=user, member=member)
+    claims['authSessionId'] = auth_session_id or secrets.token_hex(16)
     return {
         "accessToken": create_access_token(claims),
         "refreshToken": issue_refresh(dict(claims)),
@@ -430,9 +451,10 @@ def accept_invite(*, tenant_code: str, token: str, phone: str, password: str):
         member.invite_token_hash = None
         member.invite_expires_at = None
         member.version = int(member.version or 0) + 1
-        participation.status = "ACCEPTED"
-        participation.accepted_at = now
-        participation.version = int(participation.version or 0) + 1
+        if participation.status == "INVITED":
+            participation.status = "ACCEPTED"
+            participation.accepted_at = now
+            participation.version = int(participation.version or 0) + 1
         db.flush()
         access_svc.issue_grant_in_tx(
             db,
@@ -444,6 +466,10 @@ def accept_invite(*, tenant_code: str, token: str, phone: str, password: str):
             valid_from=now,
             valid_until=campaign.enterprise_access_end_at,
         )
+        audit_insert_in_session(db, "ENTERPRISE_INVITE_ACCEPT", "internship-enterprise-member",
+            {"companyId": str(member.company_id), "campaignId": str(campaign.id)}, "SUCCESS",
+            tenant_id=tenant.id, resource_id=str(member.id),
+            actor_override={"userId": f"db-{user.id}", "realName": user.real_name, "currentRoleCode": "ENTERPRISE_MEMBER"})
         db.commit()
         return _token_result(tenant=tenant, user=user, member=member)
     except Exception:
@@ -475,9 +501,10 @@ def accept_existing_invite(*, principal, tenant_code: str, token: str):
         if principal.claims.get("permissionVersion") != expected_version:
             raise unauthorized("企业成员权限已更新，请重新登录")
         now = _now()
-        participation.status = "ACCEPTED"
-        participation.accepted_at = now
-        participation.version = int(participation.version or 0) + 1
+        if participation.status == "INVITED":
+            participation.status = "ACCEPTED"
+            participation.accepted_at = now
+            participation.version = int(participation.version or 0) + 1
         member.invite_token_hash = None
         member.invite_expires_at = None
         member.last_active_at = now
@@ -487,6 +514,10 @@ def accept_existing_invite(*, principal, tenant_code: str, token: str):
             campaign_id=campaign.id, batch_id=campaign.batch_id,
             valid_from=now, valid_until=campaign.enterprise_access_end_at,
         )
+        audit_insert_in_session(db, "ENTERPRISE_CAMPAIGN_INVITE_ACCEPT", "internship-enterprise-member",
+            {"companyId": str(company.id), "campaignId": str(campaign.id)}, "SUCCESS",
+            tenant_id=tenant.id, resource_id=str(member.id),
+            actor_override={"userId": f"db-{user.id}", "realName": user.real_name, "currentRoleCode": "ENTERPRISE_MEMBER"})
         db.commit()
         return {"campaignId": str(campaign.id), "companyId": str(company.id), "memberId": str(member.id)}
     except Exception:
@@ -565,6 +596,12 @@ def login(*, tenant_code: str, login_name: str, password: str, member_id: int | 
             company_id=member.company_id,
         )
         member.last_active_at = _now()
+        from app.services.system_authorization import audit
+        audit(db, {'tenantId': tenant.id, 'userId': user.id, 'realName': user.real_name,
+                   'currentRoleCode': 'ENTERPRISE_MENTOR',
+                   'currentRoleName': {'COMPANY_ADMIN': '企业管理员', 'HR': '企业人事成员', 'MENTOR': '企业导师'}[member.member_role]},
+              'LOGIN', 'account', user.id, {'reason': '企业账号登录',
+                  'memberId': str(member.id), 'companyId': str(member.company_id)})
         db.commit()
         return _token_result(tenant=tenant, user=user, member=member)
     finally:
@@ -572,9 +609,10 @@ def login(*, tenant_code: str, login_name: str, password: str, member_id: int | 
 
 
 def validate_enterprise_claims(claims: dict) -> tuple[object, User, InternshipEnterpriseMember]:
+    from app.services.browser_auth_session_blocklist import auth_session_blocked
     if (claims.get("userType") or "").upper() != "ENTERPRISE_MENTOR":
         raise unauthorized("企业认证令牌无效")
-    if jti_blocked(claims.get("jti")):
+    if not claims.get('authSessionId') or jti_blocked(claims.get("jti")) or auth_session_blocked(claims.get('authSessionId')):
         raise unauthorized("令牌已登出失效，请重新登录")
     raw_user_id = str(claims.get("userId") or "")
     raw_tenant_id = str(claims.get("tenantId") or "")
@@ -630,7 +668,7 @@ def refresh(*, refresh_token: str):
     if not claims:
         raise unauthorized("refreshToken 无效或已使用，请重新登录")
     tenant, user, member = validate_enterprise_claims(claims)
-    return _token_result(tenant=tenant, user=user, member=member)
+    return _token_result(tenant=tenant, user=user, member=member, auth_session_id=claims.get('authSessionId'))
 
 
 def decode_and_validate_access(token: str) -> tuple[dict, object, User, InternshipEnterpriseMember]:

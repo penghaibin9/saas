@@ -30,14 +30,21 @@ from app.models import (
     SchoolClass,
     StudentAccountLink,
     StudentProfile,
+    StaffProfile,
     User,
     WeeklyReport,
 )
 from app.modules.internship.services import internship_stats_service as base_stats
+from app.modules.internship.services.internship_report_quality_service import (
+    SUBMITTED_REPORT_STATUSES, required_report_counts,
+    latest_snapshot_map,
+)
 from app.modules.internship.services.internship_batch_context import resolve_batch
 from app.modules.internship.services.internship_scope import apply_internship_record_scope
 from app.services import xlsx_util
 from app.services.db_service import _tid, session
+from app.core.timeutil import local_now
+from app.modules.internship.services.internship_leave_service import effective_period
 
 GROUPS = {"STUDENT", "ADVISOR", "HOMEROOM", "COLLEGE", "MAJOR", "CLASS"}
 PERIODS = {"WEEK", "MONTH", "ALL"}
@@ -135,7 +142,8 @@ def _as_date(value) -> date | None:
     if value is None:
         return None
     if isinstance(value, datetime):
-        return value.date()
+        from app.core.timeutil import UTC,tenant_tz
+        return (value.replace(tzinfo=UTC) if value.tzinfo is None else value).astimezone(tenant_tz()).date()
     if isinstance(value, date):
         return value
     raw = str(value).strip()[:10]
@@ -183,24 +191,31 @@ def _date_set(start: date | None, end: date | None):
     return {start + timedelta(days=offset) for offset in range((end - start).days + 1)}
 
 
+def _month_due_date(year: int, month: int, end: date | None):
+    last = date(year, month, calendar.monthrange(year, month)[1])
+    return min(last, end) if end and (year, month) == (end.year, end.month) else last
+
+
 def _month_due_dates(start: date, end: date, required_count: int):
+    if not start or not end or end < start or required_count <= 0:
+        return []
     values = []
     current = date(start.year, start.month, 1)
     while current <= end:
-        last = date(current.year, current.month, calendar.monthrange(current.year, current.month)[1])
-        due = min(last, end)
+        due = _month_due_date(current.year, current.month, end)
         if due >= start:
             values.append(due)
         if current.month == 12:
             current = date(current.year + 1, 1, 1)
         else:
             current = date(current.year, current.month + 1, 1)
-    if required_count > 0:
-        return values[:required_count]
-    return values
+    return values[:required_count]
 
 
 def _weekly_due_dates(start: date, end: date, cfg: dict):
+    required = max(0, int(cfg.get("requiredCount") or 0))
+    if not start or not end or end < start or required <= 0:
+        return []
     step = 14 if str(cfg.get("frequency") or "WEEKLY").upper() == "BIWEEKLY" else 7
     weekday = min(7, max(1, int(cfg.get("deadlineWeekday") or 7)))
     monday = start - timedelta(days=start.weekday())
@@ -211,10 +226,7 @@ def _weekly_due_dates(start: date, end: date, cfg: dict):
     while due <= end:
         values.append(due)
         due += timedelta(days=step)
-    required = max(0, int(cfg.get("requiredCount") or 0))
-    if required > 0:
-        return values[:required]
-    return values
+    return values[:required]
 
 
 def _selected_due(due: date | None, win_start: date | None, win_end: date | None):
@@ -253,10 +265,6 @@ def _selected_columns(group_by: str, columns: str | list[str] | None):
 def _record_dates(record, batch):
     start = _as_date(record.intern_start_date) or _as_date(batch.start_date)
     end = _as_date(record.intern_end_date) or _as_date(batch.end_date)
-    if not start:
-        start = _as_date(batch.start_date) or date.today()
-    if not end:
-        end = _as_date(batch.end_date) or date.today()
     return start, end
 
 
@@ -276,18 +284,16 @@ def _review_matches(review, user_id, user_name):
     if review is None:
         return False
     rid = str(review.reviewer_user_id or "")
-    if user_id and rid and rid == str(user_id):
-        return True
-    return bool(user_name and review.reviewer_name and review.reviewer_name == user_name)
+    return bool(user_id and rid and rid.removeprefix('db-') == str(user_id).removeprefix('db-'))
 
 
 def _timely(review, submitted_at, sla_hours: int):
     if not review or not submitted_at or not review.reviewed_at or sla_hours <= 0:
         return None
-    return review.reviewed_at <= submitted_at + timedelta(hours=sla_hours)
+    return submitted_at <= review.reviewed_at <= submitted_at + timedelta(hours=sla_hours)
 
 
-def _load_record_facts(db, user, batch, period, anchor):
+def _load_record_facts(db, user, batch, period, anchor, college=None, major=None, class_name=None):
     mode, win_start, win_end = _window(period, anchor)
     pair_query = select(InternshipRecord, StudentProfile).join(
         StudentProfile,
@@ -302,6 +308,9 @@ def _load_record_facts(db, user, batch, period, anchor):
     )
     pair_query = apply_internship_record_scope(pair_query, user)
     pairs = db.execute(pair_query.order_by(InternshipRecord.id)).all()
+    cache = base_stats._preload_org_cache(db,[student for _,student in pairs])
+    pairs = [(rec,stu) for rec,stu in pairs if all(not value or value == actual for value,actual in
+        zip((college,major,class_name),base_stats._org_of(db,stu,cache)))]
     records = [rec for rec, _stu in pairs]
     students = [stu for _rec, stu in pairs]
     record_ids = [int(rec.id) for rec in records]
@@ -330,6 +339,12 @@ def _load_record_facts(db, user, batch, period, anchor):
     users = {int(row.id): row for row in db.scalars(select(User).where(
         User.tenant_id == _tid(), User.id.in_(user_ids or {0}), User.is_deleted.is_(False),
     )).all()}
+    staff = {int(row.user_id): row for row in db.scalars(select(StaffProfile).where(
+        StaffProfile.tenant_id == _tid(), StaffProfile.user_id.in_(user_ids or {0}),
+        StaffProfile.is_deleted.is_(False), StaffProfile.status == 'ACTIVE')).all()}
+    staff_colleges={row.college_id for row in staff.values() if row.college_id}
+    staff_orgs={row.id:row.college_name for row in db.scalars(select(College).where(
+        College.tenant_id==_tid(),College.is_deleted.is_(False),College.id.in_(staff_colleges or {0}))).all()}
 
     bound_students = set()
     if student_ids:
@@ -343,12 +358,13 @@ def _load_record_facts(db, user, batch, period, anchor):
     checkins = db.scalars(select(InternshipCheckin).where(
         InternshipCheckin.tenant_id == _tid(),
         InternshipCheckin.internship_id.in_(record_ids),
+        InternshipCheckin.result.in_(("NORMAL", "RECORDED")),
         InternshipCheckin.is_deleted.is_(False),
     )).all()
     leaves = db.scalars(select(InternshipLeave).where(
         InternshipLeave.tenant_id == _tid(),
         InternshipLeave.internship_id.in_(record_ids),
-        InternshipLeave.status == "APPROVED",
+        InternshipLeave.status.in_(('APPROVED', 'OVERDUE', 'RETURNED')),
         InternshipLeave.is_deleted.is_(False),
     )).all()
     exemptions = db.scalars(select(InternshipCheckinExemption).where(
@@ -366,11 +382,13 @@ def _load_record_facts(db, user, batch, period, anchor):
     weekly = db.scalars(select(WeeklyReport).where(
         WeeklyReport.tenant_id == _tid(), WeeklyReport.internship_id.in_(record_ids),
         WeeklyReport.is_deleted.is_(False),
+        WeeklyReport.status.in_(SUBMITTED_REPORT_STATUSES),
     )).all()
     process = db.scalars(select(InternshipProcessReport).where(
         InternshipProcessReport.tenant_id == _tid(),
         InternshipProcessReport.internship_id.in_(record_ids),
         InternshipProcessReport.is_deleted.is_(False),
+        InternshipProcessReport.status.in_(SUBMITTED_REPORT_STATUSES),
     )).all()
     scores = db.scalars(select(InternshipFinalScore).where(
         InternshipFinalScore.tenant_id == _tid(),
@@ -382,16 +400,23 @@ def _load_record_facts(db, user, batch, period, anchor):
         InternshipChangeRequest.tenant_id == _tid(),
         InternshipChangeRequest.internship_id.in_(record_ids),
         InternshipChangeRequest.status == "APPROVED",
+        InternshipChangeRequest.change_type.in_(("CHANGE_POSITION","CHANGE_ENTERPRISE","SELF_ARRANGED")),
         InternshipChangeRequest.is_deleted.is_(False),
     )).all()
 
-    report_ids = [int(row.id) for row in weekly] + [int(row.id) for row in process]
+    snapshots = {
+        **{("WEEKLY", key): value for key, value in latest_snapshot_map(db,"WEEKLY",[row.id for row in weekly]).items()},
+        **{("PROCESS", key): value for key, value in latest_snapshot_map(db,"PROCESS",[row.id for row in process]).items()},
+    }
+    snapshot_ids = [row.id for row in snapshots.values()]
     reviews = []
-    if report_ids:
+    if snapshot_ids:
         reviews = db.scalars(select(InternshipReportReview).where(
             InternshipReportReview.tenant_id == _tid(),
-            InternshipReportReview.report_id.in_(report_ids),
+            InternshipReportReview.report_version_id.in_(snapshot_ids),
         )).all()
+    reviews = [row for row in reviews if (row.report_kind, row.report_id) in snapshots
+        and snapshots[(row.report_kind,row.report_id)].id == row.report_version_id]
     review_map = _latest_review_map(reviews)
 
     application_facts = base_stats._latest_approved_application_facts(db, record_ids)
@@ -410,10 +435,12 @@ def _load_record_facts(db, user, batch, period, anchor):
 
     weekly_cfg = dict((batch.rules_config or {}).get("weeklyReport") or {})
     process_cfg = dict((batch.rules_config or {}).get("processReport") or {})
+    report_counts = required_report_counts(batch)
+    weekly_cfg["requiredCount"] = report_counts["weeklyRequiredCount"]
     checkin_cfg = dict((batch.rules_config or {}).get("checkin") or {})
-    weekly_sla = max(0, int(weekly_cfg.get("reviewSlaHours") or 48))
-    process_sla = max(0, int(process_cfg.get("reviewSlaHours") or 48))
-    today = date.today()
+    weekly_sla = max(0, int(weekly_cfg.get("reviewSlaHours") if weekly_cfg.get("reviewSlaHours") is not None else 48))
+    process_sla = max(0, int(process_cfg.get("reviewSlaHours") if process_cfg.get("reviewSlaHours") is not None else 48))
+    today = local_now().date()
     facts = []
 
     for rec, stu in pairs:
@@ -428,12 +455,12 @@ def _load_record_facts(db, user, batch, period, anchor):
         advisor_user = users.get(int(rec.advisor_user_id)) if rec.advisor_user_id else None
         head_user = users.get(int(cls.head_teacher_id)) if cls and cls.head_teacher_id else None
         start, end = _record_dates(rec, batch)
-        visible_end = min(end, today)
+        visible_end = min(end, today) if end else None
         active = _overlap(start, visible_end, win_start, win_end)
 
         leave_days = set()
         for row in leave_map[rid]:
-            value = _overlap(_as_date(row.start_date), _as_date(row.end_date), win_start, win_end)
+            value = _overlap(*effective_period(row), win_start, win_end)
             if value:
                 leave_days |= _date_set(*value)
         exempt_days = set()
@@ -452,13 +479,13 @@ def _load_record_facts(db, user, batch, period, anchor):
         expected_days = _date_set(*active) if active and checkin_cfg.get("requireDaily", True) else set()
         expected_days -= leave_days
         expected_days -= exempt_days
-        actual_days = checkin_days | makeup_days
+        valid_days = _date_set(*active) if active else set()
+        actual_days = (checkin_days | makeup_days) & valid_days
 
         weekly_dues = _weekly_due_dates(start, end, weekly_cfg)
         selected_weekly_dues = [due for due in weekly_dues if _selected_due(due, win_start, win_end)]
         weekly_expected = (
-            max(0, int(weekly_cfg.get("requiredCount") or 0))
-            if mode == "ALL" and int(weekly_cfg.get("requiredCount") or 0) > 0
+            report_counts["weeklyRequiredCount"] if mode == "ALL"
             else len(selected_weekly_dues)
         )
         selected_weekly = []
@@ -467,79 +494,87 @@ def _load_record_facts(db, user, batch, period, anchor):
         weekly_timely = 0
         advisor_weekly_reviewed = 0
         advisor_weekly_timely = 0
+        weekly_timing_known = advisor_weekly_timing_known = True
         for row in weekly_map[rid]:
+            current_snapshot=snapshots.get(('WEEKLY',row.id))
+            submitted_at=current_snapshot.submitted_at if current_snapshot else row.submitted_at
             index = max(0, int(row.week_number or 1) - 1)
-            due = weekly_dues[index] if index < len(weekly_dues) else _as_date(row.submitted_at)
+            due = weekly_dues[index] if index < len(weekly_dues) else _as_date(submitted_at)
             if not _selected_due(due, win_start, win_end):
                 continue
-            if row.submitted_at is None:
-                continue
             selected_weekly.append(row)
-            if due and _as_date(row.submitted_at) and _as_date(row.submitted_at) > due:
+            if due and _as_date(submitted_at) and _as_date(submitted_at) > due:
                 weekly_late += 1
             review = review_map.get(("WEEKLY", int(row.id)))
-            if review or row.reviewed_at:
+            legacy_reviewed = not current_snapshot and row.status in {"APPROVED","RETURNED"}
+            if review or legacy_reviewed:
                 weekly_reviewed += 1
-                timely = _timely(review, row.submitted_at, weekly_sla) if review else (
-                    row.reviewed_at <= row.submitted_at + timedelta(hours=weekly_sla)
-                    if weekly_sla > 0 and row.reviewed_at else None
+                timely = _timely(review, submitted_at, weekly_sla) if review else (
+                    submitted_at <= row.reviewed_at <= submitted_at + timedelta(hours=weekly_sla)
+                    if weekly_sla > 0 and row.reviewed_at and submitted_at else None
                 )
+                if timely is None:weekly_timing_known=False
                 if timely is True:
                     weekly_timely += 1
-                if _review_matches(review, rec.advisor_user_id, rec.advisor_name) or (
-                    review is None and rec.advisor_name and row.reviewed_by_name == rec.advisor_name
-                ):
+                if _review_matches(review, rec.advisor_user_id, rec.advisor_name):
+                    if timely is None:advisor_weekly_timing_known=False
                     advisor_weekly_reviewed += 1
                     if timely is True:
                         advisor_weekly_timely += 1
 
-        monthly_required = max(0, int(process_cfg.get("monthlyRequiredCount") or 0))
+        monthly_required = report_counts["monthlyRequiredCount"]
         month_dues = _month_due_dates(start, end, monthly_required)
         selected_month_dues = [due for due in month_dues if _selected_due(due, win_start, win_end)]
-        monthly_expected = monthly_required if mode == "ALL" and monthly_required > 0 else len(selected_month_dues)
-        summary_required = min(1, max(0, int(process_cfg.get("summaryRequiredCount") if process_cfg.get("summaryRequiredCount") is not None else 1)))
+        monthly_expected = monthly_required if mode == "ALL" else len(selected_month_dues)
+        summary_required = report_counts["summaryRequiredCount"]
         summary_due = end if summary_required else None
-        summary_expected = 1 if summary_due and _selected_due(summary_due, win_start, win_end) else 0
+        summary_expected = summary_required if mode == "ALL" else (
+            1 if summary_due and _selected_due(summary_due, win_start, win_end) else 0
+        )
 
         daily_rows, monthly_rows, summary_rows = [], [], []
         monthly_reviewed = monthly_timely = summary_reviewed = 0
         advisor_monthly_reviewed = advisor_monthly_timely = advisor_summary_reviewed = 0
+        monthly_timing_known = advisor_monthly_timing_known = True
         for row in process_map[rid]:
+            current_snapshot=snapshots.get(('PROCESS',row.id))
+            submitted_at=current_snapshot.submitted_at if current_snapshot else row.submitted_at
             rt = str(row.report_type or "").upper()
             if rt == "DAILY":
-                due = _as_date(row.period_key) or _as_date(row.submitted_at)
+                due = _as_date(row.period_key) or _as_date(submitted_at)
             elif rt == "MONTHLY":
                 try:
                     y, m = [int(x) for x in str(row.period_key).split("-", 1)]
-                    due = date(y, m, calendar.monthrange(y, m)[1])
+                    due = _month_due_date(y, m, end)
                 except Exception:
-                    due = _as_date(row.submitted_at)
+                    due = _as_date(submitted_at)
             else:
-                due = summary_due or _as_date(row.submitted_at)
-            if not _selected_due(due, win_start, win_end) or row.submitted_at is None:
+                due = summary_due or _as_date(submitted_at)
+            if not _selected_due(due, win_start, win_end):
                 continue
             if rt == "DAILY":
                 daily_rows.append(row)
                 continue
             review = review_map.get(("PROCESS", int(row.id)))
-            timely = _timely(review, row.submitted_at, process_sla) if review else (
-                row.reviewed_at <= row.submitted_at + timedelta(hours=process_sla)
-                if process_sla > 0 and row.reviewed_at else None
+            legacy_reviewed = not current_snapshot and row.status in {"APPROVED","RETURNED"}
+            timely = _timely(review, submitted_at, process_sla) if review else (
+                submitted_at <= row.reviewed_at <= submitted_at + timedelta(hours=process_sla)
+                if process_sla > 0 and row.reviewed_at and submitted_at else None
             )
-            advisor_match = _review_matches(review, rec.advisor_user_id, rec.advisor_name) or (
-                review is None and rec.advisor_name and row.reviewed_by_name == rec.advisor_name
-            )
+            advisor_match = _review_matches(review, rec.advisor_user_id, rec.advisor_name)
             if rt == "MONTHLY":
                 monthly_rows.append(row)
-                if review or row.reviewed_at:
+                if review or legacy_reviewed:
                     monthly_reviewed += 1
+                    if timely is None:monthly_timing_known=False
                     if timely is True: monthly_timely += 1
                     if advisor_match:
+                        if timely is None:advisor_monthly_timing_known=False
                         advisor_monthly_reviewed += 1
                         if timely is True: advisor_monthly_timely += 1
             elif rt == "SUMMARY":
                 summary_rows.append(row)
-                if review or row.reviewed_at:
+                if review or legacy_reviewed:
                     summary_reviewed += 1
                     if advisor_match: advisor_summary_reviewed += 1
 
@@ -574,10 +609,12 @@ def _load_record_facts(db, user, batch, period, anchor):
             "className": cls.class_name if cls else "",
             "advisorUserId": int(rec.advisor_user_id) if rec.advisor_user_id else None,
             "advisorName": (advisor_user.real_name if advisor_user else rec.advisor_name) or "",
-            "advisorEmployeeNo": advisor_user.login_name if advisor_user else "",
+            "advisorEmployeeNo": staff[rec.advisor_user_id].staff_no if rec.advisor_user_id in staff else "",
+            "advisorCollege": staff_orgs.get(staff[rec.advisor_user_id].college_id,'') if rec.advisor_user_id in staff else '',
             "headTeacherId": int(cls.head_teacher_id) if cls and cls.head_teacher_id else None,
             "headTeacherName": head_user.real_name if head_user else "",
-            "headTeacherEmployeeNo": head_user.login_name if head_user else "",
+            "headTeacherEmployeeNo": staff[head_user.id].staff_no if head_user and head_user.id in staff else "",
+            "headTeacherCollege": staff_orgs.get(staff[head_user.id].college_id,'') if head_user and head_user.id in staff else '',
             "enterpriseCount": len(enterprises),
             "bound": 1 if int(stu.id) in bound_students else 0,
             "expectedCheckins": len(expected_days),
@@ -593,6 +630,10 @@ def _load_record_facts(db, user, batch, period, anchor):
             "weeklyTimelyReviewed": weekly_timely,
             "advisorWeeklyReviewed": advisor_weekly_reviewed,
             "advisorWeeklyTimelyReviewed": advisor_weekly_timely,
+            "weeklySlaConfigured": weekly_sla > 0,
+            "processSlaConfigured": process_sla > 0,
+            "weeklyTimingKnown":weekly_timing_known,"advisorWeeklyTimingKnown":advisor_weekly_timing_known,
+            "monthlyTimingKnown":monthly_timing_known,"advisorMonthlyTimingKnown":advisor_monthly_timing_known,
             "monthlyExpected": monthly_expected,
             "monthlySubmitted": len(monthly_rows),
             "monthlyReviewed": monthly_reviewed,
@@ -618,7 +659,9 @@ def _student_rows(facts):
     rows = []
     for fact in facts:
         row = dict(fact)
-        row["weeklyCompletionRate"] = _ratio(fact["weeklySubmitted"], fact["weeklyExpected"])
+        row["weeklyCompletionRate"] = _ratio(
+            min(fact["weeklySubmitted"], fact["weeklyExpected"]), fact["weeklyExpected"]
+        )
         rows.append(row)
     return rows
 
@@ -646,8 +689,10 @@ def _aggregate(facts, group_by, batch_name):
         actual_checkins = sum(x["actualCheckins"] for x in items)
         weekly_expected = sum(x["weeklyExpected"] for x in items)
         weekly_submitted = sum(x["weeklySubmitted"] for x in items)
+        weekly_completed = sum(min(x["weeklySubmitted"], x["weeklyExpected"]) for x in items)
         monthly_expected = sum(x["monthlyExpected"] for x in items)
         monthly_submitted = sum(x["monthlySubmitted"] for x in items)
+        monthly_completed = sum(min(x["monthlySubmitted"], x["monthlyExpected"]) for x in items)
 
         if group_by in {"ADVISOR", "HOMEROOM"}:
             if group_by == "ADVISOR":
@@ -672,7 +717,7 @@ def _aggregate(facts, group_by, batch_name):
                 "rowKey": ":".join(str(v) for v in key),
                 "name": name,
                 "employeeNo": employee_no,
-                "college": first["college"],
+                "college": first['advisorCollege'] if group_by=='ADVISOR' else first['headTeacherCollege'],
                 "className": class_name,
                 "internshipType": batch_name,
                 "studentCount": n,
@@ -683,15 +728,15 @@ def _aggregate(facts, group_by, batch_name):
                 "dailyCount": sum(x["dailySubmitted"] for x in items),
                 "weeklyExpected": weekly_expected,
                 "weeklySubmitted": weekly_submitted,
-                "weeklyMissing": max(0, weekly_expected - weekly_submitted),
-                "weeklyCompletionRate": _ratio(weekly_submitted, weekly_expected),
+                "weeklyMissing": weekly_expected - weekly_completed,
+                "weeklyCompletionRate": _ratio(weekly_completed, weekly_expected),
                 "weeklyReviewed": reviewed,
                 "weeklyReviewRate": _ratio(reviewed, weekly_submitted),
-                "weeklyTimelyReviewRate": _ratio(timely, reviewed),
+                "weeklyTimelyReviewRate": _ratio(timely, reviewed) if all(x["weeklySlaConfigured"] and x['advisorWeeklyTimingKnown' if group_by=='ADVISOR' else 'weeklyTimingKnown'] for x in items) else None,
                 "monthlySubmitted": monthly_submitted,
-                "monthlyCompletionRate": _ratio(monthly_submitted, monthly_expected),
+                "monthlyCompletionRate": _ratio(monthly_completed, monthly_expected),
                 "monthlyReviewRate": _ratio(month_reviewed, monthly_submitted),
-                "monthlyTimelyReviewRate": _ratio(month_timely, month_reviewed),
+                "monthlyTimelyReviewRate": _ratio(month_timely, month_reviewed) if all(x["processSlaConfigured"] and x['advisorMonthlyTimingKnown' if group_by=='ADVISOR' else 'monthlyTimingKnown'] for x in items) else None,
                 "summarySubmitted": sum(x["summarySubmitted"] for x in items),
                 "summaryReviewRate": _ratio(
                     summary_reviewed, sum(x["summarySubmitted"] for x in items)
@@ -724,11 +769,11 @@ def _aggregate(facts, group_by, batch_name):
             "dailyCount": sum(x["dailySubmitted"] for x in items),
             "weeklyExpected": weekly_expected,
             "weeklySubmitted": weekly_submitted,
-            "weeklyCompletionRate": _ratio(weekly_submitted, weekly_expected),
+            "weeklyCompletionRate": _ratio(weekly_completed, weekly_expected),
             "weeklyReviewed": weekly_reviewed,
             "weeklyReviewRate": _ratio(weekly_reviewed, weekly_submitted),
             "monthlySubmitted": monthly_submitted,
-            "monthlyCompletionRate": _ratio(monthly_submitted, monthly_expected),
+            "monthlyCompletionRate": _ratio(monthly_completed, monthly_expected),
             "monthlyReviewed": monthly_reviewed,
             "monthlyReviewRate": _ratio(monthly_reviewed, monthly_submitted),
             "summarySubmitted": sum(x["summarySubmitted"] for x in items),
@@ -737,7 +782,7 @@ def _aggregate(facts, group_by, batch_name):
 
 
 def query(user, *, batch_id, group_by="STUDENT", period="ALL", anchor=None,
-          columns=None, page=1, page_size=50):
+          columns=None, page=1, page_size=50, college=None, major=None, class_name=None, _export=False):
     group = str(group_by or "STUDENT").upper()
     if group not in GROUPS:
         raise AppException("VALIDATION_ERROR", "groupBy 仅支持 STUDENT/ADVISOR/HOMEROOM/COLLEGE/MAJOR/CLASS")
@@ -745,15 +790,19 @@ def query(user, *, batch_id, group_by="STUDENT", period="ALL", anchor=None,
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=False)
         mode, win_start, win_end, facts = _load_record_facts(
-            db, user, batch, period, anchor
+            db, user, batch, period, anchor, college, major, class_name
         )
         rows = _student_rows(facts) if group == "STUDENT" else _aggregate(
             facts, group, batch.batch_name or ""
         )
-    rows.sort(key=lambda row: tuple(str(row.get(key) or "") for key, _ in selected))
+    rows.sort(key=lambda row: row['rowKey'])
     total = len(rows)
+    if _export:
+        from app.modules.internship.services.internship_export_util import require_exportable
+        require_exportable(total)
     page_value = max(1, int(page or 1))
     page_size_value = min(500, max(1, int(page_size or 50)))
+    if _export:page_size_value=max(1,total)
     start = (page_value - 1) * page_size_value
     visible = rows[start:start + page_size_value]
     return {
@@ -775,36 +824,24 @@ def query(user, *, batch_id, group_by="STUDENT", period="ALL", anchor=None,
         "page": page_value,
         "pageSize": page_size_value,
         "definitions": {
-            "binding": "ACTIVE StudentAccountLink；缺绑定不按已绑定计算。",
+            "binding": "只统计有效学生账号绑定；缺绑定不按已绑定计算。",
             "checkin": "按实习有效日期扣除已批准请假/免签；补签与正式签到按日期去重。",
-            "stability": "本期无 APPROVED 换岗/换单位/转自主变更的实习记录 / 实习记录。",
-            "majorMatch": "仅已批准申请中 major_match 明确真值进入分母。",
-            "weeklyExpected": "按批次周报频率/截止星期及应交篇数配置计算；周/月筛选按任务到期日归属。",
-            "timelyReview": "按批次 reviewSlaHours 计算；默认 48 小时，可由学校规则配置。",
+            "stability": "本批次无已批准换岗、换单位或转自主实习变更的实习记录，占本批次记录的比例。",
+            "majorMatch": "仅已批准申请中明确登记专业是否对口的记录进入分母；未知不默认对口或不对口。",
+            "weeklyExpected": "全部期间与报告台账共用批次应交篇数；0或缺失表示未配置。周/月筛选按任务到期日归属，缺实习日期不生成到期任务。",
+            "timelyReview": "按批次规定的批阅时限计算，未配置时默认48小时；明确为0不计算准时率。缺少提交或批阅时点的历史资料不冒充逾期，该组准时率暂不计算。仅当前提交版本的批阅计入，指导教师本人工作量按稳定账号归属，不凭同名计算。",
+            "homeroomPerformance": "班主任统计反映所辖班级的学生报告批阅进度，包含指导教师等有权人的批阅；不当作班主任本人批阅次数。本人工作量以批阅留痕的稳定账号为准。",
+            "reportCompletion": "按每人实交与应交的较小值计算完成率，多交不抵他人缺交；批阅率针对当前提交版，历史批阅工作量见教师工作台账。零分母不计算完成率。",
             "customColumns": "屏幕与 Excel 共用同一列白名单和同一统计条件。",
         },
     }
 
 
-def export(user, *, batch_id, group_by="STUDENT", period="ALL", anchor=None, columns=None):
+def export(user, *, batch_id, group_by="STUDENT", period="ALL", anchor=None, columns=None, college=None, major=None, class_name=None):
     data = query(
         user, batch_id=batch_id, group_by=group_by, period=period, anchor=anchor,
-        columns=columns, page=1, page_size=500,
+        columns=columns, page=1, page_size=500, college=college, major=major, class_name=class_name, _export=True,
     )
-    # Export must include every row. Rebuild page size when the current school exceeds 500 groups/students.
-    if data["total"] > len(data["items"]):
-        all_items = []
-        page = 1
-        while len(all_items) < data["total"]:
-            part = query(
-                user, batch_id=batch_id, group_by=group_by, period=period, anchor=anchor,
-                columns=columns, page=page, page_size=500,
-            )
-            all_items.extend(part["items"])
-            if not part["items"]:
-                break
-            page += 1
-        data["items"] = all_items
     selected = data["selectedColumns"]
     headers = [item["title"] for item in selected]
     rows = [[row.get(item["key"]) for item in selected] for row in data["items"]]
@@ -813,10 +850,14 @@ def export(user, *, batch_id, group_by="STUDENT", period="ALL", anchor=None, col
         "HOMEROOM": "班主任绩效统计", "COLLEGE": "院系实习情况汇总",
         "MAJOR": "专业实习情况汇总", "CLASS": "班级实习情况汇总",
     }[data["groupBy"]]
+    period_label={'ALL':'全部时间','WEEK':'按周','MONTH':'按月'}[data['period']]
     content = xlsx_util.build_ledger_xlsx(
         group_label, headers, rows,
-        watermark=f"跃科岗位实习管理平台 · {group_label} · {data['period']} · {datetime.now():%Y-%m-%d %H:%M}",
+        watermark=f"跃科岗位实习管理平台 · {group_label} · {period_label} · {datetime.now():%Y-%m-%d %H:%M}",
     )
+    base_stats._record_export(user,group_label,len(rows),dict(batchId=str(batch_id),groupBy=group_by,
+        period=period,anchor=anchor,columns=columns,college=college,major=major,className=class_name),
+        ['studentName','studentNo'] if group_by=='STUDENT' else ['name','employeeNo'] if group_by in {'ADVISOR','HOMEROOM'} else None)
     return xlsx_util.pack_xlsx_result(
-        content, f"{group_label}_{data['period']}.xlsx", len(rows)
+        content, f"{group_label}_{period_label}.xlsx", len(rows)
     )

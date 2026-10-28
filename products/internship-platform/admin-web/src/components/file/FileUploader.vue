@@ -7,7 +7,8 @@ const props = defineProps({
   bizId: { type: [String, Number], default: '' },
   accept: { type: String, default: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.png,.jpg,.jpeg,.gif,.zip,.txt,.csv' },
   disabled: { type: Boolean, default: false },
-  buttonText: { type: String, default: '上传文件' }
+  buttonText: { type: String, default: '上传文件' },
+  uploadPath: { type: String, default: '/files' }
 })
 const emit = defineEmits(['uploaded', 'progress', 'error', 'cancelled'])
 
@@ -31,6 +32,7 @@ async function handleChange(event) {
   activeTask = fileSdk.upload(file, {
     bizType: props.bizType,
     bizId: props.bizId,
+    path: props.uploadPath,
     onProgress(value) {
       progress.value = value
       emit('progress', value)

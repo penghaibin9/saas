@@ -2,9 +2,9 @@
 公共字段（tenant_id/created_at/...）。审计链 append-only（AuditTimeMixin）。"""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime
 
-from sqlalchemy import (JSON, BigInteger, Boolean, Computed, DateTime, Double, Float, Integer, String,
+from sqlalchemy import (JSON, BigInteger, Boolean, Computed, Date, DateTime, Double, Float, Integer, String,
                         Text, Index, UniqueConstraint)
 from sqlalchemy.orm import Mapped, mapped_column
 
@@ -60,6 +60,8 @@ class InternshipRecord(PKMixin, TenantMixin, CommonMixin, Base):
         BigInteger, index=True,
         comment="实习批次；应用层强制非空，历史 NULL 待人工映射后由迁移改 NOT NULL")
     enterprise_name: Mapped[str | None] = mapped_column(String(200), comment="实习单位（冗余展示）")
+    current_application_id: Mapped[int | None] = mapped_column(
+        BigInteger, comment="当前去向生效申请；直接分配或人工变更时为空，不按历史申请猜测")
     position_name: Mapped[str | None] = mapped_column(String(100), comment="岗位（冗余展示）")
     advisor_name: Mapped[str | None] = mapped_column(String(100), comment="校内指导教师")
     enterprise_mentor_name: Mapped[str | None] = mapped_column(String(100), comment="企业导师（冗余展示）")
@@ -214,10 +216,14 @@ class InternshipGuidance(PKMixin, TenantMixin, CommonMixin, Base):
     """t_internship_guidance 指导记录（指导教师对本人指导学生的过程指导留痕）。
     owner：教师只能对本人指导学生（advisor_name）新增/撤销。撤销走软删（status=VOIDED）。"""
     __tablename__ = "t_internship_guidance"
+    __table_args__ = (UniqueConstraint('tenant_id', 'internship_id', 'request_key',
+                                      name='uk_intern_guidance_request'),)
 
     internship_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     advisor_name: Mapped[str | None] = mapped_column(String(50), comment="指导教师")
+    guidance_date: Mapped[date | None] = mapped_column(Date, comment="实际指导日期；历史未登记保持为空")
+    request_key: Mapped[str | None] = mapped_column(String(64), comment="同一学生指导提交防重键")
     method: Mapped[str] = mapped_column(String(20), nullable=False, default="ONSITE",
                                         comment="ONLINE/PHONE/ONSITE/ENTERPRISE_FEEDBACK/VIDEO")
     topic: Mapped[str | None] = mapped_column(String(200), comment="指导主题")
@@ -242,6 +248,8 @@ class InternshipVisit(PKMixin, TenantMixin, CommonMixin, Base):
     student_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
     advisor_name: Mapped[str | None] = mapped_column(String(50), comment="巡访教师")
     enterprise_name: Mapped[str | None] = mapped_column(String(200))
+    visit_title: Mapped[str | None] = mapped_column(String(200), comment="巡访标题；历史未填保持空")
+    location_encrypted: Mapped[str | None] = mapped_column(Text, comment="教师主动登记的巡访位置，字段加密")
     visit_at: Mapped[datetime | None] = mapped_column(DateTime, comment="巡访时间")
     method: Mapped[str] = mapped_column(String(20), nullable=False, default="ONSITE",
                                         comment="ONSITE/ONLINE/PHONE")

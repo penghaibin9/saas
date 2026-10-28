@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     :title="detail ? detail.studentName + ' · 打卡异常处理' : '打卡异常处理'"
-    :subtitle="detail ? detail.date + ' · ' + detail.typeLabel : ''"
+    :subtitle="detail ? formatDateTime(detail.date) + ' · ' + detail.typeLabel : ''"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
   >
@@ -26,7 +26,7 @@
           <div class="mp-card__body">
             <div class="mp-kv"><span class="mp-kv__k">学生</span><span class="mp-kv__v">{{ detail.studentName }} · {{ detail.className }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">企业 / 岗位</span><span class="mp-kv__v">{{ detail.enterpriseName }} · {{ detail.positionName }}</span></div>
-            <div class="mp-kv"><span class="mp-kv__k">打卡时间</span><span class="mp-kv__v">{{ detail.date }}</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">打卡时间</span><span class="mp-kv__v">{{ formatDateTime(detail.date) }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">距打卡点</span><span class="mp-kv__v" style="color: var(--danger-600)">{{ detail.distance }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">定位精度</span><span class="mp-kv__v">{{ detail.accuracy }}</span></div>
             <div class="mp-kv"><span class="mp-kv__k">打卡地址</span><span class="mp-kv__v">{{ detail.address }}</span></div>
@@ -47,18 +47,15 @@
               :description="evidenceConclusion"
             />
             <div class="ae-evidence">
-              <div class="ae-evidence__plot" aria-label="围栏与定位误差范围示意">
-                <span class="ae-evidence__fence"><i class="ae-evidence__point" /></span>
-                <span class="ae-evidence__accuracy" :style="accuracyStyle" />
-              </div>
               <div class="ae-evidence__facts">
                 <div><span>打卡坐标</span><strong>{{ coordinateText }}</strong></div>
+                <div><span>围栏坐标类型</span><strong>{{ coordinateLabel(evidence.fenceCoordinateSystem) }}</strong></div>
                 <div><span>围栏半径</span><strong>{{ evidence.radiusM != null ? `${evidence.radiusM} 米` : '未配置' }}</strong></div>
                 <div><span>定位误差</span><strong>{{ evidence.accuracyM != null ? `±${evidence.accuracyM} 米` : '未上报' }}</strong></div>
                 <div><span>批次误差上限</span><strong>{{ evidence.maxAccuracyM != null ? `${evidence.maxAccuracyM} 米` : '—' }}</strong></div>
               </div>
             </div>
-            <p class="mp-note">图形用于比较围栏、距离与精度关系，不替代地图底图；教师应结合学生说明和企业核实后处理。</p>
+            <p class="mp-note">只有坐标类型一致时才能直接比较距离；教师应结合学生说明和企业核实后处理。</p>
           </div>
         </section>
 
@@ -133,6 +130,7 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 import ActionReceipt from './components/ActionReceipt.vue'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 
 export default {
   name: 'AttendanceExceptionDetailView',
@@ -161,7 +159,7 @@ export default {
     evidence() { return this.detail?.locationEvidence || {} },
     coordinateText() {
       if (!this.evidence.available) return '未取得定位'
-      return `${Number(this.evidence.checkinLat).toFixed(6)}, ${Number(this.evidence.checkinLng).toFixed(6)} · ${this.evidence.coordinateSystem || 'GCJ-02'}`
+      return `${Number(this.evidence.checkinLat).toFixed(6)}, ${Number(this.evidence.checkinLng).toFixed(6)} · ${this.coordinateLabel(this.evidence.coordinateSystem)}`
     },
     deviceSignalLabel() {
       const value = this.evidence.deviceSignal || this.detail?.deviceRisk
@@ -172,23 +170,23 @@ export default {
     },
     evidenceConclusion() {
       if (!this.evidence.available) return '本次没有定位坐标，只能按无定位记录核实。'
+      if (!this.evidence.coordinateSystem || !this.evidence.fenceCoordinateSystem) return '坐标类型尚未完整记录，请先核对定位来源和现场情况。'
+      if (this.evidence.coordinateSystem !== this.evidence.fenceCoordinateSystem) return '打卡与围栏的坐标类型不同，当前不能直接计算距离，请核对定位来源和企业现场情况。'
       if (this.evidence.result === 'LOW_ACCURACY') return '定位误差超过批次阈值，系统未直接判断是否在围栏内。'
-      if (this.evidence.result === 'LOCATION_UNCERTAIN') return '定位误差范围覆盖围栏边界，系统已交由教师核实。'
+      if (this.evidence.result === 'LOCATION_UNCERTAIN') return '定位结果仍需人工核实，请结合精度、学生说明及企业情况处理。'
       if (this.evidence.result === 'OUT_OF_RANGE') return '定位点在围栏外；请结合精度、学生说明及企业现场情况核实。'
       return '系统已保留本次距离、精度和冻结规则。'
-    },
-    accuracyStyle() {
-      const radius = Math.max(1, Number(this.evidence.radiusM || 1))
-      const accuracy = Math.max(4, Math.min(42, Number(this.evidence.accuracyM || 8) / radius * 42))
-      return { width: `${accuracy}px`, height: `${accuracy}px` }
     },
     trailRecords() {
       return (this.detail?.trail || []).map((t, i) => ({
         id: i,
         action: t.title,
+        actionLabel: t.title,
+        actor: t.actor,
         reason: t.desc,
         at: t.time,
-        result: t.tone
+        result: t.resultLabel || '',
+        resultLabel: t.resultLabel || ''
       }))
     }
   },
@@ -209,6 +207,8 @@ export default {
     this.load()
   },
   methods: {
+    coordinateLabel(value) { return ({ GCJ02: '国内地图坐标', WGS84: '卫星定位坐标' })[value] || '坐标类型待核对' },
+    formatDateTime,
     async load() {
       this.loading = true
       this.error = ''
@@ -239,7 +239,7 @@ export default {
           id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
           version: res.data?.version,
           actionLabel: ({ REASONABLE: '标记合理', ABNORMAL: '记为异常', TO_RISK: '转风险跟进' })[this.action],
-          objectLabel: `${this.detail.studentName} · ${this.detail.date}`,
+          objectLabel: `${this.detail.studentName} · ${formatDateTime(this.detail.date)}`,
           auditText: '异常更新与处理留痕已同事务提交',
           nextStep: '可继续核对队列中的下一条异常'
         }
@@ -272,11 +272,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.ae-evidence { display: grid; grid-template-columns: 180px 1fr; gap: var(--space-5); align-items: center; margin-top: var(--space-4); }
-.ae-evidence__plot { height: 150px; border-radius: var(--radius-lg); background: linear-gradient(135deg, var(--primary-50), var(--bg-subtle)); display: grid; place-items: center; position: relative; overflow: hidden; }
-.ae-evidence__fence { width: 104px; height: 104px; border: 2px solid var(--primary-500); border-radius: 50%; display: grid; place-items: center; }
-.ae-evidence__point { width: 8px; height: 8px; border-radius: 50%; background: var(--primary-700); }
-.ae-evidence__accuracy { position: absolute; border: 2px solid var(--warning-500); background: color-mix(in srgb, var(--warning-100) 65%, transparent); border-radius: 50%; transform: translate(30px, 4px); min-width: 8px; min-height: 8px; }
+.ae-evidence { margin-top: var(--space-4); }
 .ae-evidence__facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); }
 .ae-evidence__facts div { padding: var(--space-3); border: 1px solid var(--border-color); border-radius: var(--radius-md); }
 .ae-evidence__facts span, .ae-evidence__facts strong { display: block; }

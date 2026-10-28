@@ -138,6 +138,8 @@ def test_active_grant_resolution_checks_member_company_status_and_effective_wind
 def test_revoke_is_row_locked_version_guarded_and_reasoned():
     source = inspect.getsource(service.revoke_grant)
     assert "lock=True" in source
+    assert "revoke_grant_in_tx" in source
+    source = inspect.getsource(service.revoke_grant_in_tx)
     assert "expected_version" in source
     assert "撤销授权必须填写原因" in source
     assert 'grant.status = "REVOKED"' in source

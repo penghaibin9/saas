@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { currentSessionGeneration } from '@/services/http/client'
 
 const STORAGE_KEY = 'internship.selectedBatchId'
 
@@ -39,7 +40,9 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
     batchLoadStatus: 'OK',
     needsExplicitSelect: false,
     invalidUrlBatch: false,
-    initialized: false
+    initialized: false,
+    contextGeneration: null,
+    loadSequence: 0
   }),
   getters: {
     hasBatch: (s) => !!s.selectedBatchId,
@@ -74,7 +77,16 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
      * @param {{ batchIdFromUrl?: string, force?: boolean }} opts
      */
     async ensureLoaded(opts = {}) {
+      const generation = currentSessionGeneration()
+      if (this.contextGeneration !== null && this.contextGeneration !== generation) {
+        this.applyBatch(null)
+        this.availableBatches = []
+        this.initialized = false
+      }
+      this.contextGeneration = generation
       if (this.initialized && !opts.force && !opts.batchIdFromUrl) return
+      const sequence = ++this.loadSequence
+      const stillCurrent = () => sequence === this.loadSequence && generation === currentSessionGeneration()
       this.batchLoading = true
       this.batchError = ''
       this.invalidUrlBatch = false
@@ -88,16 +100,23 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
         endDate: this.endDate
       }
       try {
-        const res = await internshipApi.getBatches({ page: 1, pageSize: 200 })
+        const requestedId = String(opts.batchIdFromUrl || prevId || '')
+        const res = await internshipApi.getBatchOptions({ page: 1, pageSize: 200,
+          selectedId: /^[1-9]\d{0,18}$/.test(requestedId) ? requestedId : undefined })
+        if (!stillCurrent()) return
         if (res.code !== 0) {
           const msg = res.message || '批次列表加载失败'
-          const noPerm = Number(res.code) === 403001 || /无权限|403/.test(String(msg))
+          const noPerm = Number(res.code) === 403001 || /无权限|没有.*权限|缺少.*权限|403/.test(String(msg))
           this.batchLoadStatus = noPerm ? 'NO_PERMISSION' : 'ERROR'
           this.batchError = noPerm
             ? (msg || '无权限查看实习批次')
             : (msg || '批次服务暂不可用，请稍后重试')
           // 失败不得伪装成空列表后清空当前批次
-          if (!this.selectedBatchId && prevId) {
+          if (noPerm) {
+            this.applyBatch(null)
+            this.availableBatches = []
+            this.initialized = false
+          } else if (!this.selectedBatchId && prevId) {
             this.selectedBatchId = String(prevId)
             this.selectedBatchName = prevMeta.selectedBatchName || this.selectedBatchName
             this.batchNo = prevMeta.batchNo || this.batchNo
@@ -108,7 +127,9 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
           this.needsExplicitSelect = false
           return
         }
-        const list = (res.data && res.data.list) || []
+        const list = [...((res.data && res.data.list) || [])]
+        const selected = res.data?.selected
+        if (selected && String(selected.id) === requestedId && !list.some(row => String(row.id) === requestedId)) list.push(selected)
         this.availableBatches = list.filter((b) => b.status !== 'VOIDED')
         const running = this.availableBatches.filter((b) => b.status === 'RUNNING')
         const urlId = opts.batchIdFromUrl ? String(opts.batchIdFromUrl) : ''
@@ -146,6 +167,7 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
         this.applyBatch(chosen)
         this.initialized = true
       } catch (e) {
+        if (!stillCurrent()) return
         this.batchLoadStatus = 'ERROR'
         this.batchError = e?.message || '批次列表加载失败'
         if (!this.selectedBatchId && prevId) {
@@ -157,7 +179,7 @@ export const useInternshipBatchStore = defineStore('internshipBatch', {
           this.endDate = prevMeta.endDate || ''
         }
       } finally {
-        this.batchLoading = false
+        if (stillCurrent()) this.batchLoading = false
       }
     },
     selectBatch(batchOrId) {

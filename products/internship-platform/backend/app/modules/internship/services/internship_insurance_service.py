@@ -48,7 +48,7 @@ def _coverage(ins, rec, batch):
     period_status, _ = _insurance_coverage(ins, rec, batch, "ASSESS")
     return {
         "coverageStatus": status, "coverageReason": reason,
-        "canRenew": ins.status == "VERIFIED" and _is_active_record(rec, batch) and period_status != "VALID",
+        "canRenew": ins.status == "VERIFIED" and _is_active_record(rec, batch) and (period_status != "VALID" or status == "EXPIRED"),
     }
 
 

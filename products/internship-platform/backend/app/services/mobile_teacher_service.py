@@ -4,7 +4,7 @@ from app.core.context import get_current_user_ctx
 from app.models import College,Major,SchoolClass,TeacherStudentScope
 from app.services.db_service import _tid,session
 _ADVISOR_ROLES=frozenset({"INTERN_MENTOR","TEACHER","INTERNSHIP_ADVISOR"})
-def _role(user):return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or (user or {}).get("userType") or "").upper()
+def _role(user):return str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or (user or {}).get("userType") or "").upper()
 def _db_user_id(value):
     raw=str(value or "").strip()
     if raw.lower().startswith("db-"):raw=raw[3:]
@@ -13,44 +13,45 @@ def resolve_teacher_scope(user=None):
     u=user or get_current_user_ctx() or {};role=_role(u)
     if role in {"SCHOOL_ADMIN","PLATFORM_SUPER_ADMIN"}:
         return {"mode":"ADMIN_TENANT","roleCode":role,"by":"ROLE","studentNos":set(),"classNames":set(),"collegeNames":set(),"majorNames":set(),"advisorNames":set(),"advisorUserIds":set()}
-    scope={"mode":"SCOPED","roleCode":role,"by":"DEFAULT_DENY","studentNos":set(),"classNames":set(),"collegeNames":set(),"majorNames":set(),"advisorNames":set(),"advisorUserIds":set()}
+    scope={"mode":"SCOPED","roleCode":role,"by":"DEFAULT_DENY","studentNos":set(),"classNames":set(),"collegeNames":set(),"majorNames":set(),"advisorNames":set(),"advisorUserIds":set(),"studentIds":set(),"classIds":set(),"collegeIds":set(),"majorIds":set()}
     advisor_user_id=_db_user_id(u.get("userId") or u.get("id"))
     if advisor_user_id is not None:scope["advisorUserIds"].add(advisor_user_id)
-    if str(u.get("realName") or "").strip():scope["advisorNames"].add(str(u.get("realName")).strip())
-    keys={str(u.get("loginName") or "").strip(),str(u.get("userId") or u.get("id") or "").strip(),str(u.get("realName") or "").strip()}-{""}
+    # Names are display data, never an identity or an authorization key.
+    keys={str(u.get("loginName") or "").strip()}
+    if advisor_user_id is not None:keys.update({str(advisor_user_id),f"db-{advisor_user_id}"})
+    keys.discard("")
     if not keys:return scope
     try:
         with session() as db:
             rows=db.scalars(select(TeacherStudentScope).where(
                 TeacherStudentScope.tenant_id==_tid(),
-                TeacherStudentScope.teacher_key.in_(keys),
+                TeacherStudentScope.user_id==advisor_user_id,
                 TeacherStudentScope.status=="ACTIVE",
                 TeacherStudentScope.is_deleted.is_(False),
                 or_(
-                    TeacherStudentScope.role_code.is_(None),
-                    TeacherStudentScope.role_code=="",
-                    TeacherStudentScope.role_code==role,
+                    TeacherStudentScope.role_code==str(u.get('currentRoleCode') or role),
                 ),
             )).all()
         for row in rows:
-            typ=str(row.scope_type or "").upper();value=str(row.ref_value or "").strip()
-            if typ=="STUDENT":scope["studentNos"].add(value)
-            elif typ=="CLASS":scope["classNames"].add(value)
-            elif typ=="COLLEGE":scope["collegeNames"].add(value)
-            elif typ=="MAJOR":scope["majorNames"].add(value)
-            elif typ=="ADVISOR":scope["advisorNames"].add(value)
+            typ=str(row.scope_type or "").upper()
+            target={'STUDENT':'studentIds','CLASS':'classIds','COLLEGE':'collegeIds','MAJOR':'majorIds'}.get(typ)
+            if target and row.ref_id is not None:scope[target].add(int(row.ref_id))
         if rows:scope["by"]="TEACHER_STUDENT_SCOPE"
-    except Exception:pass
+    except Exception as exc:
+        from app.core.exceptions import AppException
+        raise AppException('SCOPE_UNAVAILABLE','管理范围暂时无法读取，请稍后重试',http_status=503) from exc
     return scope
-def scope_match_row(scope,student_no=None,class_name=None,advisor_name=None,college_name=None,major_name=None,advisor_user_id=None):
+def scope_match_row(scope,student_no=None,class_name=None,advisor_name=None,college_name=None,major_name=None,advisor_user_id=None,student_id=None,class_id=None,college_id=None,major_id=None):
     if scope.get("mode")!="SCOPED":return True
     ids=set(scope.get("advisorUserIds") or set())
     id_hit=False
     try:id_hit=advisor_user_id is not None and int(advisor_user_id) in ids
     except Exception:pass
-    name_hit=bool(advisor_name and str(advisor_name) in set(scope.get("advisorNames") or set()))
-    if str(scope.get("roleCode") or "").upper() in _ADVISOR_ROLES:return id_hit or name_hit
-    return bool((student_no and str(student_no) in set(scope.get("studentNos") or set())) or (class_name and str(class_name) in set(scope.get("classNames") or set())) or (college_name and str(college_name) in set(scope.get("collegeNames") or set())) or (major_name and str(major_name) in set(scope.get("majorNames") or set())) or id_hit or name_hit)
+    if str(scope.get("roleCode") or "").upper() in _ADVISOR_ROLES:return id_hit
+    stable_hit=any(value is not None and int(value) in set(scope.get(key) or set()) for value,key in (
+        (student_id,'studentIds'),(class_id,'classIds'),(college_id,'collegeIds'),(major_id,'majorIds')))
+    if stable_hit:return True
+    return bool((student_no and str(student_no) in set(scope.get("studentNos") or set())) or (class_name and str(class_name) in set(scope.get("classNames") or set())) or (college_name and str(college_name) in set(scope.get("collegeNames") or set())) or (major_name and str(major_name) in set(scope.get("majorNames") or set())) or id_hit)
 def can_teacher_view_student(user,student,scope=None,db=None):
     scope=scope or resolve_teacher_scope(user)
     if scope.get("mode")!="SCOPED":return True
@@ -67,6 +68,7 @@ def can_teacher_view_student(user,student,scope=None,db=None):
         cid=getattr(student,"college_id",None) or (major.college_id if major else None)
         if cid:
             college=db.get(College,cid);college_name=college.college_name if college else None
-        return scope_match_row(scope,student_no=getattr(student,"student_no",None),class_name=class_name,college_name=college_name,major_name=major_name)
+        return scope_match_row(scope,student_no=getattr(student,"student_no",None),class_name=class_name,college_name=college_name,major_name=major_name,
+            student_id=student.id,class_id=getattr(student,'class_id',None),college_id=cid,major_id=major_id)
     finally:
         if own:db.close()

@@ -12,6 +12,7 @@ from app.api.v1 import (
     standalone_rbac,
     standalone_student_portal,
     mobile_internship_context,
+    mobile_internship_leave_context,
     mobile_internship_selection,
     mobile_internship_student,
     teacher_mobile_internship,
@@ -32,6 +33,7 @@ from app.modules.internship.routers import (
     internship_enterprise_collaboration,
     internship_enterprise_eval_versioned,
     internship_enterprise_portal,
+    internship_enterprise_member_admin,
     internship_formal_document,
     internship_guardian_consent_delivery,
     internship_insurance,
@@ -91,6 +93,7 @@ def build_staff_internship_router() -> APIRouter:
         internship_enterprise_eval_versioned,
         internship_formal_document,
         internship_recruitment_campaign,
+        internship_enterprise_member_admin,
         internship_regulatory_reporting,
         internship_score_appeal,
     ):
@@ -103,7 +106,12 @@ def build_staff_internship_router() -> APIRouter:
 
 from app.api.v1 import standalone_files
 
+from app.api.v1 import org_directory
+from app.api.v1 import system_admin
+
 api_router = APIRouter()
+api_router.include_router(system_admin.router)
+api_router.include_router(org_directory.router)
 api_router.include_router(standalone_files.router)
 api_router.include_router(standalone_browser_auth.router)
 api_router.include_router(standalone_mobile_auth.router)
@@ -140,6 +148,14 @@ def build_student_portal_router() -> APIRouter:
 def build_teacher_mobile_router() -> APIRouter:
     """Teacher mini-program surface; keep staff identity and internship module gates server-side."""
     router = APIRouter()
+    router.include_router(
+        mobile_internship_leave_context.router,
+        dependencies=[Depends(require_staff)],
+    )
+    router.include_router(
+        mobile_internship_context.review_router,
+        dependencies=[Depends(require_staff)],
+    )
     router.include_router(
         mobile_internship_context.router,
         dependencies=[Depends(require_staff)],

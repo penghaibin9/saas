@@ -13,9 +13,6 @@ const statuses = [
   { value: 'PENDING', label: '待学校处理' }, { value: 'NEEDS_REVISION', label: '已退回' },
   { value: 'APPROVED', label: '已确认' }, { value: 'ALL', label: '全部记录' }
 ]
-const labels = { DRAFT: '学生草稿', SUBMITTED: '已投递', LOCKED: '企业拟接收', NEEDS_REVISION: '待学生补正', APPROVED: '岗位已确认', CLOSED: '已关闭' }
-const decisions = { PENDING: '待企业处理', INTERESTED: '企业感兴趣', INTERVIEW: '邀请面试', ACCEPT_INTENT: '拟接收', REJECTED: '不合适' }
-const effects = computed(() => ({ ACTIVE: detail.value?.status === 'NEEDS_REVISION' ? '退回前的企业意见' : '当前有效', EXPIRED: '已过期', SUPERSEDED: '已失效', CONSUMED: '学校已确认' }))
 const batchId = computed(() => String(route.query.batchId || ''))
 const campaignId = computed(() => String(route.query.campaignId || ''))
 const groupId = computed(() => String(route.params.groupId || ''))
@@ -95,7 +92,7 @@ function date(value) {
 function stateLabel(row) {
   if (row.lockExpired) return '确认已超时'
   if (row.status === 'LOCKED' && row.unlockRequestedAt) return '学生申请改志愿'
-  return labels[row.status] || row.status
+  return row.statusLabel || '状态待确认'
 }
 function navigate(changes = {}, id = '') {
   return router.push({ path: id ? `${BASE}/${encodeURIComponent(id)}` : BASE, query: { ...route.query, ...changes, section: undefined } })
@@ -215,14 +212,14 @@ onBeforeUnmount(() => { alive = false; contextRequest++; dataRequest++ })
           <div v-if="detail.status === 'APPROVED'" class="vw-result"><div><strong>已确定：{{ detail.enterpriseName }} · {{ detail.positionName }}</strong><p>岗位确认于 {{ date(detail.approvedAt) }}。协议、保险及上岗核验另行办理。</p></div><RouterLink v-if="studentRecordLocation" class="vw-next" :to="studentRecordLocation">继续实习安排</RouterLink></div>
           <nav class="vw-detail-nav" aria-label="志愿详情内容"><button v-for="section in [{id:'choices',label:'志愿与企业处理'},{id:'materials',label:'本次投递材料'},{id:'history',label:'企业决定历史'}]" :key="section.id" :class="{ active: selectedSection === section.id }" :aria-pressed="selectedSection === section.id" @click="changeSection(section.id)">{{ section.label }}</button></nav>
           <section v-if="selectedSection === 'choices'" class="vw-choices" aria-label="本次志愿">
-            <article v-for="choice in detail.volunteers" :key="choice.id" class="vw-choice"><div class="vw-rank">{{ choice.volunteerNo }}<small>志愿</small></div><div class="vw-choice-body"><div class="vw-choice-heading"><div><h2>{{ choice.positionName }}</h2><p>{{ choice.companyName || '企业信息未提供' }}</p></div><span class="vw-status">{{ decisions[choice.enterpriseDecision?.status] || '待企业处理' }}</span></div><p class="vw-statement">{{ choice.applicationStatement || '未填写岗位申请说明' }}</p><div class="vw-choice-meta"><span>{{ choice.currentSubmission ? '对应本次投递材料' : '不属于当前投递材料版本' }}</span><span v-if="choice.enterpriseDecision">{{ effects[choice.enterpriseDecision.effectStatus] || choice.enterpriseDecision.effectStatus }}</span></div><div v-if="choice.enterpriseDecision?.reason" class="vw-decision-note">企业意见：{{ choice.enterpriseDecision.reason }}</div></div></article>
+            <article v-for="choice in detail.volunteers" :key="choice.id" class="vw-choice"><div class="vw-rank">{{ choice.volunteerNo }}<small>志愿</small></div><div class="vw-choice-body"><div class="vw-choice-heading"><div><h2>{{ choice.positionName }}</h2><p>{{ choice.companyName || '企业信息未提供' }}</p></div><span class="vw-status">{{ choice.enterpriseDecision?.statusLabel || '待企业处理' }}</span></div><p class="vw-statement">{{ choice.applicationStatement || '未填写岗位申请说明' }}</p><div class="vw-choice-meta"><span>{{ choice.currentSubmission ? '对应本次投递材料' : '不属于当前投递材料版本' }}</span><span v-if="choice.enterpriseDecision">{{ choice.enterpriseDecision.effectLabel }}</span></div><div v-if="choice.enterpriseDecision?.reason" class="vw-decision-note">企业意见：{{ choice.enterpriseDecision.reason }}</div></div></article>
             <div v-if="!detail.volunteers.length" class="vw-state">没有可读取的志愿记录。</div>
           </section>
           <section v-else-if="selectedSection === 'materials'" class="vw-material">
             <template v-if="detail.material"><header><h2>第 {{ detail.material.submissionVersion }} 次投递材料</h2><p>材料在投递时保存，学生后续修改个人档案不会覆盖此版本。</p></header><dl class="vw-facts"><div><dt>专业</dt><dd>{{ schoolFacts.majorName || '未提供' }}</dd></div><div><dt>班级</dt><dd>{{ schoolFacts.className || '未提供' }}</dd></div><div><dt>投递时间</dt><dd>{{ date(detail.submittedAt) }}</dd></div></dl><h3>个人介绍</h3><p class="vw-statement">{{ profile.selfIntro || profile.summary || '本次材料未填写个人介绍' }}</p><article v-for="(item, index) in materialItems" :key="item.id || index" class="vw-material-item"><h3>{{ item.title || item.name || '经历与成果' }}</h3><p class="vw-statement">{{ item.description || item.content || '未填写说明' }}</p></article><h3>投递附件</h3><AppFilePreview v-if="files.length" :files="files" @download="download" /><p v-else>本次投递没有附件。</p><p v-if="downloadError" class="vw-error" role="alert">{{ downloadError }}</p></template>
             <div v-else class="vw-state">未找到当前投递版本的材料，请核对记录后再处理。</div>
           </section>
-          <section v-else class="vw-history"><h2>企业决定历史</h2><p>不同投递版本的企业决定分别保留，请以当前投递材料为准。</p><ol v-if="detail.decisionHistory.length"><li v-for="item in detail.decisionHistory" :key="item.id"><div><strong>{{ decisions[item.status] || item.status }}</strong><span>{{ effects[item.effectStatus] || item.effectStatus }}</span></div><small>第 {{ item.submissionVersion }} 次投递 · {{ date(item.decidedAt) }}</small><p v-if="item.reason">{{ item.reason }}</p></li></ol><div v-else class="vw-empty">暂无企业处理记录。</div></section>
+          <section v-else class="vw-history"><h2>企业决定历史</h2><p>不同投递版本的企业决定分别保留，请以当前投递材料为准。</p><ol v-if="detail.decisionHistory.length"><li v-for="item in detail.decisionHistory" :key="item.id"><div><strong>{{ item.statusLabel }}</strong><span>{{ item.effectLabel }}</span></div><small>第 {{ item.submissionVersion }} 次投递 · {{ date(item.decidedAt) }}</small><p v-if="item.reason">{{ item.reason }}</p></li></ol><div v-else class="vw-empty">暂无企业处理记录。</div></section>
           <section v-if="canHandle" class="vw-handling" aria-label="学校办理">
             <div><h2>学校办理</h2><p>确认前核对岗位、当前投递材料与企业意见。岗位确定后，继续办理协议及上岗核验。</p></div>
             <label class="vw-target">确认岗位

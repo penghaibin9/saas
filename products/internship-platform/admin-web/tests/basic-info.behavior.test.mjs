@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 import { normalizeUiError } from '../src/utils/presentationSafety.js'
+import { compile, createSSRApp, h } from 'vue'
+import { renderToString } from '@vue/server-renderer'
 const batch='9007199254740993101',record='9007199254740993102'
 const row=(version=0)=>({name:'合成学生',studentNo:'SYN-001',sourceRegion:'湖南省 益阳市',nation:'汉族',gender:'男',version,complete:true,missingFields:[],todoCount:0,statusLabel:'已完善'})
 const ok=data=>({code:0,data})
@@ -15,8 +17,20 @@ function page(overrides={}){
   const emitted=[];const vm={...component.data(),visible:true,canManage:true,recordId:record,batchId:batch,$emit:(...args)=>emitted.push(args)}
   for(const [key,fn] of Object.entries(component.methods))vm[key]=(...args)=>fn.apply(vm,args)
   for(const [key,fn] of Object.entries(component.computed))Object.defineProperty(vm,key,{get:()=>fn.call(vm)})
-  return {vm,api,emitted}
+  return {vm,api,emitted,component}
 }
+
+test('普通教师基础资料只读为正文，学校经办仍可编辑',async()=>{
+  const p=page();await p.vm.load();p.vm.canManage=false
+  const source=fs.readFileSync(new URL('../src/modules/internship/components/StudentBasicInfoEditor.vue',import.meta.url),'utf8')
+  const template=source.slice(10,source.indexOf('\n<script>')).replace(/<\/template>\s*$/,'')
+  const components=Object.fromEntries(Object.keys(p.component.components).map(name=>[name,{setup:(_p,{slots})=>()=>h('section',slots.default?.())}]))
+  for(const name of ['AppInput','AppSelect','AppChinaRegionPicker'])components[name]={render:()=>h('input')}
+  const render=()=>renderToString(createSSRApp({components,setup:()=>Object.defineProperties({},Object.getOwnPropertyDescriptors(p.vm)),render:compile(template)}))
+  let html=await render();for(const value of ['湖南省 益阳市','汉族','男','当前仅可查看'])assert.ok(html.includes(value))
+  assert.doesNotMatch(html,/<input|保存基础资料/)
+  p.vm.canManage=true;html=await render();assert.match(html,/<input/);assert.ok(html.includes('保存基础资料'))
+})
 test('学校编辑按原大编号和主档版本保存，成功回执保留',async()=>{
   let sent;const p=page({saveBasicInfo:async(...args)=>{sent=args;return ok(row(1))}});await p.vm.load();p.vm.form.sourceRegion='湖北省 武汉市';p.vm.markDirty();await p.vm.save()
   assert.deepEqual(sent,[record,batch,{sourceRegion:'湖北省 武汉市',nation:'汉族',gender:'男',expectedVersion:0}]);assert.equal(p.vm.receipt.version,1);assert.equal(p.vm.saving,false);assert.equal(p.emitted[0][0],'saved')
@@ -56,7 +70,7 @@ test('实际导入窗口回调从页面实例取得接口，模板预检确认�
   }
   const source=fs.readFileSync(new URL('../src/modules/internship/views/InternshipStudentListView.vue',import.meta.url),'utf8')
   const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import[^\n]+\n/gm,'').replace('export default','return')
-  const names=['ModulePageShell','ModuleToolbar','DataTable','LoadingState','ErrorState','EmptyState','AppDrawer','AppSensitiveText','AppStatusTag','AppExportButton','AppTextarea','AppInternshipCandidateStudentPicker','AppInternshipAdvisorPicker','AppExcelImportDrawer','TableActionColumn','StudentBasicInfoEditor','STUDENT_STATUS','ELIGIBILITY_STATUS','DESTINATION_TYPE','internStudentApi']
+  const names=['ModulePageShell','ModuleToolbar','DataTable','LoadingState','ErrorState','EmptyState','AppDrawer','AppSensitiveText','AppStatusTag','AppExportButton','AppTextarea','AppInternshipCandidateStudentPicker','AppInternshipAdvisorPicker','AppExcelImportDrawer','TableActionColumn','StudentBasicInfoEditor','ActionReceipt','STUDENT_STATUS','ELIGIBILITY_STATUS','DESTINATION_TYPE','internStudentApi','AdvancedFilter','RISK_LEVEL']
   const component=new Function(...names,script)(...names.map(name=>name==='internStudentApi'?api:name.endsWith('STATUS')||name==='DESTINATION_TYPE'?[]:{}))
   const scope={...component.data(),batchStore:{selectedBatchId:batch}}
   const expressions={}

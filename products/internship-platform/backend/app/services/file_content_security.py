@@ -180,7 +180,13 @@ def _validate_common(*, ext: str, declared_content_type: str | None, sniffed: st
     if declared and allowed and declared not in allowed and declared != "application/octet-stream":
         if sniffed and declared.split("/", 1)[0] != sniffed.split("/", 1)[0]:
             raise AppException("FILE_TYPE_MISMATCH", "声明 Content-Type 与文件内容不一致")
-    return sniffed or (next(iter(allowed)) if allowed else "application/octet-stream")
+    canonical = {
+        "doc": "application/msword", "xls": "application/vnd.ms-excel", "ppt": "application/vnd.ms-powerpoint",
+        "docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pptx": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+    }
+    return canonical.get(ext) or sniffed or (next(iter(allowed)) if allowed else "application/octet-stream")
 
 
 def validate_content(*, filename: str, declared_content_type: str | None, data: bytes,

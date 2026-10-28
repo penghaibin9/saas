@@ -2,6 +2,7 @@
   <ModulePageShell title="实习归档" subtitle="核对缺项与材料安全，确认后归档并留存档案包。"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
+      <AppButton v-if="sourceReturnTo" variant="ghost" :disabled="busy" @click="$router.push(sourceReturnTo)">返回学生档案</AppButton>
       <AppButton v-if="!panel.visible" variant="ghost" @click="goMaterials">材料与证据</AppButton>
       <AppButton v-if="!panel.visible && canBtn('internship.stats.view')" variant="ghost" @click="goStats">实习统计</AppButton>
       <AppExportButton v-if="!panel.visible" :export-fn="exportFn" :has-permission="canBtn('internship.archive.package')">{{ tab === 'student' && onlyIncomplete ? '导出全部状态台账' : '导出归档台账' }}</AppExportButton>
@@ -78,7 +79,7 @@
             <div v-if="keptReason && !cd.visible" class="hint">上次填写的撤销原因：{{ keptReason }}</div>
             <AppButton v-if="actionConflict && !cd.visible" variant="secondary" @click="acknowledgeLatest">已核对最新状态，继续办理</AppButton>
 
-            <div class="sec-t">待补事项</div>
+            <div class="sec-t">{{ panel.data.archived ? '归档材料' : '待补事项' }}</div>
             <div v-if="panel.data.missingActions?.length" class="mat-list">
               <div v-for="m in panel.data.missingActions" :key="m.code" class="mat-row is-miss">
                 <AppStatusTag type="warning" size="sm">待处理</AppStatusTag>
@@ -86,7 +87,7 @@
                 <AppButton variant="ghost" size="sm" @click="goFix(m)">{{ m.actionLabel }}</AppButton>
               </div>
             </div>
-            <div v-else-if="panel.data.archivePassed" class="ready-line"><div><strong>业务材料已满足归档规则</strong><small>提交前仍会重新核验文件安全状态与正式成绩版本</small></div></div>
+            <div v-else-if="panel.data.archivePassed" class="ready-line"><div><strong>{{ panel.data.archived ? '材料已归档' : '材料已齐备，可提交归档' }}</strong></div></div>
 
             <div v-else class="hint">当前归档条件尚未通过，请重新核验后查看缺项。</div>
 
@@ -106,22 +107,23 @@
               <div v-for="file in panel.data.fileVersionSafety.unsafeItems" :key="file.versionId"><strong>{{ file.fileName }}</strong><span>{{ file.statusText || '当前版本安全检查未通过' }}</span></div>
             </div>
             <details v-if="panel.data.materialLabels?.length" class="material-checklist"><summary>查看材料关联清单</summary><div v-for="material in panel.data.materialLabels" :key="material.key"><span>{{ material.label }}</span><AppStatusTag :type="material.present ? 'success' : 'default'" size="sm">{{ material.present ? '已关联' : '未关联' }}</AppStatusTag></div><p class="hint">清单仅说明材料是否关联，是否可归档以当前预检结果为准。</p></details>
-            <div class="sec-t">归档办理</div>
+            <div class="sec-t">归档办理</div><p class="hint">办理顺序：核对缺项 → 确认归档 → 下载留存。提交时会自动检查材料安全；归档后保留当前材料版本。</p>
             <div class="wsp__ops">
               <AppButton variant="ghost" :disabled="busy" @click="goMaterials">查看学生材料</AppButton>
-              <AppPermissionButton v-if="!panel.data.archived" code="internship.archive.execute" :allowed="canBtn('internship.archive.execute')"
+              <AppPermissionButton mode="hide" v-if="!panel.data.archived" code="internship.archive.execute" :allowed="canBtn('internship.archive.execute')"
                 variant="primary" :loading="preflightBusy" :disabled="busy || actionConflict" @click="doArchive(panel.data)">预检并提交归档</AppPermissionButton>
-              <AppPermissionButton v-else code="internship.archive.revoke" :allowed="canBtn('internship.archive.revoke')" variant="ghost" size="sm"
+              <AppPermissionButton mode="hide" v-else code="internship.archive.revoke" :allowed="canBtn('internship.archive.revoke')" variant="ghost" size="sm"
                 :danger="true" :disabled="busy || actionConflict" @click="doRevoke(panel.data)">撤销归档</AppPermissionButton>
               <template v-if="panel.data.archived">
-                <AppPermissionButton v-if="!(pkgFile || panel.data.latestPackage)?.packageId" code="internship.archive.package" :allowed="canBtn('internship.archive.package')"
+                <AppPermissionButton mode="hide" v-if="!(pkgFile || panel.data.latestPackage)?.packageId" code="internship.archive.package" :allowed="canBtn('internship.archive.package')"
                   variant="secondary" size="sm" :loading="pkgBusy" :disabled="busy" @click="buildPackage">生成归档包</AppPermissionButton>
                 <AppButton v-else variant="secondary" size="sm" :loading="pkgBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="downloadPackage">下载归档包（压缩文件）</AppButton>
-                <AppButton v-if="panel.data.latestPackage || pkgFile" variant="ghost" size="sm" :loading="restoreBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="verifyRestore">恢复校验</AppButton>
+                <AppButton v-if="panel.data.latestPackage || pkgFile" variant="ghost" size="sm" :loading="restoreBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="verifyRestore">校验档案包完整性</AppButton>
                 <AppButton variant="ghost" size="sm" :loading="employmentBusy" :disabled="busy || !canBtn('internship.employment.view')" @click="goEmployment">衔接就业</AppButton>
               </template>
             </div>
             <div class="sec-t">正式打印表单</div>
+            <p v-if="panel.data.archived" class="hint">档案已冻结，可下载留存文书；需要更正文书时，请先撤销归档。</p>
             <div class="formal-docs" role="region" aria-label="正式打印表单">
               <div v-if="formalLoading" class="hint">正在读取正式文书版本…</div>
               <div v-for="item in formalRows" :key="item.code" class="formal-doc-row">
@@ -129,7 +131,7 @@
                   <strong>{{ item.label }}</strong>
                   <span>{{ item.hint }}</span>
                   <small v-if="item.document">
-                    已生成第{{ item.document.documentVersion }}版 · {{ item.document.generatedAt || '时间未知' }}
+                    已生成第{{ item.document.documentVersion }}版 · {{ formatDateTime(item.document.generatedAt, '时间未知') }}
                   </small>
                   <small v-else>尚未生成；生成时会重新核对正式业务事实。</small>
                 </div>
@@ -137,9 +139,9 @@
                   {{ item.document ? `第${item.document.documentVersion}版` : '未生成' }}
                 </AppStatusTag>
                 <div class="formal-doc-row__ops">
-                  <AppPermissionButton code="internship.archive.execute" :allowed="canBtn('internship.archive.execute')"
+                  <AppPermissionButton mode="hide" code="internship.archive.execute" :allowed="canBtn('internship.archive.execute')"
                     variant="secondary" size="sm" :loading="formalBusy === item.code"
-                    :disabled="busy && formalBusy !== item.code" @click="generateFormal(item)">
+                    :disabled="panel.data.archived || (busy && formalBusy !== item.code)" @click="generateFormal(item)">
                     {{ item.document ? '核对并更新版本' : '生成便携文档' }}
                   </AppPermissionButton>
                   <AppButton variant="ghost" size="sm" :loading="formalBusy === `download:${item.code}`"
@@ -152,7 +154,7 @@
             </div>
 
             <p v-if="!panel.data.archived" class="hint">归档后可生成档案包，留存冻结的材料清单与扫描件。</p>
-            <p v-else class="hint">“恢复校验”核对包内学生人数、文件数及文件完整性，不会覆盖当前业务数据。</p>
+            <p v-else class="hint">“完整性校验”核对包内学生人数、文件数及文件完整性，不会覆盖当前业务数据。</p>
 
             <details v-if="panel.data.latestPackage || pkgFile" class="tech-details">
               <summary>实施人员使用：归档校验信息</summary>
@@ -178,12 +180,12 @@
           <strong>批次归档包</strong>
           <span>仅当当前数据范围内全部学生已归档时生成；每片最多 20 人，逐片保留独立回执。</span>
         </div>
-        <AppPermissionButton code="internship.archive.package" :allowed="canBtn('internship.archive.package')"
+        <AppPermissionButton mode="hide" code="internship.archive.package" :allowed="canBtn('internship.archive.package')"
           variant="secondary" size="sm" :loading="batchPkgBusy" :disabled="busy || loading || !!error" @click="buildBatchPackage">
           {{ batchPackage?.hasMore ? '生成下一分片' : '生成批次归档包' }}
         </AppPermissionButton>
         <AppButton v-if="batchPackage" variant="ghost" size="sm" :loading="batchPkgBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="downloadBatchPackage">下载当前分片</AppButton>
-        <AppButton v-if="batchPackage" variant="ghost" size="sm" :loading="batchRestoreBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="verifyBatchRestore">恢复校验</AppButton>
+        <AppButton v-if="batchPackage" variant="ghost" size="sm" :loading="batchRestoreBusy" :disabled="busy || !canBtn('internship.archive.package')" @click="verifyBatchRestore">校验档案包完整性</AppButton>
       </div>
       <p v-if="!error" class="hint">汇总使用已提交归档快照；待预检学生尚未计入材料完整人数。</p>
       <DataTable v-if="!error" :columns="aggColumns" :rows="aggRows" row-key="group" :loading="loading">
@@ -213,6 +215,7 @@ import { archiveApi } from '@/modules/internship/api/archive.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { formatDateTime } from '@/utils/dateUtils'
 
 const STUDENT_COLUMNS = [
   { key: 'studentName', title: '学生', width: '175px' },
@@ -264,6 +267,11 @@ export default {
     }
   },
   computed: {
+    sourceReturnTo() {
+      const ref = this.$route.query.returnTo
+      if (typeof ref !== 'string' || !/^\/admin\/internship\/students\/\d+(?:\?|$)/.test(ref)) return ''
+      return new URL(ref, 'https://local.invalid').searchParams.get('batchId') === String(this.batchStore.selectedBatchId) ? ref : ''
+    },
     batchStore() { return useInternshipBatchStore() },
     pagination() { return { page: this.page, pageSize: this.pageSize, total: this.total } },
     aggColumns() {
@@ -287,7 +295,7 @@ export default {
         { label: '完整度', value: `${d.completeness ?? 0}%` },
         { label: '指导教师', value: d.advisorName || '—' },
         { label: '企业', value: d.enterpriseName || '—' },
-        { label: '归档时间', value: d.archived ? (d.archivedAt || '—') : '未归档' }
+        { label: '归档时间', value: d.archived ? formatDateTime(d.archivedAt, '未记录') : '未归档' }
       ]
     },
     formalRows() {
@@ -301,8 +309,8 @@ export default {
         id: i, action: t.action, actionLabel: ({ ARCHIVE_PREFLIGHT: '归档预检', ARCHIVE: '完成归档',
           ARCHIVE_REVOKE: '撤销归档', REVOKE: '撤销归档', BUILD_PACKAGE: '生成档案包',
           PACKAGE_DOWNLOAD: '下载归档包', VERSIONED_PACKAGE: '生成归档包',
-          VERSIONED_BATCH_PACKAGE: '生成批次归档包', ARCHIVE_RESTORE_VERIFIED: '归档包恢复校验',
-          ARCHIVE_BATCH_RESTORE_VERIFIED: '批次归档包恢复校验', MANIFEST_FROZEN: '冻结材料清单',
+          VERSIONED_BATCH_PACKAGE: '生成批次归档包', ARCHIVE_RESTORE_VERIFIED: '归档包完整性校验',
+          ARCHIVE_BATCH_RESTORE_VERIFIED: '批次归档包完整性校验', MANIFEST_FROZEN: '冻结材料清单',
           MANIFEST_REVOKED: '撤销材料清单' })[t.action] || '归档办理记录', actor: t.operator,
         reason: t.detail && (t.detail.reason || t.detail.note || ''), at: t.occurredAt
       }))
@@ -330,6 +338,7 @@ export default {
     ctx: { deep: true, handler() { this.viewEpoch++; this.resetPanel(); this.batchPackage = null; this.lastReceipt = null; this.load(); this.syncDetail() } }
   },
   methods: {
+    formatDateTime,
     canBtn(code) { return canCode(this.ctx, code) },
     goMaterials() { if (!this.busy) this.$router.push({ path: '/admin/internship/material-center', query: this.batchStore.withBatchQuery({ id: this.panel.data ? this.panel.rowId : undefined, keyword: this.keyword || undefined }) }) },
     goStats() { this.$router.push({ path: '/admin/internship/stats', query: this.batchStore.withBatchQuery() }) },
@@ -419,6 +428,14 @@ export default {
     },
     goFix(item) {
       if (this.busy || !this.panel.data || !item?.path?.startsWith('/admin/internship/')) return
+      const recordId = this.panel.rowId, returnTo = this.$route.fullPath
+      const fixed = {
+        eligibility: { path: `/admin/internship/students/${recordId}`, query: { section: 'eligibility' } },
+        advisor: { path: '/admin/internship/students', query: { panel: 'mentor', advisorId: recordId } },
+        visit: { path: '/admin/internship/guidance', query: { panel: 'visit', keyword: this.panel.data.studentNo } },
+        openIncident: { path: '/admin/internship/compliance', query: { tab: 'incidents', internshipId: recordId } }
+      }[item.code]
+      if (fixed) return this.$router.push({ path: fixed.path, query: this.batchStore.withBatchQuery({ ...fixed.query, returnTo }) })
       const target = new URL(item.path, 'http://local.invalid')
       const pathMap = { '/admin/internship/insurances': '/admin/internship/insurance', '/admin/internship/process-reports': '/admin/internship/reports', '/admin/internship/visits': '/admin/internship/guidance' }
       let path = pathMap[target.pathname] || target.pathname
@@ -433,7 +450,6 @@ export default {
         query.tab = tabs[query.panel] || 'overview'; delete query.panel
       } else if (path === '/admin/internship/enterprises') query.keyword = this.panel.data.enterpriseName || undefined
       else if (path !== '/admin/internship/positions') query.keyword = this.panel.data.studentName
-      if (item.code === 'visit') query.view = 'visit'
       this.$router.push({ path, query: this.batchStore.withBatchQuery(query) })
     },
     acknowledgeLatest() {
@@ -462,7 +478,7 @@ export default {
         id, version: data.recordVersion,
         status: data.preflightReceipt?.status,
         statusLabel: data.canArchive ? '预检通过' : '预检阻断',
-        auditText: `规则 ${data.ruleVersion} · FileVersion ${data.fileVersionSafety?.ready || 0}/${data.fileVersionSafety?.total || 0} 安全可用`,
+        auditText: `材料版本 ${data.fileVersionSafety?.ready || 0}/${data.fileVersionSafety?.total || 0} 安全可用`,
         nextStep: data.canArchive ? '确认后提交归档；服务端会再次核验' : '按“去哪补”逐项处理后重新预检'
       }
       return data
@@ -537,7 +553,7 @@ export default {
         auditText: p.kind === 'archive'
           ? `材料清单第${receipt.manifestRevision}版 · ${receipt.fileVersionCount} 个文件版本`
           : `已失效档案包 ${receipt.invalidatedPackageCount || 0} 个、材料清单 ${receipt.revokedManifestCount || 0} 份`,
-        nextStep: p.kind === 'archive' ? '可生成单生归档包并执行恢复校验' : '修正材料后重新预检'
+        nextStep: p.kind === 'archive' ? '可生成单生归档包并执行完整性校验' : '修正材料后重新预检'
       }
       this.cd.visible = false; this.pending = null; this.keptReason = ''; toast.success('操作成功，已写审计')
       await this.load()
@@ -562,7 +578,7 @@ export default {
         id: receipt.packageId || res.data.packageId, version: receipt.packageVersion || res.data.packageVersion,
         status: receipt.status || 'COMMITTED', statusLabel: '档案包就绪',
         auditText: `依据已冻结材料清单第${res.data.manifestRevision}版生成，文件完整性已核对`,
-        nextStep: '下载留存，或执行恢复校验验证行数与哈希'
+        nextStep: '下载留存，或执行完整性校验核对数量与文件完整性'
       }
       toast.success('归档包已生成，可下载')
       return res.data
@@ -589,16 +605,16 @@ export default {
       const res = await archiveApi.verifyRestore(pkg.packageId)
       if (key !== this.workspaceKey) return
       this.restoreBusy = false
-      if (res.code !== 0) return toast.error(res.message || '恢复校验失败')
+      if (res.code !== 0) return toast.error(res.message || '完整性校验失败')
       const receipt = res.data?.operationReceipt || {}
       this.lastReceipt = {
-        actionLabel: '恢复校验', objectLabel: '档案包可用于受控恢复',
+        actionLabel: '完整性校验', objectLabel: '档案包可用于受控恢复',
         id: receipt.packageId, version: res.data.packageVersion,
-        status: receipt.status || 'VERIFIED', statusLabel: '行数与哈希一致',
+        status: receipt.status || 'VERIFIED', statusLabel: '数量与文件完整性一致',
         auditText: `${receipt.rowCount} 名学生 · ${receipt.fileCount} 个文件 · 完整性核对一致`,
         nextStep: '校验仅验证可恢复性，未覆盖当前业务数据'
       }
-      toast.success('恢复校验通过，行数与哈希一致')
+      toast.success('完整性校验通过，数量与文件完整性一致')
     },
     async buildBatchPackage() {
       if (this.busy || this.loading || this.error || !this.canBtn('internship.archive.package')) return
@@ -618,7 +634,7 @@ export default {
         id: receipt.packageId, version: receipt.packageVersion,
         status: receipt.status || 'COMMITTED', statusLabel: '当前分片就绪',
         auditText: '当前分片的文件完整性已核对，校验值可在实施记录中查验',
-        nextStep: res.data.hasMore ? '先下载并恢复校验当前分片，再生成下一分片' : '批次全部分片已生成，可下载留存并恢复校验'
+        nextStep: res.data.hasMore ? '先下载并完整性校验当前分片，再生成下一分片' : '批次全部分片已生成，可下载留存并完整性校验'
       }
       toast.success(res.data.hasMore ? '当前分片已生成，批次仍有下一分片' : '批次归档包已生成完毕')
     },
@@ -644,16 +660,16 @@ export default {
       const res = await archiveApi.verifyRestore(pkg.packageId)
       if (key !== this.scopeKey) return
       this.batchRestoreBusy = false
-      if (res.code !== 0) return toast.error(res.message || '批次恢复校验失败')
+      if (res.code !== 0) return toast.error(res.message || '批次完整性校验失败')
       const receipt = res.data?.operationReceipt || {}
       this.lastReceipt = {
-        actionLabel: '批次恢复校验', objectLabel: '当前批次分片可用于受控恢复',
+        actionLabel: '批次完整性校验', objectLabel: '当前批次分片可用于受控恢复',
         id: receipt.packageId, version: res.data.packageVersion,
-        status: receipt.status || 'VERIFIED', statusLabel: '行数与哈希一致',
+        status: receipt.status || 'VERIFIED', statusLabel: '数量与文件完整性一致',
         auditText: `${receipt.rowCount} 名学生 · ${receipt.fileCount} 个文件 · 完整性核对一致`,
         nextStep: pkg.hasMore ? '可生成下一分片；校验未覆盖当前业务数据' : '全部分片均应分别留存校验回执'
       }
-      toast.success('批次分片恢复校验通过')
+      toast.success('批次分片完整性校验通过')
     },
     async loadFormalDocuments(expectedKey = this.workspaceKey) {
       const id = this.panel.data?.id
@@ -687,7 +703,7 @@ export default {
       if (key !== this.workspaceKey) return
       this.formalBusy = ''
       const version = res.data?.documentVersion
-      toast.success(res.data?.reused ? `${item.label}事实未变化，沿用 V${version}` : `${item.label} V${version} 已生成`)
+      toast.success(res.data?.reused ? `${item.label}事实未变化，沿用第${version}版` : `${item.label}第${version}版已生成`)
     },
     async downloadFormal(item) {
       const doc = this.formalDocs.find((row) => row.documentType === item.code && row.status === 'GENERATED')

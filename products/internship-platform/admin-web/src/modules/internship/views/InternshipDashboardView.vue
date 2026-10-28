@@ -35,7 +35,7 @@
         <div class="mp-card__head idb-today__head">
           <div>
             <span class="mp-card__title">优先待办 · {{ workItemTotal }} 项</span>
-            <p>汇集风险、考勤异常与周报，最多显示 {{ hero.workItemLimit || 8 }} 项；其他事项从上方流程入口办理。</p>
+            <p>汇集风险、考勤异常、报告、请假与返岗确认，最多显示 {{ hero.workItemLimit || 8 }} 项；其他事项从上方流程入口办理。</p>
           </div>
           <button type="button" class="mp-link" :disabled="loading" @click="load">刷新待办</button>
         </div>
@@ -44,7 +44,7 @@
           <RouterLink v-if="activeQueue" :to="withInternshipBatch(activeQueue.path, batchStore.selectedBatchId)">查看{{ activeQueue.label }}全部记录 →</RouterLink>
         </nav>
         <div class="mp-card__body idb-work-list">
-          <div v-if="!workItems.length" class="idb-empty" role="status"><h3>{{ workFilter ? '优先事项中没有此类待办' : '暂无风险、考勤异常或周报待办' }}</h3><p>可切换待办类型；名单资格、协议与上岗核验等事项，请从上方对应流程进入。</p></div>
+          <div v-if="!workItems.length" class="idb-empty" role="status"><h3>{{ workFilter ? '优先事项中没有此类待办' : '暂无风险、考勤、报告、请假或返岗待办' }}</h3><p>可切换待办类型；名单资格、协议与上岗核验等事项，请从上方对应流程进入。</p></div>
           <article v-for="item in workItems" :key="item.id" class="idb-work" :class="`is-${item.tone || 'warning'}`">
             <header class="idb-work__header">
               <div>
@@ -67,7 +67,7 @@
         </div>
       </section>
 
-      <div class="mp-grid-2 idb-afterwork">
+      <div class="idb-afterwork">
         <section class="mp-card">
           <div class="mp-card__head">
             <span class="mp-card__title">开放风险摘要</span>
@@ -86,14 +86,6 @@
             </ul>
           </div>
         </section>
-        <section class="mp-card idb-queue-note">
-          <div class="mp-card__head"><span class="mp-card__title">办理提示</span></div>
-          <div class="mp-card__body">
-            <p><strong>一个对象，一次判断。</strong>进入周报或考勤详情后，队列会保留同类对象顺序。</p>
-            <p>处理成功自动给出下一条；版本冲突会停在当前对象，保留输入并要求刷新事实。</p>
-            <p>调岗、退岗或事故发生后，从“风险与变更”跟进；符合条件后，再回到实习过程继续办理。</p>
-          </div>
-        </section>
       </div>
 
     </div>
@@ -110,6 +102,7 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
 import { internshipWorkspaces, withInternshipBatch } from '../navigation.js'
 import { matchPermission } from '@/config/navPlan'
+import { workRoute, REQUIRED_PERMISSIONS } from '../components/command-screen/screen-core.mjs'
 
 const PANEL_ANCHORS = {
   todos: 'idb-todos'
@@ -137,13 +130,18 @@ export default {
     },
     workItems() { return this.allWorkItems.filter((item) => !this.workFilter || item.kind === this.workFilter) },
     workKinds() {
-      return [{ value: '', label: '全部' }, { value: 'RISK', label: '风险处置' }, { value: 'ATTENDANCE_EXCEPTION', label: '考勤异常' }, { value: 'WEEKLY_REPORT', label: '报告批阅' }].map((item) => ({ ...item, count: this.allWorkItems.filter((row) => !item.value || row.kind === item.value).length }))
+      return [{ value: '', label: '全部' }, { value: 'RISK', label: '风险处置' }, { value: 'ATTENDANCE_EXCEPTION', label: '考勤异常' }, { value: 'WEEKLY_REPORT', label: '周报批阅' }, {value:'DAILY_REPORT',label:'日报批阅'}, {value:'MONTHLY_REPORT',label:'月报批阅'}, {value:'SUMMARY_REPORT',label:'总结批阅'}, { value: 'LEAVE_REVIEW', label: '请假审批' }, { value: 'LEAVE_RETURN', label: '返岗确认' }].map((item) => ({ ...item, count: this.allWorkItems.filter((row) => !item.value || row.kind === item.value).length }))
     },
     activeQueue() {
       const map = {
         RISK: { label: '风险', path: '/admin/internship/risk-disposal?stage=pending', permission: 'internship.risk.handle' },
         ATTENDANCE_EXCEPTION: { label: '考勤异常', path: '/admin/internship/exceptions?status=PENDING_HANDLE', permission: 'internship.attendance.view' },
-        WEEKLY_REPORT: { label: '报告', path: '/admin/internship/reports?panel=review', permission: 'internship.report.view' }
+        DAILY_REPORT: {label:'日报',path:'/admin/internship/reports?type=daily&panel=review',permission:'internship.report.view'},
+        MONTHLY_REPORT: {label:'月报',path:'/admin/internship/reports?type=monthly&panel=review',permission:'internship.report.view'},
+        SUMMARY_REPORT: {label:'实习总结',path:'/admin/internship/reports?type=summary&panel=review',permission:'internship.report.view'},
+        WEEKLY_REPORT: { label: '周报', path: '/admin/internship/reports?panel=review', permission: 'internship.report.view' },
+        LEAVE_REVIEW: { label: '请假', path: '/admin/internship/leaves?panel=pending', permission: 'internship.leave.view' },
+        LEAVE_RETURN: { label: '返岗', path: '/admin/internship/leaves?panel=return', permission: 'internship.leave.view' }
       }
       const queue = map[this.workFilter]
       return queue && this.canOpen(queue.permission) ? queue : null
@@ -180,24 +178,27 @@ export default {
   beforeUnmount() { this.loadTicket++ },
   methods: {
     withInternshipBatch,
-    canOpen(code) { return matchPermission(this.ctx.permissionPatterns, code) },
+    canOpen(code) { return this.ctx.moduleAccessHealthy !== false && !this.ctx.permissionServiceError && matchPermission(this.ctx.permissionPatterns, code) },
     workKindLabel(kind) {
-      return ({ RISK: '开放风险', ATTENDANCE_EXCEPTION: '考勤异常', WEEKLY_REPORT: '过程报告' })[kind] || '待办对象'
+      return ({ RISK: '开放风险', ATTENDANCE_EXCEPTION: '考勤异常', WEEKLY_REPORT: '周报', DAILY_REPORT:'日报', MONTHLY_REPORT:'月报', SUMMARY_REPORT:'实习总结', LEAVE_REVIEW: '请假待审批', LEAVE_RETURN: '返岗待确认' })[kind] || '待办对象'
     },
     openWorkItem(item) {
       if (this.loading || this.error || this.needsBatch || !this.allWorkItems.includes(item)) return
-      const queueKind = ({ WEEKLY_REPORT: 'weekly-report', ATTENDANCE_EXCEPTION: 'attendance-exception' })[item.kind]
+      const route = workRoute(item, { batchId: this.batchStore.selectedBatchId,
+        grants: Object.fromEntries(REQUIRED_PERMISSIONS.map(code => [code, this.canOpen(code)])) })
+      if (!route) return
+      const queueKind = ({ WEEKLY_REPORT: 'weekly-report', DAILY_REPORT:'process-report', MONTHLY_REPORT:'process-report', SUMMARY_REPORT:'process-report', ATTENDANCE_EXCEPTION: 'attendance-exception' })[item.kind]
       if (queueKind) {
         const peers = this.workItems.filter((row) => row.kind === item.kind).map((row) => row.objectId)
         saveReviewQueue({
           kind: queueKind,
-          title: item.kind === 'WEEKLY_REPORT' ? '今日待批阅周报' : '今日待核实异常',
+          title: item.kind.endsWith('_REPORT') ? '今日待批阅'+this.workKindLabel(item.kind) : '今日待核实异常',
           listPath: '/admin/internship',
           listQuery: this.batchStore.withBatchQuery({ panel: 'todos' }),
           ids: peers
         })
       }
-      this.goWithBatch(item.route)
+      this.goWithBatch(route)
     },
     goWithBatch(path) {
       if (path) this.$router.push(withInternshipBatch(path, this.batchStore.selectedBatchId))

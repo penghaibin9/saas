@@ -98,6 +98,16 @@
 .btn-ghost { background: var(--bg-card); color: var(--brand-primary); border: 1px solid var(--brand-primary); }
 .btn-block { display: flex; width: 100%; }
 
+/* Registered mobile pages share touch targets while retaining their business layouts. */
+.mobile-page { --text-tertiary:var(--gray-500); overflow-wrap:anywhere; }
+.mobile-teacher,.mobile-shared.is-teacher { --brand-primary:var(--teacher-600); --brand-primary-strong:var(--teacher-700); --text-link:var(--teacher-700); --primary-50:var(--teacher-50); --primary-500:var(--teacher-500); --primary-600:var(--teacher-600); --primary-700:var(--teacher-700); }
+.mobile-control { min-height:var(--touch-target-min) !important; min-width:var(--touch-target-min); box-sizing:border-box; white-space:normal; overflow-wrap:anywhere; }
+.mobile-input { min-height:var(--touch-target-min) !important; min-width:0; max-width:100%; box-sizing:border-box; font-size:var(--font-size-md) !important; }
+.mobile-textarea { box-sizing:border-box; max-width:100%; font-size:var(--font-size-md) !important; line-height:1.7; }
+.mobile-picker { min-height:var(--touch-target-min); min-width:0; max-width:100%; display:block; }
+.mobile-picker>view { width:100%; box-sizing:border-box; }
+.mobile-control:focus-visible,.mobile-input:focus-visible,.mobile-textarea:focus-visible { outline:2px solid var(--brand-primary); outline-offset:2px; }
+
 /* 徽标数字 */
 .badge-dot {
   min-width: 18px;

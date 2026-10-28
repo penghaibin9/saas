@@ -16,7 +16,7 @@ from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, no_permission, not_found
-from app.models import EmpCompany, InternshipAuditTrail, InternshipEnterpriseContact, InternshipPosition
+from app.models import EmpCompany, InternshipAuditTrail, InternshipBatch, InternshipEnterpriseContact, InternshipPosition
 from app.models.internship_enterprise_portal import (
     InternshipCampaignEnterprise,
     InternshipEnterpriseAccessGrant,
@@ -275,6 +275,17 @@ def campaigns_for_principal_in_tx(db, *, principal) -> list[dict]:
             "recruitmentAvailable": participation.status == "ACCEPTED" and status == "ACTIVE",
             "collaborationAvailable": bool(collab and effective_grant_status(collab, now=now) == "ACTIVE"),
         })
+    campaign_batches = {campaign.batch_id for _, campaign in rows}
+    batch_ids = {grant.batch_id for grant in grants if grant.grant_type == 'INTERNSHIP_COLLAB'
+                 and grant.batch_id and grant.batch_id not in campaign_batches
+                 and effective_grant_status(grant, now=now) == 'ACTIVE'}
+    if batch_ids:
+        batches = db.scalars(select(InternshipBatch).where(
+            InternshipBatch.tenant_id == principal.tenant_id, InternshipBatch.id.in_(batch_ids),
+            InternshipBatch.is_deleted.is_(False)).order_by(InternshipBatch.id.desc())).all()
+        result.extend({'id':'batch:'+str(batch.id), 'scopeType':'BATCH', 'campaignId':None,
+            'batchId':str(batch.id), 'name':batch.batch_name, 'status':batch.status,
+            'recruitmentAvailable':False, 'collaborationAvailable':True} for batch in batches)
     return result
 
 

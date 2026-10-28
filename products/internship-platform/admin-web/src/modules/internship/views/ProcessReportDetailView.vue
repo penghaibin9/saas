@@ -19,11 +19,11 @@
     <div v-else class="mp-grid-2">
       <section class="mp-card">
         <div class="mp-card__head">
-          <span class="mp-card__title">{{ detail.reportTypeLabel }} · {{ detail.periodKey }}</span>
+          <span class="mp-card__title">{{ detail.reportTypeLabel }}<template v-if="detail.reportType !== 'SUMMARY'"> · {{ detail.periodLabel || detail.periodKey }}</template></span>
           <AppStatusTag :status="detail.status">{{ detail.statusLabel }}</AppStatusTag>
         </div>
         <div class="mp-card__body">
-          <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ detail.submitAt }} · {{ detail.wordCount }} 字</span></div>
+          <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ formatDateTime(detail.submitAt) }} · {{ detail.wordCount }} 字</span></div>
           <div style="margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8; white-space: pre-wrap">{{ detail.content }}</div>
         </div>
       </section>
@@ -45,14 +45,13 @@
                 <div><div class="mp-radio__title">退回修改</div><div class="mp-radio__desc">退回原因必填（≥5 字）</div></div>
               </label>
               <div v-if="action === 'APPROVE'" class="pr-rating">
-                <label for="process-rating">五级评价 <b>*</b></label>
-                <select id="process-rating" v-model="ratingLevel" :disabled="submitting || conflict.active">
+                <label v-if="!isSummary" for="process-rating">五级评价 <b>*</b></label>
+                <select v-if="!isSummary" id="process-rating" v-model="ratingLevel" :disabled="submitting || conflict.active">
                   <option value="">请选择评价等级</option>
                   <option v-for="item in ratingOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
                 </select>
                 <label v-if="isSummary" for="summary-score">总结百分制评分 <b>*</b></label>
                 <input v-if="isSummary" id="summary-score" v-model.trim="summaryScore" type="number" min="0" max="100" step="0.5" placeholder="0～100" :disabled="submitting || conflict.active" />
-                <span>五级评价用于分类统计；实习总结同时记录 0～100 分，均绑定当前提交版本。</span>
               </div>
               <AppTemplateChips class="pr-chips" :options="activeChips" size="compact" @pick="onPickChip" />
               <AppTextarea aria-label="批阅意见" :disabled="submitting || conflict.active" v-model="comment" :rows="4" :placeholder="action === 'RETURN' ? '请写明退回原因…' : '评语（选填）'" />
@@ -62,13 +61,13 @@
               </div>
             </template>
             <AppInlineAlert v-else-if="detail.status === 'PENDING_REVIEW'" type="info" description="当前账号可查看报告，暂无批阅权限。" />
-            <EmptyState v-else :title="'该报告' + (detail.status === 'APPROVED' ? '已通过' : '已退回')" description="批阅结果已同步学生端" />
+            <p v-else>{{ detail.status === 'APPROVED' ? '批阅已通过' : '已退回，待学生修改' }}</p>
             <div v-if="detail.status !== 'PENDING_REVIEW' && latestReview" class="pr-review-result">
               <strong>本版批阅结果</strong>
-              <span>五级评价：{{ latestReview.ratingLevel ? (latestReview.ratingLevel + ' / 5') : '未评分' }}</span>
+              <span v-if="!isSummary">五级评价：{{ latestReview.ratingLevel ? (latestReview.ratingLevel + ' / 5') : '未评分' }}</span>
               <span v-if="latestReview.summaryScore != null">总结评分：{{ latestReview.summaryScore }} / 100</span>
               <span v-if="latestReview.reviewerName">批阅教师：{{ latestReview.reviewerName }}</span>
-              <span v-if="latestReview.reviewedAt">批阅时间：{{ String(latestReview.reviewedAt).replace('T', ' ').slice(0, 19) }}</span>
+              <span v-if="latestReview.reviewedAt">批阅时间：{{ formatDateTime(latestReview.reviewedAt) }}</span>
               <span v-if="latestReview.comment">批阅意见：{{ latestReview.comment }}</span>
             </div>
           </div>
@@ -96,6 +95,7 @@ import ActionReceipt from './components/ActionReceipt.vue'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 import { APPROVE_REPORT_SHORT, REJECT_PROCESS_REPORT } from '@/modules/internship/constants/presetPrompts'
 
 export default {
@@ -122,8 +122,7 @@ export default {
     activeChips() { return this.action === 'RETURN' ? REJECT_PROCESS_REPORT : APPROVE_REPORT_SHORT },
     latestReview() {
       const versions = this.detail?.versions || []
-      const version = versions.find(item => item?.review)
-      return version?.review || null
+      return versions[0]?.review || null
     },
     trailRecords() {
       return (this.detail?.auditTrail || []).map((t, i) => ({
@@ -149,6 +148,7 @@ export default {
   created() { this.load() },
   beforeUnmount() { this.loadEpoch++ },
   methods: {
+    formatDateTime,
     onPickChip(text) {
       if (!text || this.submitting || this.conflict.active) return
       const cur = (this.comment || '').trim()
@@ -172,14 +172,14 @@ export default {
         this.formError = '退回原因必填且不少于 5 字'
         return
       }
-      if (action === 'APPROVE' && ![1, 2, 3, 4, 5].includes(Number(this.ratingLevel))) {
+      if (action === 'APPROVE' && !this.isSummary && ![1, 2, 3, 4, 5].includes(Number(this.ratingLevel))) {
         this.formError = '通过报告时必须选择 1～5 级评价'
         toast.error(this.formError)
         return
       }
       if (action === 'APPROVE' && this.isSummary) {
         const score = Number(this.summaryScore)
-        if (!Number.isFinite(score) || score < 0 || score > 100) {
+        if (!String(this.summaryScore ?? '').trim() || !Number.isFinite(score) || score < 0 || score > 100) {
           this.formError = '通过实习总结时必须填写 0～100 分'
           toast.error(this.formError)
           return
@@ -190,7 +190,7 @@ export default {
       const res = await internshipApi.reviewProcessReport(this.$route.params.id, {
         action,
         comment: this.comment,
-        ratingLevel: action === 'APPROVE' ? Number(this.ratingLevel) : undefined,
+        ratingLevel: action === 'APPROVE' && !this.isSummary ? Number(this.ratingLevel) : undefined,
         summaryScore: action === 'APPROVE' && this.isSummary ? Number(this.summaryScore) : undefined,
         batchId: this.detail?.batchId || this.$route.query.batchId || undefined,
         expectedVersion: this.detail?.version
@@ -201,11 +201,11 @@ export default {
         this.lastReceipt = {
           id: res.data?.id, status: res.data?.status, statusLabel: res.data?.statusLabel,
           version: res.data?.version, actionLabel: action === 'APPROVE' ? '过程报告通过' : '过程报告退回修改',
-          objectLabel: `${this.detail.studentName} · ${this.detail.reportTypeLabel} ${this.detail.periodKey}`,
+          objectLabel: `${this.detail.studentName} · ${this.detail.reportTypeLabel} ${this.detail.periodLabel || (this.detail.reportType === 'SUMMARY' ? '实习总结' : this.detail.periodKey)}`,
           auditText: '报告状态、评语与审批留痕已同事务提交',
           nextStep: action === 'RETURN' ? '等待学生修正后重交' : '可继续批阅队列下一篇'
         }
-        toast.success(this.isSummary ? '批阅完成：五级评价和总结分数已留痕' : '批阅完成：五级评价已留痕')
+        toast.success(this.isSummary ? '批阅完成：总结百分制分数已留痕' : '批阅完成：五级评价已留痕')
         this.ratingLevel = ''
         this.summaryScore = ''
         this.load()
@@ -221,7 +221,7 @@ export default {
           latest: () => {
             if (!this.detail) throw new Error('最新详情未拉回')
             return [
-              { label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' },
+              { label: '最新状态', value: this.detail.statusLabel || '状态待核实' },
               { label: '最新评语', value: this.detail.reviewComment || '' }
             ]
           }

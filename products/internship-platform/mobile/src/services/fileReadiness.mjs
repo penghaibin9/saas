@@ -9,7 +9,7 @@ export function materialSubmissionView(submission) {
   return submission ? {...submission,statusLabel:materialStatusLabel(submission.status),files:(submission.files || []).map(file=>({...file,statusText:scanStatusLabel(file.scanStatus)}))} : null
 }
 export const materialRequirementView = item => ({...item,submission:materialSubmissionView(item.submission)})
-export const allowedFormatText = values => (values || []).map(value=>({pdf:'便携文档',doc:'文字文档',docx:'文字文档',xls:'电子表格',xlsx:'电子表格',jpg:'图片',jpeg:'图片',png:'图片',zip:'压缩文件',mp4:'视频'})[String(value).toLowerCase()] || '学校指定格式').join(' / ') || '学校未限制'
+export const allowedFormatText = values => [...new Set((values || []).map(value=>({pdf:'便携文档',doc:'文字文档',docx:'文字文档',xls:'电子表格',xlsx:'电子表格',jpg:'图片',jpeg:'图片',png:'图片',zip:'压缩文件',rar:'压缩文件',mp4:'视频'})[String(value).toLowerCase()] || '学校指定格式'))].join(' / ') || '学校未限制'
 export function normalizeFileReadiness(file = {}) {
   const status = String(file.status || '').toUpperCase(), scanStatus = String(file.scanStatus || '').toUpperCase()
   const ready = file.readyForBusiness === true && ['AVAILABLE','STORED','CONFIRMED'].includes(status) && ['CLEAN','NOT_REQUIRED'].includes(scanStatus)

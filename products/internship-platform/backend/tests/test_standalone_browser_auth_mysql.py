@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy import delete
+import os
+from sqlalchemy import delete, select
+from sqlalchemy.engine import make_url
 
 from app.core.security import hash_password
 from app.db.session import get_sessionmaker
 from app.main import app
-from app.models import Role, StudentAccountLink, StudentProfile, Tenant, User, UserRole
+from app.models import InternshipBatch, Permission, Role, RolePermission, StudentAccountLink, StudentProfile, Tenant, User, UserRole
 
 
 TENANT_ID = 88001
@@ -18,12 +20,27 @@ MENTOR_ROLE_ID = 88023
 STUDENT_PROFILE_ID = 88031
 
 
+def _allowed_auth_test_target(url, app_env, ci, opted_in):
+    local = url.host in {'127.0.0.1', 'localhost'} and url.port == 3318 and url.database == 'internship_pr275_test_20261003'
+    legacy_ci = ci and app_env == 'ci' and url.host == '127.0.0.1' and url.port == 3306 and url.database == 'internship_auth_gate'
+    release_test = opted_in and app_env == 'test' and url.host == '127.0.0.1' and url.port == 3306 and url.database == 'internship_employment_test_ci'
+    return url.get_backend_name() == 'mysql' and (local or legacy_ci or release_test)
+
+
 def _seed():
+    from app.config import settings
+    from app.core.permissions import ROLE_PERMISSIONS, _matches
+    url = make_url(settings.DATABASE_URL)
+    assert _allowed_auth_test_target(url, settings.APP_ENV, os.environ.get('GITHUB_ACTIONS') == 'true',
+                                    os.environ.get('GAP09_MYSQL_ACCEPTANCE') == '1'), '认证测试仅可使用指定隔离库'
     db = get_sessionmaker()()
     try:
+        existing = db.get(Tenant, TENANT_ID)
+        assert not existing or existing.tenant_code == 'AUTH-GATE', '禁止覆盖其他学校'
         db.execute(delete(StudentAccountLink).where(StudentAccountLink.tenant_id == TENANT_ID))
         db.execute(delete(StudentProfile).where(StudentProfile.tenant_id == TENANT_ID))
         db.execute(delete(UserRole).where(UserRole.tenant_id == TENANT_ID))
+        db.execute(delete(RolePermission).where(RolePermission.tenant_id == TENANT_ID))
         db.execute(delete(Role).where(Role.tenant_id == TENANT_ID))
         db.execute(delete(User).where(User.tenant_id == TENANT_ID))
         db.execute(delete(Tenant).where(Tenant.id == TENANT_ID))
@@ -121,6 +138,16 @@ def _seed():
                 status="ACTIVE",
             ),
         ])
+        db.flush()
+        # Database permissions are authoritative; role names no longer imply grants.
+        permissions = list(db.scalars(select(Permission)))
+        assert any(p.permission_code == 'internship.student.view' for p in permissions)
+        for role in (staff_role, mentor_role, student_role):
+            for permission in permissions:
+                if '*' not in permission.permission_code and any(_matches(pattern, permission.permission_code)
+                    for pattern in ROLE_PERMISSIONS.get(role.role_code, set())):
+                    db.add(RolePermission(tenant_id=TENANT_ID,role_id=role.id,
+                        permission_id=permission.id,status='ACTIVE'))
         db.commit()
     finally:
         db.close()
@@ -180,7 +207,9 @@ def test_staff_browser_login_refresh_me_logout_real_mysql():
         rbac_data = rbac.json()["data"]
         assert rbac_data["currentRole"]["roleCode"] == "SCHOOL_ADMIN"
         assert rbac_data["moduleEntitlements"] == ["internship"]
-        assert "internship.*" in rbac_data["permissionPatterns"]
+        assert "internship.student.view" in rbac_data["permissionPatterns"]
+        assert "internship.batch.manage" in rbac_data["permissionPatterns"]
+        assert not any(p.startswith('system.') for p in rbac_data['permissionPatterns'])
 
         batches = client.get(
             "/api/v1/internship/batches?page=1&pageSize=20",
@@ -188,7 +217,13 @@ def test_staff_browser_login_refresh_me_logout_real_mysql():
         )
         assert batches.status_code == 200, batches.text
         assert batches.json()["code"] == 0
-        assert batches.json()["data"]["total"] == 0
+        with get_sessionmaker()() as db:
+            own_batches = {str(value) for value in db.scalars(select(InternshipBatch.id).where(
+                InternshipBatch.tenant_id == TENANT_ID, InternshipBatch.is_deleted.is_(False)))}
+        result = batches.json()["data"]
+        assert result["total"] == len(own_batches)
+        assert len(result["items"]) == min(20, len(own_batches))
+        assert all(str(row["id"]) in own_batches for row in result["items"])
 
         refreshed = client.post(
             "/api/v1/auth/browser-refresh",

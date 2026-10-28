@@ -1,6 +1,7 @@
 // Explicit page scope travels with each request; never change the user's global batch.
 export function selectionScope(input = {}) {
-  const keys = ['batchId', 'campaignId', 'recordId']
+  const keys = input.campaignId == null && input.recordId == null
+    ? ['batchId'] : ['batchId', 'campaignId', 'recordId']
   if (!keys.some(key => input[key] !== undefined && input[key] !== null && input[key] !== '')) return {}
   const result = {}
   for (const key of keys) {

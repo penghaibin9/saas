@@ -42,7 +42,7 @@ export function getRefreshToken() {
 }
 
 export function commitNewSessionTokens(accessToken, refreshToken) {
-  advanceSessionGeneration()
+  clearTokens()
   setToken(accessToken || '')
   setRefreshToken(refreshToken || '')
   return currentSessionGeneration()
@@ -72,6 +72,9 @@ export function clearTokens() {
   setToken('')
   setRefreshToken('')
   setTeacherGraduationBatch(null)
+  for (const key of ['gx_session_v1', 'gx_internship_context_v1', INTERNSHIP_BATCH_KEY]) {
+    try { uni.removeStorageSync(key) } catch (e) { /* 继续清理其他旧会话缓存 */ }
+  }
 }
 
 export function shouldTryReal() {
@@ -124,6 +127,8 @@ function isPasswordLoginRequest(path, auth) {
 
 function requestErrorMessage(code, bizCode, message, { auth = true, path = '' } = {}) {
   const error = { code, bizCode, biz: true, message }
+  if (['DATA_CONFLICT', 'APPROVAL_VERSION_CONFLICT'].includes(bizCode)) return safeMessageForCode(error, '当前记录已被处理或状态已变化，请刷新后核对')
+  if (bizCode === 'DATA_NOT_FOUND') return safeMessageForCode(error, '数据不存在或已变更')
   if (Number(code) === 400001 || Number(code) === 422001) return safeMessageForCode(error, '填写内容有误，请检查后重试')
   if (Number(code) === 409001) return safeMessageForCode(error, '当前记录已被处理或状态已变化，请刷新后核对')
   if (Number(code) === 404001) return '数据不存在或已变更'
@@ -156,8 +161,9 @@ export function normalizeError(e) {
     const noLicense = e?.bizCode === 'MODULE_NOT_AUTHORIZED' || e?.bizCode === 'MODULE_EXPIRED_READONLY' || /^模块未购买或未授权[：:]/.test(String(e?.message || ''))
     return { kind: 'forbidden', pageState: noLicense ? 'noLicense' : 'forbidden', text: noLicense ? '本校未开通该模块，请联系学校管理员' : '暂无访问权限，请联系学校管理员' }
   }
+  if (e?.bizCode === 'DATA_NOT_FOUND') return { kind: 'notfound', text: safeMessageForCode(e, '数据不存在或已变更') }
   if (code === 404001) return { kind: 'notfound', text: '数据不存在或已变更' }
-  if (code === 409001) return { kind: 'conflict', text: safeMessageForCode(e, '重复提交或状态已变化，请刷新后再试') }
+  if (statuses.includes(409) || ['DATA_CONFLICT', 'APPROVAL_VERSION_CONFLICT'].includes(e?.bizCode || e?.code)) return { kind: 'conflict', text: safeMessageForCode(e, '重复提交或状态已变化，请刷新后再试') }
   if (code === 422001 || code === 400001) return { kind: 'invalid', text: safeMessageForCode(e, '填写内容有误，请检查后重试') }
   if (code === 429001) return { kind: 'ratelimit', text: '操作过于频繁，请稍后再试' }
   return { kind: 'unknown', pageState: 'error', text: '操作失败，请稍后重试' }
@@ -452,7 +458,8 @@ function executeRealRequest(path, effectivePath, {
         // native miniapp runtimes expose the parsed object. Normalize only
         // syntactically valid JSON; malformed/non-JSON bodies still fail closed.
         const body = normalizeJsonResponseBody(res.data)
-        if (body && body.code === 401001 && auth && !_retried && path.split('?')[0] !== '/auth/refresh') {
+        if ((Number(res.statusCode) === 401 || body?.code === 401001 || body?.bizCode === 'UNAUTHORIZED')
+            && auth && !_retried && path.split('?')[0] !== '/auth/refresh') {
           refreshOrReuseCurrentSession(requestSnapshot)
             .then(() => realRequest(path, {
               method, data, auth, _retried: true, _rawPage, headers, _internshipBatchId,
@@ -516,7 +523,9 @@ export function realRequest(path, {
   _internshipBatchId = selectedInternshipBatchId(path)
 } = {}) {
   const normalizedMethod = String(method || 'GET').toUpperCase()
-  const normalizedData = omitAbsentGetParams(data, normalizedMethod)
+  // Role switching consumes the rotating refresh token; an auth retry must use its replacement.
+  const normalizedData = _retried && auth && path.split('?')[0] === '/auth/switch-role'
+    ? { ...data, refreshToken: getRefreshToken() } : omitAbsentGetParams(data, normalizedMethod)
   // H5 access tokens intentionally live in memory only. After F5 the per-tab HttpOnly
   // refresh cookie is still valid, but there is no bearer token to attach to the first
   // business request. Restore the access token before that request instead of relying on
@@ -586,7 +595,8 @@ export function realUpload(path, filePath, {
       timeout: Math.max(ENV.requestTimeout || 10000, 30000),
       success: (res) => {
         const body = parseUnifiedBody(res.data)
-        if (body && body.code === 401001 && auth && !_retried) {
+        if ((Number(res.statusCode) === 401 || body?.code === 401001 || body?.bizCode === 'UNAUTHORIZED')
+            && auth && !_retried) {
           refreshOrReuseCurrentSession(requestSnapshot)
             .then(() => realUpload(path, filePath, {
               name, formData, auth, _retried: true, _expectedGeneration: requestSnapshot.generation

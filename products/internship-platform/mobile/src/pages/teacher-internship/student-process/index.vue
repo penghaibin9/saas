@@ -1,14 +1,14 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="学生过程事实" subtitle="轮岗部门、项目、自评与分项成绩" show-back />
+  <view class="mobile-page mobile-teacher page-wrap teacher-rotations">
+    <MobileNavBar variant="teacher" title="学生轮岗" show-back :fallback-url="recordId && batchId ? '/pages/teacher-internship/internship-students/detail?id=' + encodeURIComponent(recordId) + '&batchId=' + encodeURIComponent(batchId) : '/pages/teacher-internship/index'" />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack">
-        <view class="card sp__head">
-          <view><text class="t-lg t-bold">{{ studentName || '学生轮岗' }}</text><text class="sp__sub">当前批次 {{ batchId }} · 实习记录 {{ recordId }}</text></view>
-          <button v-if="canManage" class="sp__add" @click="openCreate">新增轮岗</button>
+        <view v-if="studentName || canManage" class="card sp__head">
+          <text class="t-lg t-bold">{{ studentName || '学生轮岗' }}</text>
+          <button v-if="canManage" class="mobile-control sp__add" @click="openCreate">新增轮岗</button>
         </view>
-        <MobileInlineAlert type="info" description="每个部门单独建轮岗记录；分项成绩按批次权重合成，上一部门成绩不会被新部门覆盖。" />
-        <MobileGlobalState v-if="!rows.length" state="empty" title="暂无轮岗记录" description="可由指导教师新增部门、项目与带教老师。" />
+        <text v-if="recordStatus === 'ARCHIVED' && rows.length">档案已归档，轮岗记录与分项成绩仅可查看。</text>
+        <MobileGlobalState v-if="!rows.length" state="empty" title="暂无轮岗记录" :description="canManage ? '可由指导教师新增部门、项目与带教老师。' : recordStatus === 'ARCHIVED' ? '档案已归档，仅供查阅。' : '当前身份仅可查看。'" />
 
         <view v-for="item in rows" :key="item.id" class="card sp">
           <view class="row-between">
@@ -38,7 +38,7 @@
             <view class="is-total"><text>{{ score(item.scores?.total) }}</text><text>总分</text></view>
           </view>
           <button v-if="canManage && item.studentSelfEvaluation && item.projects.length && item.status !== 'CANCELLED'"
-            class="btn btn-primary" :disabled="actingId === item.id" @click="evaluate(item)">
+            class="mobile-control btn btn-primary" :disabled="actingId === item.id" @click="evaluate(item)">
             {{ actingId === item.id ? '提交中…' : (item.scores?.total == null ? '评定分项成绩' : '更新分项成绩') }}
           </button>
         </view>
@@ -47,23 +47,23 @@
 
     <view v-if="form.visible" class="sp__mask" @click.self="closeCreate">
       <view class="sp__dialog">
-        <view class="row-between"><text class="t-lg t-bold">新增轮岗安排</text><button class="sp__close" @click="closeCreate">×</button></view>
-        <input v-model.trim="form.departmentName" class="sp__input" placeholder="轮岗部门，例如 生产一部" />
-        <input v-model.trim="form.departmentManagerName" class="sp__input" placeholder="部门负责人（可选）" />
-        <input v-model.trim="form.mentorName" class="sp__input" placeholder="带教老师 *" />
+        <view class="row-between"><text class="t-lg t-bold">新增轮岗安排</text><button class="mobile-control sp__close" @click="closeCreate">×</button></view>
+        <input v-model.trim="form.departmentName" class="mobile-input sp__input" placeholder="轮岗部门，例如 生产一部" />
+        <input v-model.trim="form.departmentManagerName" class="mobile-input sp__input" placeholder="部门负责人（可选）" />
+        <input v-model.trim="form.mentorName" class="mobile-input sp__input" placeholder="带教老师 *" />
         <view class="sp__pair">
-          <picker mode="date" :value="form.startDate" @change="form.startDate = $event.detail.value"><view class="sp__picker">{{ form.startDate || '开始日期' }}</view></picker>
-          <picker mode="date" :value="form.endDate" @change="form.endDate = $event.detail.value"><view class="sp__picker">{{ form.endDate || '结束日期' }}</view></picker>
+          <picker class="mobile-picker" mode="date" :value="form.startDate" @change="form.startDate = $event.detail.value"><view class="sp__picker">{{ form.startDate || '开始日期' }}</view></picker>
+          <picker class="mobile-picker" mode="date" :value="form.endDate" @change="form.endDate = $event.detail.value"><view class="sp__picker">{{ form.endDate || '结束日期' }}</view></picker>
         </view>
         <view class="sp__projects-edit">
-          <view class="row-between"><text class="sp__label">轮岗项目</text><button class="sp__tiny" @click="addProject">+ 项目</button></view>
+          <view class="row-between"><text class="sp__label">轮岗项目</text><button class="mobile-control sp__tiny" @click="addProject">+ 项目</button></view>
           <view v-for="(project,index) in form.projects" :key="index" class="sp__project-edit">
-            <input v-model.trim="project.projectName" class="sp__input" :placeholder="'项目'+(index+1)+'名称'" />
-            <textarea v-model="project.projectContent" class="sp__textarea" maxlength="1000" placeholder="项目内容（可选）" />
-            <button v-if="form.projects.length > 1" class="sp__remove" @click="form.projects.splice(index,1)">删除该项目</button>
+            <input v-model.trim="project.projectName" class="mobile-input sp__input" :placeholder="'项目'+(index+1)+'名称'" />
+            <textarea v-model="project.projectContent" class="mobile-textarea sp__textarea" maxlength="1000" placeholder="项目内容（可选）" />
+            <button v-if="form.projects.length > 1" class="mobile-control sp__remove" @click="form.projects.splice(index,1)">删除该项目</button>
           </view>
         </view>
-        <button class="btn btn-primary" :disabled="saving" @click="createRotation">{{ saving ? '保存中…' : '保存轮岗安排' }}</button>
+        <button class="mobile-control btn btn-primary" :disabled="saving" @click="createRotation">{{ saving ? '保存中…' : '保存轮岗安排' }}</button>
       </view>
     </view>
   </view>
@@ -73,6 +73,7 @@
 import {
   teacherInternshipCreateRotation,
   teacherInternshipEvaluateRotation,
+  teacherInternshipStudentDetail,
   teacherInternshipStudentRotations
 } from '@/services/internshipApi'
 import { useInternshipContextStore } from '@/stores/internshipContext'
@@ -86,13 +87,13 @@ const emptyForm = () => ({
 export default {
   data() {
     return {
-      state: 'loading', error: '', recordId: '', batchId: '', studentName: '',
+      state: 'loading', error: '', recordId: '', batchId: '', studentName: '', recordStatus: '',
       rows: [], form: emptyForm(), saving: false, actingId: ''
     }
   },
   computed: {
     context() { return useInternshipContextStore() },
-    canManage() { return this.context.can('internship.rotation.manage') }
+    canManage() { return ['ONBOARD','ASSESSING','APPROVED'].includes(this.recordStatus) && this.context.can('internship.rotation.manage') }
   },
   onLoad(query = {}) {
     this.recordId = String(query.id || query.recordId || '')
@@ -101,15 +102,17 @@ export default {
     this.load()
   },
   methods: {
-    statusLabel(status) { return ({ PLANNED: '待开始', ACTIVE: '轮岗中', COMPLETED: '已完成', CANCELLED: '已取消' })[status] || status },
+    statusLabel(status) { return ({ PLANNED: '待开始', ACTIVE: '轮岗中', COMPLETED: '已完成', CANCELLED: '已取消' })[status] || '状态待核对' },
     score(value) { return value == null ? '—' : Number(value).toFixed(1) },
     async load() {
-      this.state = 'loading'
+      this.state = 'loading'; this.recordStatus = ''
       try {
         if (!this.recordId || !this.batchId) throw new Error('轮岗链接缺少学生或批次信息')
         this.context.restore()
         if (!this.context.loaded) await this.context.load()
-        const rows = await teacherInternshipStudentRotations(this.recordId, this.batchId)
+        const [record,rows] = await Promise.all([teacherInternshipStudentDetail(this.recordId),teacherInternshipStudentRotations(this.recordId, this.batchId)])
+        if (String(record.batchId) !== this.batchId) throw new Error('轮岗档案不属于当前批次，请从学生名单重新进入')
+        this.recordStatus = record.status
         this.rows = Array.isArray(rows) ? rows : []
         this.state = 'ready'
       } catch (e) { this.state = 'error'; toast(e?.message || '轮岗记录加载失败') }
@@ -171,4 +174,5 @@ export default {
 
 <style scoped>
 .sp__head{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px}.sp__sub{display:block;margin-top:4px;font-size:11px;color:var(--text-tertiary);line-height:1.55}.sp__add,.sp__tiny,.sp__remove{margin:0;padding:3px 6px;min-height:0;border:0;background:transparent;color:var(--teacher-700);font-size:12px}.sp__add::after,.sp__tiny::after,.sp__remove::after{border:none}.sp{display:flex;flex-direction:column;gap:11px;padding:14px}.sp__facts{display:grid;grid-template-columns:1fr 1fr;gap:6px}.sp__facts view{padding:8px;border-radius:7px;background:var(--gray-50)}.sp__facts text{display:block}.sp__facts text:first-child{font-size:9px;color:var(--text-tertiary)}.sp__facts text:last-child{margin-top:3px;font-size:12px}.sp__projects{display:flex;flex-direction:column;gap:7px}.sp__project{padding:9px;border-radius:8px;background:var(--gray-50)}.sp__project-name,.sp__label{display:block;font-size:12px;font-weight:600}.sp__self{padding:10px;border-radius:8px;background:var(--primary-50);font-size:12px;line-height:1.7}.sp__self>text:last-child{display:block;margin-top:4px}.sp__score{display:grid;grid-template-columns:repeat(4,1fr);gap:5px;padding:9px;border-radius:8px;background:var(--gray-50)}.sp__score view{display:flex;flex-direction:column;align-items:center;gap:3px}.sp__score text:first-child{font-size:17px;font-weight:700}.sp__score text:last-child{font-size:9px;color:var(--text-tertiary)}.sp__score .is-total text:first-child{color:var(--teacher-700)}.sp__mask{position:fixed;inset:0;z-index:999;display:flex;align-items:flex-end;background:rgba(15,23,42,.48)}.sp__dialog{box-sizing:border-box;width:100%;max-height:90vh;overflow:auto;padding:18px;border-radius:18px 18px 0 0;background:#fff;display:flex;flex-direction:column;gap:9px}.sp__close{margin:0;padding:0 6px;min-height:0;border:0;background:transparent;font-size:24px}.sp__close::after{border:none}.sp__input,.sp__textarea,.sp__picker{box-sizing:border-box;width:100%;border:1px solid var(--border-base);border-radius:8px;padding:10px 12px;background:#fff;font-size:13px}.sp__textarea{min-height:70px}.sp__pair{display:grid;grid-template-columns:1fr 1fr;gap:8px}.sp__projects-edit{display:flex;flex-direction:column;gap:8px}.sp__project-edit{padding:8px;border-radius:8px;background:var(--gray-50);display:flex;flex-direction:column;gap:6px}.sp__remove{align-self:flex-end;color:var(--danger-600)}
+.teacher-rotations :deep(.page-pad){width:100%;max-width:760px;margin:0 auto;box-sizing:border-box}.teacher-rotations .card{border-radius:8px;box-shadow:none}.teacher-rotations button,.teacher-rotations .sp__input,.teacher-rotations .sp__picker{min-height:44px;font-size:15px;box-sizing:border-box}.sp__input{height:44px}.sp__sub,.sp__facts text:first-child,.sp__facts text:last-child,.sp__project-name,.sp__label,.sp__self,.sp__score text:last-child{font-size:14px;line-height:22px}.sp__head>text{font-size:16px}.sp__score text:first-child{font-size:18px}.sp__close{min-width:44px}.sp__dialog{border-radius:12px 12px 0 0}.sp__textarea{font-size:15px;line-height:22px}
 </style>

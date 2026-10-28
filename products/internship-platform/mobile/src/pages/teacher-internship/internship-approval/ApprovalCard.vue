@@ -13,6 +13,7 @@
       <text class="flex-1">{{ rangeText }}</text>
     </view>
     <view class="detail"><text class="key">申请事由</text><text class="flex-1 content">{{ item.reason || '—' }}</text></view>
+    <view v-if="item.approvalProgress" class="history-box"><text class="history-title">{{ item.approvalProgress.label }}</text><view v-for="(step,index) in item.approvalProgress.steps" :key="index"><text>{{ step.label }} · {{ step.assignee }} · {{ step.statusLabel }}</text><text v-if="step.comment" class="history-content">{{ step.comment }}</text></view></view>
     <view class="detail"><text class="key">提交时间</text><text>{{ formatTime(item.submittedAt || item.createdAt) }}</text></view>
 
     <view v-if="item.previousReviewComment" class="history-box">
@@ -39,15 +40,16 @@
         :disabled="viewing || acting"
         plain
         @click="$emit('view-evidence', { kind, item })"
-      >{{ viewing ? '正在打开…' : (evidenceViewed ? '再次查看材料' : '查看材料并留痕') }}</button>
-      <text v-else-if="evidenceRequired" class="block-reason">缺少规则要求的材料，后端将拒绝通过。</text>
+      >{{ viewing ? '正在打开…' : (evidenceViewed ? '再次查看材料' : '查看证明材料') }}</button>
+      <text v-else-if="evidenceRequired" class="block-reason">缺少必需材料，暂不能通过。</text>
     </view>
 
-    <view class="detail"><text class="key">数据版本</text><text>v{{ item.version }}</text></view>
+    <view class="detail"><text class="key">数据版本</text><text>第{{ item.version }}版</text></view>
     <view v-if="!canReview" class="permission-tip">当前身份仅有查看权限，没有该类审批权限。</view>
-    <view v-else-if="hasEvidence && !evidenceViewed" class="permission-tip warning">必须先真实打开材料并写入查看留痕，才能通过。</view>
+    <view v-else-if="hasEvidence && !evidenceViewed" class="permission-tip warning">请先查看证明材料再审批。</view>
 
     <view class="actions">
+      <button v-if="kind === 'leave'" class="reject flex-1" :disabled="acting || viewing || !canReview" plain @click="$emit('review', { kind, item, action: 'REQUEST_CHANGES' })">退回补正</button>
       <button
         class="reject flex-1"
         :class="{ 'is-disabled': acting || viewing || !canReview }"
@@ -67,6 +69,7 @@
 </template>
 
 <script>
+import { formatDateTime } from '@/utils/format'
 export default {
   props: {
     item: { type: Object, required: true },
@@ -79,8 +82,8 @@ export default {
   emits: ['review', 'view-evidence'],
   computed: {
     kindLabel() {
-      if (this.kind === 'makeup') return this.item.makeupTypeLabel || this.item.makeupType || '补卡'
-      return `${this.item.leaveTypeLabel || this.item.leaveType || '请假'} · ${this.item.days || 0}天`
+      if (this.kind === 'makeup') return this.item.makeupTypeLabel || '补卡类型待核对'
+      return `${this.item.leaveTypeLabel || '请假类型待核对'} · ${this.item.days || 0}天`
     },
     rangeText() {
       return this.kind === 'makeup'
@@ -97,17 +100,14 @@ export default {
       if (!this.canReview) return '无审批权限'
       if (this.evidenceRequired && !this.hasEvidence) return '缺少必需材料'
       if (this.hasEvidence && !this.evidenceViewed) return '请先查看材料'
-      return this.kind === 'makeup' ? '通过并补写打卡' : '通过并写请假留痕'
+      return this.kind === 'makeup' ? '通过并补写打卡' : '通过本级审批'
     },
     defaultEvidenceHint() {
       return this.kind === 'makeup' ? '可上传考勤、定位或现场佐证' : '可上传医疗、单位或其他请假证明'
     }
   },
   methods: {
-    formatTime(value) {
-      if (!value) return '—'
-      return String(value).replace('T', ' ').slice(0, 16)
-    }
+    formatTime: formatDateTime
   }
 }
 </script>

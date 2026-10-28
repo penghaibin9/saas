@@ -1,9 +1,10 @@
 """Yiyang C08/G15 report quality rules, immutable snapshots and review facts."""
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import datetime, timedelta
+from math import isfinite
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 
 from app.core.exceptions import AppException
 from app.models import (
@@ -17,10 +18,11 @@ from app.models import (
     WeeklyReport,
 )
 from app.services import file_service
-from app.services.db_service import _tid, session
+from app.services.db_service import _iso, _tid, session
 
 REPORT_DOCUMENT_EXTENSIONS = {"rar", "zip", "doc", "docx", "pdf", "xls", "xlsx"}
 MAX_REPORT_DOCUMENTS = 9
+SUBMITTED_REPORT_STATUSES = ("PENDING_REVIEW", "APPROVED", "RETURNED")
 
 DEFAULT_RULES = {
     "dailyMinWords": 30,
@@ -55,6 +57,22 @@ def _positive_int(value, fallback: int) -> int:
         return fallback
 
 
+def required_report_counts(batch) -> dict:
+    """Batch counts are authoritative; missing/zero counts never imply calendar tasks."""
+    config = (batch.rules_config or {}) if batch else {}
+    weekly = config.get("weeklyReport") or {}
+    process = config.get("processReport") or {}
+    return {
+        key: _non_negative_int(value, DEFAULT_RULES[key])
+        for key, value in (
+            ("weeklyRequiredCount", weekly.get("requiredCount")),
+            ("dailyRequiredCount", process.get("dailyRequiredCount")),
+            ("monthlyRequiredCount", process.get("monthlyRequiredCount")),
+            ("summaryRequiredCount", process.get("summaryRequiredCount")),
+        )
+    }
+
+
 def rules_for_batch(db, batch_id) -> dict:
     """Single report-rule projection.
 
@@ -71,12 +89,12 @@ def rules_for_batch(db, batch_id) -> dict:
     rules = dict(DEFAULT_RULES)
     if row:
         rules.update({
-            "weeklyMinWords": int(row.weekly_min_words or rules["weeklyMinWords"]),
+            "weeklyMinWords": _non_negative_int(row.weekly_min_words, rules["weeklyMinWords"]),
             "planTaskMinWords": int(row.plan_task_min_words or rules["planTaskMinWords"]),
             "monthlyMinWords": int(row.monthly_min_words or rules["monthlyMinWords"]),
             "summaryMinWords": int(row.summary_min_words or rules["summaryMinWords"]),
-            "maxImages": int(row.max_images or rules["maxImages"]),
-            "maxVideos": int(row.max_videos or rules["maxVideos"]),
+            "maxImages": _non_negative_int(row.max_images, rules["maxImages"]),
+            "maxVideos": _non_negative_int(row.max_videos, rules["maxVideos"]),
         })
 
     batch = db.get(InternshipBatch, bid)
@@ -84,10 +102,9 @@ def rules_for_batch(db, batch_id) -> dict:
     weekly = config.get("weeklyReport") or {}
     process = config.get("processReport") or {}
 
-    rules["weeklyMinWords"] = _positive_int(
+    rules["weeklyMinWords"] = _non_negative_int(
         weekly.get("minWordCount"), rules["weeklyMinWords"])
-    rules["weeklyRequiredCount"] = _non_negative_int(
-        weekly.get("requiredCount"), rules["weeklyRequiredCount"])
+    rules.update(required_report_counts(batch))
 
     rules["dailyMinWords"] = _positive_int(
         process.get("dailyMinWords"), rules["dailyMinWords"])
@@ -95,12 +112,6 @@ def rules_for_batch(db, batch_id) -> dict:
         process.get("monthlyMinWords"), rules["monthlyMinWords"])
     rules["summaryMinWords"] = _positive_int(
         process.get("summaryMinWords"), rules["summaryMinWords"])
-    rules["dailyRequiredCount"] = _non_negative_int(
-        process.get("dailyRequiredCount"), rules["dailyRequiredCount"])
-    rules["monthlyRequiredCount"] = _non_negative_int(
-        process.get("monthlyRequiredCount"), rules["monthlyRequiredCount"])
-    rules["summaryRequiredCount"] = _non_negative_int(
-        process.get("summaryRequiredCount"), rules["summaryRequiredCount"])
     rules["maxImages"] = _non_negative_int(
         process.get("maxImages"), rules["maxImages"])
     rules["maxVideos"] = _non_negative_int(
@@ -115,6 +126,20 @@ def minimum_words(rules: dict, report_type: str) -> int:
         "MONTHLY": int(rules.get("monthlyMinWords") or 100),
         "SUMMARY": int(rules.get("summaryMinWords") or 300),
     }.get(rt, 30)
+
+
+def _rating(value):
+    if value in (None, ""):
+        return None
+    try:
+        if isinstance(value, bool):
+            raise ValueError
+        number = float(value)
+        if not isfinite(number) or number not in (1, 2, 3, 4, 5):
+            raise ValueError
+        return int(number)
+    except (TypeError, ValueError, OverflowError):
+        raise AppException("VALIDATION_ERROR", "五级评价必须是1到5的整数") from None
 
 
 def validate_attachments(file_ids, rules: dict) -> tuple[list[str], list[dict]]:
@@ -146,7 +171,7 @@ def validate_attachments(file_ids, rules: dict) -> tuple[list[str], list[dict]]:
         else:
             raise AppException(
                 "VALIDATION_ERROR",
-                "过程报告附件仅支持图片、视频、RAR、ZIP、WORD、EXCEL、PDF",
+                "过程报告附件仅支持图片、视频、压缩包、文档或表格",
             )
         ids.append(fid)
         metas.append({
@@ -157,10 +182,12 @@ def validate_attachments(file_ids, rules: dict) -> tuple[list[str], list[dict]]:
             "sha256": meta.get("sha256") or "",
             "kind": kind,
         })
-    if image_count > int(rules.get("maxImages") or 9):
-        raise AppException("VALIDATION_ERROR", f"图片最多 {int(rules.get('maxImages') or 9)} 张")
-    if video_count > int(rules.get("maxVideos") or 3):
-        raise AppException("VALIDATION_ERROR", f"视频最多 {int(rules.get('maxVideos') or 3)} 个")
+    max_images = _non_negative_int(rules.get("maxImages"), DEFAULT_RULES["maxImages"])
+    max_videos = _non_negative_int(rules.get("maxVideos"), DEFAULT_RULES["maxVideos"])
+    if image_count > max_images:
+        raise AppException("VALIDATION_ERROR", f"图片最多 {max_images} 张")
+    if video_count > max_videos:
+        raise AppException("VALIDATION_ERROR", f"视频最多 {max_videos} 个")
     if document_count > MAX_REPORT_DOCUMENTS:
         raise AppException("VALIDATION_ERROR", f"文档/压缩附件最多 {MAX_REPORT_DOCUMENTS} 个")
     return ids, metas
@@ -251,7 +278,7 @@ def latest_weekly_snapshot(db, report_id) -> InternshipReportVersion | None:
 
 
 def latest_review_map(db, report_kind: str, report_ids) -> dict[int, dict]:
-    """Latest immutable review per report for detail/export/performance projections."""
+    """Only the current submission's review; old reviews remain in immutable history."""
     ids = []
     for raw in report_ids or []:
         try:
@@ -263,7 +290,25 @@ def latest_review_map(db, report_kind: str, report_ids) -> dict[int, dict]:
     if not ids:
         return {}
     kind = str(report_kind or "").strip().upper()
-    rows = db.scalars(select(InternshipReportReview).where(
+    latest = select(
+        InternshipReportVersion.report_id.label("report_id"),
+        func.max(InternshipReportVersion.version_no).label("version_no"),
+    ).where(
+        InternshipReportVersion.tenant_id == _tid(),
+        InternshipReportVersion.report_kind == kind,
+        InternshipReportVersion.report_id.in_(ids),
+    ).group_by(InternshipReportVersion.report_id).subquery()
+    rows = db.scalars(select(InternshipReportReview).join(
+        InternshipReportVersion, and_(
+            InternshipReportVersion.id == InternshipReportReview.report_version_id,
+            InternshipReportVersion.tenant_id == _tid(),
+            InternshipReportVersion.report_kind == kind,
+            InternshipReportVersion.report_id == InternshipReportReview.report_id,
+        ),
+    ).join(latest, and_(
+        latest.c.report_id == InternshipReportVersion.report_id,
+        latest.c.version_no == InternshipReportVersion.version_no,
+    )).where(
         InternshipReportReview.tenant_id == _tid(),
         InternshipReportReview.report_kind == kind,
         InternshipReportReview.report_id.in_(ids),
@@ -283,10 +328,51 @@ def latest_review_map(db, report_kind: str, report_ids) -> dict[int, dict]:
             "comment": row.comment or "",
             "reviewerUserId": row.reviewer_user_id or "",
             "reviewerName": row.reviewer_name or "",
-            "reviewedAt": row.reviewed_at.isoformat() if row.reviewed_at else "",
+            "reviewedAt": _iso(row.reviewed_at) or "",
             "reportVersionId": str(row.report_version_id),
         }
     return out
+
+
+def latest_snapshot_map(db, report_kind: str, report_ids) -> dict:
+    ids = list(dict.fromkeys(int(value) for value in report_ids))
+    if not ids:
+        return {}
+    latest = select(InternshipReportVersion.report_id.label("report_id"),
+        func.max(InternshipReportVersion.version_no).label("version_no")).where(
+            InternshipReportVersion.tenant_id == _tid(), InternshipReportVersion.report_kind == report_kind,
+            InternshipReportVersion.report_id.in_(ids)).group_by(InternshipReportVersion.report_id).subquery()
+    rows = db.scalars(select(InternshipReportVersion).join(latest, and_(
+        latest.c.report_id == InternshipReportVersion.report_id,
+        latest.c.version_no == InternshipReportVersion.version_no)).where(
+            InternshipReportVersion.tenant_id == _tid(), InternshipReportVersion.report_kind == report_kind)).all()
+    return {int(row.report_id): row for row in rows}
+
+
+def filter_submission_dates(query, model, start_date=None, end_date=None):
+    from app.core.timeutil import local_day_bounds_utc
+    try:
+        start = local_day_bounds_utc(start_date)[0] if start_date else None
+        end = local_day_bounds_utc(end_date)[1] if end_date else None
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "提交日期格式不正确，请选择有效日期") from None
+    if start and end and start >= end:
+        raise AppException("VALIDATION_ERROR", "开始日期不能晚于结束日期")
+    if start:
+        query = query.where(model.submitted_at >= start)
+    if end:
+        query = query.where(model.submitted_at < end)
+    return query
+
+
+def format_report_time(value):
+    from app.core.timeutil import UTC, tenant_tz
+    if not value:
+        return ""
+    timestamp = value if isinstance(value, datetime) else datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if timestamp.tzinfo is None:
+        timestamp = timestamp.replace(tzinfo=UTC)
+    return timestamp.astimezone(tenant_tz()).strftime("%Y-%m-%d %H:%M")
 
 
 def report_review_performance(user: dict, batch_id) -> dict:
@@ -367,7 +453,7 @@ def report_review_performance(user: dict, batch_id) -> dict:
             if row.summary_score is not None:
                 item["summaryScoredCount"] += 1
                 item["summaryScoreTotal"] += float(row.summary_score)
-            reviewed_at = row.reviewed_at.isoformat() if row.reviewed_at else ""
+            reviewed_at = _iso(row.reviewed_at) or ""
             if reviewed_at > item["lastReviewedAt"]:
                 item["lastReviewedAt"] = reviewed_at
 
@@ -438,7 +524,7 @@ def export_report_review_performance(user: dict, batch_id) -> dict:
 
 def report_obligations(
     user: dict, batch_id, *, keyword: str = "", missing_only: bool = False,
-    page: int = 1, page_size: int = 50,
+    page: int = 1, page_size: int = 50, report_type=None, record_id=None, submitted_only: bool = False,
 ) -> dict:
     """Per-student required/submitted/approved truth from batch rules and formal report facts."""
     from app.modules.internship.services.internship_batch_context import resolve_batch
@@ -466,10 +552,39 @@ def report_obligations(
         ).subquery()
         scoped_ids = select(scoped.c.id)
 
-        query = select(InternshipRecord, StudentProfile).join(
+        # Count original submitted documents, never draft rows or resubmission snapshots.
+        states = SUBMITTED_REPORT_STATUSES
+        weekly = select(
+            WeeklyReport.internship_id.label("record_id"),
+            func.count(WeeklyReport.id).label("weeklySubmitted"),
+            func.sum(case((WeeklyReport.status == "APPROVED", 1), else_=0)).label("weeklyApproved"),
+        ).where(WeeklyReport.tenant_id == _tid(), WeeklyReport.internship_id.in_(scoped_ids),
+            WeeklyReport.is_deleted.is_(False), WeeklyReport.status.in_(states)
+        ).group_by(WeeklyReport.internship_id).subquery()
+        process_columns = []
+        for key, kind in (("daily", "DAILY"), ("monthly", "MONTHLY"), ("summary", "SUMMARY")):
+            process_columns.extend([
+                func.sum(case((InternshipProcessReport.report_type == kind, 1), else_=0)).label(key + "Submitted"),
+                func.sum(case((and_(InternshipProcessReport.report_type == kind,
+                    InternshipProcessReport.status == "APPROVED"), 1), else_=0)).label(key + "Approved"),
+            ])
+        process = select(InternshipProcessReport.internship_id.label("record_id"), *process_columns).where(
+            InternshipProcessReport.tenant_id == _tid(), InternshipProcessReport.internship_id.in_(scoped_ids),
+            InternshipProcessReport.is_deleted.is_(False), InternshipProcessReport.status.in_(states),
+        ).group_by(InternshipProcessReport.internship_id).subquery()
+        count_columns = []
+        missing = {}
+        for key in required:
+            source = weekly if key == "weekly" else process
+            submitted = func.coalesce(source.c[key + "Submitted"], 0)
+            count_columns.extend([submitted.label(key + "Submitted"),
+                func.coalesce(source.c[key + "Approved"], 0).label(key + "Approved")])
+            missing[key] = case((submitted < required[key], required[key] - submitted), else_=0)
+        query = select(InternshipRecord, StudentProfile, *count_columns).join(
             StudentProfile,
             StudentProfile.id == InternshipRecord.student_id,
-        ).where(
+        ).outerjoin(weekly, weekly.c.record_id == InternshipRecord.id
+        ).outerjoin(process, process.c.record_id == InternshipRecord.id).where(
             InternshipRecord.id.in_(scoped_ids),
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.batch_id == batch.id,
@@ -479,57 +594,39 @@ def report_obligations(
         )
         term = str(keyword or "").strip()
         if term:
-            like = f"%{term}%"
             query = query.where(or_(
-                StudentProfile.real_name.like(like),
-                StudentProfile.student_no.like(like),
-                InternshipRecord.advisor_name.like(like),
-                InternshipRecord.enterprise_name.like(like),
-                InternshipRecord.position_name.like(like),
+                StudentProfile.real_name.contains(term, autoescape=True),
+                StudentProfile.student_no.contains(term, autoescape=True),
+                InternshipRecord.advisor_name.contains(term, autoescape=True),
+                InternshipRecord.enterprise_name.contains(term, autoescape=True),
+                InternshipRecord.position_name.contains(term, autoescape=True),
             ))
-        record_rows = db.execute(
-            query.order_by(StudentProfile.student_no, StudentProfile.id)
-        ).all()
-        record_ids = [int(record.id) for record, _student in record_rows]
-
-        weekly = {}
-        process = {}
-        if record_ids:
-            for internship_id, submitted, approved in db.execute(
-                select(
-                    WeeklyReport.internship_id,
-                    func.count(WeeklyReport.id),
-                    func.sum(case((WeeklyReport.status == "APPROVED", 1), else_=0)),
-                ).where(
-                    WeeklyReport.tenant_id == _tid(),
-                    WeeklyReport.internship_id.in_(record_ids),
-                    WeeklyReport.is_deleted.is_(False),
-                ).group_by(WeeklyReport.internship_id)
-            ).all():
-                weekly[int(internship_id)] = {
-                    "submitted": int(submitted or 0),
-                    "approved": int(approved or 0),
-                }
-
-            for internship_id, report_type, submitted, approved in db.execute(
-                select(
-                    InternshipProcessReport.internship_id,
-                    InternshipProcessReport.report_type,
-                    func.count(InternshipProcessReport.id),
-                    func.sum(case((InternshipProcessReport.status == "APPROVED", 1), else_=0)),
-                ).where(
-                    InternshipProcessReport.tenant_id == _tid(),
-                    InternshipProcessReport.internship_id.in_(record_ids),
-                    InternshipProcessReport.is_deleted.is_(False),
-                ).group_by(
-                    InternshipProcessReport.internship_id,
-                    InternshipProcessReport.report_type,
-                )
-            ).all():
-                process[(int(internship_id), str(report_type or "").upper())] = {
-                    "submitted": int(submitted or 0),
-                    "approved": int(approved or 0),
-                }
+        key = str(report_type or "").lower()
+        if key and key not in required:
+            raise AppException("VALIDATION_ERROR", "请选择日报、周报、月报或实习总结")
+        if submitted_only:
+            if not key:
+                raise AppException("VALIDATION_ERROR", "查看已交名单时请选择报告类型")
+            source = weekly if key == "weekly" else process
+            query = query.where(func.coalesce(source.c[key + "Submitted"], 0) > 0)
+        if record_id is not None:
+            query = query.where(InternshipRecord.id == int(record_id))
+        if missing_only:
+            query = query.where((missing[key] if key else sum(missing.values())) > 0)
+        total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
+        totals_source = query.subquery()
+        totals_columns = []
+        for name in required:
+            submitted = totals_source.c[name + "Submitted"]
+            totals_columns.extend([func.coalesce(func.sum(submitted), 0),
+                func.coalesce(func.sum(totals_source.c[name + "Approved"]), 0),
+                func.coalesce(func.sum(case((submitted < required[name], required[name] - submitted), else_=0)), 0)])
+        totals = db.execute(select(*totals_columns)).one()
+        summary = {name: {"required": required[name] * total, "submitted": int(totals[i * 3]),
+            "approved": int(totals[i * 3 + 1]), "missing": int(totals[i * 3 + 2]) if required[name] else None,
+            "configured": required[name] > 0} for i, name in enumerate(required)}
+        record_rows = db.execute(query.order_by(StudentProfile.student_no, StudentProfile.id, InternshipRecord.id)
+            .offset((page - 1) * page_size).limit(page_size)).all()
 
         def metric(required_count: int, fact: dict | None) -> dict:
             submitted = int((fact or {}).get("submitted") or 0)
@@ -545,13 +642,10 @@ def report_obligations(
             }
 
         items = []
-        for record, student in record_rows:
-            rid = int(record.id)
-            daily = metric(required["daily"], process.get((rid, "DAILY")))
-            weekly_metric = metric(required["weekly"], weekly.get(rid))
-            monthly = metric(required["monthly"], process.get((rid, "MONTHLY")))
-            summary = metric(required["summary"], process.get((rid, "SUMMARY")))
-            metrics = [daily, weekly_metric, monthly, summary]
+        for record, student, *counts in record_rows:
+            facts = {name: metric(required[name], {"submitted": counts[i * 2], "approved": counts[i * 2 + 1]})
+                     for i, name in enumerate(required)}
+            metrics = list(facts.values())
             configured = [item for item in metrics if item["configured"]]
             missing_total = sum(int(item["missing"] or 0) for item in configured)
             required_total = sum(int(item["required"]) for item in configured)
@@ -574,10 +668,7 @@ def report_obligations(
                 "advisorName": record.advisor_name or "",
                 "companyName": record.enterprise_name or "",
                 "positionName": record.position_name or "",
-                "daily": daily,
-                "weekly": weekly_metric,
-                "monthly": monthly,
-                "summary": summary,
+                **facts,
                 "requiredTotal": required_total,
                 "submittedAgainstRequired": submitted_against_required,
                 "missingTotal": missing_total,
@@ -589,22 +680,19 @@ def report_obligations(
                     "COMPLETE": "已交齐",
                 }[status],
             }
-            if not missing_only or status == "MISSING":
-                items.append(row)
-
-        total = len(items)
-        start = (page - 1) * page_size
+            items.append(row)
         return {
             "batchId": str(batch.id),
             "batchName": getattr(batch, "batch_name", "") or "",
             "rules": required,
-            "items": items[start:start + page_size],
+            "items": items,
+            "summary": summary,
             "total": total,
             "page": page,
             "pageSize": page_size,
             "missingOnly": bool(missing_only),
             "definition": {
-                "submitted": "存在正式报告事实即计为实交；退回修改仍属于已提交过",
+                "submitted": "按已提交原单计数，排除草稿及删除记录；退回修改仍属于已提交过，重交不另增篇数",
                 "approved": "当前正式报告状态为已通过",
                 "missing": "仅在批次应交数大于0时计算；0表示学校未配置，不伪造完成率",
             },
@@ -612,13 +700,13 @@ def report_obligations(
 
 
 def export_report_obligations(
-    user: dict, batch_id, *, keyword: str = "", missing_only: bool = False,
+    user: dict, batch_id, *, keyword: str = "", missing_only: bool = False, report_type=None,
 ) -> dict:
     from app.services import xlsx_util
 
     data = report_obligations(
         user, batch_id, keyword=keyword, missing_only=missing_only,
-        page=1, page_size=20000,
+        page=1, page_size=20000, report_type=report_type,
     )
     if int(data.get("total") or 0) > len(data.get("items") or []):
         raise AppException(
@@ -665,6 +753,71 @@ def export_report_obligations(
     )
 
 
+def remind_report_obligation(user: dict, batch_id, record_id, report_type) -> dict:
+    """Remind an actual missing obligation without creating a fake unsubmitted report."""
+    from app.core.exceptions import not_found
+    from app.models import InternshipAuditTrail
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    from app.modules.internship.services.internship_scope import apply_internship_record_scope
+    from app.services import student_account_link_service as links
+    from app.services.message_event_outbox_service import emit_receiver_notice, try_process_pending_outbox
+
+    kinds = {"DAILY": ("dailyRequiredCount", "日报"), "WEEKLY": ("weeklyRequiredCount", "周报"),
+             "MONTHLY": ("monthlyRequiredCount", "月报"), "SUMMARY": ("summaryRequiredCount", "实习总结")}
+    kind = str(report_type or "").upper()
+    if kind not in kinds:
+        raise AppException("VALIDATION_ERROR", "请选择需要催交的报告类型")
+    try:
+        rid = int(record_id)
+    except (TypeError, ValueError):
+        raise AppException("VALIDATION_ERROR", "学生实习记录编号不正确") from None
+    with session() as db:
+        batch = resolve_batch(db, batch_id, for_write=True)
+        query = apply_internship_record_scope(select(InternshipRecord).where(
+            InternshipRecord.id == rid, InternshipRecord.tenant_id == _tid(),
+            InternshipRecord.batch_id == batch.id, InternshipRecord.is_deleted.is_(False)), user)
+        record = db.scalar(query.with_for_update())
+        student = db.get(StudentProfile, record.student_id) if record else None
+        if not record or not student or student.tenant_id != _tid() or student.is_deleted:
+            raise not_found("当前批次或指导范围内没有该学生")
+        rule_key, label = kinds[kind]
+        required = int(rules_for_batch(db, batch.id)[rule_key])
+        model = WeeklyReport if kind == "WEEKLY" else InternshipProcessReport
+        count = select(func.count(model.id)).where(model.tenant_id == _tid(),
+            model.internship_id == record.id, model.is_deleted.is_(False),
+            model.status.in_(SUBMITTED_REPORT_STATUSES))
+        if kind != "WEEKLY":
+            count = count.where(model.report_type == kind)
+        submitted = int(db.scalar(count) or 0)
+        if required <= submitted:
+            raise AppException("DATA_CONFLICT", "该类型没有缺交报告，无需催交")
+        account = links.resolve_user_id_for_student(db, tenant_id=_tid(), student_id=student.id,
+            student_no=student.student_no, require_active_account=True)
+        if not account:
+            raise AppException("DATA_NOT_FOUND", "学生没有有效绑定账号，未发送提醒")
+        now = datetime.utcnow()
+        action = "REMIND_" + kind
+        recent = db.scalar(select(InternshipAuditTrail.id).where(
+            InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_id == record.id,
+            InternshipAuditTrail.target_type == "REPORT_OBLIGATION", InternshipAuditTrail.action == action,
+            InternshipAuditTrail.occurred_at >= now - timedelta(minutes=5)))
+        if recent:
+            raise AppException("DATA_CONFLICT", "5分钟内已催交，请稍后再试")
+        event = emit_receiver_notice(db, event_code="INTERNSHIP.REPORT_REMIND", source_module="internship",
+            source_biz_type="report_obligation", source_biz_id=record.id, receiver_id=account,
+            receiver_as="user", title=f"{label}缺交提醒", content=f"实习批次「{batch.batch_name}」（编号{batch.id}）{label}应交{required}篇、已交{submitted}篇，请进入该批次的报告页面补交缺少的{required - submitted}篇。",
+            dedup_extra=f"{kind}:{now:%Y%m%d%H%M%S%f}")
+        db.add(InternshipAuditTrail(tenant_id=_tid(), target_id=record.id, target_type="REPORT_OBLIGATION",
+            action=action, operator_name=(user or {}).get("realName") or "系统", occurred_at=now,
+            detail_json={"batchId": str(batch.id), "reportType": kind, "required": required,
+                         "submitted": submitted, "missing": required - submitted, "eventId": str(event.id)}))
+        event_id = int(event.id)
+        db.commit()
+        try_process_pending_outbox(worker_id="internship-report-reminder", outbox_ids=[event_id])
+        return {"recordId": str(record.id), "reportType": kind, "missing": required - submitted,
+                "queued": True, "message": "催交已登记，请在站内消息查看送达情况"}
+
+
 def weekly_snapshot_view(db, report_id) -> dict:
     rows = db.scalars(select(InternshipReportVersion).where(
         InternshipReportVersion.tenant_id == _tid(),
@@ -684,14 +837,13 @@ def weekly_snapshot_view(db, report_id) -> dict:
             "wordCount": int(v.word_count or 0),
             "content": v.content_json or {},
             "attachments": v.attachment_meta_json or [],
-            "submittedAt": v.submitted_at.isoformat() if v.submitted_at else "",
+            "submittedAt": _iso(v.submitted_at) or "",
             "review": ({
                 "action": by_version[v.id].action,
                 "ratingLevel": by_version[v.id].rating_level,
                 "comment": by_version[v.id].comment or "",
                 "reviewerName": by_version[v.id].reviewer_name or "",
-                "reviewedAt": by_version[v.id].reviewed_at.isoformat()
-                if by_version[v.id].reviewed_at else "",
+                "reviewedAt": _iso(by_version[v.id].reviewed_at) or "",
             } if v.id in by_version else None),
         } for v in rows],
     }
@@ -724,14 +876,7 @@ def record_weekly_review(db, *, row, action: str, comment: str, user: dict,
     )):
         raise AppException("DATA_CONFLICT", "当前周报版本已经批阅，请刷新后重试")
 
-    rating = None
-    if rating_level not in (None, ""):
-        try:
-            rating = int(rating_level)
-        except (TypeError, ValueError):
-            raise AppException("VALIDATION_ERROR", "五级评价必须是 1 到 5") from None
-        if rating < 1 or rating > 5:
-            raise AppException("VALIDATION_ERROR", "五级评价必须是 1 到 5")
+    rating = _rating(rating_level)
     if action == "APPROVE" and rating is None:
         raise AppException("VALIDATION_ERROR", "通过周报时必须选择五级评价")
 
@@ -782,7 +927,7 @@ def snapshot_view(db, report_id) -> dict:
             "wordCount": int(v.word_count or 0),
             "content": (v.content_json or {}).get("content") or "",
             "attachments": v.attachment_meta_json or [],
-            "submittedAt": v.submitted_at.isoformat() if v.submitted_at else "",
+            "submittedAt": _iso(v.submitted_at) or "",
             "review": (
                 {
                     "action": by_version[v.id].action,
@@ -793,10 +938,7 @@ def snapshot_view(db, report_id) -> dict:
                     ),
                     "comment": by_version[v.id].comment or "",
                     "reviewerName": by_version[v.id].reviewer_name or "",
-                    "reviewedAt": (
-                        by_version[v.id].reviewed_at.isoformat()
-                        if by_version[v.id].reviewed_at else ""
-                    ),
+                    "reviewedAt": _iso(by_version[v.id].reviewed_at) or "",
                 } if v.id in by_version else None
             ),
         } for v in rows],
@@ -826,27 +968,22 @@ def record_process_review(db, *, row, action: str, comment: str, user: dict,
     )):
         raise AppException("DATA_CONFLICT", "当前报告版本已经批阅，请刷新后重试")
 
-    rating = None
-    if rating_level not in (None, ""):
-        try:
-            rating = int(rating_level)
-        except (TypeError, ValueError):
-            raise AppException("VALIDATION_ERROR", "五级评价必须是 1 到 5") from None
-        if rating < 1 or rating > 5:
-            raise AppException("VALIDATION_ERROR", "五级评价必须是 1 到 5")
+    rating = _rating(rating_level)
 
     score = None
     if summary_score not in (None, ""):
         try:
+            if isinstance(summary_score, bool):
+                raise ValueError
             score = float(summary_score)
-        except (TypeError, ValueError):
+        except (TypeError, ValueError, OverflowError):
             raise AppException("VALIDATION_ERROR", "总结评分必须是 0 到 100") from None
-        if score < 0 or score > 100:
+        if not isfinite(score) or score < 0 or score > 100:
             raise AppException("VALIDATION_ERROR", "总结评分必须是 0 到 100")
         if row.report_type != "SUMMARY":
             raise AppException("VALIDATION_ERROR", "只有实习总结允许填写 0 到 100 分")
 
-    if action == "APPROVE" and rating is None:
+    if action == "APPROVE" and row.report_type != "SUMMARY" and rating is None:
         raise AppException("VALIDATION_ERROR", "通过报告时必须选择五级评价")
     if action == "APPROVE" and row.report_type == "SUMMARY" and score is None:
         raise AppException("VALIDATION_ERROR", "通过实习总结时必须填写 0 到 100 分")

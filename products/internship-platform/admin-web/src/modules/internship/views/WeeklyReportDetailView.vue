@@ -20,14 +20,14 @@
       <div class="mp-stack">
         <section class="mp-card">
           <div class="mp-card__head">
-            <span class="mp-card__title">{{ detail.week }}周报 · {{ detail.reportVersion || `v${Number(detail.version || 0) + 1}` }}</span>
+            <span class="mp-card__title">{{ detail.week }}周报 · {{ versionLabel(detail.reportVersion) }}</span>
             <span>
               <AppStatusTag v-if="detail.isResubmit" type="info">重交件</AppStatusTag>
               <AppRiskTag v-if="detail.riskFlag" :level="detail.riskFlag" label="风险学生" style="margin-left: var(--space-2)" />
             </span>
           </div>
           <div class="mp-card__body">
-            <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ detail.submitAt }} · {{ detail.wordCount }} 字</span></div>
+            <div class="mp-kv"><span class="mp-kv__k">提交时间</span><span class="mp-kv__v">{{ formatDateTime(detail.submitAt) }} · {{ detail.wordCount }} 字</span></div>
             <div class="mp-kv"><span class="mp-kv__k">岗位</span><span class="mp-kv__v">{{ detail.positionName }}</span></div>
             <div style="margin-top: var(--space-3); font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.8">
               <p style="margin: 0 0 var(--space-2)"><b style="color: var(--text-primary)">本周工作内容：</b>{{ detail.content.work }}</p>
@@ -43,24 +43,24 @@
         <section v-if="resubmitComparison" class="mp-card wr-compare">
           <div class="mp-card__head">
             <span class="mp-card__title">退回重交 · 前后版本对比</span>
-            <AppStatusTag type="info">{{ resubmitComparison.before.version }} → {{ resubmitComparison.after.version }}</AppStatusTag>
+            <AppStatusTag type="info">{{ versionLabel(resubmitComparison.before.version) }} → {{ versionLabel(resubmitComparison.after.version) }}</AppStatusTag>
           </div>
           <div class="mp-card__body">
             <p class="wr-compare__reason"><b>上次退回意见：</b>{{ resubmitComparison.before.comment || '未记录具体意见' }}</p>
-            <div class="wr-compare__grid">
+            <details :key="String(detail.id) + ':' + String(detail.version)" class="wr-compare__details"><summary>查看前后版本正文</summary><div class="wr-compare__grid">
               <article>
-                <header><span>BEFORE</span><b>{{ resubmitComparison.before.version }} · 已退回</b></header>
+                <header><span>退回前</span><b>{{ versionLabel(resubmitComparison.before.version) }} · 已退回</b></header>
                 <p><strong>本周工作</strong>{{ resubmitComparison.before.content?.work || '—' }}</p>
                 <p><strong>学习收获</strong>{{ resubmitComparison.before.content?.harvest || '—' }}</p>
                 <p><strong>下周计划</strong>{{ resubmitComparison.before.content?.plan || '—' }}</p>
               </article>
               <article class="is-after">
-                <header><span>AFTER</span><b>{{ resubmitComparison.after.version }} · 当前重交</b></header>
+                <header><span>本次重交</span><b>{{ versionLabel(resubmitComparison.after.version) }} · 当前重交</b></header>
                 <p><strong>本周工作</strong>{{ resubmitComparison.after.content?.work || '—' }}</p>
                 <p><strong>学习收获</strong>{{ resubmitComparison.after.content?.harvest || '—' }}</p>
                 <p><strong>下周计划</strong>{{ resubmitComparison.after.content?.plan || '—' }}</p>
               </article>
-            </div>
+            </div></details>
           </div>
         </section>
 
@@ -69,17 +69,17 @@
           <div class="mp-card__body">
             <ul v-if="detail.versions && detail.versions.length" class="mp-timeline">
               <li v-for="(v, i) in detail.versions" :key="i" class="mp-timeline__item" :class="'is-' + (v.tone === 'processing' ? 'warning' : v.tone)">
-                <div class="mp-timeline__title">{{ v.title }}</div>
-                <div v-if="v.desc" class="mp-timeline__desc">{{ v.desc }}</div>
-                <div class="mp-timeline__time">{{ v.time }}</div>
-                <template v-if="v.content && (v.content.work || v.content.harvest || v.content.plan)">
+                <div class="mp-timeline__title">{{ versionLabel(v.title) }}</div>
+                <div class="mp-timeline__time">{{ formatDateTime(v.time) }}</div>
+                <template v-if="v.desc || v.content && (v.content.work || v.content.harvest || v.content.plan)">
                   <button type="button" class="wr-ver__toggle" @click="toggleVersion(i)">
                     {{ openVersions.includes(i) ? '收起该版正文' : '查看该版正文' }}
                   </button>
                   <div v-if="openVersions.includes(i)" class="wr-ver__body">
-                    <p v-if="v.content.work"><b>本周工作：</b>{{ v.content.work }}</p>
-                    <p v-if="v.content.harvest"><b>学习收获：</b>{{ v.content.harvest }}</p>
-                    <p v-if="v.content.plan"><b>下周计划：</b>{{ v.content.plan }}</p>
+                    <p v-if="v.desc">{{ v.desc }}</p>
+                    <p v-if="v.content?.work"><b>本周工作：</b>{{ v.content.work }}</p>
+                    <p v-if="v.content?.harvest"><b>学习收获：</b>{{ v.content.harvest }}</p>
+                    <p v-if="v.content?.plan"><b>下周计划：</b>{{ v.content.plan }}</p>
                   </div>
                 </template>
               </li>
@@ -118,25 +118,23 @@
                   <option value="">请选择评价等级</option>
                   <option v-for="item in ratingOptions" :key="item.value" :value="item.value">{{ item.label }}</option>
                 </select>
-                <span>评分会绑定当前提交版本，学生重交不会覆盖历史批阅事实。</span>
               </div>
               <label for="weekly-review-comment" class="mp-note" style="display: block; margin: var(--space-3) 0 var(--space-1)">
                 {{ action === 'RETURN' ? '退回原因（必填，≥5 字）' : '评语（选填）' }}
               </label>
               <AppTemplateChips class="wr-chips" :options="activeChips" size="compact" @pick="onPickChip" />
-              <textarea id="weekly-review-comment" :disabled="submitting || conflict.active || !canReview" v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写明退回原因，将原样同步学生端…' : '例如：联调记录完整，下周补充量化数据…'"></textarea>
+              <textarea id="weekly-review-comment" :disabled="submitting || conflict.active || !canReview" v-model="comment" class="mp-textarea" :placeholder="action === 'RETURN' ? '请写清需要补充或修改的内容' : '填写本次工作评价和改进建议'"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
               <div style="display: flex; gap: var(--space-2); margin-top: var(--space-3)">
                 <AppButton :variant="action === 'RETURN' ? 'warning' : 'primary'" :disabled="!canReview || conflict.active" :title="canReview ? '' : '无周报批阅权限'" :loading="submitting" style="flex: 1" @click="submit(action)">{{ action === 'RETURN' ? '退回修改' : '确认通过' }}</AppButton>
               </div>
-              <p class="mp-note" style="text-align: center; margin-top: var(--space-2)">批阅动作写入审批留痕，学生端即时同步状态</p>
             </template>
-            <EmptyState v-else :title="'该周报' + (detail.status === 'APPROVED' ? '已通过' : '已退回')" description="批阅结果已同步学生端，留痕见下方审批记录" />
+            <p v-else class="wr-review-status">{{ detail.status === 'APPROVED' ? '批阅已通过' : '已退回，待学生修改' }}</p>
             <div v-if="detail.status !== 'PENDING_REVIEW' && latestReview" class="wr-review-result">
               <strong>本版批阅结果</strong>
               <span>五级评价：{{ latestReview.ratingLevel ? (latestReview.ratingLevel + ' / 5') : '未评分' }}</span>
               <span v-if="latestReview.reviewerName">批阅教师：{{ latestReview.reviewerName }}</span>
-              <span v-if="latestReview.reviewedAt">批阅时间：{{ String(latestReview.reviewedAt).replace('T', ' ').slice(0, 19) }}</span>
+              <span v-if="latestReview.reviewedAt">批阅时间：{{ formatDateTime(latestReview.reviewedAt) }}</span>
               <span v-if="latestReview.comment">批阅意见：{{ latestReview.comment }}</span>
             </div>
           </div>
@@ -170,6 +168,7 @@ import { internshipApi } from '@/modules/internship/api/internship.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { isConflict, captureConflict, emptyConflict } from '@/modules/internship/composables/conflictGuard'
 import { toast } from '@/utils/toast'
+import { formatDateTime } from '@/utils/dateUtils'
 import { APPROVE_WEEKLY, REJECT_WEEKLY } from '@/modules/internship/constants/presetPrompts'
 
 export default {
@@ -195,8 +194,7 @@ export default {
     activeChips() { return this.action === 'RETURN' ? REJECT_WEEKLY : APPROVE_WEEKLY },
     latestReview() {
       const versions = this.detail?.immutableVersions || []
-      const version = versions.find(item => item?.review)
-      return version?.review || null
+      return versions[0]?.review || null
     },
     resubmitComparison() {
       const versions = this.detail?.versions || []
@@ -233,6 +231,8 @@ export default {
   },
   beforeUnmount() { this.loadEpoch++ },
   methods: {
+    formatDateTime,
+    versionLabel(value) { return String(value || '版本待核实').replace(/^v(\d+)(?=\s|$)/, '第$1版') },
     toggleVersion(i) {
       const at = this.openVersions.indexOf(i)
       if (at >= 0) this.openVersions.splice(at, 1)
@@ -305,8 +305,8 @@ export default {
           latest: () => {
             if (!this.detail) throw new Error('最新详情未拉回')
             return [
-              { label: '最新状态', value: this.detail.statusLabel || this.detail.status || '' },
-              { label: '当前版本', value: this.detail.reportVersion || '' },
+              { label: '最新状态', value: this.detail.statusLabel || '状态待核实' },
+              { label: '当前版本', value: this.versionLabel(this.detail.reportVersion) },
               { label: '最新评语', value: this.detail.reviewComment || '' }
             ]
           }

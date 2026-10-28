@@ -93,11 +93,18 @@ def evaluate_position_publishability(position, company, batch, student=None,
         "accommodationProvided": "accommodation_provided",
         "mealProvided": "meal_provided", "hazardousFlag": "hazardous_flag",
     }
+    field_labels = {
+        "workContent": "工作内容", "dailyHours": "每日工时", "weeklyHours": "每周工时",
+        "nightShift": "夜班安排", "overtimeAllowed": "加班安排", "restDaysPerWeek": "每周休息天数",
+        "remunerationType": "报酬方式", "accommodationProvided": "住宿安排",
+        "mealProvided": "用餐安排", "hazardousFlag": "危险岗位情况",
+    }
     for api_name, attr in field_map.items():
         value = _fact(position, attr)
         if value is None or (isinstance(value, str) and not value.strip()):
-            unknowns.append(_issue("REQUIRED_UNKNOWN", api_name,
-                                   f"{api_name} 未录入，不能解释为安全", field=api_name))
+            label = field_labels[api_name]
+            unknowns.append(_issue("REQUIRED_UNKNOWN", label,
+                                   f"{label}未录入，须先核实岗位条件", field=api_name))
     maximum = float(cfg.get("maxDailyHours", 8))
     if facts["dailyHours"] is not None and float(facts["dailyHours"]) > maximum:
         blockers.append(_issue("DAILY_HOURS_EXCEEDED", "每日工时",

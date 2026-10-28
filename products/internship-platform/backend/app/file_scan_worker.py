@@ -19,8 +19,17 @@ from app.services.file_scan_config import get_file_scan_config
 from app.services.file_scan_service import process_next_scan_job, reconcile_pending_uploads
 
 
-def run_once(batch_size):
-    recovered = reconcile_pending_uploads(batch_size)
+def run_once(batch_size, *, scan_only=False):
+    from app.services.internship_file_transfer_service import cleanup_expired_uploads
+    cleanup_failed = False
+    recovered = 0
+    if not scan_only:
+        try:
+            cleanup_expired_uploads(limit=batch_size)
+        except Exception as exc:
+            cleanup_failed = True
+            logging.error('Expired upload cleanup unavailable: %s', type(exc).__name__)
+        recovered = reconcile_pending_uploads(batch_size)
     processed = failed = 0
     for _ in range(batch_size):
         result = process_next_scan_job()
@@ -32,7 +41,7 @@ def run_once(batch_size):
         dead = db.scalar(select(func.count()).select_from(FileJob).where(
             FileJob.job_type == 'FILE_SCAN', FileJob.is_deleted.is_(False), FileJob.status == 'DEAD'))
     config = get_file_scan_config()
-    healthy = config.enabled and ClamAVClient(config).ping() and not failed and not dead
+    healthy = config.enabled and ClamAVClient(config).ping() and not failed and not dead and not cleanup_failed
     return {'processed': processed, 'failed': failed, 'recovered': recovered,
             'dead': dead, 'healthy': bool(healthy)}
 
@@ -44,6 +53,8 @@ def main(argv=None):
     mode.add_argument('--healthcheck', action='store_true')
     parser.add_argument('--interval', type=float, default=2)
     parser.add_argument('--batch-size', type=int, default=10)
+    parser.add_argument('--scan-only', action='store_true',
+        help='Process existing scan jobs without deleting expired uploads or creating historical jobs')
     parser.add_argument('--heartbeat-file', type=Path,
         default=Path(tempfile.gettempdir()) / 'internship-file-scan-heartbeat.json')
     args = parser.parse_args(argv)
@@ -59,7 +70,7 @@ def main(argv=None):
         while not stopping.is_set():
             healthy = False
             try:
-                outcome = run_once(args.batch_size)
+                outcome = run_once(args.batch_size, scan_only=args.scan_only)
                 healthy = outcome['healthy']
                 logging.info('Scan jobs processed=%s failed=%s dead=%s',
                              outcome['processed'], outcome['failed'], outcome['dead'])

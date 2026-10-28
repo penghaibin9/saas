@@ -224,7 +224,7 @@ def authorize_notice_file(db, file, bindings, user: dict, action: str) -> bool:
     if (not notice or notice.tenant_id != _tid() or not notice_is_active(notice)
             or str(file.id) not in {str(x) for x in (notice.attachment_file_ids_json or [])}):
         return False
-    role = str(user.get("currentRoleCode") or user.get("userType") or "").upper()
+    role = str(user.get("currentRoleBaseCode") or user.get("currentRoleCode") or user.get("userType") or "").upper()
     if role == "STUDENT":
         from app.services.mobile_student_service import _require_student, resolve_student
         _require_student(user)
@@ -1576,6 +1576,7 @@ def _notice_view(row: InternshipEmergencyNotice) -> dict:
         "title": row.title,
         "content": row.content,
         "noticeType": row.notice_type or "NOTICE",
+        "schoolCategory": row.school_category or "",
         "urgency": row.urgency or "NORMAL",
         "validFrom": _iso(row.valid_from) or "",
         "validUntil": _iso(row.valid_until) or "",
@@ -1614,6 +1615,10 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
         raise AppException("VALIDATION_ERROR", "紧急程度不合法")
     if valid_from and valid_until and valid_from > valid_until:
         raise AppException("VALIDATION_ERROR", "有效期结束时间不能早于开始时间")
+    category=str(payload.get('schoolCategory') or '').strip()
+    from app.services.system_settings import school_service_config
+    if category and category not in school_service_config(user)['announcementCategories']:
+        raise AppException('VALIDATION_ERROR','学校公告分类已调整，请重新选择')
     sender_id, sender_name = _teacher_identity(user)
     with session() as db:
         batch = _batch(db, payload.get("batchId"))
@@ -1633,6 +1638,7 @@ def publish_emergency_notice(user: dict, body: dict) -> dict:
             title=title,
             content=content,
             notice_type=notice_type,
+            school_category=category or None,
             urgency=urgency,
             valid_from=valid_from,
             valid_until=valid_until,

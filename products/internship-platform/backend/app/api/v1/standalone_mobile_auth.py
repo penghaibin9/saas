@@ -7,6 +7,7 @@ is still the standalone t_tenant/t_user/t_role/t_user_role database only.
 from __future__ import annotations
 
 import secrets
+from datetime import datetime
 
 from fastapi import APIRouter, Body, Depends, Header
 from pydantic import BaseModel, ConfigDict, Field, model_validator
@@ -17,12 +18,12 @@ from app.config import settings
 from app.core.context import set_current_user, set_tenant
 from app.core.exceptions import AppException, unauthorized
 from app.core.response import success
-from app.core.security import _validate_db_subject, create_access_token, decode_token, get_current_user
-from app.core.token_store import block_jti, consume_refresh, issue_refresh
+from app.core.security import _validate_db_subject, create_access_token, get_current_user
+from app.core.token_store import consume_refresh, issue_refresh
 from app.db.session import get_sessionmaker
 from app.models import Tenant, User
-from app.services import audit_log
-from app.services.browser_auth_session_blocklist import auth_session_blocked, block_auth_session
+from app.services.system_authorization import audit
+from app.services.browser_auth_session_blocklist import auth_session_blocked, block_auth_session, revoke_logout_credentials
 
 router = APIRouter(prefix="/auth", tags=["Standalone mobile auth"])
 
@@ -148,15 +149,9 @@ def mobile_login(body: MobileLoginRequest):
         set_current_user(dict(claims))
         access_token = create_access_token(claims)
         refresh_token = issue_refresh(claims)
-        audit_log.record(
-            "MOBILE_PASSWORD_LOGIN",
-            f"user:{user.id}",
-            detail={
-                "tenantId": int(tenant.id),
-                "clientType": client_type,
-                "roleCode": role_code,
-            },
-        )
+        user.last_login_at = datetime.utcnow()
+        audit(db, claims, 'LOGIN', 'account', user.id, {'reason': '移动端账号密码登录'})
+        db.commit()
         return success(
             _public_payload(
                 claims=claims,
@@ -200,16 +195,15 @@ def mobile_switch_role(body: MobileSwitchRoleRequest, user=Depends(get_current_u
         refresh_claims = consume_refresh(body.refreshToken, expected_claims=user)
         if not refresh_claims:
             raise unauthorized("当前会话已变化，请刷新页面后重试身份切换")
+        block_auth_session(str(user.get('authSessionId') or ''))
         claims = _claims(
             tenant=tenant, user=account, role_code=str(target[0]),
             role_name=str(target[1]), client_type=client_type)
         access_token = create_access_token(claims)
         refresh_token = issue_refresh(claims)
-        audit_log.record(
-            "MOBILE_ROLE_SWITCH", f"user:{account.id}",
-            detail={"tenantId": int(tenant.id),
-                    "fromRole": str((user or {}).get("currentRoleCode") or ""),
-                    "toRole": str(target[0]), "clientType": client_type})
+        audit(db, user, 'ROLE_SWITCH', 'account', account.id,
+              {'reason': '移动端切换工作身份', 'toRole': str(target[0])})
+        db.commit()
         return success(_public_payload(
             claims=claims, access_token=access_token, refresh_token=refresh_token,
             available_roles=roles), message="身份切换成功")
@@ -225,7 +219,7 @@ def mobile_refresh(body: MobileRefreshRequest):
     client_type = str(claims.get("clientType") or "").upper()
     if client_type not in _ALLOWED_CLIENTS:
         raise unauthorized("移动端会话类型无效，请重新登录")
-    if auth_session_blocked(claims.get("authSessionId")):
+    if not claims.get("authSessionId") or auth_session_blocked(claims.get("authSessionId")):
         raise unauthorized("当前会话已退出，请重新登录")
 
     tenant_id = claims.get("tenantId") or claims.get("tenant_id")
@@ -253,22 +247,6 @@ def mobile_logout(
     body: MobileLogoutRequest | None = Body(default=None),
     authorization: str | None = Header(default=None),
 ):
-    session_id = ""
-    if body and body.refreshToken:
-        claims = consume_refresh(body.refreshToken)
-        if claims:
-            session_id = str(claims.get("authSessionId") or "")
-    raw = str(authorization or "").strip()
-    if raw.lower().startswith("bearer "):
-        raw = raw.split(None, 1)[1].strip()
-        try:
-            claims = decode_token(raw)
-            session_id = session_id or str(claims.get("authSessionId") or "")
-            jti = str(claims.get("jti") or "")
-            if jti:
-                block_jti(jti, float(claims.get("exp") or 0) or None)
-        except AppException:
-            pass
-    if session_id:
-        block_auth_session(session_id)
-    return success({"invalidated": True}, message="已退出登录")
+    refresh_claims = consume_refresh(body.refreshToken) if body and body.refreshToken else None
+    invalidated = revoke_logout_credentials(authorization, refresh_claims)
+    return success({"invalidated": invalidated}, message="已退出登录" if invalidated else "未确认服务端会话撤销，请重新登录")

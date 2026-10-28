@@ -23,7 +23,7 @@
             <td><input type="checkbox" :aria-label="`选择计划 ${row.planTitle} ${row.planNo}`" :checked="bulk.selected(row.id)" :disabled="!!s.exporting" @change="bulk.toggle(row)" /></td>
             <td><strong>{{ row.planTitle }}</strong><small>{{ row.planNo || '未登记计划编号' }}</small></td>
             <td>{{ row.batchName }}<small>{{ row.majorName || '未登记专业' }}</small></td>
-            <td>{{ row.planStatus === 'PUBLISHED' ? '已发布' : '草稿' }}<small>V{{ row.version }}</small></td>
+            <td>{{ row.planStatus === 'PUBLISHED' ? '已发布' : '草稿' }}<small>第{{ row.version }}版</small></td>
           </tr></tbody></table>
         </div>
       </template>
@@ -37,7 +37,7 @@
         <div v-for="row in s.selected" :key="row.id"><span>{{ row.planTitle }} · {{ row.planNo }}</span><button type="button" :disabled="!!s.exporting" :aria-label="`移除计划 ${row.planNo}`" @click="bulk.remove(row.id)">移除</button></div>
       </details>
       <p v-if="s.exportError" class="plan-bulk__error" role="alert">{{ s.exportError }}</p>
-      <p v-if="s.receipt" class="plan-bulk__receipt" role="status">已生成 {{ s.receipt.count }} 份计划的 {{ s.receipt.format }}，已发起下载：{{ s.receipt.filename }}</p>
+      <p v-if="s.receipt" class="plan-bulk__receipt" role="status">已生成 {{ s.receipt.count }} 份计划的{{ s.receipt.format === 'PDF' ? '便携文档' : '电子表格' }}，已发起下载：{{ s.receipt.filename }}</p>
       <div class="plan-bulk__actions">
         <AppButton :disabled="blocked" :loading="s.exporting === 'pdf'" @click="bulk.exportSelected('pdf')">批量导出 PDF</AppButton>
         <AppButton :disabled="blocked" :loading="s.exporting === 'xlsx'" @click="bulk.exportSelected('xlsx')">批量导出 Excel</AppButton>

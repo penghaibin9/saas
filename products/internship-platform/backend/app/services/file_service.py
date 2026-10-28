@@ -22,7 +22,7 @@ def _meta(row):
     return {"fileId":str(row.id),"fileName":row.file_name,"ext":row.ext or "","mimeType":row.mime_type or "",
             "sizeBytes":int(row.size_bytes or 0),"sha256":row.sha256 or "","fileKey":row.file_key,
             "bizType":row.biz_type or "","bizId":row.biz_id or "","status":row.status,
-            "scanStatus":row.scan_status,"readyForBusiness":str(row.status).upper() in _READY_STATUS and str(row.scan_status or "NOT_REQUIRED").upper() in _READY_SCAN}
+            "scanStatus":row.scan_status,"readyForBusiness":str(row.status).upper() in _READY_STATUS and str(row.scan_status or "").upper() in _READY_SCAN}
 
 def _row(file_id,db):
     if not str(file_id or "").isdigit(): return None
@@ -81,10 +81,23 @@ def _bind_in_session(db,row,biz_type,biz_id,actor):
 def bind_file_biz(file_id,biz_type,biz_id,user=None,db=None):
     owns=db is None;working=db or session()
     try:
-        row=_row(file_id,working)
-        if not row:raise not_found("文件不存在")
-        if not _meta(row)["readyForBusiness"]:raise AppException("FILE_NOT_READY","文件尚未安全就绪",http_status=409)
-        _bind_in_session(working,row,biz_type,biz_id,user or get_current_user_ctx() or {})
+        from app.services.file_business_binding_service import bind_file_to_business
+        if not str(file_id or '').isdigit(): raise not_found("文件不存在")
+        row = working.scalar(select(FileObject).where(FileObject.id == int(file_id),
+            FileObject.tenant_id == _tid(), FileObject.is_deleted.is_(False)).with_for_update())
+        if not row: raise not_found("文件不存在")
+        existing = next((b for b in working.scalars(select(FileBinding).where(
+            FileBinding.tenant_id == _tid(), FileBinding.file_id == row.id,
+            FileBinding.status == 'ACTIVE', FileBinding.is_current.is_(True),
+            FileBinding.is_deleted.is_(False))).all()
+            if b.biz_type == str(biz_type).upper() and str(b.biz_id) == str(biz_id)), None)
+        # Business callers already authorize the target; this common boundary authorizes
+        # the source and forbids redirecting an existing file to another object.
+        bind_file_to_business(working, file_id=file_id, biz_type=biz_type, biz_id=biz_id,
+            actor=user or get_current_user_ctx() or {},
+            subject_type=existing.subject_type if existing else "BUSINESS_OBJECT",
+            subject_id=existing.subject_id if existing else str(biz_id),
+            relation_type="ATTACHMENT", module_code="INTERNSHIP")
         if owns:working.commit()
         else:working.flush()
     except Exception:

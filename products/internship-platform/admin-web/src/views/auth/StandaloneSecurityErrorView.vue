@@ -4,19 +4,22 @@
       <div class="se-code">{{ status }}</div>
       <h1 id="se-title">{{ title }}</h1>
       <p>{{ description }}</p>
+      <p v-if="navigationError" role="alert">{{ navigationError }}</p>
       <div class="se-actions">
-        <button type="button" class="se-primary" @click="goSafe">{{ primaryLabel }}</button>
-        <button v-if="status !== '401'" type="button" @click="goLogin">重新登录</button>
+        <button type="button" class="se-primary" :disabled="returning" @click="goSafe">{{ returning ? '正在确认可用页面…' : primaryLabel }}</button>
+        <button v-if="!['401', '419'].includes(status)" type="button" @click="goLogin">重新登录</button>
       </div>
     </section>
   </main>
 </template>
 
 <script>
-import { clearAuthSession } from '@/services/http/client'
+import { clearAuthSession, request } from '@/services/http/client'
+import { getVisibleNavPlan } from '@/config/navPlan'
 
 export default {
   name: 'StandaloneSecurityErrorView',
+  data() { return { returning:false, navigationError:'' } },
   computed: {
     status() {
       const value = String(this.$route.params.status || '500')
@@ -31,20 +34,28 @@ export default {
         : '服务暂不可用'
     },
     description() {
-      if (this.status === '403') return '系统已按当前角色和学校授权拦截本页面。你可以返回岗位实习首页，或使用有权限的账号重新登录。'
+      if (this.status === '403') return '系统已按当前角色和学校授权拦截本页面。你可以返回本身份有权使用的工作页，或使用有权限的账号重新登录。'
       if (this.status === '419') return '当前登录会话已过期，请重新登录后继续办理。'
       if (this.status === '401') return '登录后才能进入岗位实习管理端。'
       if (this.$route.query.reason === 'permission-service') return '暂时无法确认当前账号的权限，为避免越权，系统已停止加载业务页面。'
-      return '当前页面暂时无法安全加载，请返回岗位实习首页后重试。'
+      return '当前页面暂时无法安全加载，请返回可用工作页后重试。'
     },
     primaryLabel() {
-      return this.status === '401' || this.status === '419' ? '去登录' : '返回岗位实习首页'
+      return this.status === '401' || this.status === '419' ? '去登录' : '返回可用工作页'
     }
   },
   methods: {
-    goSafe() {
+    async goSafe() {
       if (this.status === '401' || this.status === '419') return this.goLogin()
-      this.$router.replace('/admin/internship').catch(() => {})
+      if (this.returning) return
+      this.returning=true; this.navigationError=''
+      try {
+        const group=getVisibleNavPlan(await request('/rbac/current-context'))[0]
+        const path=group?.children?.[0]?.children?.[0]?.path || group?.children?.[0]?.path
+        if (path) await this.$router.replace(path)
+        else this.navigationError='当前身份暂无可进入的工作页，请联系学校管理员核对角色和权限。'
+      } catch { this.navigationError='暂时无法确认可用页面，请稍后重试。' }
+      finally { this.returning=false }
     },
     goLogin() {
       clearAuthSession()

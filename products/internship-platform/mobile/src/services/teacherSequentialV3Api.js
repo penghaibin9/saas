@@ -1,4 +1,5 @@
 import { realRequest } from './request'
+import { formatDateTime } from '../utils/format.js'
 
 // T5 keeps the optimistic-lock version captured with the exact queue snapshot in memory only.
 // No local storage and no second workflow authority: writes still delegate to canonical backend
@@ -16,7 +17,7 @@ function rememberExceptionVersion(id, rawVersion) {
 }
 
 export async function getInternshipReviewQueue({
-  batchId = '', focusReportId = '', weeklyPage = 1, exceptionPage = 1, pageSize = 20, append = false
+  batchId = '', focusReportId = '', focusExceptionId = '', weeklyPage = 1, exceptionPage = 1, pageSize = 20, append = false
 } = {}) {
   const epoch = ++queueEpoch
   if (!append) exceptionVersions.clear()
@@ -29,6 +30,7 @@ export async function getInternshipReviewQueue({
   // 解析对应批次。小程序不从 recordId 推导或缓存任何跨学生业务上下文。
   if (String(batchId || '').trim()) queryParts.push(`batchId=${encodeURIComponent(String(batchId).trim())}`)
   if (String(focusReportId || '').trim()) queryParts.push(`recordId=${encodeURIComponent(String(focusReportId).trim())}`)
+  if (String(focusExceptionId || '').trim()) queryParts.push(`exceptionId=${encodeURIComponent(String(focusExceptionId).trim())}`)
   const query = queryParts.join('&')
   const d = await realRequest(`/mobile/teacher/internship?${query}`)
   // A late queue must not replace the lock versions used by the visible batch.
@@ -37,7 +39,8 @@ export async function getInternshipReviewQueue({
     id: String(r.id || r.reportId || ''), student: r.studentName || r.name || '',
     className: r.className || '', week: r.weekNumber ? ('第 ' + r.weekNumber + ' 周') : (r.week || ''),
     company: r.enterpriseName || r.company || '', post: r.positionName || r.post || '',
-    submitTime: r.submittedAt || r.submitTime || '—', status: r.status,
+    submitTime: formatDateTime(r.submittedAt || r.submitAt || r.submitTime), status: r.status,
+    riskFlag: r.riskFlag || '', wordCount: r.wordCount, isResubmit: r.isResubmit === true,
     statusLabel: r.statusLabel || '', expectedVersion: Number(r.version),
     version: Number(String(r.reportVersion || '').replace(/^v/i, '')) || 1,
     overdue: r.status === 'OVERDUE', tasks: r.workContent || '', gain: r.harvestContent || '',
@@ -50,16 +53,19 @@ export async function getInternshipReviewQueue({
       id, student: e.studentName || e.name || '',
       className: e.className || '', company: e.enterpriseName || '', post: e.positionName || '',
       internshipId: String(e.internId || e.internshipId || ''),
-      time: e.exceptionDate || e.date || '', type: e.typeLabel || e.exceptionType || e.type || '异常',
-      distance: e.distance || '—', note: e.note || '', status: e.status || 'PENDING_HANDLE',
-      accuracy: e.accuracy || '—', address: e.address || '', deviceRisk: e.deviceRisk || '—',
+      time: formatDateTime(e.exceptionDate || e.date), type: e.exceptionType || e.type || '',
+      typeLabel: /[\u4e00-\u9fff]/.test(e.typeLabel || '') ? e.typeLabel : ({ OUT_OF_RANGE:'超范围', NO_LOCATION:'无定位', LOW_ACCURACY:'定位精度不足', LOCATION_UNCERTAIN:'定位待核实', MOCK_LOCATION:'模拟定位', MISSING:'缺卡' })[e.exceptionType || e.type] || '异常类型待核对',
+      distance: String(e.distance || '—').replace(/\bkm\b/g,'千米'), note: e.note || '', status: e.status || 'PENDING_HANDLE',
+      accuracy: String(e.accuracy || '—').replace(/\bm\b/g,'米'), address: e.address || '',
+      deviceRisk: ({ normal:'未提示设备风险', mock:'疑似模拟定位', rooted:'设备安全信号异常', not_available:'未提供设备信号', '—':'未提供设备信号' })[String(e.deviceRisk || 'not_available').toLowerCase()] || '设备风险信号待核对',
       streak: e.streak || '', appealStatus: e.appealStatus || '', appealNote: e.appealNote || '',
+      appealStatusLabel: ({ PENDING:'待核实申诉', ACCEPTED:'申诉已采纳', REJECTED:'申诉未采纳' })[e.appealStatus] || '申诉状态待核对',
       statusLabel: e.statusLabel || '', expectedVersion,
       decisionFactsComplete: e.decisionFactsComplete === true,
       missingDecisionFacts: Array.isArray(e.missingDecisionFacts) ? e.missingDecisionFacts : []
     }
   })
-  return { reports, abnormal, batchId: String(d.batchId || ''), available: d.available !== false,
+  return { reports, abnormal, batchId: String(d.batchId || ''), focusReportId: String(d.focusReportId || ''), focusExceptionId: String(d.focusExceptionId || ''), available: d.available !== false,
     errors: Array.isArray(d.errors) ? d.errors : [], pagination: d.pagination || {
     weeklyPage, exceptionPage, pageSize, weeklyHasMore: false, exceptionHasMore: false
   }, _real: true }
@@ -79,7 +85,7 @@ export function handleCheckin(id, action, comment, riskLevel = null) {
     error.code = 'VALIDATION_ERROR'
     return Promise.reject(error)
   }
-  const url = `/teacher-mobile/internship/exceptions/${encodeURIComponent(key)}/handle`
+  const url = `/internship/exceptions/${encodeURIComponent(key)}/handle`
   const finish = (result) => {
     // The queue page reloads authoritative truth after success. Drop this snapshot immediately so
     // a double tap or a future accidental reuse cannot issue a second command with the old version.

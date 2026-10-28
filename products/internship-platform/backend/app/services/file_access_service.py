@@ -1,6 +1,7 @@
 """Standalone file authorization service for internship business files."""
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any, Callable
 
 from sqlalchemy import select
@@ -39,9 +40,13 @@ def register_file_resolver(*biz_types: str):
 
 
 def _scan_ready(file_obj) -> bool:
+    if (str(file_obj.biz_type or '').upper() == 'TEMP_PRIVATE'
+            and getattr(file_obj, 'retention_until', None)
+            and file_obj.retention_until <= datetime.utcnow()):
+        return False
     return (
         str(file_obj.status or "").upper() in READY_FILE_STATUS
-        and str(file_obj.scan_status or "NOT_REQUIRED").upper() in READY_SCAN_STATES
+        and str(file_obj.scan_status or "").upper() in READY_SCAN_STATES
     )
 
 
@@ -108,6 +113,50 @@ def authorize_file_object(file_obj, bindings: list[Any], user: dict, action: str
     if action in {"download", "preview", "submit", "archive", "bind"} and not _scan_ready(file_obj):
         return False
 
+    if str(file_obj.biz_type or '').startswith('SYSTEM_'):
+        from app.services.system_settings import authorize_system_file
+        return authorize_system_file(db,file_obj,user,action)
+
+    if (str(file_obj.biz_type or '').upper() == 'INTERNSHIP_PLAN'
+            or any(str(b.biz_type or '').upper() == 'INTERNSHIP_PLAN' for b in bindings)):
+        try:
+            from app.modules.internship.services.internship_plan_service import authorize_plan_file
+            return bool(authorize_plan_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or '').upper() == 'COMPLIANCE_EVIDENCE'
+            or any(str(b.biz_type or '').upper() == 'COMPLIANCE_EVIDENCE' for b in bindings)):
+        try:
+            from app.modules.internship.services.internship_evidence_package_service import authorize_package_file
+            return action in {'meta', 'download', 'preview'} and authorize_package_file(db, file_obj, user)
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or '').upper() == 'INTERNSHIP_VISIT'
+            or any(str(binding.biz_type or '').upper() == 'INTERNSHIP_VISIT' for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_visit_service import authorize_visit_file
+            return bool(authorize_visit_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or '').upper() == 'INTERNSHIP_GUIDANCE'
+            or any(str(binding.biz_type or '').upper() == 'INTERNSHIP_GUIDANCE' for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_guidance_service import authorize_guidance_file
+            return bool(authorize_guidance_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or '').upper() == 'INTERNSHIP_LEAVE'
+            or any(str(binding.biz_type or '').upper() == 'INTERNSHIP_LEAVE' for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_leave_service import authorize_leave_file
+            return bool(authorize_leave_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
     if (str(file_obj.biz_type or "").upper() in {"ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE"}
             or any(str(b.biz_type or "").upper() in {"ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE"} for b in bindings)):
         try:
@@ -154,6 +203,33 @@ def authorize_file_object(file_obj, bindings: list[Any], user: dict, action: str
         try:
             from app.modules.internship.services.internship_checkin_evidence_service import authorize_student_evidence
             return bool(authorize_student_evidence(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or '').upper() == 'INTERNSHIP_FEEDBACK'
+            or any(str(binding.biz_type or '').upper() == 'INTERNSHIP_FEEDBACK' for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_student_feedback_service import authorize_feedback_file
+            return bool(authorize_feedback_file(db, file_obj, bindings, user or {}, action))
+        except Exception:
+            return False
+
+    if (str(file_obj.biz_type or '').upper() in {'INTERNSHIP_MAKEUP', 'INTERNSHIP'}
+            or any(str(binding.biz_type or '').upper() == 'INTERNSHIP_MAKEUP' for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_makeup_service import authorize_makeup_file
+            decision = authorize_makeup_file(db, file_obj, bindings, user or {}, action)
+            if decision is not None:
+                return bool(decision)
+        except Exception:
+            return False
+
+    application_types = {'INTERNSHIP_APPLICATION_EVIDENCE', 'INTERNSHIP_APPLICATION_AGREEMENT'}
+    if (str(file_obj.biz_type or '').upper() in application_types
+            or any(str(binding.biz_type or '').upper() in application_types for binding in bindings)):
+        try:
+            from app.modules.internship.services.internship_application_service import authorize_application_file
+            return bool(authorize_application_file(db, file_obj, bindings, user or {}, action))
         except Exception:
             return False
 
@@ -289,7 +365,7 @@ def upsert_file_binding(
 
 
 def file_view(file_obj, *, user: dict, bindings: list[Any], db) -> dict:
-    scan = str(file_obj.scan_status or "NOT_REQUIRED").upper()
+    scan = str(file_obj.scan_status or "").upper()
     can_read = authorize_file_object(file_obj, bindings, user, "preview", db=db)
     return {
         "fileId": str(file_obj.id),

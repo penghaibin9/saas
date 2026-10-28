@@ -1,9 +1,6 @@
-import inspect
-
-from app.api.v1 import mobile
+from app.api.v1 import mobile_internship_student as mobile
 from app.core.exceptions import AppException
 from app.modules.internship.services import internship_checkin_trust_service as trust
-from app.services import mobile_student_service
 
 
 def test_checkin_token_is_bound_to_student_record_and_day(monkeypatch):
@@ -55,7 +52,7 @@ def test_location_classification_covers_all_operational_branches():
     assert trust.classify_location(lat=1, lng=1, accuracy=20, rule=rule, distance_m=650) == (
         "OUT_OF_RANGE", "OUT_OF_RANGE")
     assert trust.classify_location(lat=None, lng=None, accuracy=None, rule=rule, distance_m=None) == (
-        "NO_LOCATION", "MISSING")
+        "NO_LOCATION", "NO_LOCATION")
     assert trust.classify_location(
         lat=1, lng=1, accuracy=20,
         rule={**rule, "configured": False}, distance_m=None,
@@ -89,28 +86,24 @@ def test_frozen_placement_rule_wins_over_later_position_changes(monkeypatch):
     }
 
 
-def test_checkin_routes_forward_selected_batch_context():
+def test_checkin_routes_forward_selected_batch_context(monkeypatch):
     large_batch_id = "9007199254740993"
-    assert mobile._selected_internship_batch_id(
+    assert mobile._selected_checkin_batch(
         header_value=large_batch_id, explicit=None
     ) == large_batch_id
-    assert mobile._selected_internship_batch_id(
+    assert mobile._selected_checkin_batch(
         header_value=large_batch_id, explicit=7
     ) == "7"
 
-    for endpoint in (
-        mobile.internship_checkin,
-        mobile.internship_checkin_preflight,
-        mobile.internship_checkin_week,
-    ):
-        source = inspect.getsource(endpoint)
-        assert "batch_id=Depends(_selected_internship_batch_id)" in source
-        assert "batch_id=batch_id" in source
-
-    for service in (
-        mobile_student_service.internship_checkin,
-        mobile_student_service.internship_checkin_preflight,
-        mobile_student_service.internship_checkin_week,
-    ):
-        assert "batch_id" in inspect.signature(service).parameters
-        assert "_internship_record(db, u, batch_id=batch_id" in inspect.getsource(service)
+    captured=[]
+    def read(user, **kwargs):captured.append((user,kwargs));return {'batchId':kwargs['batch_id']}
+    def write(user, body, **kwargs):captured.append((user,{**kwargs,'body':body}));return {'batchId':kwargs['batch_id']}
+    monkeypatch.setattr(mobile.checkins,'preflight',read)
+    monkeypatch.setattr(mobile.checkins,'week',read)
+    monkeypatch.setattr(mobile.checkins,'checkin',write)
+    user={'userId':'synthetic-student'}
+    mobile.my_checkin_preflight(timezoneName='Asia/Shanghai',batch_id=large_batch_id,user=user)
+    mobile.my_checkin_week(timezoneName='Asia/Shanghai',batch_id=large_batch_id,user=user)
+    mobile.my_checkin(body={'note':'原输入'},batch_id=large_batch_id,user=user)
+    assert len(captured)==3 and all(row[0] is user and row[1]['batch_id']==large_batch_id for row in captured)
+    assert captured[2][1]['body']=={'note':'原输入'}

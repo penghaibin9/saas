@@ -29,7 +29,7 @@ def _uid(user):
 
 
 def _role(user):
-    return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
+    return str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
 
 
 def _audit(db, filing, action, user=None, detail=None):

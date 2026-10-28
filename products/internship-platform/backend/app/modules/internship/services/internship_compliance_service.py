@@ -479,7 +479,7 @@ def review_exemption(exemption_id, body, user=None):
     from app.core.permissions import enforce_permission, is_super_admin
     from app.models import InternshipAuditTrail
     enforce_permission(user or {}, "internship.compliance.exempt.approve")
-    role = ((user or {}).get("currentRoleCode") or "").upper()
+    role = ((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or "").upper()
     if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
         from app.core.exceptions import no_permission
         raise no_permission("仅学校管理员可批准合规豁免")
