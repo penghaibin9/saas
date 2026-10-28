@@ -1,0 +1,164 @@
+{
+  "baseline": "a4449c26e3e95c3f8e8a7218af7b1eb856789c19",
+  "branch": "feat/internship-standalone-yiyang-v1",
+  "overallProcurementAccepted": false,
+  "backendTests": {
+    "passed": 148,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "modules": {
+      "tests.test_yiyang_plan_export_options_mysql": 12,
+      "tests.test_yiyang_identity_binding_mysql": 15,
+      "tests.test_yiyang_student_portal_closure_mysql": 13,
+      "tests.test_yiyang_ap03_bulk_export": 13,
+      "tests.test_yiyang_ap03_bulk_export_mysql": 4,
+      "tests.test_yiyang_sm02_plan_contract": 3,
+      "tests.test_yiyang_sp06_sp07_formal_document_mysql": 9,
+      "tests.test_yiyang_gap09_minimum_age_mysql": 6,
+      "tests.test_yiyang_gap09_minimum_age": 25,
+      "tests.test_internship_round3_compliance_unit": 27,
+      "tests.test_internship_student_compliance": 6,
+      "tests.test_internship_student_facade_review_contract": 9,
+      "tests.test_yiyang_c08_g17_formal_documents": 6
+    }
+  },
+  "frontendControllerTests": {
+    "passed": 10,
+    "failed": 0
+  },
+  "studentResultPage": {
+    "status": "PASS",
+    "requiredReadPaths": [
+      "/portal/internship/insurance",
+      "/portal/internship/context/weekly-reports",
+      "/portal/internship/context/reports",
+      "/portal/internship/context/self-eval",
+      "/portal/internship/score/appeal"
+    ],
+    "pdfActions": [
+      {
+        "documentType": "ENTERPRISE_EVALUATION",
+        "id": "83",
+        "reused": false
+      },
+      {
+        "documentType": "INTERNSHIP_CERTIFICATE",
+        "id": "84",
+        "reused": false
+      },
+      {
+        "documentType": "ENTERPRISE_EVALUATION",
+        "id": "83",
+        "reused": true
+      }
+    ]
+  },
+  "planBulkPC": {
+    "status": "PASS",
+    "actions": [
+      {
+        "action": "admin-two-plans.pdf",
+        "ids": [
+          "321",
+          "301"
+        ],
+        "count": 2,
+        "bytes": 4914
+      },
+      {
+        "action": "admin-two-plans.xlsx",
+        "ids": [
+          "321",
+          "301"
+        ],
+        "count": 2,
+        "bytes": 6149
+      },
+      {
+        "action": "admin-retry.xlsx",
+        "ids": [
+          "321",
+          "301"
+        ],
+        "count": 2,
+        "bytes": 6149
+      },
+      {
+        "action": "network-failure-retry",
+        "selectionRetained": true
+      },
+      {
+        "action": "refresh",
+        "previousSelectionNotPersisted": true
+      },
+      {
+        "action": "teacher-own-plan.pdf",
+        "ids": [
+          "299"
+        ],
+        "count": 1,
+        "bytes": 3481
+      }
+    ],
+    "viewportDiagnostics": [
+      {
+        "width": 390,
+        "passed": false,
+        "bodyMinWidth": "1180px",
+        "scope": "PC shell narrow-screen diagnostic"
+      },
+      {
+        "width": 1180,
+        "passed": true,
+        "scope": "PC acceptance"
+      }
+    ]
+  },
+  "audit": "Export hash/actor/scope receipt committed to InternshipAuditTrail and AuditOutbox before bytes are returned; storage-failure test returns503 without file.",
+  "securityAuditConsumerDeployment": "NOT_ACCEPTED; inherited unfinished worker/sink files excluded",
+  "candidateIsolation": "HEAD archive plus exact listed backend changes; parallel uncommitted audit changes excluded",
+  "inheritedIdentityReviewedAndAdopted": [
+    "backend/app/services/mobile_student_service.py",
+    "backend/app/modules/internship/services/internship_student_context_guard.py",
+    "backend/app/modules/internship/services/internship_agreement_service.py",
+    "backend/app/modules/internship/services/internship_student_eval_service.py",
+    "backend/tests/test_yiyang_identity_binding_mysql.py"
+  ],
+  "mobileNativeAcceptance": "NOT_RUN",
+  "productionDeployment": false,
+  "merged": false,
+  "sourceSha256": {
+    "admin-web/src/modules/internship/api/plan-insurance.api.js": "7d181b55e6663a1385c3d79ba18fba6649f1e4b35f4dd3bf86c1f1c60e82d98a",
+    "admin-web/src/modules/internship/views/InternshipPlanView.vue": "5a9c9bd3be976dc9e025aa546256aa9e86129e0b9a0f70327788a0702a9d2ac5",
+    "admin-web/src/modules/internship/components/PlanBulkExportPanel.vue": "c7b993f6129341fd278c7e152d112503d8da006d741ac45468653ac1ef2c8983",
+    "admin-web/src/modules/internship/composables/planBulkExport.js": "a3257654bedfcbcfefe4b1f68fbbb61378837e3c0fa6776ca2cbe085e00942e4",
+    "backend/app/modules/internship/routers/internship_plan.py": "789a5a92b1a48dcbd714ee920ef5ec1d84a24b671523c70824b6113b5a6ae1b9",
+    "backend/app/modules/internship/services/internship_plan_export_options.py": "95f97a8012b2f6294cf659c030a7b279a0191465aca7c8ebe963ca098f12242d",
+    "backend/app/modules/internship/services/internship_plan_service.py": "44b74b1e4a754cafb4c0a6b1c5e378f8e7cbab19dfc002a0018deeebb9ef8da6",
+    "backend/tests/test_yiyang_plan_export_options_mysql.py": "a81ef85b18a54196f9fa3094221593677a44fd2959d5a9ba5bd4810bfca92f1d",
+    "enterprise-web/tests/plan-bulk-export.test.mjs": "3baec94a80ac519689d11eb5d94ede03fc414d2907a9a008ffe849a0294d7708",
+    "enterprise-web/e2e-surfaces/standalone-plan-bulk-real.mjs": "fc5bf2be28e65a71018452636f275bc928701ddb7d93241bed951f50a2205cb4",
+    "enterprise-web/e2e-surfaces/student-result-context-real.mjs": "f82e212615b0c845afbe95eeea36d6aa26ab5abb55b39742afecda6e0fbd12fe",
+    "scripts/seed_plan_bulk_evidence.py": "eca8f5e097c8c777c6ce378b4c1607ddd00a7bec91d86486aafa8a411ffdae86",
+    "backend/app/services/mobile_student_service.py": "17c36a4103b374d47ad832975db51cd7627870d21faddb2d838f59f4c2d032b1",
+    "backend/app/modules/internship/services/internship_student_context_guard.py": "930bf346e8fb3d6db1654e287f25ef24e23bfda86981367fdc16f526389810a6",
+    "backend/app/modules/internship/services/internship_agreement_service.py": "3cc6667bd2be647408f7af8c07b695433bc0362856cad0281732730db7226ab3",
+    "backend/app/modules/internship/services/internship_student_eval_service.py": "7db82043c489bcf49c3f359aebb1f9a4da4e5e21860fec70db5a50257b87dd59",
+    "backend/tests/test_yiyang_identity_binding_mysql.py": "21d9627816a55a3213404e20d5f145476181b734820e1d6b654f81321d2eceae"
+  },
+  "evidenceSha256": {
+    "integrated-results.xml": "2005babd64a7fb6b07d8ed99ae2c437232a6ea6700dd7562c1f0c28dc83e7e0c",
+    "candidate-results.xml": "b71a127b5f792cbcd34292e17dae48253a645b27f4cd2f0384c7253985d964a4",
+    "controller-tests.txt": "4fc56fc698472a8a851cf6ae4e7989ed94f4c68df57f2dbc70190b755fab9bd0",
+    "admin-build.txt": "b9077f155abe0a9cbae70f514c4a3c00d16f650a1f6fe48b762cfb9f9568ce27",
+    "browser/result.json": "28949441ad336bd5c855be5007c16fd7dec5613fafa26344491249fa2c96bc93",
+    "student-browser/context-result.json": "85b59c32ec06776af4c445af27e80c5d7998ffe56346acd4f29bf307e7a07975",
+    "student-browser/student-result-clean.png": "6443cbd60a3dbc6213597905460b21ae6507cc6fa35cdcc12ea804df2db64531",
+    "browser/admin-after-export.png": "4394ced84b289c4afffcafc3fd90ddfd704fad7846a96973e720715911400e7a",
+    "browser/teacher-scoped-export.png": "8a5e26da7e504026c5ff69606af84e3ebb2fe6de29b05a90327b340b3708e19e",
+    "browser/admin-two-plans.pdf": "4cbb029d1f0618e5a364c3fd821cb197f436e657affee7a5e607d29860d6eb3c",
+    "browser/admin-two-plans.xlsx": "ed8e48c4b0c48e8ec97337f8e6c59aa0cfc73e2518defc40b9b345545afb984a",
+    "browser/teacher-own-plan.pdf": "3123385011bc1d523fe278b5d1d979eb6467b9ab38055ad0a414b3daeb59f5dd"
+  }
+}

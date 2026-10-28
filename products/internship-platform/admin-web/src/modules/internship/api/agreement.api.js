@@ -1,0 +1,67 @@
+/**
+ * 岗位实习中心 · 三方协议签署实例 API（P2-A，生产级只走真实后端）。
+ * 端点 /internship/agreements。三方确认状态机 + owner + 数据范围由后端强校验。
+ */
+import { request } from '@/services/http/client'
+import { uploadAttachment, downloadAttachment } from '@/modules/internship/api/guidance-visit.api'
+export { uploadAttachment, downloadAttachment }
+
+function ok(data) { return Promise.resolve({ code: 0, data, message: 'ok' }) }
+function fail(message, code = 1) { return Promise.resolve({ code, data: null, message }) }
+function toErr(e) {
+  if (e?.biz) return fail(e.message, e.code || 1)
+  return fail(e?.message || '真实接口不可用', 503001)
+}
+async function call(fn) {
+  try { return ok(await fn()) } catch (e) { return toErr(e) }
+}
+async function callList(path, params = {}) {
+  try {
+    const d = await request(path, { params })
+    return ok({ list: d.items || [], total: d.total || 0, page: d.page || 1, pageSize: d.pageSize || 20 })
+  } catch (e) { return toErr(e) }
+}
+
+const B = '/internship/agreements'
+
+export const agreementApi = {
+  uploadAttachment,
+  downloadAttachment,
+  getAgreements(params = {}) { return callList(B, params) },
+  getDetail(id) { return call(() => request(`${B}/${id}`)) },
+  generate(body) { return call(() => request(B, { method: 'POST', body })) },
+  issue(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/issue`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  enterpriseConfirm(id, { confirmBy, fileId, expectedVersion, version }) {
+    return call(() => request(`${B}/${id}/enterprise-confirm`, {
+      method: 'POST', body: { confirmBy, fileId, expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  schoolConfirm(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/school-confirm`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  reject(id, { reason, expectedVersion, version }) {
+    return call(() => request(`${B}/${id}/reject`, {
+      method: 'POST', body: { reason, expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  voidAgreement(id, { reason, expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/void`, {
+      method: 'POST', body: { reason: reason || '', expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  archive(id, { expectedVersion, version } = {}) {
+    return call(() => request(`${B}/${id}/archive`, {
+      method: 'POST', body: { expectedVersion: expectedVersion ?? version }
+    }))
+  },
+  startEsign(id) { return call(() => request(`${B}/${id}/esign/start`, { method: 'POST', body: {} })) },
+  esignSign(id, { party }) { return call(() => request(`${B}/${id}/esign/sign`, { method: 'POST', body: { party } })) },
+  exportAgreements(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) },
+  exportAgreementPdf(id) { return call(() => request(`${B}/${id}/pdf`, { method: 'POST', body: {} })) }
+}

@@ -1,0 +1,231 @@
+import { realDownload, realRequest, realUpload } from './request'
+import { FILE_STATUS_TEXT as FILE_SCAN_TEXT, normalizeFileReadiness } from './fileReadiness.mjs'
+
+export const FILE_STATUS_TEXT = FILE_SCAN_TEXT
+
+const enc = encodeURIComponent
+const IMAGE_EXTENSIONS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp'])
+const DOCUMENT_EXTENSIONS = new Set(['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'])
+
+export function normalizeFile(file = {}) {
+  const ready = normalizeFileReadiness(file)
+  const allowedActions = Array.isArray(file.allowedActions) ? file.allowedActions : []
+  return {
+    ...ready,
+    allowedActions,
+    canPreview: ready.readyForBusiness && allowedActions.includes('preview'),
+    canDownload: ready.readyForBusiness && allowedActions.includes('download')
+  }
+}
+
+export function previewIdentity(file = {}) {
+  const fileId = String(file.fileId || file.id || '').trim()
+  const fileVersionId = String(file.fileVersionId || file.versionId || '').trim()
+  const sourceSha = String(file.sourceSha256 || file.sourceSha || file.sha256 || '').trim()
+  return [fileId, fileVersionId, sourceSha].join(':')
+}
+
+export function chooseSingleFile({ count = 1, kind = 'file' } = {}) {
+  return new Promise((resolve, reject) => {
+    const imagePicked = res => {
+      const source = res.tempFiles?.[0] || {}, path = res.tempFilePaths?.[0] || source.path
+      if (!path) { resolve(null); return }
+      const name = source.name || String(path).split(/[\\/]/).pop().split('?')[0]
+      if (IMAGE_EXTENSIONS.has(fileExtension(name))) { resolve({ path, name, size: source.size || 0 }); return }
+      uni.getImageInfo({ src: path, success: info => {
+        const extension = String(info.type || '').toLowerCase()
+        if (IMAGE_EXTENSIONS.has(extension)) resolve({ path, name: '实习照片.' + extension, size: source.size || 0 })
+        else reject({ message: '图片格式无法识别，请选择原始照片文件' })
+      }, fail: reject })
+    }
+    if (kind === 'video') {
+      uni.chooseVideo({
+        sourceType: ['album', 'camera'], compressed: false,
+        success: (res) => resolve({ path: res.tempFilePath, name: res.name || '实习过程.mp4', size: res.size || 0 }),
+        fail: reject
+      })
+      return
+    }
+    if (kind === 'image') {
+      uni.chooseImage({
+        count, sizeType: ['compressed', 'original'],
+        success: imagePicked,
+        fail: reject
+      })
+      return
+    }
+    if (typeof uni.chooseFile === 'function') {
+      uni.chooseFile({ count, type: 'all', success: (res) => resolve(res.tempFiles?.[0] || null), fail: reject })
+      return
+    }
+    if (typeof uni.chooseMessageFile === 'function') {
+      uni.chooseMessageFile({
+        count,
+        type: 'all',
+        success: (res) => resolve((res.tempFiles || [])[0] || null),
+        fail: reject
+      })
+      return
+    }
+    uni.chooseImage({
+      count,
+      sizeType: ['compressed', 'original'],
+      success: imagePicked,
+      fail: reject
+    })
+  })
+}
+
+function fileExtension(fileName) {
+  const name = String(fileName || '').toLowerCase()
+  const index = name.lastIndexOf('.')
+  return index >= 0 ? name.slice(index + 1) : ''
+}
+
+function nativePreviewKind(fileName = '') {
+  const ext = fileExtension(fileName)
+  if (IMAGE_EXTENSIONS.has(ext)) return 'image'
+  if (!ext || DOCUMENT_EXTENSIONS.has(ext)) return 'document'
+  return 'unsupported'
+}
+
+function assertNativePreviewSupported(fileName = '') {
+  const kind = nativePreviewKind(fileName)
+  if (kind === 'unsupported') {
+    throw {
+      code: 'PREVIEW_UNSUPPORTED',
+      biz: true,
+      message: '当前文件类型不支持小程序内预览，请使用 PC 端查看或下载'
+    }
+  }
+  return kind
+}
+
+function openDownloaded(downloaded, fileName = '', { strictNative = false } = {}) {
+  const ext = fileExtension(fileName)
+  const detected = nativePreviewKind(fileName)
+  const kind = strictNative ? assertNativePreviewSupported(fileName) : detected
+  return new Promise((resolve, reject) => {
+    if (kind === 'image') {
+      uni.previewImage({ urls: [downloaded.tempFilePath], current: downloaded.tempFilePath, success: resolve, fail: reject })
+      return
+    }
+    uni.openDocument({
+      filePath: downloaded.tempFilePath, fileType: ext || undefined, showMenu: true,
+      success: resolve,
+      // 原生 errMsg 常含设备实现、路径或英文错误码，不得直接展示给学生/教师。
+      fail: () => reject({ code: 'PREVIEW_FAILED', biz: true, message: '当前文件无法预览，请在 PC 端查看' })
+    })
+  })
+}
+
+export async function openBusinessFile(fileId, _fileName, { isCurrent = () => true } = {}) {
+  const id = String(fileId || '').trim()
+  if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
+  const meta = normalizeFile(await realRequest(`/files/${enc(id)}`))
+  if (!isCurrent()) return null
+  if (!meta.canPreview && !meta.canDownload) {
+    throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
+  }
+  const downloaded = await realDownload(`/files/download/${enc(id)}`)
+  if (!isCurrent()) return null
+  await openDownloaded(downloaded, meta.fileName)
+  return meta
+}
+
+export async function openBusinessFileInline(fileId, { isCurrent = () => true } = {}) {
+  const id = String(fileId || '').trim()
+  if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
+  const meta = normalizeFile(await realRequest(`/files/${enc(id)}`))
+  if (!isCurrent()) return null
+  if (!meta.canPreview && !meta.canDownload) {
+    throw { code: 404001, biz: true, message: '附件不存在或尚未通过安全扫描' }
+  }
+  const downloaded = await realDownload(`/files/download/${enc(id)}`)
+  if (typeof window !== 'undefined' && typeof document !== 'undefined') {
+    if (!isCurrent()) { if (downloaded?.tempFilePath?.startsWith?.('blob:')) URL.revokeObjectURL(downloaded.tempFilePath); return null }
+    return { ...meta, inlineUrl: downloaded.tempFilePath }
+  }
+  if (!isCurrent()) return null
+  await openDownloaded(downloaded, meta.fileName)
+  return meta
+}
+
+export const fileSdk = {
+  statusText: FILE_STATUS_TEXT,
+  normalize: normalizeFile,
+  identity: previewIdentity,
+  choose: chooseSingleFile,
+  async upload(file, options = {}) {
+    const filePath = file?.path || file?.tempFilePath
+    if (!filePath) throw { code: 'FILE_REQUIRED', biz: true, message: '请选择要上传的文件' }
+    return normalizeFile(await realUpload('/files', filePath, {
+      name: 'file',
+      formData: {
+        bizType: String(options.bizType || 'ATTACHMENT'),
+        bizId: String(options.bizId || '')
+      }
+    }))
+  },
+  async openAuthorized({
+    fileId,
+    fileVersionId = '',
+    sourceSha = '',
+    ticketPath,
+    openPath,
+    action = 'preview',
+    fileName = ''
+  }) {
+    const id = String(fileId || '').trim()
+    if (!id) throw { code: 'FILE_REQUIRED', biz: true, message: '附件不存在' }
+    const nativeKind = assertNativePreviewSupported(fileName)
+    const descriptor = {
+      fileId: id,
+      fileVersionId: String(fileVersionId || ''),
+      sourceSha: String(sourceSha || ''),
+      action,
+      surface: 'MINIAPP',
+      nativeKind
+    }
+    descriptor.identity = previewIdentity(descriptor)
+
+    const ticket = await realRequest(ticketPath, { method: 'POST', data: { action } })
+    const raw = encodeURIComponent(String(ticket?.ticket || ''))
+    if (!raw) throw { code: 'PREVIEW_TICKET_MISSING', biz: true, message: '文件票据不存在或已失效' }
+    const downloaded = await realDownload(`${openPath}?ticket=${raw}`)
+    await openDownloaded(downloaded, fileName, { strictNative: true })
+    return {
+      ...ticket,
+      previewDescriptor: descriptor,
+      telemetry: {
+        event: 'document_preview_return',
+        surface: 'MINIAPP',
+        action,
+        identity: descriptor.identity,
+        nativeKind
+      }
+    }
+  },
+  async list({ bizType, bizId }) {
+    const data = await realRequest(`/files?bizType=${enc(bizType)}&bizId=${enc(bizId)}`)
+    return (data?.items || []).map(normalizeFile)
+  },
+  async metadata(fileId) {
+    return normalizeFile(await realRequest(`/files/${enc(fileId)}`))
+  },
+  async versions(fileId) {
+    const data = await realRequest(`/files/${enc(fileId)}/versions`)
+    return (data?.items || []).map((item) => ({ ...item, file: normalizeFile(item.file || {}) }))
+  },
+  async open(fileId) {
+    return openBusinessFile(fileId)
+  },
+  async openInline(fileId, options) {
+    return openBusinessFileInline(fileId, options)
+  },
+  async download(fileId) {
+    return realDownload(`/files/download/${enc(fileId)}`)
+  }
+}
+
+export default fileSdk

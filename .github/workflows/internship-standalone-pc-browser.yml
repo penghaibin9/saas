@@ -1,0 +1,53 @@
+name: Internship Standalone PC Browser Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/admin-web/**"
+      - "products/internship-platform/student-web/**"
+      - "products/internship-platform/enterprise-web/e2e-surfaces/**"
+      - "products/internship-platform/enterprise-web/playwright.standalone-pc.config.mjs"
+      - ".github/workflows/internship-standalone-pc-browser.yml"
+
+jobs:
+  pc-browser:
+    name: Admin teacher and student PC Chromium evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install admin PC dependencies
+        working-directory: products/internship-platform/admin-web
+        run: npm install --no-audit --no-fund
+
+      - name: Install student PC dependencies
+        working-directory: products/internship-platform/student-web
+        run: npm install --no-audit --no-fund
+
+      - name: Install Playwright harness dependencies
+        working-directory: products/internship-platform/enterprise-web
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Chromium
+        working-directory: products/internship-platform/enterprise-web
+        run: npx playwright install --with-deps chromium
+
+      - name: Run admin teacher and student PC browser evidence
+        working-directory: products/internship-platform/enterprise-web
+        run: npx playwright test -c playwright.standalone-pc.config.mjs
+
+      - name: Upload PC browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-standalone-pc-browser-evidence
+          path: products/internship-platform/enterprise-web/test-results-surfaces
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,202 @@
+name: Internship Standalone G01 G18 Current Head Acceptance
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - ".github/workflows/internship-standalone-g01-g18-current-head.yml"
+      - ".github/workflows/internship-standalone*.yml"
+      - "products/internship-platform/backend/**"
+      - "products/internship-platform/backend/tests/test_standalone_release_revision.py"
+      - "products/internship-platform/scripts/check_schema_revision_contract.py"
+      - "products/internship-platform/scripts/c09_recovery_drill_ci.sh"
+      - "products/internship-platform/deploy/**"
+      - "products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py"
+      - "products/internship-platform/backend/tests/test_standalone_browser_auth_mysql.py"
+
+jobs:
+  g01-g18:
+    name: Schema migration and isolated contract regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: g01_g18_root
+          MYSQL_DATABASE: internship_g01_g18
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pg01_g18_root --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+    env:
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:g01_g18_root@127.0.0.1:3306/internship_g01_g18?charset=utf8mb4
+      JWT_SECRET: g01-g18-current-head-ci-secret-not-for-production
+      EXPECTED_ALEMBIC_REVISION: ix0036
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+
+      - name: Install standalone backend
+        run: |
+          python -m pip install --upgrade pip==26.2.2
+          python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Verify current schema revision contract
+        run: |
+          python products/internship-platform/scripts/check_schema_revision_contract.py
+          pytest -q products/internship-platform/backend/tests/test_standalone_release_revision.py
+
+      - name: Upgrade empty MySQL 8.4 to current schema head
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+
+      - name: Verify current schema head
+        run: |
+          python - <<'PY'
+          import os
+          from sqlalchemy import create_engine, text
+          engine=create_engine(os.environ["DATABASE_URL"], pool_pre_ping=True)
+          with engine.connect() as db:
+              revision=db.execute(text("SELECT version_num FROM alembic_version LIMIT 1")).scalar_one()
+          assert revision == os.environ["EXPECTED_ALEMBIC_REVISION"], revision
+          print({"schemaRevision": revision})
+          PY
+
+      - name: G01-G04 core authority and workflow
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_g01_multiscope_multiplan.py             products/internship-platform/backend/tests/test_internship_scope_default_deny_contract.py             products/internship-platform/backend/tests/test_yiyang_ap04_allocation_scope_contract.py             products/internship-platform/backend/tests/test_yiyang_g02_complete_position.py             products/internship-platform/backend/tests/test_yiyang_g03_enterprise_registry_truth.py             products/internship-platform/backend/tests/test_internship_atomic_change_static.py
+
+      - name: G05-G09 checkin and custom materials
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_c02_checkin.py             products/internship-platform/backend/tests/test_yiyang_c03_custom_materials.py
+
+      - name: G10-G14 statistics IAM rotation payroll truth
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_g10_application_statistics.py             products/internship-platform/backend/tests/test_yiyang_c04_g11_password_reset.py             products/internship-platform/backend/tests/test_yiyang_c05_rotation_payroll.py             products/internship-platform/backend/tests/test_yiyang_c06_g14_stats.py
+
+      - name: G15-G18 report teacher documents regulatory
+        run: |
+          pytest -q             products/internship-platform/backend/tests/test_yiyang_c08_g15_report_quality.py             products/internship-platform/backend/tests/test_yiyang_c08_g16_teacher_activity.py             products/internship-platform/backend/tests/test_yiyang_c08_g17_formal_documents.py             products/internship-platform/backend/tests/test_yiyang_c07_regulatory_reporting.py
+
+      - name: Record acceptance boundary
+        run: |
+          echo "Schema migration and isolated contract regression: PASS; contract fixtures include SQLite and mocks, not full MySQL business acceptance"
+          echo "G03 authorized external enterprise-registry source: BLOCKED_EXTERNAL"
+          echo "G18 real regulator template/import/receipt: BLOCKED_EXTERNAL"
+          echo "This workflow does not claim school/regulator formal acceptance."
+
+  real-mysql-business:
+    name: Normal-role MySQL business regression
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: ci_release_matrix_only
+          MYSQL_DATABASE: internship_employment_test_ci
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pci_release_matrix_only --silent"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    env:
+      APP_ENV: test
+      GAP09_MYSQL_ACCEPTANCE: "1"
+      PYTHONPATH: products/internship-platform/backend
+      DATABASE_URL: mysql+pymysql://root:ci_release_matrix_only@127.0.0.1:3306/internship_employment_test_ci?charset=utf8mb4
+      REDIS_URL: redis://127.0.0.1:6379/0
+      REDIS_KEY_PREFIX: internship-release-matrix
+      JWT_SECRET: release-matrix-ci-only-not-a-production-secret-20261025-standalone
+      FIELD_ENCRYPTION_KEY: MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=
+      SENSITIVE_SEARCH_HMAC_KEY: release-matrix-ci-only-search-key
+      EXPECTED_ALEMBIC_REVISION: ix0036
+      FILE_STORAGE_DIR: /tmp/internship-release-matrix-files
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install candidate requirements
+        run: |
+          python -m pip install --upgrade pip==26.2.2
+          python -m pip install -r products/internship-platform/backend/requirements.txt
+      - name: Audit the installed backend dependency closure
+        run: |
+          python -m pip install --target /tmp/standalone-pip-audit pip-audit==2.10.1
+          mkdir -p .codex-artifacts
+          PYTHONPATH=/tmp/standalone-pip-audit python -m pip_audit --path "$(python -c 'import sysconfig; print(sysconfig.get_path("purelib"))')" --format json --output .codex-artifacts/backend-dependencies.json
+          python - <<'PY'
+          import json
+          data = json.load(open('.codex-artifacts/backend-dependencies.json'))
+          assert data['dependencies'] and all(row.get('version') and not row.get('skip_reason') and not row.get('vulns') for row in data['dependencies'])
+          PY
+      - name: Configure the isolated authentication store without weakening policy
+        run: |
+          python - <<'PY'
+          import os, redis
+          client = redis.Redis.from_url(os.environ['REDIS_URL'], decode_responses=True)
+          for key, value in {'maxmemory-policy':'noeviction','appendonly':'yes','appendfsync':'always'}.items():
+              client.config_set(key, value)
+          assert client.config_get('maxmemory-policy','appendonly','appendfsync') == {'maxmemory-policy':'noeviction','appendonly':'yes','appendfsync':'always'}
+          PY
+      - name: Migrate an empty isolated database
+        run: alembic -c products/internship-platform/backend/alembic.ini upgrade head
+      - name: Run normal-role business and boundary stories on MySQL
+        working-directory: products/internship-platform/backend
+        run: |
+          python -m pytest -q --maxfail=3 -W ignore::DeprecationWarning \
+            tests/test_auth_fixture_target_guard.py \
+            tests/test_runtime_dependency_compatibility.py \
+            tests/test_standalone_browser_auth_mysql.py \
+            tests/test_student_handoff_mysql.py \
+            tests/test_plan_allocation_story_mysql.py \
+            tests/test_student_makeup_context_story_mysql.py \
+            tests/test_internship_leave_story_mysql.py \
+            tests/test_evaluation_score_story_mysql.py \
+            tests/test_score_report_source_mysql.py \
+            tests/test_teacher_guidance_story_mysql.py \
+            tests/test_teacher_visit_story_mysql.py \
+            tests/test_payroll_ledger_mysql.py \
+            tests/test_stats_performance_story_mysql.py \
+            tests/test_student_basic_info_mysql.py \
+            tests/test_student_pc_dashboard_reports_mysql.py \
+            tests/test_yiyang_sp06_sp07_formal_document_mysql.py \
+            tests/test_enterprise_member_onboarding_mysql.py \
+            tests/test_teacher_checkin_photo_mysql.py \
+            tests/test_internship_student_agreement_pdf_mysql.py \
+            --junitxml=../../../.codex-artifacts/release-mysql.xml
+      - name: Reject skipped or incomplete matrix results
+        run: |
+          python - <<'PY'
+          import xml.etree.ElementTree as ET
+          root = ET.parse('.codex-artifacts/release-mysql.xml').getroot()
+          cases = root.findall('.//testcase')
+          assert cases and all(case.find('skipped') is None and case.find('failure') is None and case.find('error') is None for case in cases)
+          print('MySQL normal-role cases passed:', len(cases))
+          PY
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: standalone-real-mysql-business-results
+          path: |
+            .codex-artifacts/release-mysql.xml
+            .codex-artifacts/backend-dependencies.json
+          if-no-files-found: error

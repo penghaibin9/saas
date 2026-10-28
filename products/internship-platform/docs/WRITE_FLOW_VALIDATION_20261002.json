@@ -1,0 +1,301 @@
+{
+  "baseline": "efdca427963c7bc0b5e834459e3fffe2d90997eb",
+  "overallAccepted": false,
+  "cleanCandidate": {
+    "migrationExit": 0,
+    "schemaRevision": "ix0024",
+    "database": "internship_writeflow_verified_test_20261002",
+    "regression": {
+      "total": 177,
+      "passed": 177,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0
+    },
+    "newMySQLApiCases": 22
+  },
+  "reusedRuntime": {
+    "schemaRevision": "ix0025",
+    "regression": {
+      "total": 176,
+      "passed": 174,
+      "failed": 2,
+      "failures": [
+        {
+          "name": "tests.test_yiyang_student_portal_closure_mysql::test_score_appeal_portal_student_to_school_and_back[False]",
+          "message": "AssertionError: {\"code\":1,\"bizCode\":\"AUDIT_STORE_UNAVAILABLE\",\"message\":\"审计链路异常，已阻止高风险操作；请先恢复审计队列后重试\",\"data\":null,\"traceId\":\"-\",\"timestamp\":\"2026-10-02T12:58:50+08:00\",\"details\":{\"dead\":0,\"backlog\":157,\"stalled\":true,\"oldestPendingAt\":\"2026-10-02T03:"
+        },
+        {
+          "name": "tests.test_yiyang_student_portal_closure_mysql::test_score_appeal_portal_student_to_school_and_back[True]",
+          "message": "AssertionError: {\"code\":1,\"bizCode\":\"AUDIT_STORE_UNAVAILABLE\",\"message\":\"审计链路异常，已阻止高风险操作；请先恢复审计队列后重试\",\"data\":null,\"traceId\":\"-\",\"timestamp\":\"2026-10-02T12:58:51+08:00\",\"details\":{\"dead\":0,\"backlog\":158,\"stalled\":true,\"oldestPendingAt\":\"2026-10-02T03:"
+        }
+      ],
+      "auditConsumer": "NOT_INTEGRATED_NO_GATE_BYPASS"
+    },
+    "oldDatabaseUnchanged": true,
+    "auditBacklogFixed": false,
+    "note": "Fresh-database success does not fix stalled audit delivery."
+  },
+  "browser": {
+    "status": "PASS",
+    "schemaRevision": "ix0024",
+    "roles": [
+      "STUDENT",
+      "SCHOOL_ADMIN",
+      "INTERN_MENTOR"
+    ],
+    "insurance": "UPLOAD_RETURN_RESUBMIT_VERIFY_REREAD",
+    "reportTypes": [
+      "WEEKLY",
+      "MONTHLY",
+      "SUMMARY"
+    ],
+    "oldNewAttachmentVersionsVerified": 3,
+    "receiptCount": 19,
+    "businessHttpFailures": 0,
+    "javascriptErrors": 0,
+    "directRouteGridStyleVerified": true,
+    "desktopOverflow": false,
+    "viewport": "1440x1050"
+  },
+  "databaseReadback": {
+    "mysqlVersion": "8.4.11",
+    "schemaRevision": "ix0024",
+    "insurance": [
+      [
+        "VERIFIED",
+        3
+      ]
+    ],
+    "weekly": [
+      [
+        "APPROVED",
+        2
+      ]
+    ],
+    "processReports": [
+      [
+        "MONTHLY",
+        "APPROVED",
+        3
+      ],
+      [
+        "SUMMARY",
+        "APPROVED",
+        3
+      ]
+    ],
+    "snapshots": [
+      [
+        "WEEKLY",
+        2
+      ],
+      [
+        "PROCESS",
+        4
+      ]
+    ],
+    "businessAuditCounts": [
+      [
+        "FILE_UPLOAD",
+        8
+      ],
+      [
+        "SUBMIT",
+        1
+      ],
+      [
+        "FILE_DOWNLOAD",
+        14
+      ],
+      [
+        "VERIFY_REJECT",
+        1
+      ],
+      [
+        "RESUBMIT",
+        1
+      ],
+      [
+        "VERIFY_APPROVE",
+        1
+      ],
+      [
+        "SUBMIT_VERSIONED",
+        3
+      ],
+      [
+        "REVIEW_RETURN",
+        3
+      ],
+      [
+        "RESUBMIT_VERSIONED",
+        3
+      ],
+      [
+        "REVIEW_APPROVE",
+        3
+      ]
+    ]
+  },
+  "builds": {
+    "admin": 0,
+    "student": 0
+  },
+  "preservedAuditDraft": {
+    "app/models/__init__.py": "e18623eadbd31f089a2e70cd0137c65094fa75fa755509bd9474c0ebe7f4256b",
+    "app/services/db_service.py": "51e5f8a6010a12ded99b8a3de207c1293ef44b860617ef555df1e752eb1f7e83",
+    "alembic/versions/0025_standalone_security_audit.py": "38381e1d18e7ab143ee41546948c0d734c97e28ddb1fd2261ff4d111da090fe8",
+    "app/audit_worker.py": "079c1e479efc1383bff0e5118c3c39617f69a9d48fec50a1c752c0cd12083bba",
+    "app/models/audit.py": "064a2f7359ec6ee58fe8b02271f83bdf4c03644446826b355d4ec58414d8b674",
+    "tests/test_standalone_audit_delivery_mysql.py": "3c802810621ad41525f39de6d7f08936fbc275b0a82a9ac87b88ce1232bd0185"
+  },
+  "auditConsumerIntegrated": false,
+  "scanWorkerIntegrated": false,
+  "productionDeployed": false,
+  "mobileHostTested": false,
+  "sourceSha256": {
+    "admin-web/src/main.js": "61eaec19c7c5e953eed5866d31f8e435661b75276e34cbf14e9f3f73f8b49543",
+    "admin-web/src/modules/internship/views/ProcessReportDetailView.vue": "eeddec57bab5d790090022e2df4a33a1844708a139321e66ca89b6212e741c78",
+    "admin-web/src/modules/internship/views/WeeklyReportDetailView.vue": "58d9c7e038f1ffcd8f1eb643d12a8e7aa4c07c6f45476ac614a75feb4255c803",
+    "admin-web/src/modules/internship/views/components/ReportEvidencePanel.vue": "51dffd10a72ca6010e61763e0bc1dac8a29b259176597b1a56c5a7534146681b",
+    "backend/app/api/router.py": "ff0cd6d67fe48159b9e5d3cd348e887d75d3418c25f449bdb0f885c4134dc6f4",
+    "backend/app/api/v1/standalone_files.py": "a929c6083d7ae49676a532d159137ba0258b57892a4ca1b20e230a9a61e94acd",
+    "backend/app/modules/internship/routers/internship_material_center.py": "458a0536a4b7f1e24f0d93dd4c9d9daba6cff3c2db0d93a805cf6fb8fd9badc3",
+    "backend/app/modules/internship/services/internship_insurance_service.py": "55c086ca843f94a2742ff2769ab1de23775484fee421bfb10b85c331c97a7b82",
+    "backend/app/modules/internship/services/internship_process_report_service.py": "a49c8e4d759342e6bb8f33f5a60c2c40d09424b6c292cf221d3dac00a98a11aa",
+    "backend/app/modules/internship/services/internship_report_quality_service.py": "a528bddf9f12e5aff2c5c7f7fbfb836919c53084ea7b0df4fa451d578bce58d6",
+    "backend/app/modules/internship/services/internship_service.py": "10cb27d09f09cdfd835ec884f6a7f3d24683f9b906e6dbae4b20270e54843f18",
+    "backend/app/services/internship_file_transfer_service.py": "97c8222feefbd6922efc1223eec9e05ca26681e79d467e6da46b3f27b150a051",
+    "backend/tests/test_standalone_release_revision.py": "3fb954c0f461261ab0295b82614a927b78c511eaf2cc108d5168cb8b9a6cda1e",
+    "backend/tests/test_yiyang_write_flows_mysql.py": "687d9ba4b02537dd89582949fb8101768e8ad1bfb3d8c680279dc192cc67e5d0",
+    "deploy/docker-compose.production.yml": "22cbc4c5db2014f3e8a30ded3be03bf425181378cdda15f0e2b948e0ca4850cc",
+    "enterprise-web/e2e-surfaces/student-write-flows-real.mjs": "9b504500aad6a1542d083733f4bb311ca79f57d81be275b4b3813b349bb16572",
+    "scripts/seed_write_browser_evidence.py": "c991193027f82bbed9e50420c08497ed037ca12e81523fb5b6a7dfdc085e4a59",
+    "student-web/src/views/internship/InternshipView.vue": "1c7a9350b84fa73afea3ebfbb49cdf2e600d9b05c4f3cdd990f6549ce20e9502"
+  },
+  "evidenceSha256": {
+    "clean-candidate-regression.xml": "0f779ee1fea67d06e93c3a6d8fe864441629756519999a558d2178896c20c6cc",
+    "final-regression-v2.xml": "5f04a66ca7c0fe3cf2aa4844d6ab867441ca25bf73ca4defe45813a51d2ebd81",
+    "verified-browser/browser-result.json": "4c33cf17ae783a0380aee09ee2e728e10d983e65200fed73fb438c98fafa0874",
+    "verified-browser/monthly-student-complete.png": "43aa329206b131d261031145e7251df0f076b81a75df5a8a5caf4c7a2afc70cd",
+    "verified-browser/student-insurance-complete.png": "44739d52a2b0f9b07080765975ceb7acd966449014d7c0ac6a31fcfbd46804e5",
+    "verified-browser/summary-student-complete.png": "4a581fed36327be689e1f1252576b267375e2f661fc9362aa142811e27315020",
+    "verified-browser/weekly-student-complete.png": "8e2afcaa08c761c43adcb8b156a338500a371ef49ed3f2a99ff965ae42d534e1",
+    "verified-browser/monthly-review-v2.png": "8991ae77d787335745388d2cbf041ee0fe09f681d79da207a9a73ec7376d9afb",
+    "verified-browser/summary-review-v2.png": "5e6971b5f52cd3fda481ce6f68596551b42654af757ee932d4cfd2b79af99e14",
+    "verified-browser/weekly-review-v2.png": "69b807b93394a5d8f9c6d7b17915d2fb5684d46a98f2aaa0544ac0ba49910ef5"
+  },
+  "scanClosure20261003": {
+    "baseline": "426c732233446cbda53dde5609ee8179875de702",
+    "date": "2026-10-03",
+    "scope": "Standalone attachment scanning and student pending-upload continuation",
+    "overallAccepted": false,
+    "schemaRevision": "ix0026",
+    "newMigration": false,
+    "auditWorkerAlreadyIntegratedInBaseline": true,
+    "scanWorkerIntegrated": true,
+    "mysqlVersion": "8.4.11",
+    "scannerVersion": "ClamAV 1.5.3",
+    "signatureDatabase": "Isolated EICAR test signature only; not production full signature freshness acceptance",
+    "backend": {
+      "passed": 66,
+      "failed": 0,
+      "errors": 0,
+      "skipped": 0,
+      "newScanCases": 16,
+      "existingDeprecationWarnings": 2905
+    },
+    "frontend": {
+      "passed": 8,
+      "buildExit": 0,
+      "targetedEslintExit": 0
+    },
+    "releaseRevisionContract": {
+      "passed": 1
+    },
+    "browser": {
+      "status": "PASS",
+      "receipts": [
+        {
+          "path": "/api/v1/portal/internship/insurance",
+          "id": "1"
+        },
+        {
+          "path": "/api/v1/portal/internship/context/reports",
+          "id": "1"
+        }
+      ],
+      "errors": [],
+      "failures": [],
+      "unauthenticatedStartup": [
+        {
+          "path": "/api/v1/auth/browser-refresh",
+          "status": 401
+        }
+      ],
+      "insuranceFileId": "1",
+      "realWorker": true,
+      "workerHealthcheck": "PASS"
+    },
+    "compose": {
+      "status": "PASS",
+      "kind": "YAML structural checks only",
+      "dockerComposeUpTested": false,
+      "migrationRevision": "ix0026",
+      "quarantineEnabled": true,
+      "sharedFileVolume": true,
+      "clamavPublicPorts": false
+    },
+    "clamdConfigParser": {
+      "exit": 0,
+      "parserVersion": "1.5.3",
+      "productionImageVersion": "1.4",
+      "productionImageStartupTested": false
+    },
+    "designSource": [
+      "existing_code",
+      "project_rule",
+      "user_decision"
+    ],
+    "sourceSha256": {
+      "backend/app/file_scan_worker.py": "f2991cb27f86badc3bc581d8c36042ead7c64eabd8b1f50e2b8cd02f630f90b4",
+      "backend/app/services/file_scan_service.py": "425e1d955d003bfb3c91612246824368aac8dcb7ac403dc98bc35cac968d2d80",
+      "backend/tests/test_standalone_file_scan_mysql.py": "ab60dee5f46754e7e6a7c6e065135614737a5579fd0bec6276045f2468af7135",
+      "deploy/clamav/clamd.conf": "dafd02aa87086260a9798fc7c8250d87980c893a099c07245fb164d5bedaaadc",
+      "enterprise-web/e2e-surfaces/student-file-scan-real.mjs": "70357f66789393a85da69f33a868bf2a09cc8650386233adf86ace11e89a4d40",
+      "student-web/src/services/fileScanState.js": "2d04581cb43904ea5e57dbd257639d93404da011e145cd74eb41f2bf9c476f22",
+      "student-web/tests/file-scan-state.test.mjs": "5d364d5d0b1c44418e242d6591db2ec746a491f89e96a556f9c253ee5e183a22",
+      "backend/app/services/file_access_service.py": "4690181855241125b92a356d91a58884bef8f2abe74f0200275032cc075f2902",
+      "backend/app/services/internship_file_transfer_service.py": "5e5f3c95ca3c234d65831770d5447bcd726ceb48459b30654475ebc9a83c84f3",
+      "deploy/docker-compose.production.yml": "3b0238555f7c38cfcbe0204a1023b6538e7ed2774537f0884c6455a091c5268c",
+      "scripts/seed_write_browser_evidence.py": "6a5a349dd00e2a3b947b6ecca97f29ccd51b6d21711c308a668e148b2227d2ea",
+      "student-web/package.json": "18f8a68a9dab2f22f1af128e3178e7b78c6822edbfaddfc8c054c2852ee8181c",
+      "student-web/src/services/fileSdk.js": "4a7aa3faeacc61f02d52e3da3195efa568753a60b35101b5cf12ee3fc2e8da08",
+      "student-web/src/views/internship/InternshipView.vue": "f068cbfd07f4155e0a327809c11279f197223492ae9538f368bfea6783029e77"
+    },
+    "evidenceSha256": {
+      "pytest.xml": "6dab184b271bd9a753678666b65679b62adc2fc7f6ef7ea168df4dd32b57ccca",
+      "pytest.txt": "1a25148c4ba10743d3ef8ac0a7690a9fce5d55b85eb07e26ca0bcacd676896d2",
+      "scan-browser.json": "5075e1e317efdc4c463cc78c65b62839415584a5c3010d82e7b7f0fa1f492fbc",
+      "compose-contract.json": "86c21a7a6f3798085d6811e930d6c5a4dacfe045deccca920c6f13fb33766ae7",
+      "clamconf.txt": "b288b12282c42bf9fbcbe97038a78ce0ffc913fc35f07b1e40ac745a8d7f7c59",
+      "insurance-scan-pending.png": "0158bcc152a2a92e58297590d0a01972ec9d6fea1fd2b75adbfa2676056c05fb",
+      "insurance-scanned-submitted.png": "2ce031d5ddfb1899a4ce6b2ac08c9d9172a04547a3709b63b3ffcca1bbe75d49",
+      "report-scanned-submitted.png": "c36ee3a58e11e72f525cfec78985af47e2c8725ddc279b09c02e416141db06c8"
+    },
+    "notVerified": [
+      "Production Compose up and full antivirus signature database update",
+      "All Office/RAR/video parsing or rendering",
+      "Operator recovery of DEAD scan jobs",
+      "Mobile/WeChat real devices",
+      "External regulatory receipt",
+      "School historical data migration",
+      "Formal 5000 concurrency and disaster recovery",
+      "15-day run/training/signoff"
+    ],
+    "merged": false,
+    "productionDeployed": false,
+    "actionsRequested": false
+  }
+}

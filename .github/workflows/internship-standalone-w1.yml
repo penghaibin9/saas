@@ -1,0 +1,78 @@
+name: Internship Standalone W1
+
+on:
+  workflow_dispatch:
+
+jobs:
+  standalone-boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: products/internship-platform/backend/requirements.txt
+
+      - name: Install W1 backend dependencies
+        run: python -m pip install -r products/internship-platform/backend/requirements.txt
+
+      - name: Build extraction manifest
+        run: python products/internship-platform/scripts/build_extraction_manifest.py
+
+      - name: Assert extraction surface is non-trivial
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          p = Path("products/internship-platform/artifacts/extraction-manifest.json")
+          data = json.loads(p.read_text(encoding="utf-8"))
+          s = data["surfaces"]
+          assert len(s["backendDomain"]) >= 100, len(s["backendDomain"])
+          assert len(s["staffPc"]) >= 80, len(s["staffPc"])
+          assert len(s["studentMiniapp"]) >= 15, len(s["studentMiniapp"])
+          assert len(s["teacherMiniapp"]) >= 15, len(s["teacherMiniapp"])
+          assert len(s["enterprisePortal"]) >= 50, len(s["enterprisePortal"])
+          assert len(s["tests"]) >= 100, len(s["tests"])
+          print({k: len(v) for k, v in s.items()})
+          PY
+
+      - name: Build backend dependency inventory
+        run: python products/internship-platform/scripts/build_backend_dependency_report.py
+
+      - name: Enforce standalone domain boundary
+        run: python products/internship-platform/scripts/check_forbidden_imports.py
+
+      - name: Compile standalone Python sources
+        run: python -m compileall -q products/internship-platform/backend/app
+
+      - name: Run W1 health contract
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: pytest -q products/internship-platform/backend/tests/test_health.py products/internship-platform/backend/tests/test_shared_kernel.py
+
+      - name: Build standalone schema manifest
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: python products/internship-platform/scripts/build_schema_manifest.py
+
+      - name: Build frozen MySQL baseline DDL
+        env:
+          PYTHONPATH: products/internship-platform/backend
+        run: python products/internship-platform/scripts/build_mysql_baseline_ddl.py
+
+      - name: Upload W1 extraction evidence
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-standalone-w1-evidence
+          path: |
+            products/internship-platform/artifacts/extraction-manifest.json
+            products/internship-platform/artifacts/backend-dependencies.json
+            products/internship-platform/artifacts/schema-manifest.json
+            products/internship-platform/artifacts/0001_internship_standalone_baseline.mysql.sql
+            products/internship-platform/artifacts/baseline-ddl.json
+          if-no-files-found: error

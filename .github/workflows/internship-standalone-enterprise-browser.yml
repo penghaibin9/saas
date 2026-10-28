@@ -1,0 +1,46 @@
+name: Internship Standalone Enterprise Browser Evidence
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/internship-standalone-yiyang-v1
+    paths:
+      - "products/internship-platform/enterprise-web/src/**"
+      - "products/internship-platform/enterprise-web/e2e/**"
+      - "products/internship-platform/enterprise-web/playwright.config.mjs"
+      - "products/internship-platform/enterprise-web/package.json"
+      - "products/internship-platform/enterprise-web/package-lock.json"
+      - ".github/workflows/internship-standalone-enterprise-browser.yml"
+
+jobs:
+  enterprise-browser:
+    name: Enterprise portal Chromium evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: "npm"
+          cache-dependency-path: products/internship-platform/enterprise-web/package-lock.json
+      - name: Install locked enterprise dependencies
+        working-directory: products/internship-platform/enterprise-web
+        run: npm ci --no-audit --no-fund
+      - name: Install Chromium
+        working-directory: products/internship-platform/enterprise-web
+        run: npx playwright install --with-deps chromium
+      - name: Run enterprise recruitment and collaboration browser evidence
+        working-directory: products/internship-platform/enterprise-web
+        run: npm run test:e2e
+      - name: Upload enterprise browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: internship-standalone-enterprise-browser-evidence
+          path: |
+            products/internship-platform/enterprise-web/test-results
+            products/internship-platform/enterprise-web/playwright-report
+          if-no-files-found: error
+          retention-days: 14

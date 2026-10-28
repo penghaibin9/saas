@@ -1,0 +1,69 @@
+{
+  "baseline": "d5a3f8860999d9bdec618b138ea0ccefe24dfb9e",
+  "branch": "feat/internship-standalone-yiyang-v1",
+  "status": "CODE_IMPLEMENTED_RUNTIME_ACCEPTANCE_BLOCKED",
+  "unit_contract": {
+    "passed": 67,
+    "failed": 0,
+    "skipped": 0,
+    "command": [
+      "-m",
+      "pytest",
+      "-q",
+      "tests/test_yiyang_gap09_minimum_age.py",
+      "tests/test_internship_round3_compliance_unit.py",
+      "tests/test_internship_student_compliance.py",
+      "tests/test_internship_student_facade_review_contract.py"
+    ]
+  },
+  "before_reproduction": {
+    "failed": 4
+  },
+  "admin_build": {
+    "exit_code": 0,
+    "commands": [
+      "npm run check:routes",
+      "npm run check:imports",
+      "vite build"
+    ],
+    "warning": "vendor chunks exceed 500kB"
+  },
+  "mysql_migration_readback": {
+    "version": "8.4.11",
+    "alembic": "ix0024"
+  },
+  "mysql_api_acceptance": {
+    "collected": 6,
+    "completed": false,
+    "reason": "Docker Desktop Engine HTTP500 and MySQL socket timeout"
+  },
+  "legacy_workbench_extension": {
+    "passed": false,
+    "setup_errors": 15,
+    "reason": "db_mode fixture absent in standalone test directory"
+  },
+  "browser_acceptance": {
+    "executed": false
+  },
+  "test_processes": "stopped; no background execution promised",
+  "cleanup": {
+    "container": "pr275-gap09-mysql-20261002",
+    "scope": "only isolated container created this round",
+    "status": "Docker daemon unavailable; cleanup unconfirmed"
+  },
+  "local_log_sha256": {
+    "admin-build.txt": "e14b9a19a1243bb8fa42b8f123f19e1d4f5d8675e30f75efaf945d6fa1afac59",
+    "admin-install.txt": "49d232eac3d14ef77d155d2934d9eab70f1ae926a999bd25f2f0eb189f87cc57",
+    "admin-production-build.txt": "936eede3c6b1e9622b6fc95409c7898f12990c040669c15222347fa5ed7aed96",
+    "after-unit-initial.txt": "11bc62941bb06f23bf77089b80a6b986df1d8671765e454cf45dc4b7b36ee3c6",
+    "after-unit.txt": "a30af1da2f74276044e0b44bc84bc0b0c74168cac845d88bf1036b3b15b914e4",
+    "backend-compile-before.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "backend-compile-final.txt": "2095d5302e465922147e220c0389f7a923ea0c1509a23097f04b3c220798aef8",
+    "before-minimum-age.txt": "fb97d4e5285a62863bbf6459ea27c36bc32123cab8cb4ce251dfc7cecabab34a",
+    "mysql-acceptance.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "mysql-case-collection.txt": "f500a5e59a47719f4d23d41e5998cc4d5b95d2021c8f95645ede2cb0626f9d4e",
+    "mysql-migration.txt": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "targeted-final.txt": "b5a435ae7336c1f01b03c48c9c3630d52075f5f75a9fb1bc6b60458c38a050af",
+    "unit-contract-final.txt": "eec3387ee23c23cab1cbc30d48ad09b655469cb0aa019dab152a2ed1f66fa514"
+  }
+}

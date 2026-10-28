@@ -1,0 +1,29 @@
+:root {
+  --pri: #2f6bff;
+  --pri-600: #2459dc;
+  --pri-50: #f0f5ff;
+  --pri-100: #dce8ff;
+  --pri-200: #bfd3ff;
+  --salary: #e85d24;
+  --t1: #172033;
+  --t2: #46546b;
+  --t3: #78859a;
+  --t4: #a6adba;
+  --line: #e8edf4;
+  --line-strong: #dbe3ee;
+  --page: #f4f7fb;
+  --card: #ffffff;
+  --surface-soft: #f8faff;
+  --surface-blue: #f4f7ff;
+  --ok-bg: #edf9f0;
+  --ok-fg: #1f7a3d;
+  --warn-bg: #fff7e8;
+  --warn-fg: #9a5b00;
+  --danger-bg: #fff1f0;
+  --danger-fg: #cf1322;
+  --shadow-sm: 0 1px 2px rgba(30, 55, 90, .04), 0 6px 18px rgba(30, 55, 90, .04);
+  --shadow-md: 0 12px 32px rgba(30, 55, 90, .08);
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+}
