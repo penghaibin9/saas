@@ -170,6 +170,32 @@ class SessionSecurityTest(unittest.TestCase):
         return NS(id=5, tenant_id=1, expires_at=None, version=0, credential_version=0, must_change_password=False, user_type='TEACHER',
                   login_name='teacher5', real_name='老师')
 
+    def test_required_password_change_can_refresh_without_unlocking_business_or_old_credentials(self):
+        from fastapi import Response
+        from itertools import cycle
+        account=self.account();account.must_change_password=True
+        with patch.object(sessions,'get_sessionmaker') as factory, patch.object(sessions,'db_enabled',return_value=True), \
+             patch.object(token_store,'jti_blocked',return_value=False), patch.object(families,'auth_session_blocked',return_value=False), \
+             patch.object(auth,'auth_session_blocked',return_value=False), patch.object(auth,'_roles_for_user',return_value=[('SCHOOL_ADMIN','管理员')]), \
+             patch('app.services.system_authorization.authorize_subject',side_effect=lambda db,record,claims:claims), \
+             patch.object(auth,'consume_refresh_if_matches',return_value=self.claims()), \
+             patch.object(auth,'create_access_token',return_value='rotated-access') as issue_access, \
+             patch.object(auth,'issue_refresh',return_value='rotated-refresh'):
+            factory.return_value.return_value.scalar.side_effect=cycle([account,NS(id=1)])
+            response=Response()
+            result=auth.browser_refresh(NS(cookies={auth._cookie_name('staff','review-tab'):'old-refresh'}),response,'staff','review-tab')
+            self.assertEqual(result['data']['accessToken'],'rotated-access')
+            self.assertTrue(issue_access.call_args.args[0]['mustChangePassword'])
+            self.assertIn('HttpOnly',response.headers['set-cookie'])
+            self.assertTrue(security._validate_db_subject(self.claims(),'/api/v1/auth/refresh')['mustChangePassword'])
+            with self.assertRaises(AppException) as blocked:
+                security._validate_db_subject(self.claims(),'/api/v1/internship/batches')
+            self.assertEqual(blocked.exception.code,'PASSWORD_CHANGE_REQUIRED')
+            account.credential_version=1
+            with self.assertRaises(AppException) as stale:
+                security._validate_db_subject(self.claims(),'/api/v1/auth/browser-refresh')
+            self.assertEqual(stale.exception.http_status,401)
+
     def test_access_and_family_revocation_at_common_entry(self):
         for revoked, family in ((True, False), (False, True)):
             with patch.object(security, 'decode_token', return_value=self.claims()), \

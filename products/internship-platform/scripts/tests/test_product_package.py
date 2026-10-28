@@ -12,6 +12,13 @@ from check_schema_revision_contract import check_contract, CURRENT_PRODUCT_FILES
 
 
 class ProductPackageTest(unittest.TestCase):
+    def test_web_prefix_accepts_local_paths_and_rejects_external_or_traversal_paths(self):
+        self.assertEqual(product.web_base_path('/'), '')
+        self.assertEqual(product.web_base_path('/internship/'), '/internship')
+        for invalid in ['https://other.example', '//other.example', '/internship/../api', '/a?b', '/a#b']:
+            with self.assertRaises(ValueError):
+                product.web_base_path(invalid)
+
     def fixture(self, root):
         (root / 'README.md').write_text('独立产品', encoding='utf-8')
         for output in product.OUTPUTS:

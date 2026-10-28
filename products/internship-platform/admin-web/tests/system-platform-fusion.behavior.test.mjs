@@ -69,14 +69,18 @@ test('切换进入所选区域；取消不切换，新身份读取失败离开�
   const body=source.match(/async function changeRole\(target, centerKey = ''\) \{([\s\S]*?)\n\}\r?\n<\/script>/)[1]
   const targets=[],switches=[],errors=[];let cancel=false,fail=false
   const switching=ref(false),activeContext=ref('old')
-  const run=new Function('switching','activeContext','ElMessageBox','switchAuthContext','clearPermissionPatterns','getVisibleNavPlan','request','window','ElMessage','target','centerKey','return (async()=>{'+body+'})()')
+  let prefix=''
+  const router={resolve:path=>({href:prefix+path})}
+  const run=new Function('switching','activeContext','ElMessageBox','switchAuthContext','clearPermissionPatterns','getVisibleNavPlan','request','window','ElMessage','target','centerKey','router','return (async()=>{'+body+'})()')
   const call=()=>run(switching,activeContext,{confirm:async()=>{if(cancel)throw 'cancel'}},async id=>switches.push(id),()=>{},getVisibleNavPlan,
     async()=>{if(fail)throw Error('权限服务暂不可用');return {permissionPatterns:['internship.dashboard.view','system.audit.view']}},
-    {location:{assign:path=>targets.push(path)}},{error:e=>errors.push(e)},'assigned','system')
+    {location:{assign:path=>targets.push(path)}},{error:e=>errors.push(e)},'assigned','system',router)
   cancel=true;await call();assert.deepEqual(switches,[]);assert.deepEqual(targets,[])
   cancel=false;await call();assert.equal(targets.at(-1),'/admin/system/audit')
   fail=true;await call();assert.equal(targets.at(-1),'/security/500');assert.equal(errors.at(-1),'权限服务暂不可用')
   assert.equal(switching.value,false)
+  prefix='/internship';fail=false;await call();assert.equal(targets.at(-1),'/internship/admin/system/audit')
+  fail=true;await call();assert.equal(targets.at(-1),'/internship/security/500')
 })
 
 test('深链初次打开的页签立即保存，随后跨中心重新挂载仍保留',()=>{

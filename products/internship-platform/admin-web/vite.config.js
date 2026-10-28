@@ -3,6 +3,7 @@ import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
 
 export default defineConfig({
+  base: process.env.VITE_BASE || '/',
   plugins: [vue()],
   // Vite serves these locally and copies the locked PDF.js maps into the release output.
   publicDir: fileURLToPath(new URL('./node_modules/pdfjs-dist/cmaps', import.meta.url)),

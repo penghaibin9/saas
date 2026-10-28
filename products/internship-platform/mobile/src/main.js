@@ -1,3 +1,6 @@
+// #ifdef H5
+import './utils/storageScope.mjs'
+// #endif
 import { createSSRApp } from 'vue'
 import { createPinia } from 'pinia'
 import App from './App.vue'

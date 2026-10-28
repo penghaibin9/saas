@@ -1,7 +1,7 @@
 import { defineStore } from 'pinia'
 function readIdentity() {
   try {
-    const raw = uni.getStorageSync('gx_session_v1')
+    const raw = uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + ('gx_session_v1'))
     if (raw && typeof raw === 'object') return raw.identity || raw
   } catch (e) {}
   return {}

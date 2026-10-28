@@ -3,13 +3,13 @@ export const FORCE_PASSWORD_CHANGE_ROUTE = '/pages/common/change-password/index?
 
 export function setForcePasswordChange(required) {
   try {
-    if (required) uni.setStorageSync(FORCE_PASSWORD_CHANGE_KEY, '1')
-    else uni.removeStorageSync(FORCE_PASSWORD_CHANGE_KEY)
+    if (required) uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (FORCE_PASSWORD_CHANGE_KEY), '1')
+    else uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (FORCE_PASSWORD_CHANGE_KEY))
   } catch (e) { /* storage unavailable: server-side gate remains authoritative */ }
 }
 
 export function forcePasswordChangeRequired() {
-  try { return String(uni.getStorageSync(FORCE_PASSWORD_CHANGE_KEY) || '') === '1' } catch (e) { return false }
+  try { return String(uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (FORCE_PASSWORD_CHANGE_KEY)) || '') === '1' } catch (e) { return false }
 }
 
 export function isForcePasswordChangeRoute(url) {

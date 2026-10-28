@@ -26,19 +26,19 @@ const GD_TEACHER_BATCH_KEY = 'gx_gd_teacher_batch_v1'
 const state = { offlineUntil: 0, warned: false }
 
 export function setToken(token) {
-  try { uni.setStorageSync(TOKEN_KEY, token || '') } catch (e) { /* 忽略存储失败 */ }
+  try { uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (TOKEN_KEY), token || '') } catch (e) { /* 忽略存储失败 */ }
 }
 
 export function getToken() {
-  try { return uni.getStorageSync(TOKEN_KEY) || '' } catch (e) { return '' }
+  try { return uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (TOKEN_KEY)) || '' } catch (e) { return '' }
 }
 
 export function setRefreshToken(token) {
-  try { uni.setStorageSync(REFRESH_KEY, token || '') } catch (e) { /* 忽略存储失败 */ }
+  try { uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (REFRESH_KEY), token || '') } catch (e) { /* 忽略存储失败 */ }
 }
 
 export function getRefreshToken() {
-  try { return uni.getStorageSync(REFRESH_KEY) || '' } catch (e) { return '' }
+  try { return uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (REFRESH_KEY)) || '' } catch (e) { return '' }
 }
 
 export function commitNewSessionTokens(accessToken, refreshToken) {
@@ -54,14 +54,14 @@ export function setTeacherGraduationBatch(batch) {
     const value = batch && batch.id
       ? { id: String(batch.id), name: batch.name || batch.batchName || '', status: batch.status || '' }
       : null
-    if (value) uni.setStorageSync(GD_TEACHER_BATCH_KEY, value)
-    else uni.removeStorageSync(GD_TEACHER_BATCH_KEY)
+    if (value) uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (GD_TEACHER_BATCH_KEY), value)
+    else uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (GD_TEACHER_BATCH_KEY))
   } catch (e) { /* 忽略本地缓存失败 */ }
 }
 
 export function getTeacherGraduationBatch() {
   try {
-    const value = uni.getStorageSync(GD_TEACHER_BATCH_KEY)
+    const value = uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (GD_TEACHER_BATCH_KEY))
     return value && value.id ? value : null
   } catch (e) { return null }
 }
@@ -73,7 +73,7 @@ export function clearTokens() {
   setRefreshToken('')
   setTeacherGraduationBatch(null)
   for (const key of ['gx_session_v1', 'gx_internship_context_v1', INTERNSHIP_BATCH_KEY]) {
-    try { uni.removeStorageSync(key) } catch (e) { /* 继续清理其他旧会话缓存 */ }
+    try { uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (key)) } catch (e) { /* 继续清理其他旧会话缓存 */ }
   }
 }
 
@@ -313,7 +313,7 @@ function refreshOrReuseCurrentSession(requestSnapshot) {
 function selectedInternshipBatchId(path) {
   if (!String(path || '').startsWith('/mobile/internship')) return ''
   try {
-    const value = String(uni.getStorageSync(INTERNSHIP_BATCH_KEY) || '').trim()
+    const value = String(uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (INTERNSHIP_BATCH_KEY)) || '').trim()
     return /^\d+$/.test(value) ? value : ''
   } catch (e) {
     return ''

@@ -8,13 +8,14 @@
  * - /auth/me 是唯一允许“无内存 token → HttpOnly refresh → 恢复会话”的 auth 读入口。
  * - 绝不调用 /auth/mock-login，绝不免密。
  */
-const TOKEN_KEY = 'sp_token_v1'
-const REFRESH_KEY = 'sp_refresh_v1'
+const STORAGE_PREFIX = import.meta.env?.VITE_STORAGE_SCOPE ? `${import.meta.env.VITE_STORAGE_SCOPE}:` : ''
+const TOKEN_KEY = STORAGE_PREFIX + 'sp_token_v1'
+const REFRESH_KEY = STORAGE_PREFIX + 'sp_refresh_v1'
 const INTERNSHIP_BATCH_KEY = 'student_portal_internship_batch_v1'
-const GD_TEMP_FILES_KEY = 'sp_gd_temp_files_v1'
+const GD_TEMP_FILES_KEY = STORAGE_PREFIX + 'sp_gd_temp_files_v1'
 const API_PREFIX = '/api/v1'
-const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'
-const BROWSER_SESSION_COORDINATION_CHANNEL = 'gx_browser_session_coord_v2'
+const BROWSER_SESSION_ID_KEY = STORAGE_PREFIX + 'gx_browser_session_id_v2'
+const BROWSER_SESSION_COORDINATION_CHANNEL = STORAGE_PREFIX + 'gx_browser_session_coord_v2'
 const BROWSER_SESSION_COLLISION_WINDOW_MS = 60
 let volatileBrowserSessionId = ''
 let browserSessionCoordinator = null
@@ -157,8 +158,9 @@ export function getRefreshToken() {
 export function setRefreshToken() {}
 export function clearSession() {
   _advanceSession('')
-  for (const key of [TOKEN_KEY, REFRESH_KEY, INTERNSHIP_BATCH_KEY, GD_TEMP_FILES_KEY, 'student_portal_report_draft_v1']) {
-    try { sessionStorage.removeItem(key); localStorage.removeItem(key) } catch { /* ignore */ }
+  for (const key of [TOKEN_KEY, REFRESH_KEY, INTERNSHIP_BATCH_KEY, GD_TEMP_FILES_KEY, STORAGE_PREFIX + 'student_portal_report_draft_v1']) {
+    // 批次选择只属于当前标签页；子路径产品不清理其他系统的本地缓存。
+    try { sessionStorage.removeItem(key); if (!STORAGE_PREFIX || key !== INTERNSHIP_BATCH_KEY) localStorage.removeItem(key) } catch { /* ignore */ }
   }
 }
 

@@ -12,4 +12,6 @@ button, input, select, textarea { font: inherit; }
 .sl-card input { height: 42px; border: 1px solid #cbd5e1; border-radius: 8px; padding: 0 12px; background: #fff; }
 .sl-card button { height: 44px; border: 0; border-radius: 8px; background: #1d4ed8; color: #fff; font-weight: 700; cursor: pointer; }
 .sl-card button:disabled { opacity: .65; cursor: wait; }
+.sl-role-links { display:flex; flex-wrap:wrap; gap:16px; margin-top:20px; padding-top:12px; border-top:1px solid #e2e8f0; }
+.sl-role-links a { display:flex; align-items:center; min-height:44px; color:#1d4ed8; font-size:14px; }
 .sl-error { padding: 10px 12px; border-radius: 8px; background: #fef2f2; color: #b91c1c; font-size: 13px; }

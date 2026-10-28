@@ -6,9 +6,10 @@ const API_BASE = (() => {
 })()
 const API_PREFIX = '/api/v1'
 const ENTERPRISE_AUTH_ROOT = '/internship/enterprise-portal'
-const CAMPAIGN_KEY = 'ep_campaign_id_v1'
-const TENANT_CODE_KEY = 'ep_tenant_code_v1'
-const BROWSER_SESSION_KEY = 'ep_browser_session_id_v1'
+const STORAGE_PREFIX = import.meta.env?.VITE_STORAGE_SCOPE ? `${import.meta.env.VITE_STORAGE_SCOPE}:` : ''
+const CAMPAIGN_KEY = STORAGE_PREFIX + 'ep_campaign_id_v1'
+const TENANT_CODE_KEY = STORAGE_PREFIX + 'ep_tenant_code_v1'
+const BROWSER_SESSION_KEY = STORAGE_PREFIX + 'ep_browser_session_id_v1'
 let accessToken = ''
 let refreshing = null
 

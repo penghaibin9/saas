@@ -11,9 +11,10 @@ import { API_BASE_URL, API_PREFIX, allowMockFallback, realApiEnabled } from './c
 import { toast } from '@/utils/toast'
 import { normalizeUiError } from '@/utils/presentationSafety'
 
-const LEGACY_TOKEN_KEYS = ['gx_pc_token_v1', 'gx_pc_refresh_v1']
-const BROWSER_SESSION_ID_KEY = 'gx_browser_session_id_v2'
-const BROWSER_SESSION_COORDINATION_CHANNEL = 'gx_browser_session_coord_v2'
+const STORAGE_PREFIX = import.meta.env?.VITE_STORAGE_SCOPE ? `${import.meta.env.VITE_STORAGE_SCOPE}:` : ''
+const LEGACY_TOKEN_KEYS = ['gx_pc_token_v1', 'gx_pc_refresh_v1'].map(key => STORAGE_PREFIX + key)
+const BROWSER_SESSION_ID_KEY = STORAGE_PREFIX + 'gx_browser_session_id_v2'
+const BROWSER_SESSION_COORDINATION_CHANNEL = STORAGE_PREFIX + 'gx_browser_session_coord_v2'
 const BROWSER_SESSION_COLLISION_WINDOW_MS = 60
 let volatileBrowserSessionId = ''
 let browserSessionCoordinator = null
@@ -341,9 +342,11 @@ async function ensureToken() {
 function _redirectToLogin() {
   _advanceSession('')
   try {
-    if (!window.location.hash.startsWith('#/login') && window.location.pathname !== '/login') {
-      const back = encodeURIComponent(window.location.pathname + window.location.search)
-      window.location.assign(`/login?redirect=${back}`)
+    const base = (import.meta.env?.BASE_URL || '/').replace(/\/$/, '')
+    const path = window.location.pathname.startsWith(base + '/') ? window.location.pathname.slice(base.length) : window.location.pathname
+    if (!window.location.hash.startsWith('#/login') && path !== '/login') {
+      const back = encodeURIComponent(path + window.location.search)
+      window.location.assign(`${base}/login?redirect=${back}`)
     }
   } catch { /* 非浏览器环境忽略 */ }
 }

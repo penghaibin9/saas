@@ -11,6 +11,11 @@
         <div v-if="error" class="sl-error" role="alert">{{ error }}</div>
         <button type="submit" :disabled="loading">{{ loading ? '正在登录…' : '登录' }}</button>
       </form>
+      <nav class="sl-role-links" aria-label="其他身份登录">
+        <a :href="($router.options.history.base || '') + '/student/login'">学生登录</a>
+        <a :href="($router.options.history.base || '') + '/enterprise/login'">企业登录</a>
+        <a :href="($router.options.history.base || '') + '/mobile/'">手机登录</a>
+      </nav>
     </section>
   </main>
 </template>

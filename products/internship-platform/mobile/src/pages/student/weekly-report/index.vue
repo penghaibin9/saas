@@ -133,7 +133,7 @@ export default {
       if (!session.logged || session.isTeacher || !session.identity?.userId || this.generation !== currentSessionGeneration()) return
       try {
         session.weeklyReportDrafts = { scope: this.draftScope(session), week: this.selectedWeek, drafts: this.drafts }
-        uni.setStorageSync('gx_session_v1', session)
+        uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + ('gx_session_v1'), session)
         this.draftStorageError = ''
       } catch { this.draftStorageError = '本机草稿保存失败，刷新前请复制正文并保留附件名称。' }
     },

@@ -37,7 +37,7 @@ export const useInternshipContextStore = defineStore('internshipContext', {
     },
     persist() {
       try {
-        uni.setStorageSync(STORAGE_KEY, JSON.stringify({
+        uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (STORAGE_KEY), JSON.stringify({
           selectedBatchId: this.selectedBatchId,
           roleCode: this.roleCode,
           permissionVersion: this.permissionVersion
@@ -46,7 +46,7 @@ export const useInternshipContextStore = defineStore('internshipContext', {
     },
     restore() {
       try {
-        const raw = uni.getStorageSync(STORAGE_KEY)
+        const raw = uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (STORAGE_KEY))
         if (!raw) return
         const saved = JSON.parse(raw)
         this.selectedBatchId = saved.selectedBatchId || ''
@@ -122,7 +122,7 @@ export const useInternshipContextStore = defineStore('internshipContext', {
       this.permissionVersion = ''
       this.batches = []
       this.selectedBatchId = ''
-      try { uni.removeStorageSync(STORAGE_KEY) } catch (e) {}
+      try { uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (STORAGE_KEY)) } catch (e) {}
     }
   }
 })

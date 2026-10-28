@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 import hashlib
 import json
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
@@ -98,7 +99,16 @@ def check(root: Path) -> str:
     return head
 
 
-def build(root: Path) -> None:
+def web_base_path(value: str) -> str:
+    if value == '/':
+        return ''
+    if not re.fullmatch(r'/[a-z0-9_-]+(?:/[a-z0-9_-]+)*/?', value):
+        raise ValueError('网页部署路径必须为根路径或小写路径段，例如 /internship/')
+    return value.rstrip('/')
+
+
+def build(root: Path, base_path: str = '/') -> None:
+    prefix = web_base_path(base_path)
     head = check(root)
     before = hashes(root, source_files(root))
     npm = shutil.which('npm.cmd' if os.name == 'nt' else 'npm')
@@ -119,14 +129,17 @@ def build(root: Path) -> None:
         run([shutil.which('node') or 'node', str(root / 'enterprise-web/scripts/check-production-audit-report.mjs'), str(audit)], root)
         run([npm, 'test'], cwd)
         env = dict(os.environ)
+        env['VITE_API_BASE_URL'] = prefix or '/'
+        env['VITE_BASE'] = prefix + ({'admin-web': '/', 'student-web': '/student/', 'enterprise-web': '/enterprise/', 'mobile': '/mobile/'}[surface])
+        env['VITE_STORAGE_SCOPE'] = 'internship' if prefix else ''
         # Packaged H5 uses the same HTTPS gateway; native WeChat is built separately for its explicit domain.
         if surface == 'mobile':
-            env['VITE_API_BASE_URL'] = '/'
+            env['VITE_API_BASE_URL'] = prefix or '/'
         run([npm, 'run', 'build:h5' if surface == 'mobile' else 'build'], cwd, env)
     after = hashes(root, source_files(root))
     if before != after:
         raise ValueError('构建过程中源码发生变化，请核对后重新构建。')
-    receipt = {'product': 'internship-standalone', 'schemaRevision': head,
+    receipt = {'product': 'internship-standalone', 'schemaRevision': head, 'webBasePath': prefix,
         'createdAtUtc': datetime.now(timezone.utc).isoformat(),
         'sourceFiles': after, 'buildFiles': hashes(root, built_files(root)),
         'auditFiles': hashes(root, sorted(audits.glob('*.json'))),
@@ -168,12 +181,13 @@ def main() -> int:
     parser = argparse.ArgumentParser(description='独立岗位实习产品的检查、构建与交付打包')
     parser.add_argument('action', choices=['check', 'build', 'package'])
     parser.add_argument('--output', type=Path)
+    parser.add_argument('--web-base-path', default='/')
     args = parser.parse_args()
     try:
         if args.action == 'check':
             check(ROOT)
         elif args.action == 'build':
-            build(ROOT)
+            build(ROOT, args.web_base_path)
         else:
             if not args.output:
                 parser.error('打包必须指定 --output')

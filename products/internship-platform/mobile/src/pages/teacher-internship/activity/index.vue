@@ -639,7 +639,7 @@ export default {
       if(!scope || this.generation!==currentSessionGeneration()) return
       try {
         session.teacherPeriodReportPage={scope,page:this.periodPage,total:this.periodTotal}
-        uni.setStorageSync('gx_session_v1',session)
+        uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + ('gx_session_v1'),session)
       } catch {}
     },
     async loadPeriodReports(page=this.periodPage) {

@@ -308,8 +308,8 @@ export default {
     },
     readCurrent(seq, generation) { return !this.hidden && seq === this.loadSequence && generation === currentSessionGeneration() },
     noticeBatchId() { return String(this.selectedBatchId || this.i?.batchId || '') },
-    restoreBatch() { try { this.selectedBatchId = String(uni.getStorageSync(STORAGE_KEY) || '') } catch (e) {} },
-    persistBatch() { try { if (this.selectedBatchId) uni.setStorageSync(STORAGE_KEY, this.selectedBatchId); else uni.removeStorageSync(STORAGE_KEY) } catch (e) {} },
+    restoreBatch() { try { this.selectedBatchId = String(uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (STORAGE_KEY)) || '') } catch (e) {} },
+    persistBatch() { try { if (this.selectedBatchId) uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (STORAGE_KEY), this.selectedBatchId); else uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (STORAGE_KEY)) } catch (e) {} },
     withBatch(path) { if (!this.selectedBatchId) return path; return `${path}${path.includes('?') ? '&' : '?'}batchId=${encodeURIComponent(this.selectedBatchId)}` },
     openSub(path) { go(this.withBatch(path)) },
     selectCandidate(candidate) {

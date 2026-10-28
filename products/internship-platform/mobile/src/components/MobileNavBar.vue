@@ -35,7 +35,7 @@ function defaultFallback(variant) {
   // H5 刷新/消息深链可能只有一层页面栈。显式 fallback 仍有最高优先级；
   // 未声明的正式子页按已验证会话身份返回对应工作台，而不是无条件跳登录。
   try {
-    const raw = uni.getStorageSync('gx_session_v1')
+    const raw = uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + ('gx_session_v1'))
     const session = typeof raw === 'string' ? JSON.parse(raw) : raw
     if (session?.logged && session?.isTeacher) return TEACHER_HOME
   } catch (e) {}

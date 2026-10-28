@@ -35,7 +35,7 @@ export function mobileHome(identity={}) {
 
 export function currentMobileSession() {
   try {
-    const raw=uni.getStorageSync(SESSION_KEY)
+    const raw=uni.getStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (SESSION_KEY))
     return raw&&typeof raw==='object'?raw:{}
   } catch (e) { return {} }
 }
@@ -49,7 +49,7 @@ export async function loginMobile({tenantCode='',loginName='',password='',client
   const identity=normalizedIdentity(data)
   const isTeacher=identity.userType!=='STUDENT'&&identity.roleCode!=='STUDENT'
   const session={logged:true,isTeacher,identity}
-  try { uni.setStorageSync(SESSION_KEY,session) } catch (e) {}
+  try { uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (SESSION_KEY),session) } catch (e) {}
   setForcePasswordChange(!!data.mustChangePassword)
   return {data,identity,home:mobileHome(identity)}
 }
@@ -62,7 +62,7 @@ export async function switchMobileRole(roleCode='') {
   commitNewSessionTokens(data.accessToken||'',data.refreshToken||'')
   const identity=normalizedIdentity(data)
   const session={...current,logged:true,isTeacher:true,identity}
-  try { uni.setStorageSync(SESSION_KEY,session);uni.removeStorageSync('gx_internship_context_v1') } catch (e) {}
+  try { uni.setStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (SESSION_KEY),session);uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + ('gx_internship_context_v1')) } catch (e) {}
   return {data,identity,home:mobileHome(identity)}
 }
 
@@ -84,9 +84,9 @@ export async function logoutMobile() {
   clearTokens()
   setForcePasswordChange(false)
   try {
-    uni.removeStorageSync(SESSION_KEY)
-    uni.removeStorageSync('gx_internship_context_v1')
-    uni.removeStorageSync('gx_student_internship_batch_v1')
+    uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + (SESSION_KEY))
+    uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + ('gx_internship_context_v1'))
+    uni.removeStorageSync((typeof globalThis !== 'undefined' && globalThis.__IX_H5_STORAGE_PREFIX__ || '') + ('gx_student_internship_batch_v1'))
   } catch (e) {}
   return true
 }

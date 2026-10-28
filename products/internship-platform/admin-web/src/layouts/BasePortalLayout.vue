@@ -87,11 +87,11 @@ async function changeRole(target, centerKey = '') {
     const plan = getVisibleNavPlan(await request('/rbac/current-context'))
     const group = centerKey ? plan.find(group => group.key === centerKey) : plan[0]
     const destination = group?.children?.[0]?.children?.[0]?.path || group?.children?.[0]?.path || '/security/403'
-    window.location.assign(destination)
+    window.location.assign(router.resolve(destination).href)
   } catch (e) {
     if (e !== 'cancel' && e !== 'close') {
       ElMessage.error(e.message || '身份切换失败，请重试')
-      if (roleChanged) window.location.assign('/security/500')
+      if (roleChanged) window.location.assign(router.resolve('/security/500').href)
     }
   }
   finally { switching.value = false }

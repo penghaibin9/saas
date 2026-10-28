@@ -17,6 +17,9 @@ def decode_token(token):
 _PASSWORD_RECOVERY_ALLOWLIST = frozenset({
     "/api/v1/auth/me",
     "/api/v1/auth/change-password",
+    # 恢复改密会话；续期后的令牌仍在每个业务请求上检查首次改密要求。
+    "/api/v1/auth/browser-refresh",
+    "/api/v1/auth/refresh",
 })
 
 
