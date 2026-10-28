@@ -30,6 +30,7 @@ _PERMISSION_CODES = (
     "studentAffairs.archive.psySensitive",
     "studentAffairs.archive.view",
     "studentAffairs.class.cadre.manage",
+    "studentAffairs.class.counselor.manage",
     "studentAffairs.class.create",
     "studentAffairs.class.view",
     "studentAffairs.club.manage",
@@ -115,6 +116,8 @@ _ACTION_LABELS = {
 
 
 def _definition(code: str) -> StudentAffairsPermission:
+    if code == "studentAffairs.class.counselor.manage":
+        return StudentAffairsPermission(code, "辅导员任职与交接", "class", "HIGH", ("TENANT_ALL", "COLLEGE"))
     parts = code.split(".")
     domain = parts[1] if len(parts) > 1 else "unknown"
     action = parts[-1] if parts else "view"

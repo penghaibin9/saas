@@ -92,6 +92,20 @@ def assert_orientation_student_scope(db, student: OrientationStudent, user=None)
     ctx.require_student(db, int(student.student_id))
 
 
+def _filter_student_scope(query, user=None):
+    from app.core.affairs_security import student_directory_scope
+    class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
+    if student_ids is not None:
+        return query.where(OrientationStudent.student_id.in_(student_ids) if student_ids else false())
+    if class_ids is not None:
+        profiles = select(StudentProfile.id).where(
+            StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+            StudentProfile.class_id.in_(class_ids),
+        )
+        return query.where(OrientationStudent.student_id.in_(profiles) if class_ids else false())
+    return query
+
+
 def _amt(v) -> float:
     return float(v or 0)
 
@@ -158,23 +172,7 @@ def list_students(page, page_size, keyword=None, class_id=None, batch_id=None, s
         # 迎新台账只有已绑定 StudentProfile 的记录才可证明属于班级/学生范围。
         # 未绑定记录对范围角色 fail-closed；TENANT_ALL 才能查看。这一裁决同时被
         # 通用导出复用，避免列表收敛而导出泄露全校数据。
-        from app.core.affairs_security import student_directory_scope
-        class_ids, student_ids = student_directory_scope(user or get_current_user_ctx() or {})
-        if student_ids is not None:
-            q = q.where(
-                OrientationStudent.student_id.in_(student_ids)
-                if student_ids else false()
-            )
-        elif class_ids is not None:
-            if not class_ids:
-                q = q.where(false())
-            else:
-                scoped_profiles = select(StudentProfile.id).where(
-                    StudentProfile.tenant_id == _tid(),
-                    StudentProfile.is_deleted.is_(False),
-                    StudentProfile.class_id.in_(class_ids),
-                )
-                q = q.where(OrientationStudent.student_id.in_(scoped_profiles))
+        q = _filter_student_scope(q, user)
         if stage:
             q = q.where(OrientationStudent.stage == stage)
         if pending_arrival:
@@ -458,6 +456,7 @@ def void_student(sid, reason: str) -> dict:
         raise AppException("VALIDATION_ERROR", "作废原因必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
+        assert_orientation_student_scope(db, s)
         s.record_status = "VOIDED"
         s.void_reason = reason.strip()
         s.is_deleted = True
@@ -574,6 +573,7 @@ def list_progress(page, page_size, keyword=None, blocked_only="NO", batch_id=Non
         q = select(OrientationStudent).where(OrientationStudent.tenant_id == _tid(),
                                              OrientationStudent.is_deleted.is_(False),
                                              OrientationStudent.record_status == "ACTIVE")
+        q = _filter_student_scope(q)
         if batch_id is not None:
             q = q.where(OrientationStudent.batch_id == int(batch_id))
         if keyword:
@@ -597,8 +597,7 @@ def list_progress(page, page_size, keyword=None, blocked_only="NO", batch_id=Non
                           "blockedStep": r.blocked_step or "", "blockedReason": r.blocked_reason or "",
                           "reportStatus": r.report_status,
                           "reportStatusLabel": L_REPORT.get(r.report_status, r.report_status)})
-        page_items, total = _page(items, page, page_size)
-        return page_items, total
+        return items, total
 
 
 def update_blocked(sid, blocked_step=None, blocked_reason=None) -> dict:
@@ -606,6 +605,7 @@ def update_blocked(sid, blocked_step=None, blocked_reason=None) -> dict:
         raise AppException("VALIDATION_ERROR", "卡点说明必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
+        assert_orientation_student_scope(db, s)
         if blocked_step is not None:
             step_key = blocked_step or None
             if step_key is None and s.blocked_step:
@@ -631,6 +631,7 @@ def resolve_blocked(sid, note="") -> dict:
         raise AppException("VALIDATION_ERROR", "人工豁免原因必填且不少于 5 字")
     with session() as db:
         s = _get_student(db, sid)
+        assert_orientation_student_scope(db, s)
         prev = s.blocked_step or ""
         if not prev:
             raise AppException("INVALID_STATE", "当前新生没有待处理卡点")

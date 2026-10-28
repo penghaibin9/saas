@@ -18,8 +18,8 @@ def test_fee_reduction_todo_visible_in_creation_second(client, db_mode, monkeypa
     from app.services import workbench_todo_service as reader
 
     ids = _accounts(db_mode)
-    admin = _login(client, "school_admin01", "PC")
-    receiver = _login(client, "sa_admin01", "TEACHER_MINI")
+    admin = _login(client, "funding_college01", "PC")
+    receiver = _login(client, "funding_college01", "TEACHER_MINI")
     now = datetime.utcnow().replace(microsecond=900000)
 
     class Clock:
@@ -74,7 +74,7 @@ def _todos(fee_id, pending_type=None):
             return
         row = active[0]
         assert row.todo_type == pending_type
-        assert db.get(User, row.assignee_id).login_name == ("fund_student" if pending_type == "FEE_REDUCTION_CORRECTION" else "sa_admin01")
+        assert db.get(User, row.assignee_id).login_name == ("fund_student" if pending_type == "FEE_REDUCTION_CORRECTION" else "funding_college01")
         clients = [("studentPc", "/campus-service"), ("studentMini", "/pages/student/affairs/reduction")] if pending_type == "FEE_REDUCTION_CORRECTION" else [("pc", "/admin/student-affairs/funding/fee-reductions"), ("teacherMini", "/pages/teacher/affairs/reduction/index")]
         for client, path in clients:
             target = resolve_todo_route(row.todo_type, str(fee_id), client=client)
@@ -85,8 +85,8 @@ def _todos(fee_id, pending_type=None):
 
 def test_fee_reduction_four_end_core_flow(client, db_mode):
     ids = _accounts(db_mode)
-    admin_pc = _login(client, "school_admin01", "PC")
-    admin_mini = _login(client, "school_admin01", "TEACHER_MINI")
+    admin_pc = _login(client, "funding_college01", "PC")
+    admin_mini = _login(client, "funding_college01", "TEACHER_MINI")
     student_pc = _login(client, "fund_student", "PC")
     student_mini = _login(client, "fund_student", "STUDENT_MINI")
     other_pc = _login(client, "fund_other", "PC")
@@ -100,7 +100,7 @@ def test_fee_reduction_four_end_core_flow(client, db_mode):
     }))
     fee_id = submitted["feeId"]
     first_todo = _todos(fee_id, "FEE_REDUCTION_REVIEW")
-    receiver = _login(client, "sa_admin01", "TEACHER_MINI")
+    receiver = _login(client, "funding_college01", "TEACHER_MINI")
     inbox = _data(client.get(f"{BASE}/teacher-mobile/todos/grouped-continuous", headers=receiver))
     item = next(t for t in inbox["items"] if str(t["todoId"]) == first_todo)
     assert item["action"]["target"]["path"] == "/pages/teacher/affairs/reduction/index"

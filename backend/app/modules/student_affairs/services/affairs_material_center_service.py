@@ -16,11 +16,11 @@ import re
 from datetime import datetime
 from typing import Any, Iterable
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import and_, case, func, or_, select
 
 from app.core.exceptions import AppException, check_version, no_permission, not_found
 from app.core.tenant_scoped import tenant_get
-from app.core.permissions import has_permission
+from app.core.permissions import get_base_permission_patterns, has_permission
 from app.models.file import (
     ArchiveManifest,
     ArchiveManifestItem,
@@ -63,7 +63,7 @@ BIZ_PERMISSIONS: dict[str, tuple[str, ...]] = {
     "DORM_TRANSFER": ("studentAffairs.dorm.transfer.approve", "studentAffairs.dorm.view"),
     "CREDIT_APPEAL": ("studentAffairs.activity.confirm", "studentAffairs.activity.view"),
     "SECOND_CLASS_APPEAL": ("studentAffairs.activity.confirm", "studentAffairs.activity.view"),
-    "MENTAL": ("studentAffairs.risk.psyDetail.view",),
+    "MENTAL": ("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view", "studentAffairs.archive.psySensitive"),
 }
 
 HIGHLY_SENSITIVE_BIZ = {"AID", "MENTAL"}
@@ -117,6 +117,12 @@ def _require_biz_permission(user: dict, biz_type: str) -> None:
         raise no_permission("当前身份无权维护该业务的补交材料")
 
 
+def _require_biz_write_permission(user: dict, biz_type: str) -> None:
+    _require_biz_permission(user, biz_type)
+    if biz_type == "MENTAL" and not has_permission(user, "studentAffairs.mental.manage"):
+        raise no_permission("当前职责仅可查看心理材料，办理还需心理工作权限")
+
+
 def _resolve_biz_student(db, biz_type: str, biz_id: int) -> int:
     bt = _require_supported_biz(biz_type)
     if bt == "PROFILE":
@@ -165,6 +171,22 @@ def _staff_can_enumerate(db, requirement, user: dict) -> bool:
         return True
     except Exception:
         return False
+
+
+def _content_permission_codes(requirement) -> set[str]:
+    if requirement.material_scope == "PSY_STUDENT":
+        return {"studentAffairs.risk.psyDetail.view", "studentAffairs.archive.psySensitive"}
+    if requirement.material_scope == "AID_RESTRICTED":
+        return {"studentAffairs.aid.sensitiveView"}
+    return set()
+
+
+def _staff_can_read_content(db, requirement, user: dict) -> bool:
+    from app.core.permissions import get_base_permission_patterns
+    if not _staff_can_enumerate(db, requirement, user):
+        return False
+    needed = _content_permission_codes(requirement)
+    return not needed or bool(needed & set(get_base_permission_patterns(user)))
 
 
 def _student_profile(db, student_id: int):
@@ -381,17 +403,21 @@ def _submission_rows(db, requirement_ids: Iterable[int]) -> dict[int, list[Any]]
 
 
 def _requirement_dict(row, submissions: list[Any], *, student_view: bool, owner_name: str = "",
-                      business_context: dict | None = None) -> dict:
+                      business_context: dict | None = None, raw_permissions=(), can_manage=True) -> dict:
     current = next((item for item in submissions if int(item.id) == int(row.current_submission_id or 0)), None)
     overdue = bool(row.due_at and row.due_at < datetime.utcnow() and row.status in {"MISSING", "RETURNED"})
     actions: list[str] = []
     if student_view and row.status in {"MISSING", "RETURNED"}:
         actions.append("SUBMIT_MATERIAL")
-    if not student_view and row.status == "PENDING_REVIEW":
+    if not student_view and can_manage and row.status == "PENDING_REVIEW":
         actions.extend(["ACCEPT_MATERIAL", "RETURN_MATERIAL"])
-    if not student_view and row.status in {"MISSING", "RETURNED", "PENDING_REVIEW"}:
+    if not student_view and can_manage and row.status in {"MISSING", "RETURNED", "PENDING_REVIEW"}:
         actions.append("WAIVE_MATERIAL")
     versions = [_submission_dict(item, row.current_submission_id) for item in submissions]
+    needed = _content_permission_codes(row)
+    can_download = student_view or not needed or bool(needed & set(raw_permissions))
+    for version in versions:
+        version["downloadable"] = version["downloadable"] and can_download
     out = {
         "requirementId": str(row.id),
         "studentId": str(row.student_id),
@@ -430,6 +456,8 @@ def _requirement_dict(row, submissions: list[Any], *, student_view: bool, owner_
     # businessContext 只是给四端 UI 的业务语言，列表路径按当前页批量组装后传入。
     if business_context:
         out["businessContext"] = dict(business_context)
+    if out["currentSubmission"]:
+        out["currentSubmission"]["downloadable"] = out["currentSubmission"]["downloadable"] and can_download
     return out
 
 
@@ -530,7 +558,7 @@ def create_material_requirement(user: dict, payload: dict) -> dict:
     from app.services import affairs_operations_service as legacy
 
     bt = _require_supported_biz(payload.get("bizType"))
-    _require_biz_permission(user, bt)
+    _require_biz_write_permission(user, bt)
     biz_id = int(payload.get("bizId") or 0)
     if biz_id <= 0:
         raise AppException("VALIDATION_ERROR", "业务记录ID无效")
@@ -748,7 +776,7 @@ def _teacher_requirement_scope(db, user: dict) -> list | None:
     visible_biz = {bt for bt in BIZ_PERMISSIONS if _has_biz_permission(user, bt)}
     if not visible_biz:
         return None
-    allowed, _ = _allowed_class_ids(db, user)
+    allowed, scope = _allowed_class_ids(db, user)
     conds = [
         AffairsMaterialRequirement.tenant_id == _tid(),
         AffairsMaterialRequirement.biz_type.in_(visible_biz),
@@ -757,17 +785,19 @@ def _teacher_requirement_scope(db, user: dict) -> list | None:
         StudentProfile.id == AffairsMaterialRequirement.student_id,
         StudentProfile.is_deleted.is_(False),
     ]
-    if allowed is not None:
+    ctx = scope.get("ctx")
+    if ctx is not None and ctx.scope_type == "STUDENT":
+        conds.append(AffairsMaterialRequirement.student_id.in_(ctx.student_ids | ctx.psychology_student_ids or {-1}))
+    elif allowed is not None:
         conds.append(StudentProfile.class_id.in_(allowed or {-1}))
-    if "MENTAL" in visible_biz:
-        from app.services.affairs_mental_service import psy_scope_ids
-
-        psy_scope = psy_scope_ids(db, user or {})
-        if psy_scope is not None:
-            conds.append(or_(
-                AffairsMaterialRequirement.biz_type != "MENTAL",
-                AffairsMaterialRequirement.student_id.in_(psy_scope or {-1}),
-            ))
+    from app.services.affairs_mental_service import psy_scope_ids
+    psy_scope = psy_scope_ids(db, user or {})
+    if psy_scope is not None:
+        conds.append(or_(
+            and_(AffairsMaterialRequirement.biz_type != "MENTAL",
+                 func.coalesce(AffairsMaterialRequirement.material_scope, "") != "PSY_STUDENT"),
+            AffairsMaterialRequirement.student_id.in_(psy_scope or {-1}),
+        ))
     return conds
 
 
@@ -822,11 +852,16 @@ def _requirement_page(db, user: dict, *, status, sensitivity_level, requirement_
         )).all()
     }
     contexts = _business_context_map(db, list(rows), student_view=False)
+    from app.core.permissions import get_base_permission_patterns
+    raw_permissions = get_base_permission_patterns(user)
+    can_manage_mental = has_permission(user, "studentAffairs.mental.manage")
     items = [
         _requirement_dict(
             row, submissions.get(int(row.id), []), student_view=False,
             owner_name=owners.get(int(row.review_owner_id or 0), ""),
             business_context=contexts.get(int(row.id)),
+            raw_permissions=raw_permissions,
+            can_manage=row.biz_type != "MENTAL" or can_manage_mental,
         )
         for row in rows
     ]
@@ -1079,6 +1114,7 @@ def review_material(
         ).with_for_update()).first()
         if not requirement or not _staff_can_enumerate(db, requirement, user):
             raise not_found("材料缺项不存在")
+        _require_biz_write_permission(user, requirement.biz_type)
         if int(requirement.review_owner_id or 0) != actor:
             from app.core.affairs_security import build_affairs_context
 
@@ -1148,6 +1184,7 @@ def review_material(
         result = _requirement_dict(
             requirement, versions, student_view=False,
             owner_name=(owner.real_name if owner else ""),
+            raw_permissions=get_base_permission_patterns(user),
         )
     legacy._drain_messages()
     return result

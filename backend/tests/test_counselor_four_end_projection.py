@@ -45,8 +45,10 @@ def test_primary_handover_updates_teacher_scope_and_student_pc_mini_projection(c
             db.add(role)
             db.flush()
         for user_id in (ids["u1"], ids["u2"]):
-            db.add(UserRole(tenant_id=1000000000000000001, user_id=user_id,
-                            role_id=role.id, status="ACTIVE"))
+            if db.scalar(select(UserRole.id).where(UserRole.tenant_id == 1000000000000000001,
+                    UserRole.user_id == user_id, UserRole.role_id == role.id)) is None:
+                db.add(UserRole(tenant_id=1000000000000000001, user_id=user_id,
+                                role_id=role.id, status="ACTIVE"))
         db.commit()
     admin = _hdr(client, "school_admin01")
     old_teacher = _token(ids["u1"], user_type="TEACHER", role="COUNSELOR")
@@ -123,7 +125,11 @@ def test_primary_handover_updates_teacher_scope_and_student_pc_mini_projection(c
     assert old_deep_link["items"] == []
 
     new_after = _data(client.get("/api/v1/mobile/teacher/my-classes", headers=new_teacher))
-    assert str(ids["a"]) in {row["classId"] for row in new_after["items"]}
+    from app.models import AffairsCounselorAssignment
+    with get_sessionmaker()() as db:
+        assignments = [(r.user_id, r.status, str(r.effective_from), str(r.effective_to)) for r in db.scalars(
+            select(AffairsCounselorAssignment).where(AffairsCounselorAssignment.class_id == ids["a"])).all()]
+    assert str(ids["a"]) in {row["classId"] for row in new_after["items"]}, {"response": new_after, "assignments": assignments}
     new_deep_link = _data(client.get(
         "/api/v1/teacher-mobile/students",
         headers=new_teacher,

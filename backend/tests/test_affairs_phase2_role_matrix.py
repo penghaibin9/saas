@@ -21,11 +21,11 @@ ROLE_CODES = {
 MATRIX = {
     "COUNSELOR": (("dashboard", "studentAffairs.dashboard.view", True), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.risk.view", True), ("detail", "studentAffairs.leave.view", True), ("status_write", "studentAffairs.risk.handle", True), ("funding_first_review", "studentAffairs.funding.approve", True), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.mental.manage", False)),
     "COLLEGE_SA": (("dashboard", "studentAffairs.dashboard.view", True), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.risk.view", True), ("detail", "studentAffairs.leave.view", True), ("status_write", "studentAffairs.risk.handle", True), ("cross_write", "systemAdmin.user.manage", False), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.mental.manage", True)),
-    "STUDENT_AFFAIRS_ADMIN": (("dashboard", "studentAffairs.dashboard.view", True), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.risk.view", True), ("detail", "studentAffairs.leave.view", True), ("status_write", "studentAffairs.risk.handle", True), ("cross_write", "academicAffairs.grade.publish", False), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.mental.manage", True)),
-    "PSYCHOLOGY_TEACHER": (("dashboard", "studentAffairs.dashboard.view", False), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.risk.view", True), ("detail", "studentAffairs.talk.view", True), ("status_write", "studentAffairs.risk.handle", True), ("cross_write", "studentAffairs.funding.approve", False), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.mental.manage", True)),
-    "FUNDING_TEACHER": (("dashboard", "studentAffairs.dashboard.view", True), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.funding.view", True), ("detail", "studentAffairs.aid.view", True), ("status_write", "studentAffairs.funding.approve", True), ("cross_write", "studentAffairs.risk.handle", False), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.aid.view", True)),
-    "DORM_MANAGER": (("dashboard", "studentAffairs.dashboard.view", False), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.dorm.view", True), ("detail", "studentAffairs.dorm.view", True), ("status_write", "studentAffairs.dorm.checkin", True), ("cross_write", "studentAffairs.risk.handle", False), ("stats", "studentAffairs.stats.view", False), ("sensitive", "studentAffairs.mental.manage", False)),
-    "YOUTH_LEAGUE": (("dashboard", "studentAffairs.dashboard.view", True), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.club.view", True), ("detail", "studentAffairs.org.view", True), ("status_write", "studentAffairs.club.manage", True), ("cross_write", "studentAffairs.funding.approve", False), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.mental.manage", False)),
+    "STUDENT_AFFAIRS_ADMIN": (("dashboard", "studentAffairs.dashboard.view", True), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.risk.view", True), ("detail", "studentAffairs.leave.view", True), ("status_write", "studentAffairs.risk.handle", True), ("cross_write", "academicAffairs.grade.publish", False), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.mental.manage", False)),
+    "PSYCHOLOGY_TEACHER": (("dashboard", "studentAffairs.dashboard.view", False), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.risk.view", True), ("detail", "studentAffairs.talk.view", True), ("status_write", "studentAffairs.risk.handle", True), ("cross_write", "studentAffairs.funding.approve", False), ("stats", "studentAffairs.stats.view", False), ("sensitive", "studentAffairs.mental.manage", True)),
+    "FUNDING_TEACHER": (("dashboard", "studentAffairs.dashboard.view", False), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.funding.view", True), ("detail", "studentAffairs.aid.view", True), ("status_write", "studentAffairs.funding.approve", True), ("cross_write", "studentAffairs.risk.handle", False), ("stats", "studentAffairs.stats.view", False), ("sensitive", "studentAffairs.aid.sensitiveView", False)),
+    "DORM_MANAGER": (("dashboard", "studentAffairs.dashboard.view", False), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.dorm.view", True), ("detail", "studentAffairs.dorm.view", True), ("status_write", "studentAffairs.dorm.allocation.manage", True), ("cross_write", "studentAffairs.risk.handle", False), ("stats", "studentAffairs.stats.view", False), ("sensitive", "studentAffairs.mental.manage", False)),
+    "YOUTH_LEAGUE": (("dashboard", "studentAffairs.dashboard.view", False), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.club.view", True), ("detail", "studentAffairs.org.view", True), ("status_write", "studentAffairs.club.manage", True), ("cross_write", "studentAffairs.funding.approve", False), ("stats", "studentAffairs.stats.view", False), ("sensitive", "studentAffairs.mental.manage", False)),
     "SCHOOL_LEADER": (("dashboard", "studentAffairs.dashboard.view", True), ("workbench", "workbench.home.view", True), ("list", "studentAffairs.risk.view", True), ("detail", "studentAffairs.leave.view", True), ("status_write", "studentAffairs.risk.handle", False), ("cross_write", "studentAffairs.funding.approve", False), ("stats", "studentAffairs.stats.view", True), ("sensitive", "studentAffairs.mental.manage", False)),
 }
 
@@ -48,17 +48,13 @@ def test_funding_school_review_assignee_override_is_domain_specific(monkeypatch)
 
     # 共享节点仍保持历史语义，避免影响困难认定/处分等其他业务。
     assert shared._NODE_ROLES["SCHOOL_REVIEW"] == {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN"}
-    assert set(guard._FUNDING_SCHOOL_REVIEW_ROLES) == {
-        "STUDENT_AFFAIRS",
-        "STUDENT_AFFAIRS_ADMIN",
-        "SA_ADMIN",
-        "FUNDING_TEACHER",
-    }
+    assert set(guard._FUNDING_SCHOOL_REVIEW_ROLES) == {"FUNDING_TEACHER"}
     assert "SCHOOL_ADMIN" not in guard._FUNDING_SCHOOL_REVIEW_ROLES
 
     captured = {}
 
-    def fake_require_assignee_id(db, node, *, student_id=None, role_codes=None):
+    def fake_require_assignee_id(db, node, *, student_id=None, role_codes=None, exclude_user_ids=()):
+        assert set(exclude_user_ids) == set()
         captured.update({"db": db, "node": node, "studentId": student_id, "roleCodes": set(role_codes or ())})
         return 88001
 
@@ -73,8 +69,10 @@ def test_funding_school_review_assignee_override_is_domain_specific(monkeypatch)
         "studentId": 901,
         "roleCodes": set(guard._FUNDING_SCHOOL_REVIEW_ROLES),
     }
-    # 辅导员/学院节点仍交回原 Funding resolver，修复只命中校级资助受理人。
-    assert guard._assignee_for(marker_db, "COLLEGE_REVIEW", 901) == 77001
+    # 学院资助也按专项及学院范围受理；辅导员节点保持原业务责任关系。
+    assert guard._assignee_for(marker_db, "COLLEGE_REVIEW", 901) == 88001
+    assert captured["roleCodes"] == {"FUNDING_TEACHER"}
+    assert guard._assignee_for(marker_db, "COUNSELOR_REVIEW", 901) == 77001
 
 
 def test_counselor_discipline_removal_permission_is_narrow():

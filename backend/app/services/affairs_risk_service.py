@@ -304,24 +304,20 @@ def _todo_done(db, risk_id):
 
 
 def _scope_or_403(db, student_id, user, risk=None):
-    """校验风险可见范围；当前责任人始终可访问自己被指派的精确原单。
+    """按当前职责校验范围，仅宿管的宿舍原单使用精确责任关系。
 
     宿管的数据范围按楼栋表达，无法转换成班级集合。宿舍检查把高风险明确
     指派给楼栋宿管后，责任关系本身就是这一条风险的最小授权；这里只放行
     当前 owner 的单条记录，列表仍按原数据范围收敛，避免扩大到其他学生。
     """
-    if risk is not None:
+    if (risk is not None and risk.source == "DORM"
+            and (user or {}).get("currentRoleCode") == "DORM_MANAGER"
+            and has_permission(user, "studentAffairs.dorm.inspection.manage")):
         uid = _uid_int(user)
         if risk.owner_id and uid and _uid_norm(risk.owner_id) == _uid_norm(uid):
             return
-    from app.models import StudentProfile
-    from app.services.affairs_dashboard_service import _allowed_class_ids
-    allowed, _ = _allowed_class_ids(db, user)
-    if allowed is None:
-        return
-    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
-    if not s or s.class_id not in allowed:
-        raise AppException("NO_DATA_SCOPE", "该风险不在您的数据范围内")
+    from app.core.affairs_security import build_affairs_context
+    build_affairs_context(user, db).require_student(db, student_id)
 
 
 def _uid_int(user) -> int:
@@ -351,22 +347,14 @@ def _require_takeover_authority(db, user) -> None:
     if ctx.scope_type == "TENANT_ALL":
         return
     role = (user or {}).get("currentRoleCode") or ""
-    if role in ("COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"):
+    if role in ("COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS_COLLEGE", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"):
         return
     raise AppException("NO_PERMISSION", "仅上级/学工管理员可接管已升级风险")
 
 
-_MENTAL_DETAIL_ROLES = {"PSYCHOLOGY_TEACHER", "SCHOOL_ADMIN", "PLATFORM_SUPER_ADMIN"}
-
-
 def _can_view_mental(user) -> bool:
-    """心理风险原始明细使用独立角色白名单，禁止 studentAffairs.* 通配放大权限。
-
-    STUDENT_AFFAIRS_ADMIN 与 COUNSELOR 即使拥有风险处置能力，也只能查看摘要；
-    PSYCHOLOGY_TEACHER 还必须经过 PSY_STUDENT 数据范围校验。
-    """
-    role = str((user or {}).get("currentRoleCode") or "").upper()
-    return role in _MENTAL_DETAIL_ROLES
+    from app.services.affairs_mental_service import can_view_psychology_detail
+    return can_view_psychology_detail(user)
 
 
 def _sensitive_view_audit(x, reason: str) -> None:
@@ -809,7 +797,7 @@ def _risk_action_evaluator(user):
     is_admin = ctx.scope_type == "TENANT_ALL"
     role = (user or {}).get("currentRoleCode") or ""
     is_superior = is_admin or role in (
-        "COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"
+        "COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS_COLLEGE", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"
     )
     permitted = {action: has_permission(user, rule["permission"])
                  for action, rule in RISK_TRANSITIONS.items()}
@@ -849,7 +837,7 @@ def _allowed_risk_actions(x, user) -> list[str]:
     return _risk_action_evaluator(user)(x)
 
 
-def list_handles(risk_id, user) -> list[dict]:
+def list_handles(risk_id, user, *, reveal=False) -> list[dict]:
     """真实处置留痕（append-only）。心理来源内容按角色脱敏。"""
     from app.models import AffairsRiskHandle
     with session() as db:
@@ -860,7 +848,9 @@ def list_handles(risk_id, user) -> list[dict]:
             AffairsRiskHandle.risk_id == int(risk_id),
             AffairsRiskHandle.is_deleted.is_(False),
         ).order_by(AffairsRiskHandle.id.asc())).all()
-        mental_mask = x.source == "MENTAL" and not _can_view_mental(user)
+        from app.services.affairs_mental_service import _can_view_detail, psy_scope_ids
+        mental_mask = x.source == "MENTAL" and not (
+            reveal and _can_view_detail(user, x.student_id, psy_scope_ids(db, user)))
         out = []
         for h in rows:
             content = h.content or ""
@@ -886,7 +876,8 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
         reveal = False
         # 心理来源明细=敏感：仅授权角色 + 填写原因(≥5字) 方可查看明文，并写 SENSITIVE_VIEW 审计；
         # 审计必须先成功，再 reveal（强敏感不可吞异常后仍返明文）。
-        if x.source == "MENTAL" and _can_view_mental(user):
+        from app.services.affairs_mental_service import _can_view_detail, psy_scope_ids
+        if x.source == "MENTAL" and _can_view_detail(user, x.student_id, psy_scope_ids(db, user)):
             if reason and len(str(reason).strip()) >= 5:
                 _sensitive_view_audit(x, reason.strip())
                 reveal = True
@@ -894,7 +885,7 @@ def get_risk(risk_id, user, reason: str | None = None) -> dict:
         row = _row(x, user, s, reveal=reveal, owner=owner)
         row["allowedActions"] = _allowed_risk_actions(x, user)
     # 独立会话拉 handles，避免与详情会话交叉
-    row["handles"] = list_handles(risk_id, user)
+    row["handles"] = list_handles(risk_id, user, reveal=reveal)
     return row
 
 
@@ -1002,6 +993,7 @@ def _risk_scope_join(stmt, allowed):
     """按班级数据范围 join 学生表。allowed=None 表示 TENANT_ALL。"""
     from app.models import AffairsRiskRecord, StudentProfile
     stmt = stmt.join(StudentProfile, StudentProfile.id == AffairsRiskRecord.student_id)
+    stmt = stmt.where(StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))
     if allowed is not None:
         stmt = stmt.where(StudentProfile.class_id.in_(allowed or {-1}))
     return stmt
@@ -1042,7 +1034,7 @@ def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
                unassigned_only=False, owner_id=None):
     from app.core.pagination import normalize_page
     from app.models import AffairsRiskRecord, StudentProfile, User
-    from app.services.affairs_dashboard_service import _allowed_class_ids
+    from app.core.affairs_security import student_directory_scope
     page, page_size = normalize_page(page, page_size)
     with session() as db:
         slas = {}
@@ -1055,13 +1047,15 @@ def list_risks(user, source=None, status=None, risk_level=None, student_id=None,
                 slas[code] = sla
             return sla
 
-        allowed, _ = _allowed_class_ids(db, user)
+        allowed, exact_students = student_directory_scope(user)
         base_conds = _risk_filter_conds(
             source, status, risk_level, student_id,
             priority=priority, overdue_only=overdue_only,
             unassigned_only=unassigned_only, sla_for=sla_for,
             owner_id=resolve_owner_filter(user, owner_id),
         )
+        if exact_students is not None:
+            base_conds.append(AffairsRiskRecord.student_id.in_(exact_students or {-1}))
         stats = _risk_stats_sql(db, base_conds, allowed, sla_for=sla_for)
         total = stats["total"]
         id_stmt = _risk_scope_join(

@@ -42,3 +42,18 @@ test('history supports pages beyond the first hundred and ignores stale response
   assert.equal(vm.stayPagination.total, 130)
   assert.equal(vm.loading, false)
 })
+
+test('a rejected approval keeps the inspected row and dialog usable', async () => {
+  const vm = createView({ reviewDormTransfer: async () => { throw new Error('须由另一名宿管审核') } })
+  vm.loading = false
+  vm.items = [{ transferId: '19', version: 7 }]
+  vm.approveDlg = { visible: true, transferId: '19', version: 7, message: '已核对原床与目标床' }
+  await vm.submitApprove()
+  assert.equal(vm.actionError, '须由另一名宿管审核')
+  assert.equal(vm.errorMessage, '')
+  assert.equal(vm.pageState, 'ready')
+  assert.equal(vm.approveDlg.visible, true)
+  assert.equal(vm.approveDlg.version, 7)
+  assert.equal(vm.items[0].transferId, '19')
+  assert.equal(vm.actioning, false)
+})

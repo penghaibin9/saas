@@ -2,6 +2,16 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 
+test('revoked discipline remains a terminal result even without an appeal projection', () => {
+  const source = readFileSync(new URL('../src/pages/student/affairs/discipline.vue', import.meta.url), 'utf8')
+  const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .+$/gm, '').replace('export default', 'return')
+  const { methods } = new Function(script)()
+  assert.equal(methods.statusText.call(methods, { caseStatus: 'REVOKED' }), '处分已撤销')
+  assert.equal(methods.statusText.call(methods, { caseStatus: 'REMOVED', appealStatus: 'UPHELD' }), '处分已解除')
+  assert.equal(methods.statusText.call(methods, { caseStatus: 'EFFECTIVE', appealStatus: 'SUBMITTED' }), '申诉已提交')
+  assert.equal(methods.allows({ caseStatus: 'REVOKED', allowedActions: [] }, 'SUBMIT_APPEAL'), false)
+})
+
 for (const [page, method, apiName] of [
   ['loan', 'submit', 'submitLoan'], ['loan', 'withdraw', 'withdrawLoan'],
   ['reduction', 'submit', 'submitFeeReduction'], ['reduction', 'withdraw', 'withdrawFeeReduction'],

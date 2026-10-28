@@ -17,23 +17,46 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
-def _seed_case(sid, status="EFFECTIVE"):
-    from datetime import datetime
+def _seed_case(client, db_mode, status="EFFECTIVE"):
+    from datetime import datetime, timedelta
+    from sqlalchemy import select
+    from affairs_contract_test_support import ensure_role_user
     from app.db.session import get_sessionmaker
-    from app.models import DisciplineCase
+    from app.models import Role, RoleAssignmentScope, StudentProfile, UserRole
+    from test_affairs_discipline import _seed, _register, _to_effective, _hdr as staff
+    ids = _seed(db_mode)
+    sid = db_mode["student"]
     db = get_sessionmaker()()
-    x = DisciplineCase(tenant_id=TID, student_id=sid, disc_type="DEMERIT", reason="考试违纪记过一次",
-                       status=status, effective_at=datetime.utcnow() if status == "EFFECTIVE" else None)
-    db.add(x); db.commit()
-    cid = x.id
+    source = db.get(StudentProfile, ids["sa"]); student = db.get(StudentProfile, sid)
+    student.class_id, student.major_id, student.college_id = source.class_id, source.major_id, source.college_id
+    db.commit()
     db.close()
-    ensure_workflow_assignees(sid, nodes=("SA_OFFICE_REVIEW",))
+    ensure_workflow_assignees(sid)
+    reviewer = ensure_role_user("STUDENT_AFFAIRS_ADMIN", "appeal_independent", "处分独立申诉复核人")
+    with get_sessionmaker()() as db:
+        role = db.scalar(select(Role).where(Role.tenant_id == TID, Role.role_code == "STUDENT_AFFAIRS_ADMIN"))
+        member = db.scalar(select(UserRole).where(UserRole.user_id == reviewer, UserRole.role_id == role.id))
+        db.add(RoleAssignmentScope(tenant_id=TID, user_id=reviewer, user_role_id=member.id,
+            role_code="STUDENT_AFFAIRS_ADMIN", scope_type="SCHOOL", scope_id=0, status="ACTIVE",
+            effective_at=datetime.utcnow() - timedelta(days=1)))
+        db.commit()
+    registered = _register(client, staff(client, "college_admin01"), sid, "DEMERIT")
+    assert registered.status_code == 200, registered.text
+    cid = int(registered.json()["data"]["caseId"])
+    if status == "EFFECTIVE":
+        result = _to_effective(client, staff(client, "school_admin01"), cid)
+        assert result["data"]["status"] == "EFFECTIVE", result
     return cid
+
+
+def _review_hdr():
+    from affairs_contract_test_support import role_headers
+    return role_headers("STUDENT_AFFAIRS_ADMIN", "appeal_independent", "处分独立申诉复核人")
 
 
 def test_deliver_and_appeal_flow(client, db_mode):
     hdr = _hdr(client, "school_admin01")
-    cid = _seed_case(db_mode["student"], "EFFECTIVE")
+    cid = _seed_case(client, db_mode, "EFFECTIVE")
     # 送达方式非法
     assert post_versioned(client, f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
                        json={"method": "XXX"}).json()["code"] != 0
@@ -59,7 +82,7 @@ def test_deliver_and_appeal_flow(client, db_mode):
     assert post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
                        json={"result": "XX", "opinion": "维持原处分决定不变"}).json()["code"] != 0
     # 复核维持
-    r = post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
+    r = post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=_review_hdr(),
                     json={"result": "UPHELD", "opinion": "经复核事实清楚证据充分，维持原处分"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "UPHELD" and r["data"]["result"] == "UPHELD"
     # 已结案不可再复核
@@ -70,31 +93,19 @@ def test_deliver_and_appeal_flow(client, db_mode):
 def test_appeal_revoked_actually_removes_case(client, db_mode):
     """REVOKED 复核结论必须真正下线原处分：case→REMOVED，投影 record_status→REVOKED（回归修复前的 no-op bug）。"""
     hdr = _hdr(client, "school_admin01")
-    cid = _seed_case(db_mode["student"], "EFFECTIVE")
-    from app.core.context import set_tenant
+    cid = _seed_case(client, db_mode, "EFFECTIVE")
     from app.db.session import get_sessionmaker
     from app.models import CsDiscipline, DisciplineCase
-    from app.services import affairs_discipline_integrity_guard as discipline_guard
     db = get_sessionmaker()()
-    set_tenant({"tenantId": str(TID), "tenantCode": "demo"})
-    try:
-        cs_student = discipline_guard._ensure_cs_student(db, int(db_mode["student"]))
-        db.flush()
-    finally:
-        set_tenant(None)
-    proj = CsDiscipline(tenant_id=TID, cs_student_id=cs_student.id, disc_type="DEMERIT",
-                        reason="考试违纪记过一次", status="EFFECTIVE", record_status="ACTIVE",
-                        source_case_id=cid)
-    db.add(proj); db.commit()
-    proj_id = proj.id
     case = db.get(DisciplineCase, cid)
-    case.cs_discipline_id = proj_id
-    db.commit(); db.close()
+    proj_id = case.cs_discipline_id
+    assert proj_id
+    db.close()
 
     a = client.post(f"{BASE}/discipline/cases/{cid}/appeal", headers=hdr,
                     json={"reason": "对处分认定事实有异议，申请复核"}).json()
     aid = a["data"]["appealId"]
-    r = post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr,
+    r = post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=_review_hdr(),
                     json={"result": "REVOKED", "opinion": "经复核事实认定有误，撤销原处分"}).json()
     assert r["code"] == 0 and r["data"]["status"] == "REVOKED" and r["data"]["result"] == "REVOKED"
 
@@ -112,10 +123,33 @@ def test_appeal_revoked_actually_removes_case(client, db_mode):
     assert proj2.record_status != "ACTIVE"
     db2.close()
 
+    from affairs_contract_test_support import ensure_role_user
+    from app.core.security import hash_password
+    from app.models import StudentAccountLink, User
+    from test_affairs_leave import TEST_LOGIN_PASSWORD, _real_hdr
+    student_uid = ensure_role_user("STUDENT", "revoked_case_student", "撤销结果验收学生")
+    with get_sessionmaker()() as db:
+        student_user = db.get(User, student_uid)
+        student_user.user_type = "STUDENT"
+        student_user.password_hash = hash_password(TEST_LOGIN_PASSWORD)
+        student_user.must_change_password = False
+        db.add(StudentAccountLink(tenant_id=TID, user_id=student_uid, student_id=db_mode["student"], link_status="ACTIVE", source="MANUAL"))
+        db.commit()
+    student_hdr = _real_hdr(client, "revoked_case_student", client_type="STUDENT_MINI")
+    for url in ("/api/v1/mobile/affairs/discipline/my", "/api/v1/portal/affairs/discipline"):
+        response = client.get(url, headers=student_hdr)
+        assert response.status_code == 200, response.text
+        history = response.json()["data"]
+        assert history["activeCount"] == 0
+        item = next(row for row in history["items"] if row["caseId"] == str(cid))
+        assert item["caseStatus"] == "REVOKED" and item["caseStatusLabel"] == "已撤销"
+        assert item["appealReviewOpinion"] == "经复核事实认定有误，撤销原处分"
+        assert item["allowedActions"] == []
+
 
 def test_non_effective_blocks(client, db_mode):
     hdr = _hdr(client, "school_admin01")
-    cid = _seed_case(db_mode["student"], "REGISTERED")
+    cid = _seed_case(client, db_mode, "REGISTERED")
     assert post_versioned(client, f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr,
                        json={"method": "MAIL"}).json()["code"] != 0
     assert client.post(f"{BASE}/discipline/cases/{cid}/appeal", headers=hdr,
@@ -123,7 +157,7 @@ def test_non_effective_blocks(client, db_mode):
 
 def test_detail_post_effect_appeal_summary_truth(client, db_mode):
     hdr = _hdr(client, "school_admin01")
-    cid = _seed_case(db_mode["student"], "EFFECTIVE")
+    cid = _seed_case(client, db_mode, "EFFECTIVE")
     before = client.get(f"{BASE}/discipline/cases/{cid}", headers=hdr).json()["data"]
     assert before["status"] == "EFFECTIVE" and before["deliveredAt"] is None and before["appealSummary"] is None
     post_versioned(client, f"{BASE}/discipline/cases/{cid}/deliver", headers=hdr, json={"method": "DIRECT", "remark": "本人签收"})
@@ -134,6 +168,6 @@ def test_detail_post_effect_appeal_summary_truth(client, db_mode):
     assert detail["status"] == "EFFECTIVE" and detail["appealSummary"] == {"appealId": aid, "status": "SUBMITTED", "statusLabel": "待复核", "result": None}
     focused = client.get(f"{BASE}/discipline/appeals?caseId={cid}&appealId={aid}", headers=hdr).json()["data"]
     assert focused["total"] == 1 and focused["items"][0]["appealId"] == aid
-    post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=hdr, json={"result": "UPHELD", "opinion": "经复核事实清楚证据充分，维持原处分"})
+    post_versioned(client, f"{BASE}/discipline/appeals/{aid}/review", headers=_review_hdr(), json={"result": "UPHELD", "opinion": "经复核事实清楚证据充分，维持原处分"})
     detail = client.get(f"{BASE}/discipline/cases/{cid}", headers=hdr).json()["data"]
     assert detail["status"] == "EFFECTIVE" and detail["appealSummary"]["status"] == "UPHELD" and detail["appealSummary"]["result"] == "UPHELD"

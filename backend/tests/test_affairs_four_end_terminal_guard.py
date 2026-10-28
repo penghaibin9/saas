@@ -170,7 +170,7 @@ def test_mental_statistics_and_individual_detail_permissions_are_separated():
     ) == ("studentAffairs.stats.view",)
     assert contract._teacher_permissions(
         "/api/v1/mobile/teacher/mental/123", "GET",
-    ) == ("studentAffairs.risk.psyDetail.view",)
+    ) == ("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view")
     assert contract._teacher_permissions(
         "/api/v1/mobile/teacher/mental/123", "POST",
     ) == ("studentAffairs.mental.manage",)

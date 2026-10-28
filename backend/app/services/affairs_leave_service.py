@@ -148,7 +148,7 @@ def _cur_task(db, inst_id, node):
     return db.scalars(select(WorkflowTask).where(
         WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == inst_id,
         WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
-        WorkflowTask.is_deleted.is_(False))).first()
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
 
 
 def _todo_upsert(db, leave_id, assignee_id, student_id, title, todo_type="LEAVE_APPROVAL"):
@@ -324,15 +324,13 @@ def _check_leave_action_assignee(db, x, user, *, todo_type: str, node: str = "CO
     if not _node_visible(ctx, node):
         raise AppException("NO_PERMISSION",
                            f"无权操作当前环节（{L_AFF.get(node, node)}）")
-    if ctx.scope_type == "TENANT_ALL":
-        return
     todo = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
         UnifiedTodo.source_biz_id == int(x.id), UnifiedTodo.todo_type == todo_type,
         UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False)
     ).order_by(UnifiedTodo.id.desc())).first()
-    if not todo or not todo.assignee_id:
-        return
+    if not todo or int(todo.assignee_id or 0) <= 0:
+        raise AppException("DATA_CONFLICT", "当前环节缺少有效受理人，请先配置或交接待办")
     uid = _verified_actor_id(user)
     if uid <= 0:
         raise AppException("NO_PERMISSION", "当前账号缺少可核验的受理人身份")
@@ -518,16 +516,15 @@ def _check_review_node(db, x, user):
     if not _node_visible(ctx, x.affairs_status):
         raise AppException("NO_PERMISSION",
                            f"无权审批当前节点（{L_AFF.get(x.affairs_status, x.affairs_status)}）")
-    # 有明确审批人时：非全域角色必须是当前 PENDING 任务的 assignee（避免同节点多人互批）。
-    if ctx.scope_type == "TENANT_ALL" or not x.workflow_instance_id:
-        return
+    if not x.workflow_instance_id:
+        raise AppException("DATA_CONFLICT", "请假审批流缺失，请先核实历史单据并配置受理人")
     from app.models import WorkflowTask
     task = db.scalars(select(WorkflowTask).where(
         WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
         WorkflowTask.node_code == x.affairs_status, WorkflowTask.status == "PENDING",
         WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
-    if not task or not task.assignee_id:
-        return
+    if not task or int(task.assignee_id or 0) <= 0:
+        raise AppException("DATA_CONFLICT", "当前审批节点缺少有效受理人，请先配置或交接任务")
     uid = _verified_actor_id(user)
     if uid <= 0:
         raise AppException("NO_PERMISSION", "当前账号缺少可核验的受理人身份")
@@ -1158,6 +1155,13 @@ def get_detail(leave_id, user) -> dict:
             "action": t.action, "operator": t.operator or "", "roleName": t.role_name or "",
             "detail": t.detail or "", "occurredAt": _iso(t.occurred_at),
         } for t in trail]
+        for event in row["auditTrail"]:
+            if event["action"] == "COUNSELOR_HANDOVER":
+                from app.models import User
+                actor_id = event["operator"].removeprefix("db-")
+                actor = db.get(User, int(actor_id)) if actor_id.isdigit() else None
+                event["operator"] = actor.real_name if actor and actor.tenant_id == _tid() else "交接经办人"
+                event["detail"] = event["detail"].split(",reason=", 1)[-1] if ",reason=" in event["detail"] else "辅导员责任已交接，历史记录保留。"
         _leave_progress(db, x, row, staff=True)
         row['allowedActions'] = _staff_detail_actions(db, x, user)
         from app.core.permissions import has_permission
@@ -1388,26 +1392,19 @@ def list_pending(user, page=1, page_size=20, keyword=None):
                  StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)]
         if allowed is not None:
             conds.append(StudentProfile.class_id.in_(allowed or {-1}))
-        # 数据范围只说明“能看到这个学生”，并不说明当前审批任务轮到该教师。
-        # 真实工作流已有明确 assignee 时，辅导员/学院管理员的待办队列必须与
-        # approve() 里的 _check_review_node 保持同一事实源；否则会出现列表有单、
-        # 详情却没有操作按钮的假待办。没有 workflow_instance_id 的历史请假仍按
-        # 既有数据范围规则展示，避免把迁移前的可处理记录静默藏掉。
-        if ctx.scope_type != "TENANT_ALL":
-            actor_id = _verified_actor_id(user)
-            if actor_id:
-                from app.models import WorkflowTask
-                assigned_current_task = select(WorkflowTask.id).where(
-                    WorkflowTask.tenant_id == _tid(),
-                    WorkflowTask.instance_id == CsLeave.workflow_instance_id,
-                    WorkflowTask.node_code == CsLeave.affairs_status,
-                    WorkflowTask.assignee_id == actor_id,
-                    WorkflowTask.status == "PENDING",
-                    WorkflowTask.is_deleted.is_(False),
-                ).exists()
-                conds.append(or_(CsLeave.workflow_instance_id.is_(None), assigned_current_task))
-            else:
-                conds.append(CsLeave.workflow_instance_id.is_(None))
+        # 缺流程的历史单保留普通台账；可办队列必须与审批受理人校验一致。
+        actor_id = _verified_actor_id(user)
+        if not actor_id:
+            return [], 0
+        from app.models import WorkflowTask
+        task_owner = select(WorkflowTask.assignee_id).where(
+            WorkflowTask.tenant_id == _tid(),
+            WorkflowTask.instance_id == CsLeave.workflow_instance_id,
+            WorkflowTask.node_code == CsLeave.affairs_status,
+            WorkflowTask.status == "PENDING",
+            WorkflowTask.is_deleted.is_(False),
+        ).order_by(WorkflowTask.id.desc()).limit(1).correlate(CsLeave).scalar_subquery()
+        conds.append(task_owner == actor_id)
         k = str(keyword or "").strip()
         if k:
             conds.append(or_(StudentProfile.real_name.contains(k),

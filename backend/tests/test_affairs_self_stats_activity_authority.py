@@ -33,11 +33,14 @@ def test_statistics_are_scoped_and_missing_metrics_are_not_fake_zero():
 
 def test_activity_create_and_state_actions_are_server_scoped():
     text = read("backend/app/services/affairs_activity_authority_guard.py")
-    assert "学院角色只能创建本院活动" in text
-    assert "辅导员只能创建本人负责班级的活动" in text
+    assert "context.scope_type != requested_type" in text
+    assert "scope_id not in (ids or set())" in text
     assert "该活动不在您的管理范围内" in text
+    service = read("backend/app/services/affairs_activity_service.py")
+    assert "_require_manage_scope(db, row, user)" in service
+    assert "_normalize_create_scope(db, body, user, current=row)" in service
     for name in (
-        "update_activity", "publish_activity", "transition_activity",
+        "publish_activity", "transition_activity",
         "confirm_activity", "unconfirm_activity", "archive_activity",
     ):
         assert f"def {name}" in text

@@ -47,7 +47,7 @@ def _seed(db_mode):
                                role_code="COUNSELOR", scope_type="CLASS", ref_value="软件2101",
                                status="ACTIVE"))
     db.commit()
-    ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id}
+    ids = {"A": a.id, "B": b.id, "sa": sa.id, "sb": sb.id, "college": college.id}
     db.close()
     # 共享 SCHOOL_REVIEW 夹具继续保留 SCHOOL_ADMIN，供困难认定等非 Funding 流程使用；
     # Funding 自己的校级终审必须额外存在真实学工业务受理人，禁止退回超级/系统管理员兜底。
@@ -55,9 +55,18 @@ def _seed(db_mode):
         [ids["sa"], ids["sb"]],
         nodes=("COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"),
     )
-    ensure_role_user(
-        "STUDENT_AFFAIRS_ADMIN", login_name="sa_admin01", real_name="测试学工处管理员"
-    )
+    from datetime import datetime, timedelta
+    from app.models import Role, RoleAssignmentScope, UserRole
+    for login, scope_type, scope_id in (("funding_college01", "COLLEGE", ids["college"]),
+                                       ("funding_school01", "SCHOOL", 0)):
+        uid = ensure_role_user("FUNDING_TEACHER", login_name=login, real_name="资助测试受理人")
+        with get_sessionmaker()() as db:
+            role = db.query(Role).filter_by(tenant_id=TID, role_code="FUNDING_TEACHER").one()
+            link = db.query(UserRole).filter_by(tenant_id=TID, user_id=uid, role_id=role.id).one()
+            db.add(RoleAssignmentScope(tenant_id=TID, user_id=uid, user_role_id=link.id,
+                role_code="FUNDING_TEACHER", scope_type=scope_type, scope_id=scope_id,
+                effective_at=datetime.utcnow() - timedelta(days=1), status="ACTIVE"))
+            db.commit()
     return ids
 
 
@@ -84,10 +93,16 @@ def _make_difficult(client, hdr, sid):
     aid_id = client.post(f"{BASE}/aid/applications", headers=hdr, json={
         "batchId": str(bid), "studentId": str(sid), "applyLevel": "DIFFICULT",
         "statement": "家庭经济困难需要资助支持完成学业"}).json()["data"]["applyId"]
-    for _ in range(3):
-        post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=hdr, json={"action": "APPROVE"})
-    post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=hdr,
-                json={"action": "APPROVE", "level": "DIFFICULT"})
+    counselor = role_headers("COUNSELOR", login_name="counselor01")
+    college = role_headers("COLLEGE_ADMIN", login_name="college_admin01")
+    school = role_headers("SCHOOL_ADMIN", login_name="school_admin01")
+    for actor in (counselor, counselor, college):
+        response = post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=actor,
+                                  json={"action": "APPROVE"})
+        assert response.status_code == 200, response.text
+    response = post_versioned(client, f"{BASE}/aid/applications/{aid_id}/review", headers=school,
+                              json={"action": "APPROVE", "level": "DIFFICULT"})
+    assert response.status_code == 200, response.text
     expire_publicity("AidApply", aid_id)
     post_versioned(client, f"{BASE}/aid/applications/{aid_id}/publicity-confirm", headers=hdr)
 
@@ -95,8 +110,8 @@ def _make_difficult(client, hdr, sid):
 def _approve_to_publicity(client, app_id):
     actors = (
         role_headers("COUNSELOR", login_name="counselor01", real_name="测试辅导员"),
-        role_headers("COLLEGE_ADMIN", login_name="college_admin01", real_name="测试学院管理员"),
-        role_headers("STUDENT_AFFAIRS_ADMIN", login_name="sa_admin01", real_name="测试学工处管理员"),
+        role_headers("FUNDING_TEACHER", login_name="funding_college01", real_name="学院资助受理人"),
+        role_headers("FUNDING_TEACHER", login_name="funding_school01", real_name="学校资助受理人"),
     )
     for actor in actors:
         response = post_versioned(

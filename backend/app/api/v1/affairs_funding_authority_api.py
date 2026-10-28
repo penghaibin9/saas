@@ -80,7 +80,7 @@ def review_amount_adjustment(
 @router.post("/disbursements/export", summary="创建资助发放台账异步 XLSX 导出任务")
 def create_disbursement_export(
     body: FundingDisbursementExportBody,
-    user=Depends(require_permission("studentAffairs.funding.disburse.manage")),
+    user=Depends(require_permission("studentAffairs.export")),
 ):
     return success(
         funding_export.create_job(
@@ -96,7 +96,7 @@ def create_disbursement_export(
 @router.get("/disbursements/export-jobs/{job_id}", summary="资助发放台账导出任务详情")
 def get_disbursement_export(
     job_id: str = Path(...),
-    user=Depends(require_permission("studentAffairs.funding.disburse.manage")),
+    user=Depends(require_permission("studentAffairs.export")),
 ):
     return success(funding_export.get_job(job_id, user))
 
@@ -105,7 +105,7 @@ def get_disbursement_export(
 def create_disbursement_export_ticket(
     body: FundingDisbursementExportTicketBody,
     job_id: str = Path(...),
-    user=Depends(require_permission("studentAffairs.funding.disburse.manage")),
+    user=Depends(require_permission("studentAffairs.export")),
 ):
     return success(funding_export.create_download_ticket(job_id, body.expectedVersion, user))
 
@@ -114,7 +114,7 @@ def create_disbursement_export_ticket(
 def download_disbursement_export(
     job_id: str = Path(...),
     ticket: str = Query(..., min_length=20),
-    user=Depends(require_permission("studentAffairs.funding.disburse.manage")),
+    user=Depends(require_permission("studentAffairs.export")),
 ):
     path, filename = funding_export.consume_download_ticket(job_id, ticket, user)
     return validated_local_file_response(

@@ -123,7 +123,7 @@ export const portalApi = {
   affairsAidApply: (body) => request('/portal/affairs/aid/apply', { method: 'POST', body }),
   affairsAidObjection: (body) => request('/portal/affairs/aid/objection', { method: 'POST', body }),
   affairsActivities: (page = 1, pageSize = 20) => request(`/portal/affairs/activities${q({ page, pageSize })}`),
-  affairsActivitiesMy: () => request('/portal/affairs/activities/my'),
+  affairsActivitiesMy: (params = {}) => request('/portal/affairs/activities/my', { params }),
   affairsActivityEnroll: (activityId) => request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
   internshipMy: () => request('/portal/internship/my'),

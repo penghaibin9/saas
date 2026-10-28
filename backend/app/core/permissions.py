@@ -47,6 +47,22 @@ _WORKBENCH_MESSAGE_SELF = {
 }
 _WORKBENCH_SELF = {"workbench.home.view", "approval.todo.view", *_WORKBENCH_MESSAGE_SELF}
 
+# 校、院基础岗的业务动作；专项、明文和导出不能通过域通配自动获得。
+_AFFAIRS_MANAGEMENT = {"studentAffairs." + action for action in (
+    "dashboard.view", "student.view", "stats.view", "archive.view",
+    "class.view", "class.create", "class.cadre.manage",
+    "class.counselor.manage",
+    "leave.view", "leave.create", "leave.approve", "leave.cancelLeaveConfirm",
+    "leave.extension.approve", "leave.overdue.handle",
+    "aid.view", "aid.approve",
+    "risk.view", "risk.create", "risk.assign", "risk.handle", "risk.transfer",
+    "risk.escalate", "risk.close", "risk.reopen",
+    "talk.view", "talk.create", "homeSchool.view", "homeSchool.record.create",
+    "discipline.view", "discipline.create", "discipline.approve", "discipline.deliver",
+    "discipline.remove.create", "discipline.remove.approve", "discipline.appeal.review",
+    "orientation.view", "orientation.manage",
+)}
+
 _COLLEGE_INTERNSHIP = {
     "internship.dashboard.view",
     "internship.student.view", "internship.student.manage", "internship.student.export",
@@ -118,7 +134,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "platform.audit.view", "platform.access.review",
         "platform.security.view",
     },
-    "SCHOOL_ADMIN": {"*"},  # B8 legacy shadow baseline only; runtime _granted() bypasses this wildcard.
+    "SCHOOL_ADMIN": {"*", "studentAffairs.aid.sensitiveView", "studentAffairs.funding.sensitiveView",
+                     "studentAffairs.archive.psySensitive"},  # 保留学校授权根的既有上限；业务读取仍校验职责范围和当前任务。
     "SYS_ADMIN": {"systemAdmin.*", "audit.*", *_WORKBENCH_SELF},
     "SECURITY_AUDITOR": {"audit.*", "systemAdmin.audit.*", "campusService.audit.view",
                          # 实习督导/审计：只读监督（看板/学生/风险/统计/分配日志/审核台账），不授予任何写操作
@@ -202,57 +219,65 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                         "workbench.message.schoolStudent.publish", "workbench.message.schedule",
                         "workbench.message.withdraw", "workbench.message.statistics.view",
                         "workbench.message.recipient.view"},
-    "STUDENT_AFFAIRS_ADMIN": {"studentAffairs.*", "campusService.*", "audit.view",
-                              *_WORKBENCH_SELF, "approval.dashboard.view", "approval.manage",
-                              # 学工不承担学籍维护：保留既有 manage 兼容存量功能，
-                              # 不授予 student.profile.create/update/restore
-                              # （建档、维护与恢复归 学校/学院/教务处 管理员）
-                              "student.profile.view", "student.profile.manage",
-                              "workbench.message.publish",
-                              "workbench.message.schoolStudent.publish",
-                              "workbench.message.schoolAll.publish",
-                              "workbench.message.emergency.submit",
-                              "workbench.message.emergency.approve",
-                              "workbench.message.schedule", "workbench.message.withdraw",
-                              "workbench.message.retry", "workbench.message.statistics.view",
-                              "workbench.message.recipient.view",
-                              "workbench.message.recipient.export"},  # 学工处管理员：全校学工+在校服务（心理原始明细默认不可见，由风险/心理模块按角色遮蔽）
-    # mental.manage 独立于 risk.*：避免辅导员通配拿到转介/升级/关闭写权；仅心理老师+学工处(studentAffairs.*)可写。
-    "PSYCHOLOGY_TEACHER": {*_WORKBENCH_SELF, "studentAffairs.risk.*", "studentAffairs.mental.manage",
-                           "studentAffairs.talk.*", "studentAffairs.stats.view",
-                           "studentAffairs.archive.psySensitive", "studentAffairs.student.view"},  # 心理老师：数据范围限授权学生(PSY_STUDENT)
-    # 资助老师（§12「资」列 / §13 FUNDING_BIZ）：困难认定 + 奖助勤贷全域经办，数据范围限资助业务学生。
-    # 只授资助能力，不授违纪明细办理/心理/风险/宿舍（§12 资列：discipline 仅「资格校验只读结论」，risk/talk/dorm=✗）。
-    # 注：FUNDING_BIZ 数据范围解析器尚未实现（见历史欠账），当前 scope 回退 NONE→受范围过滤的列表 fail-closed 为空；能力门禁已生效。
+    "STUDENT_AFFAIRS_ADMIN": {
+        *_WORKBENCH_SELF, *_AFFAIRS_MANAGEMENT,
+        "studentAffairs.archive.batch.manage", "studentAffairs.config.manage",
+        "student.profile.view", "approval.dashboard.view", "approval.manage", "audit.view",
+        "campusService.dashboard.view", "campusService.student.view",
+        "campusService.workOrder.view", "campusService.workOrder.create",
+        "campusService.workOrder.assign", "campusService.workOrder.handle",
+        "workbench.message.publish", "workbench.message.schoolStudent.publish",
+        "workbench.message.schoolAll.publish", "workbench.message.emergency.submit",
+        "workbench.message.emergency.approve", "workbench.message.schedule", "workbench.message.withdraw",
+        "workbench.message.retry", "workbench.message.statistics.view", "workbench.message.recipient.view",
+    },
+    "STUDENT_AFFAIRS_COLLEGE": {
+        *_WORKBENCH_SELF, *_AFFAIRS_MANAGEMENT,
+        "student.profile.view", "approval.dashboard.view",
+        "workbench.message.publish", "workbench.message.college.publish", "workbench.message.schedule",
+        "workbench.message.withdraw", "workbench.message.statistics.view", "workbench.message.recipient.view",
+    },
+    # 心理职责只办理授权个案；原文查看另授明确权限。
+    "PSYCHOLOGY_TEACHER": {
+        *_WORKBENCH_SELF, "studentAffairs.student.view", "studentAffairs.mental.manage",
+        "studentAffairs.risk.view", "studentAffairs.risk.create", "studentAffairs.risk.handle",
+        "studentAffairs.risk.transfer", "studentAffairs.risk.escalate", "studentAffairs.risk.close",
+        "studentAffairs.talk.view", "studentAffairs.talk.create",
+    },
+    # 资助只授本业务能力；学校/学院范围明确配置，明文、导出、登记发放另授。
     "FUNDING_TEACHER": {
         *_WORKBENCH_SELF,
-        "studentAffairs.dashboard.view", "studentAffairs.student.view", "studentAffairs.stats.view",
+        "studentAffairs.student.view",
         "studentAffairs.aid.view", "studentAffairs.aid.batch.manage", "studentAffairs.aid.create",
         "studentAffairs.aid.approve", "studentAffairs.aid.adjust",
         "studentAffairs.funding.view", "studentAffairs.funding.project.manage",
         "studentAffairs.funding.create", "studentAffairs.funding.approve",
         "studentAffairs.funding.publicity.manage", "studentAffairs.funding.workstudy.manage",
         "studentAffairs.funding.loan.manage", "studentAffairs.funding.reduction.manage",
-        "studentAffairs.funding.disburse.manage",
     },
-    # 团委（社团/学生组织/党团发展 + 二课活动组织）：全校团学口径。边界（是否含全部二课/志愿）待学校确认。
+    # 团学活动仅覆盖明确校/院范围内的活动、二课、志愿、社团与组织。
     "YOUTH_LEAGUE": {
         *_WORKBENCH_SELF,
-        "studentAffairs.dashboard.view", "studentAffairs.student.view", "studentAffairs.stats.view",
+        "studentAffairs.student.view",
         "studentAffairs.club.view", "studentAffairs.club.manage",
         "studentAffairs.org.view", "studentAffairs.org.manage",
         "studentAffairs.league.view", "studentAffairs.league.manage",
         "studentAffairs.activity.view", "studentAffairs.activity.create",
         "studentAffairs.activity.publish", "studentAffairs.activity.confirm",
     },
-    # 组织人事：辅导员考评的组织与复核（指标/评分/发布/申诉复核）；不介入学生业务。角色归属待学校确认。
+    # 考评职责的数据主体是辅导员，不开放通用学生驾驶舱。
     "ORG_PERSONNEL": {
         *_WORKBENCH_SELF,
-        "studentAffairs.dashboard.view", "studentAffairs.stats.view",
         "studentAffairs.counselorEval.view", "studentAffairs.counselorEval.manage",
     },
     # 宿管：仅宿舍域（数据范围限负责楼栋 DORM_BUILDING）；不得见学业/心理/困难/处分；可进本人工作台与待办
-    "DORM_MANAGER": {*_WORKBENCH_SELF, "studentAffairs.dorm.*", "campusService.dorm.*"},
+    "DORM_MANAGER": {
+        *_WORKBENCH_SELF, "studentAffairs.dorm.view", "studentAffairs.dorm.resource.manage",
+        "studentAffairs.dorm.allocation.manage", "studentAffairs.dorm.check.view",
+        "studentAffairs.dorm.inspection.manage", "studentAffairs.dorm.exception.handle",
+        "studentAffairs.dorm.transfer.create", "studentAffairs.dorm.transfer.approve",
+        "campusService.dorm.view", "campusService.dorm.handle",
+    },
     # 辅导员：数据范围限本人所带班级（服务层 _allowed_class_ids/scope 收敛，越权返回 NO_DATA_SCOPE）。
     # 本班范围内广读 + 操作班级/请假/风险/谈话/家校；资助仅开放本人 COUNSELOR_REVIEW 初审节点。
     # 资助后续学院/学校节点仍由 service 的 scope + WorkflowTask assignee 双重收敛；处分仅冻结解除子流程初审例外。
@@ -261,22 +286,28 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
         "studentAffairs.dashboard.view",
         "studentAffairs.class.view", "studentAffairs.class.create", "studentAffairs.class.cadre.manage",
         "studentAffairs.student.view",
-        "studentAffairs.leave.*", "studentAffairs.risk.*", "studentAffairs.talk.*",
-        "studentAffairs.homeSchool.*",
+        "studentAffairs.leave.view", "studentAffairs.leave.create", "studentAffairs.leave.approve",
+        "studentAffairs.leave.cancelLeaveConfirm", "studentAffairs.leave.extension.approve", "studentAffairs.leave.overdue.handle",
+        "studentAffairs.risk.view", "studentAffairs.risk.create", "studentAffairs.risk.assign",
+        "studentAffairs.risk.handle", "studentAffairs.risk.transfer", "studentAffairs.risk.escalate",
+        "studentAffairs.risk.close", "studentAffairs.risk.reopen",
+        "studentAffairs.talk.view", "studentAffairs.talk.create",
+        "studentAffairs.homeSchool.view", "studentAffairs.homeSchool.record.create",
         "studentAffairs.aid.view", "studentAffairs.funding.view", "studentAffairs.funding.approve", "studentAffairs.discipline.view",
         "studentAffairs.discipline.remove.approve",
         "studentAffairs.archive.view", "studentAffairs.stats.view",
+        "studentAffairs.orientation.view",
         # 宿舍调宿：仅开放本班学生调宿入口/发起/审批能力；列表范围与审批节点仍由
         # affairs_dorm_transfer_scope_guard + affairs_dorm_node_guard 双重 fail-closed 收敛。
         "studentAffairs.dorm.view", "studentAffairs.dorm.transfer.create", "studentAffairs.dorm.transfer.approve",
         # 困难认定·辅导员初审节点（2026-07-18 甲方拍板扩权，见历史欠账"辅导员初审"矛盾记录）：
-        # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回 + 该节点下本班学生家庭经济查看，
+        # 仅授予 COUNSELOR_REVIEW 节点的通过/退回/驳回；家庭经济明文另需明确授权，
         # 不授予班级评议/学院复审/学校终审——节点授权由 affairs_aid_service._check_node_authority 收敛。
         "studentAffairs.aid.counselorReview",
         # 辅导员对「本人」考评的自助权：查看本人考评结果 + 对本人考评提起申诉（不含考评/复核 manage）
         "studentAffairs.counselorEval.view", "studentAffairs.counselorEval.appeal.create",
         # 旧「在校服务」面：本班范围广读 + 请假审批；资助/违纪/工单/学生台账写操作归学工处/院
-        "campusService.dashboard.view", "campusService.student.view", "campusService.leave.*",
+        "campusService.dashboard.view", "campusService.student.view", "campusService.leave.view",
         "campusService.dorm.view", "campusService.grant.view", "campusService.discipline.view",
         "campusService.workOrder.view",
         # 岗位实习：辅导员对本班实习学生只读协同（学生/打卡/请假/周报/风险），不授予审批与配置

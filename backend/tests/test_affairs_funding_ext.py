@@ -13,11 +13,29 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _staff(client, db_mode):
+    from sqlalchemy import select
+    from app.db.session import get_sessionmaker
+    from app.models import Permission, Role, RolePermission
+    from app.services.system_role_shadow_service import published_system_role_permissions
+    from test_funding_application_workspace import _accounts
+    from test_aid_mobile_queue import _login
+    ids = _accounts(db_mode)
+    with get_sessionmaker()() as db:
+        role = db.scalar(select(Role).where(Role.tenant_id == TID, Role.role_code == "FUNDING_TEACHER"))
+        codes = set(published_system_role_permissions(db, role.role_code)) | {"studentAffairs.funding.sensitiveView"}
+        existing = set(db.scalars(select(RolePermission.permission_id).where(RolePermission.tenant_id == TID, RolePermission.role_id == role.id)))
+        for permission in db.scalars(select(Permission).where(Permission.permission_code.in_(codes))):
+            if permission.id not in existing:
+                db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
+        role.role_type = "CUSTOM"
+        role.version += 1
+        db.commit()
+    return _login(client, "funding_college01", "PC"), ids["sa"]
+
+
 def test_work_study_flow(client, db_mode):
-    from affairs_contract_test_support import ensure_role_user
-    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
-    hdr = _hdr(client, "school_admin01")
-    sid = db_mode["student"]
+    hdr, sid = _staff(client, db_mode)
     created_post = client.post(f"{BASE}/work-study/posts", headers=hdr, json={
         "deptName": "图书馆", "postName": "书库整理员", "salary": 800, "headcount": 3}).json()
     assert created_post["code"] == 0, created_post
@@ -57,10 +75,7 @@ def test_work_study_flow(client, db_mode):
 
 
 def test_loan_flow(client, db_mode):
-    from affairs_contract_test_support import ensure_role_user
-    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
-    hdr = _hdr(client, "school_admin01")
-    sid = db_mode["student"]
+    hdr, sid = _staff(client, db_mode)
     created_loan = client.post(f"{BASE}/loans", headers=hdr, json={
         "studentId": sid, "loanType": "ORIGIN", "bankName": "农行", "bankLast4": "6411",
         "yearCode": "2025-2026", "amount": 8000, "receiptCode": "TEST-2025-6411"}).json()
@@ -84,10 +99,7 @@ def test_loan_flow(client, db_mode):
 
 
 def test_fee_reduction_flow(client, db_mode):
-    from affairs_contract_test_support import ensure_role_user
-    ensure_role_user("STUDENT_AFFAIRS_ADMIN")
-    hdr = _hdr(client, "school_admin01")
-    sid = db_mode["student"]
+    hdr, sid = _staff(client, db_mode)
     # 理由过短
     r0 = client.post(f"{BASE}/fee-reductions", headers=hdr, json={"studentId": sid, "itemType": "TEMP_AID", "reason": "短"})
     assert r0.status_code == 422 or r0.json().get("code") not in (0, None)

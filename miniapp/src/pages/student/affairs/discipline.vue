@@ -7,10 +7,10 @@
           <view v-for="x in visibleItems" :key="x.caseId" class="list-row col">
             <view class="row-between">
               <text class="flex-1 t-md">{{ x.discTypeLabel || x.discType || '处分' }}</text>
-              <MobileStatusTag :label="statusText(x)" :type="x.caseStatus === 'REMOVED' ? 'success' : (x.appealStatus ? 'processing' : 'warning')" />
+              <MobileStatusTag :label="statusText(x)" :type="['REMOVED', 'REVOKED'].includes(x.caseStatus) ? 'success' : (x.appealStatus ? 'processing' : 'warning')" />
             </view>
             <text v-if="x.effectiveAt" class="hint">生效时间：{{ (x.effectiveAt || '').slice(0, 10) }}</text>
-            <text v-if="x.removedAt" class="hint">解除时间：{{ (x.removedAt || '').slice(0, 10) }}</text>
+            <text v-if="x.removedAt" class="hint">{{ x.caseStatus === 'REVOKED' ? '撤销时间' : '解除时间' }}：{{ (x.removedAt || '').slice(0, 10) }}</text>
             <text v-if="x.appealReviewOpinion" class="hint">复核意见：{{ x.appealReviewOpinion }}</text>
             <template v-if="allows(x, 'SUBMIT_APPEAL')">
               <textarea class="ta" v-model="reasons[x.caseId]" placeholder="请说明申诉理由（不少于5字）" />
@@ -49,7 +49,7 @@ export default {
   methods: {
     allows(item, action) { return Array.isArray(item && item.allowedActions) && item.allowedActions.includes(action) },
     appealText(s) { return APPEAL_L[s] || '申诉状态待确认' },
-    statusText(item) { return item?.caseStatus === 'REMOVED' ? '处分已解除' : (item?.appealStatus ? this.appealText(item.appealStatus) : '可申诉') },
+    statusText(item) { return ({ REMOVED: '处分已解除', REVOKED: '处分已撤销' })[item?.caseStatus] || (item?.appealStatus ? this.appealText(item.appealStatus) : '可申诉') },
     load() {
       this.state = 'loading'
       studentApi.getMyDiscipline().then((d) => { this.d = d; this.state = 'ready' })

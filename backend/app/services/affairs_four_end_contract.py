@@ -243,6 +243,8 @@ def _patch_teacher_permission() -> None:
         return u
 
     tea._require_teacher = require_teacher
+    from app.services import _mobile_teacher_service_impl as implementation
+    implementation._require_teacher = require_teacher
 
     from app.services import mobile_affairs_service as aff
     original_card = aff.teacher_affairs

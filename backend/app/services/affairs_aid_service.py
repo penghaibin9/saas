@@ -36,7 +36,6 @@ def _students_by_ids(db, rows, attr="student_id"):
 
 AID_NODES = ["CLASS_REVIEW", "COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
 _TERMINAL = {"APPROVED", "REJECTED", "ARCHIVED"}
-_SENSITIVE_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "FUNDING_TEACHER"}
 
 L_AID = {
     "DRAFT": "草稿", "SUBMITTED": "已提交", "CLASS_REVIEW": "班级评议", "COUNSELOR_REVIEW": "辅导员初审",
@@ -98,9 +97,9 @@ def _audit(db, biz_id, action, detail="", before="", after=""):
                              before_val=before, after_val=after, occurred_at=datetime.utcnow()))
 
 
-def _assignee_for(db, node, student_id):
+def _assignee_for(db, node, student_id, *, exclude_user_ids=()):
     from app.services.affairs_assignee_service import require_assignee_id
-    return require_assignee_id(db, node, student_id=student_id)
+    return require_assignee_id(db, node, student_id=student_id, exclude_user_ids=exclude_user_ids)
 
 
 def _open_wf(db, apply_id, applicant_id, title, first_node, assignee_id):
@@ -125,7 +124,7 @@ def _cur_task(db, inst_id, node):
     return db.scalars(select(WorkflowTask).where(
         WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == inst_id,
         WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
-        WorkflowTask.is_deleted.is_(False))).first()
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
 
 
 def _todo_upsert(db, apply_id, assignee_id, student_id, title, todo_type="AID_APPROVAL"):
@@ -177,24 +176,13 @@ def _drain_message_outbox():
 
 
 def _scope_or_403(db, student_id, user):
-    from app.models import StudentProfile
-    from app.services.affairs_dashboard_service import _allowed_class_ids
-    allowed, _ = _allowed_class_ids(db, user)
-    if allowed is None:
-        return
-    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
-    if not s or s.class_id not in allowed:
-        raise AppException("NO_DATA_SCOPE", "该申请不在您的数据范围内")
+    from app.core.affairs_security import build_affairs_context
+    build_affairs_context(user, db).require_student(db, student_id)
 
 
 def _can_sensitive_view(user, x=None) -> bool:
-    role = (user or {}).get("currentRoleCode")
-    if role in _SENSITIVE_ROLES:
-        return True
-    if role == "COUNSELOR" and x is not None and getattr(x, "status", None) in (
-            "CLASS_REVIEW", "COUNSELOR_REVIEW"):
-        return True
-    return False
+    from app.core.permissions import get_base_permission_patterns
+    return "studentAffairs.aid.sensitiveView" in get_base_permission_patterns(user or {})
 
 
 def _check_node_authority(user, x) -> None:
@@ -218,31 +206,32 @@ def _uid_int(user) -> int:
 
 
 def _check_aid_assignee(db, x, user, *, todo_type: str = "AID_APPROVAL"):
-    from app.core.affairs_security import build_affairs_context
-    ctx = build_affairs_context(user, db)
-    if ctx.scope_type == "TENANT_ALL" or not x.workflow_instance_id:
-        return
-    from app.models import WorkflowTask
-    task = db.scalars(select(WorkflowTask).where(
-        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
-        WorkflowTask.node_code == x.status, WorkflowTask.status == "PENDING",
-        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
-    if task and task.assignee_id:
-        uid = _uid_int(user)
-        if uid and int(task.assignee_id) != uid:
-            raise AppException("NO_PERMISSION", "当前审批任务未指派给您")
-        return
-    from app.models import UnifiedTodo
-    todo = db.scalars(select(UnifiedTodo).where(
-        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
-        UnifiedTodo.source_biz_id == int(x.id), UnifiedTodo.todo_type == todo_type,
-        UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False)
-    ).order_by(UnifiedTodo.id.desc())).first()
-    if not todo or not todo.assignee_id:
-        return
+    from app.models import UnifiedTodo, WorkflowTask
     uid = _uid_int(user)
-    if uid and int(todo.assignee_id) != uid:
+    if uid <= 0:
+        raise AppException("NO_PERMISSION", "当前账号缺少可核验的受理人身份")
+    if todo_type == "AID_ADJUST":
+        task = db.scalars(select(UnifiedTodo).where(
+            UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+            UnifiedTodo.source_biz_id == int(x.id), UnifiedTodo.todo_type == todo_type,
+            UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
+        ).order_by(UnifiedTodo.id.desc())).first()
+    else:
+        if not x.workflow_instance_id:
+            raise AppException("DATA_CONFLICT", "困难认定审批流缺失，请先核实并配置受理人")
+        task = db.scalars(select(WorkflowTask).where(
+            WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(x.workflow_instance_id),
+            WorkflowTask.node_code == x.status, WorkflowTask.status == "PENDING",
+            WorkflowTask.is_deleted.is_(False),
+        ).order_by(WorkflowTask.id.desc())).first()
+    if not task or int(task.assignee_id or 0) <= 0:
+        raise AppException("DATA_CONFLICT", "当前审批环节缺少有效受理人，请先配置或交接任务")
+    if int(task.assignee_id) != uid:
         raise AppException("NO_PERMISSION", "当前待办未指派给您")
+    if todo_type == "AID_APPROVAL" and x.status == "SCHOOL_REVIEW":
+        from app.services.affairs_assignee_service import completed_review_actor_ids
+        if uid in completed_review_actor_ids(db, x.workflow_instance_id, AID_NODES[:-1]):
+            raise AppException("NO_PERMISSION", "学校终审须由未参与前序评审的另一名人员办理")
 
 
 def _income_range(v) -> str:
@@ -338,6 +327,8 @@ def create_batch(body, user) -> dict:
     body.publicityDays = publicity_days(getattr(body, "publicityDays", None))
     validate_dates(_parse_dt, body)
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         from app.models import AidBatch
         publish = bool(getattr(body, "publish", False))
         b = AidBatch(tenant_id=_tid(), batch_name=body.batchName, year_code=body.schoolYear,
@@ -370,6 +361,8 @@ def publish_batch(batch_id, user, expected_version):
     if not has_permission(user, "studentAffairs.aid.batch.manage"):
         raise no_permission("无认定批次管理权限")
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         batch = tenant_get(db, AidBatch, int(batch_id))
         if not batch or batch.is_deleted:
             raise AppException("DATA_NOT_FOUND", "认定批次不存在")
@@ -484,13 +477,16 @@ def _family_of(db, apply_id):
         AidFamilyEconomy.is_deleted.is_(False))).first()
 
 
-def _act_task(db, x, action, reason=""):
+def _act_task(db, x, action, reason="", *, actor_id=None):
     from app.models import WorkflowInstance
     inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
     task = _cur_task(db, inst.id, x.status) if inst else None
     if task:
         task.status, task.acted_at, task.action_reason = action, datetime.utcnow(), reason
         task.version += 1
+        task.updated_by = actor_id
+        if str(task.remark or "").startswith("TRANSFER_TO:"):
+            task.remark = None
     return inst
 
 
@@ -505,8 +501,9 @@ def review(apply_id, user, action, level=None, reason="", expected_version=None)
         atomic_claim_version(db, x, expected_version)
         _check_node_authority(user, x)
         _check_aid_assignee(db, x, user)
+        from app.services.affairs_assignee_service import completed_review_actor_ids
         if action == "APPROVE":
-            inst = _act_task(db, x, "APPROVED", reason or "")
+            inst = _act_task(db, x, "APPROVED", reason or "", actor_id=_uid_int(user))
             if x.status == "COUNSELOR_REVIEW" and level in LEVELS:
                 x.suggest_level = level
             i = AID_NODES.index(x.status)
@@ -515,7 +512,11 @@ def review(apply_id, user, action, level=None, reason="", expected_version=None)
                 x.status, x.version = nxt, x.version + 1
                 if inst:
                     inst.current_node = nxt
-                assignee = _assignee_for(db, nxt, x.student_id)
+                excluded = set()
+                if nxt == "SCHOOL_REVIEW":
+                    db.flush()
+                    excluded = completed_review_actor_ids(db, x.workflow_instance_id, AID_NODES[:-1])
+                assignee = _assignee_for(db, nxt, x.student_id, exclude_user_ids=excluded)
                 db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
                                     assignee_id=assignee, status="PENDING"))
                 _todo_upsert(db, x.id, assignee, x.student_id,
@@ -533,7 +534,7 @@ def review(apply_id, user, action, level=None, reason="", expected_version=None)
         elif action == "REJECT":
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回原因必填且不少于 5 字")
-            inst = _act_task(db, x, "REJECTED", reason.strip())
+            inst = _act_task(db, x, "REJECTED", reason.strip(), actor_id=_uid_int(user))
             x.status, x.return_reason, x.result_at, x.version = "REJECTED", reason.strip(), datetime.utcnow(), x.version + 1
             if inst:
                 inst.status = "REJECTED"
@@ -543,7 +544,7 @@ def review(apply_id, user, action, level=None, reason="", expected_version=None)
         elif action == "RETURN":
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
-            _act_task(db, x, "TRANSFERRED", reason.strip())
+            _act_task(db, x, "TRANSFERRED", reason.strip(), actor_id=_uid_int(user))
             x.status, x.return_reason, x.version = "DRAFT", reason.strip(), x.version + 1
             _todo_done(db, x.id)
             _msg(db, x.student_id, "困难认定被退回", reason.strip(), "RETURNED_NOTICE", x.id)
@@ -711,8 +712,7 @@ def approve_adjust(apply_id, user, action="APPROVE", expected_version=None, reas
 
 def _pending_conditions(db, user, kind):
     """Filter before COUNT/LIMIT, using the current workflow owner ahead of legacy todo pools."""
-    from sqlalchemy import case, or_
-    from app.core.affairs_security import build_affairs_context
+    from sqlalchemy import case, false
     from app.core.permissions import has_permission
     from app.models import AidApply, UnifiedTodo, WorkflowTask
 
@@ -733,12 +733,11 @@ def _pending_conditions(db, user, kind):
         WorkflowTask.node_code == AidApply.status, WorkflowTask.status == "PENDING",
         WorkflowTask.is_deleted.is_(False),
     ).order_by(WorkflowTask.id.desc()).limit(1).correlate(AidApply).scalar_subquery()
-    conditions = [AidApply.status.in_(permitted), todo_owner.is_not(None)]
-    scope = build_affairs_context(user, db)
-    if scope.scope_type != "TENANT_ALL":
-        owner = func.coalesce(func.nullif(task_owner, 0), todo_owner, 0)
-        conditions.append(or_(owner == _uid_int(user), owner == 0) if _uid_int(user) else owner == 0)
-    return conditions
+    actor_id = _uid_int(user)
+    if actor_id <= 0:
+        return [false()]
+    owner = case((AidApply.status == "ADJUST_REVIEW", todo_owner), else_=task_owner)
+    return [AidApply.status.in_(permitted), owner == actor_id]
 
 
 def _staff_actions(db, row, user):
@@ -840,14 +839,28 @@ def get_application(apply_id, user) -> dict:
 
 
 def reveal_family_economy(apply_id, user, reason="") -> dict:
+    reason = str(reason or "").strip()
+    if not 5 <= len(reason) <= 200:
+        raise AppException("VALIDATION_ERROR", "查看原因需填写5-200字")
+    denied = None
     with session() as db:
         x, s = _load(db, apply_id)
         _scope_or_403(db, x.student_id, user)
-        fe = _family_of(db, x.id)
-    if not _can_sensitive_view(user, x):
+        try:
+            if not _can_sensitive_view(user, x):
+                raise no_permission("当前职责没有家庭经济明文查看授权")
+            if x.status in AID_NODES:
+                _check_node_authority(user, x)
+                _check_aid_assignee(db, x, user)
+            elif x.status == "ADJUST_REVIEW":
+                _check_aid_assignee(db, x, user, todo_type="AID_ADJUST")
+        except AppException as exc:
+            denied = exc
+        fe = _family_of(db, x.id) if denied is None else None
+    if denied is not None:
         audit_insert("SENSITIVE_VIEW", "aid_family_economy",
                      {"applyId": str(apply_id), "reason": reason, "granted": False}, "DENY")
-        raise no_permission("无家庭经济完整信息查看权限")
+        raise denied
     audit_insert("SENSITIVE_VIEW", "aid_family_economy",
                  {"applyId": str(apply_id), "studentId": str(x.student_id), "reason": reason,
                   "granted": True}, "SUCCESS")

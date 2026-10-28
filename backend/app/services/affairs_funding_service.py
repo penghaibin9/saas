@@ -27,7 +27,6 @@ V1_TYPES = {"SCHOLARSHIP", "GRANT"}  # 本阶段只做这两类
 PROJECT_STATUSES = {"ENABLED", "DISABLED"}
 FUND_NODES = ["COUNSELOR_REVIEW", "COLLEGE_REVIEW", "SCHOOL_REVIEW"]
 _TERMINAL = {"GRANTED", "REJECTED", "CANCELLED", "ARCHIVED"}
-_AMOUNT_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "FUNDING_TEACHER"}
 
 _DEFAULT_ELIGIBILITY = {
     "version": "2026.1",
@@ -88,9 +87,9 @@ def _wf_code(ptype):
     return "AFFAIRS_GRANT" if ptype == "GRANT" else "AFFAIRS_SCHOLARSHIP"
 
 
-def _assignee_for(db, node, student_id):
+def _assignee_for(db, node, student_id, *, exclude_user_ids=()):
     from app.services.affairs_assignee_service import require_assignee_id
-    return require_assignee_id(db, node, student_id=student_id)
+    return require_assignee_id(db, node, student_id=student_id, exclude_user_ids=exclude_user_ids)
 
 
 def _open_wf(db, app_id, ptype, applicant_id, title, first_node, assignee_id):
@@ -115,7 +114,7 @@ def _cur_task(db, inst_id, node):
     return db.scalars(select(WorkflowTask).where(
         WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == inst_id,
         WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
-        WorkflowTask.is_deleted.is_(False))).first()
+        WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
 
 
 def _todo_upsert(db, app_id, assignee_id, student_id, title):
@@ -415,12 +414,16 @@ def preflight(batch_id, student_id, user) -> dict:
 
 # ── 序列化 ──
 
+def _can_view_amount(user) -> bool:
+    from app.core.permissions import get_base_permission_patterns
+    return "studentAffairs.funding.sensitiveView" in get_base_permission_patterns(user or {})
+
+
 def _amount_view(amount, user):
-    """金额脱敏：授权角色见真实值，其余见区间。"""
+    """个体金额按当前职责的明确明文权限返回，否则仅返回区间。"""
     if amount is None:
         return None
-    role = (user or {}).get("currentRoleCode")
-    if role in _AMOUNT_ROLES:
+    if _can_view_amount(user):
         return format(amount, ".2f")
     n = amount
     if n < 2000:
@@ -430,13 +433,18 @@ def _amount_view(amount, user):
     return "5000以上"
 
 
-def _project_row(p, user=None, *, batch_count=0, open_batch_count=0) -> dict:
+def _can_manage_projects(db, user) -> bool:
+    from app.core.permissions import has_permission
+    from app.core.affairs_security import build_affairs_context
+    return bool(user and has_permission(user, "studentAffairs.funding.project.manage")
+                and build_affairs_context(user, db).scope_type == "TENANT_ALL")
+
+
+def _project_row(p, user=None, *, batch_count=0, open_batch_count=0, can_manage=False) -> dict:
     contract = _eligibility_rules(p.project_type, p)
     allowed_actions = []
-    if user is not None:
-        from app.core.permissions import has_permission
-        if has_permission(user, "studentAffairs.funding.project.manage"):
-            allowed_actions = ["DISABLE" if p.status == "ENABLED" else "ENABLE"]
+    if can_manage:
+        allowed_actions = ["DISABLE" if p.status == "ENABLED" else "ENABLE"]
     return {"projectId": str(p.id), "projectType": p.project_type, "projectName": p.project_name,
             "amount": format(p.amount, ".2f") if p.amount is not None else None,
             "amountPolicy": _amount_policy(p), "quota": p.quota, "status": p.status,
@@ -459,16 +467,14 @@ def _batch_intake_state(b, project_status="ENABLED") -> str:
     return "OPEN"
 
 
-def _batch_row(b, project=None, user=None, *, application_count=0) -> dict:
+def _batch_row(b, project=None, user=None, *, application_count=0, can_manage=False) -> dict:
     project_status = str(getattr(project, "status", "") or "")
     allowed_actions = []
-    if user is not None:
-        from app.core.permissions import has_permission
-        if has_permission(user, "studentAffairs.funding.project.manage"):
-            if b.status == "DRAFT":
-                allowed_actions.append("PUBLISH")
-            elif b.status == "OPEN":
-                allowed_actions.append("CLOSE")
+    if can_manage:
+        if b.status == "DRAFT":
+            allowed_actions.append("PUBLISH")
+        elif b.status == "OPEN":
+            allowed_actions.append("CLOSE")
     return {"batchId": str(b.id), "projectId": str(b.project_id), "projectType": b.project_type,
             "projectName": str(getattr(project, "project_name", "") or ""),
             "projectStatus": project_status, "projectAmount": (
@@ -481,7 +487,8 @@ def _batch_row(b, project=None, user=None, *, application_count=0) -> dict:
             "reservedAmount": format(b.reserved_amount or 0, ".2f"),
             "applicationCount": int(application_count or 0),
             "status": b.status, "intakeState": _batch_intake_state(b, project_status),
-            "allowedActions": allowed_actions, "version": int(b.version or 0)}
+            "allowedActions": allowed_actions, "canGenerateDisbursements": bool(can_manage and b.status != "DRAFT"),
+            "version": int(b.version or 0)}
 
 
 def _app_row(x, user, s=None, *, has_pending_appeal: bool = False) -> dict:
@@ -535,6 +542,8 @@ def create_project(body, user) -> dict:
     if quota is not None and (int(quota) < 1 or int(quota) > 100000):
         raise AppException("VALIDATION_ERROR", "项目默认名额应为1-100000")
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         from app.models import FundingProject
         p = FundingProject(tenant_id=_tid(), project_name=project_name, project_type=project_type,
                            amount=amount, quota=quota,
@@ -546,7 +555,7 @@ def create_project(body, user) -> dict:
         db.commit()
         _drain_message_outbox()
         db.refresh(p)
-        return _project_row(p, user)
+        return _project_row(p, user, can_manage=_can_manage_projects(db, user))
 
 
 def list_projects(user, project_type=None, status=None, page=1, page_size=20, keyword=None):
@@ -584,11 +593,12 @@ def list_projects(user, project_type=None, status=None, page=1, page_size=20, ke
         type_counts = {str(key or ""): int(count or 0) for key, count in db.execute(
             select(FundingProject.project_type, func.count(FundingProject.id)).where(*base).group_by(
                 FundingProject.project_type)).all()}
+        can_manage = _can_manage_projects(db, user)
         return [
             _project_row(row, user, batch_count=batch_counts.get(int(row.id), 0),
-                         open_batch_count=open_counts.get(int(row.id), 0))
+                         open_batch_count=open_counts.get(int(row.id), 0), can_manage=can_manage)
             for row in rows
-        ], total, {"all": sum(status_counts.values()), "byStatus": status_counts, "byType": type_counts}
+        ], total, {"all": sum(status_counts.values()), "byStatus": status_counts, "byType": type_counts, "canManage": can_manage}
 
 
 def set_project_status(project_id, target_status, expected_version, user) -> dict:
@@ -596,13 +606,15 @@ def set_project_status(project_id, target_status, expected_version, user) -> dic
     if target not in PROJECT_STATUSES:
         raise AppException("VALIDATION_ERROR", "项目状态仅支持启用或停用")
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         from app.models import FundingBatch, FundingProject
         project = db.get(FundingProject, _req_int(project_id, "项目"))
         if not project or project.is_deleted or project.tenant_id != _tid():
             raise not_found("资助项目不存在")
         check_version(project.version, expected_version)
         if project.status == target:
-            return _project_row(project, user)
+            return _project_row(project, user, can_manage=_can_manage_projects(db, user))
         atomic_claim_version(db, project, expected_version)
         project.status = target
         project.version += 1
@@ -616,7 +628,8 @@ def set_project_status(project_id, target_status, expected_version, user) -> dic
             FundingBatch.is_deleted.is_(False)).group_by(FundingBatch.status)).all()
         batch_count = sum(int(count or 0) for _, count in counts)
         open_count = sum(int(count or 0) for status, count in counts if status == "OPEN")
-        return _project_row(project, user, batch_count=batch_count, open_batch_count=open_count)
+        return _project_row(project, user, batch_count=batch_count, open_batch_count=open_count,
+                            can_manage=_can_manage_projects(db, user))
 
 
 def create_batch(body, user) -> dict:
@@ -634,6 +647,8 @@ def create_batch(body, user) -> dict:
             raise AppException("VALIDATION_ERROR", "资助名额应为1-100000")
         body.quota = quota
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         from app.models import FundingBatch, FundingProject
         p = db.get(FundingProject, int(body.projectId))
         if not p or p.is_deleted or p.tenant_id != _tid():
@@ -660,7 +675,7 @@ def create_batch(body, user) -> dict:
         db.commit()
         _drain_message_outbox()
         db.refresh(b)
-        return _batch_row(b, p, user)
+        return _batch_row(b, p, user, can_manage=_can_manage_projects(db, user))
 
 
 def list_batches(user, project_id=None, status=None, page=1, page_size=20, keyword=None):
@@ -707,12 +722,13 @@ def list_batches(user, project_id=None, status=None, page=1, page_size=20, keywo
             *summary_conds, FundingBatch.status == "OPEN", FundingProject.status == "ENABLED",
             or_(FundingBatch.apply_start.is_(None), FundingBatch.apply_start <= now),
             or_(FundingBatch.apply_end.is_(None), FundingBatch.apply_end >= now))) or 0)
+        can_manage = _can_manage_projects(db, user)
         return [
             _batch_row(row, projects.get(row.project_id), user,
-                       application_count=application_counts.get(int(row.id), 0))
+                       application_count=application_counts.get(int(row.id), 0), can_manage=can_manage)
             for row in rows
         ], total, {"all": sum(status_counts.values()), "byStatus": status_counts,
-                   "availableNow": available_now}
+                   "availableNow": available_now, "canManage": can_manage}
 
 
 def act_batch(batch_id, action, expected_version, user) -> dict:
@@ -720,6 +736,8 @@ def act_batch(batch_id, action, expected_version, user) -> dict:
     if command not in {"PUBLISH", "CLOSE"}:
         raise AppException("VALIDATION_ERROR", "批次操作仅支持发布或关闭申请")
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         from app.models import FundingApplication, FundingBatch, FundingProject
         batch = db.get(FundingBatch, _req_int(batch_id, "批次"))
         if not batch or batch.is_deleted or batch.tenant_id != _tid():
@@ -757,7 +775,8 @@ def act_batch(batch_id, action, expected_version, user) -> dict:
         application_count = int(db.scalar(select(func.count()).select_from(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.batch_id == batch.id,
             FundingApplication.is_deleted.is_(False))) or 0)
-        return _batch_row(batch, project, user, application_count=application_count)
+        return _batch_row(batch, project, user, application_count=application_count,
+                          can_manage=_can_manage_projects(db, user))
 
 
 # ═══════════ 申请（含资格硬校验）═══════════
@@ -843,13 +862,16 @@ def _load(db, app_id):
     return x, s
 
 
-def _act_task(db, x, action, reason=""):
+def _act_task(db, x, action, reason="", *, actor_id=None):
     from app.models import WorkflowInstance
     inst = tenant_get(db, WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
     task = _cur_task(db, inst.id, x.status) if inst else None
     if task:
         task.status, task.acted_at, task.action_reason = action, datetime.utcnow(), reason
         task.version += 1
+        task.updated_by = actor_id
+        if str(task.remark or "").startswith("TRANSFER_TO:"):
+            task.remark = None
     return inst
 
 
@@ -863,13 +885,18 @@ def review(app_id, user, action, reason="", expected_version=None) -> dict:
             raise AppException("APPROVAL_VERSION_CONFLICT", "该申请当前状态不可评审，请刷新")
         atomic_claim_version(db, x, expected_version)
         _check_fund_review_node(db, x, user)
+        from app.services.affairs_assignee_service import completed_review_actor_ids
         if action == "APPROVE":
-            inst = _act_task(db, x, "APPROVED", reason or "")
+            inst = _act_task(db, x, "APPROVED", reason or "", actor_id=_uid_int(user))
             i = FUND_NODES.index(x.status)
             if i + 1 < len(FUND_NODES):
                 nxt = FUND_NODES[i + 1]
                 x.status, x.version = nxt, x.version + 1
-                assignee = _assignee_for(db, nxt, x.student_id)
+                excluded = set()
+                if nxt == "SCHOOL_REVIEW":
+                    db.flush()
+                    excluded = completed_review_actor_ids(db, x.workflow_instance_id, FUND_NODES[:-1])
+                assignee = _assignee_for(db, nxt, x.student_id, exclude_user_ids=excluded)
                 # 无 workflow 实例的申请（如沙箱种子直接置 COUNSELOR_REVIEW，未走 apply() 开流程）
                 # 仍推进状态机 + 建待办 + 落审计，只跳过需要 instance_id 的 WorkflowTask 行，避免
                 # inst 为 None 时 inst.id 抛 AttributeError → 500（历史欠账：沙箱奖助 review APPROVE 崩）。
@@ -890,7 +917,8 @@ def review(app_id, user, action, reason="", expected_version=None) -> dict:
         elif action in ("REJECT", "RETURN"):
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回/退回原因必填且不少于 5 字")
-            inst = _act_task(db, x, action + "ED" if action == "REJECT" else "TRANSFERRED", reason.strip())
+            inst = _act_task(db, x, action + "ED" if action == "REJECT" else "TRANSFERRED", reason.strip(),
+                             actor_id=_uid_int(user))
             new = "REJECTED" if action == "REJECT" else "RETURNED"
             x.status, x.return_reason, x.version = new, reason.strip(), x.version + 1
             if inst and action == "REJECT":
@@ -1324,7 +1352,7 @@ def funding_stats(user) -> dict:
             .join(StudentProfile, StudentProfile.id == FundingApplication.student_id)
             .where(*application_conds, FundingApplication.status == "GRANTED")
         ) or Decimal("0")
-        amount_visible = (user or {}).get("currentRoleCode") in _AMOUNT_ROLES
+        amount_visible = _can_view_amount(user)
 
         type_items = []
         for key, count, granted, amount in type_rows:
@@ -1518,6 +1546,11 @@ def get_application(app_id, user) -> dict:
         _scope_or_403(db, x.student_id, user)
         d = _app_row(x, user, s, has_pending_appeal=int(x.id) in _pending_appeal_ids(db, [x.id]))
         d["checkSnapshot"] = json.loads(x.check_snapshot_json) if x.check_snapshot_json else {}
+        if not isinstance(d["checkSnapshot"], dict):
+            raise AppException("DATA_INCONSISTENT", "资助资格快照格式异常，请联系管理员核查")
+        if not _can_view_amount(user):
+            # 金额依据含精确金额及调整说明，不能绕过主金额字段的保密边界。
+            d["checkSnapshot"].pop("amountAuthority", None)
         d["statement"] = x.statement or ""
         from app.models import FundingDisbursement
         payments = db.scalars(select(FundingDisbursement).where(
@@ -1567,6 +1600,8 @@ def generate_disbursements(batch_id, user) -> dict:
     """按批次为 GRANTED 且尚无发放记录的申请生成发放台账(PENDING)。幂等。返回 {generated}。"""
     from app.models import FundingApplication, FundingDisbursement
     with session() as db:
+        from app.core.affairs_security import require_school_scope
+        require_school_scope(db, user)
         apps = db.scalars(select(FundingApplication).where(
             FundingApplication.tenant_id == _tid(), FundingApplication.batch_id == int(batch_id),
             FundingApplication.status == "GRANTED", FundingApplication.is_deleted.is_(False))).all()
@@ -1693,7 +1728,7 @@ def disbursement_stats(user) -> dict:
                 issued_total += Decimal(str(d.amount or 0))
         out = {"total": len(rows),
                "byStatus": [{"key": k, "label": _L_BANK.get(k, k), "count": v} for k, v in by_status.items()]}
-        if role in _AMOUNT_ROLES:
+        if _can_view_amount(user):
             out["issuedAmountTotal"] = format(issued_total.quantize(Decimal("0.01")), ".2f")
         return out
 

@@ -22,6 +22,11 @@ export const ROLE = {
   COLLEGE_ADMIN: 'college_admin', // 学院管理员
   SCHOOL_ADMIN: 'school_admin', // 学校管理员
   STUDENT_AFFAIRS: 'student_affairs', // 学工管理
+  STUDENT_AFFAIRS_ADMIN: 'student_affairs_admin',
+  STUDENT_AFFAIRS_COLLEGE: 'student_affairs_college',
+  FUNDING_TEACHER: 'funding_teacher',
+  YOUTH_LEAGUE: 'youth_league',
+  ORG_PERSONNEL: 'org_personnel',
   GRADUATION_ADMIN: 'graduation_admin', // 校级毕设管理员
   GD_COLLEGE_ADMIN: 'gd_college_admin', // 学院毕设管理员
   GD_MAJOR_ADMIN: 'gd_major_admin', // 专业毕设负责人
@@ -45,9 +50,13 @@ const BACKEND_ROLE_TO_ROLE_KEY = Object.freeze({
   ACADEMIC_ADMIN: ROLE.ACADEMIC,
   COLLEGE_ADMIN: ROLE.COLLEGE_ADMIN,
   SCHOOL_ADMIN: ROLE.SCHOOL_ADMIN,
-  STUDENT_AFFAIRS_ADMIN: ROLE.STUDENT_AFFAIRS,
+  STUDENT_AFFAIRS_ADMIN: ROLE.STUDENT_AFFAIRS_ADMIN,
+  STUDENT_AFFAIRS_COLLEGE: ROLE.STUDENT_AFFAIRS_COLLEGE,
+  FUNDING_TEACHER: ROLE.FUNDING_TEACHER,
+  YOUTH_LEAGUE: ROLE.YOUTH_LEAGUE,
+  ORG_PERSONNEL: ROLE.ORG_PERSONNEL,
   STUDENT_AFFAIRS: ROLE.STUDENT_AFFAIRS,
-  SA_ADMIN: ROLE.STUDENT_AFFAIRS,
+  SA_ADMIN: ROLE.STUDENT_AFFAIRS_ADMIN,
   GRADUATION_ADMIN: ROLE.GRADUATION_ADMIN,
   GD_COLLEGE_ADMIN: ROLE.GD_COLLEGE_ADMIN,
   GD_MAJOR_ADMIN: ROLE.GD_MAJOR_ADMIN,
@@ -93,6 +102,7 @@ export const roleConfigs = {
       { key: 'care', label: '谈心谈话', icon: '♥' },
       { key: 'affairs', label: '学工待办', icon: '📋' },
       { key: 'affairsLeave', label: '请假管理', icon: '🗓' },
+      { key: 'counselorEval', label: '本人考评', icon: '📋' },
       { key: 'dormReview', label: '宿舍待办', icon: '🏠' },
       { key: 'classCadre', label: '班干部管理', icon: '🎖' },
       { key: 'classMaterial', label: '班级材料', icon: '📁' },
@@ -107,7 +117,7 @@ export const roleConfigs = {
   },
   [ROLE.PSYCHOLOGY_TEACHER]: {
     key: ROLE.PSYCHOLOGY_TEACHER,
-    label: '心理教师',
+    label: '心理工作',
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'PSY_STUDENT',
@@ -123,7 +133,7 @@ export const roleConfigs = {
   },
   [ROLE.DORM_MANAGER]: {
     key: ROLE.DORM_MANAGER,
-    label: '宿管',
+    label: '宿舍工作',
     side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index',
     dataScope: 'DORM_BUILDING',
@@ -254,7 +264,7 @@ export const roleConfigs = {
     permissionActions: ['approval.handle']
   },
   [ROLE.STUDENT_AFFAIRS]: {
-    key: ROLE.STUDENT_AFFAIRS, label: '学工管理', side: 'teacher',
+    key: ROLE.STUDENT_AFFAIRS, label: '原学工身份', side: 'teacher',
     homeRoute: '/pages/teacher/workbench/index', dataScope: 'AUTHORIZED', dataScopeText: '学工授权范围',
     workbench: ['approval'],
     quickActions: [
@@ -263,6 +273,40 @@ export const roleConfigs = {
       { key: 'orientationDashboard', label: '迎新办理', icon: '🎒' }
     ],
     permissionActions: ['approval.handle']
+  },
+  [ROLE.STUDENT_AFFAIRS_ADMIN]: {
+    key: ROLE.STUDENT_AFFAIRS_ADMIN, label: '校学工管理员', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'SCHOOL', dataScopeText: '本校学工业务范围',
+    workbench: ['approval'],
+    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '学工办理', icon: '📋' }, { key: 'orientationDashboard', label: '迎新办理', icon: '🎒' }],
+    permissionActions: ['approval.handle']
+  },
+  [ROLE.STUDENT_AFFAIRS_COLLEGE]: {
+    key: ROLE.STUDENT_AFFAIRS_COLLEGE, label: '学院学工负责人', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'COLLEGE', dataScopeText: '明确授权学院的学工业务',
+    workbench: ['approval'],
+    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '本院学工办理', icon: '📋' }, { key: 'orientationDashboard', label: '本院迎新', icon: '🎒' }],
+    permissionActions: ['approval.handle']
+  },
+  [ROLE.FUNDING_TEACHER]: {
+    key: ROLE.FUNDING_TEACHER, label: '资助工作', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'AUTHORIZED', dataScopeText: '明确授权的校级或学院资助业务',
+    workbench: ['approval'],
+    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '资助办理', icon: '📋' }],
+    permissionActions: ['approval.handle']
+  },
+  [ROLE.YOUTH_LEAGUE]: {
+    key: ROLE.YOUTH_LEAGUE, label: '团学活动', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'AUTHORIZED', dataScopeText: '明确授权的校级或学院团学业务',
+    workbench: [],
+    quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'affairs', label: '团学活动办理', icon: '📋' }],
+    permissionActions: []
+  },
+  [ROLE.ORG_PERSONNEL]: {
+    key: ROLE.ORG_PERSONNEL, label: '辅导员考评', side: 'teacher',
+    homeRoute: '/pages/teacher/workbench/index', dataScope: 'AUTHORIZED', dataScopeText: '明确授权的学校或学院辅导员',
+    workbench: ['approval'], quickActions: [{ key: 'todos', label: '我的待办', icon: '✓' }, { key: 'counselorEval', label: '辅导员考评', icon: '📋' }],
+    permissionActions: []
   },
   // 毕设 specialist 身份必须在移动端显式存在。每种身份只呈现其高价值队列，
   // 服务端仍按 currentRoleCode、关系和 batch context 裁剪数据，不在客户端放宽 Authority。
@@ -369,6 +413,8 @@ export const roleConfigs = {
 export const teacherIdentities = [
   ROLE.COUNSELOR, ROLE.DORM_MANAGER, ROLE.MENTOR, ROLE.INTERN_MENTOR, ROLE.EMPLOYMENT, ROLE.ACADEMIC, ROLE.COLLEGE_ADMIN,
   ROLE.SCHOOL_ADMIN, ROLE.STUDENT_AFFAIRS,
+  ROLE.STUDENT_AFFAIRS_ADMIN, ROLE.STUDENT_AFFAIRS_COLLEGE, ROLE.FUNDING_TEACHER,
+  ROLE.PSYCHOLOGY_TEACHER, ROLE.YOUTH_LEAGUE, ROLE.ORG_PERSONNEL,
   ROLE.GRADUATION_ADMIN, ROLE.GD_COLLEGE_ADMIN, ROLE.GD_MAJOR_ADMIN, ROLE.GD_REVIEWER,
   ROLE.GD_DEFENSE_SECRETARY, ROLE.GD_DEFENSE_EXPERT, ROLE.GD_GRADE_ADMIN
 ]

@@ -477,6 +477,9 @@ export const studentAffairsApi = {
   publishCounselorEval(evalId, version) {
     return callStrict(() => request(`/student-affairs/counselor-eval/evals/${evalId}/publish`, { method: 'POST', body: { version } }))
   },
+  appealCounselorEval(evalId, reason, version) {
+    return callStrict(() => request(`/student-affairs/counselor-eval/evals/${evalId}/appeal`, { method: 'POST', body: { reason, version } }))
+  },
   /** 考评申诉复核。body: { result, opinion, scores? } */
   reviewEvalAppeal(evalId, body) {
     return callStrict(() => request(`/student-affairs/counselor-eval/evals/${evalId}/appeal-review`, { method: 'POST', body }))

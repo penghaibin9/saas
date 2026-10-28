@@ -43,12 +43,7 @@ _REVIEW_SCOPE = {
 # SCHOOL_REVIEW 是跨学工业务共享的节点名，不能修改共享 resolver 的全局角色池来修 Funding。
 # 资助校级复核按 13A 权限矩阵只从真实学工处/资助业务角色中选择具体受理人；
 # 通用 SCHOOL_ADMIN 不进入钱相关业务待办候选池，但其他域的共享节点语义保持原样。
-_FUNDING_SCHOOL_REVIEW_ROLES = frozenset({
-    "STUDENT_AFFAIRS",
-    "STUDENT_AFFAIRS_ADMIN",
-    "SA_ADMIN",
-    "FUNDING_TEACHER",
-})
+_FUNDING_SCHOOL_REVIEW_ROLES = frozenset({"FUNDING_TEACHER"})
 
 
 class _GrantEligibilityChanged(AppException):
@@ -63,8 +58,12 @@ def _is_quota_conflict(exc: BaseException) -> bool:
     return any(marker in message for marker in _QUOTA_CONFLICT_MARKERS)
 
 
-def _assignee_for(db, node, student_id):
+def _assignee_for(db, node, student_id, *, exclude_user_ids=()):
     """Funding-only assignee policy; shared student-affairs nodes keep their original policy."""
+    if node == "COLLEGE_REVIEW":
+        from app.services.affairs_assignee_service import require_assignee_id
+        return require_assignee_id(db, node, student_id=student_id,
+                                   role_codes={"FUNDING_TEACHER"})
     if node == "SCHOOL_REVIEW":
         from app.services.affairs_assignee_service import require_assignee_id
 
@@ -73,6 +72,7 @@ def _assignee_for(db, node, student_id):
             node,
             student_id=student_id,
             role_codes=set(_FUNDING_SCHOOL_REVIEW_ROLES),
+            exclude_user_ids=exclude_user_ids,
         )
     if _ORIGINAL_ASSIGNEE_FOR is None:
         raise RuntimeError("funding assignee guard is not installed")
@@ -110,6 +110,10 @@ def _check_fund_review_node(db, application, user) -> None:
     uid = legacy._uid_int(user)
     if uid <= 0 or int(task.assignee_id) != uid:
         raise AppException("NO_PERMISSION", "当前资助审批任务未指派给您")
+    if node == "SCHOOL_REVIEW":
+        from app.services.affairs_assignee_service import completed_review_actor_ids
+        if uid in completed_review_actor_ids(db, instance_id, legacy.FUND_NODES[:-1]):
+            raise AppException("NO_PERMISSION", "学校终审须由未参与前序评审的另一名人员办理")
 
 
 def _grant_eligibility_snapshot(db, application) -> dict | None:

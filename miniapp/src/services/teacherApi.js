@@ -188,7 +188,7 @@ export const teacherApi = {
   actAffairsLoan: (loanId, body) => real.teacherAffairsLoanAction(loanId, body),
   getAffairsFeeReductions: (params = {}) => real.teacherAffairsFeeReductions(params),
   actAffairsFeeReduction: (feeId, body) => real.teacherAffairsFeeReductionAction(feeId, body),
-  getAffairsDisciplinePending: () => real.teacherAffairsDisciplinePending(),
+  getAffairsDisciplinePending: (params = {}) => real.teacherAffairsDisciplinePending(params),
   getAffairsDisciplineDetail: (caseId) => real.teacherAffairsDisciplineDetail(caseId),
   reviewAffairsDiscipline: (caseId, body) => real.teacherAffairsDisciplineReview(caseId, body),
   getAffairsRiskPending: () => real.teacherAffairsRiskPending(),

@@ -222,7 +222,7 @@ export default {
   mounted() { this.load() },
   beforeUnmount() { this.loadSeq++ },
   methods: {
-    canBtn(code) { return canCode(this.ctx, code) },
+    canBtn(code) { return canCode(this.ctx, code) && (code !== 'studentAffairs.funding.project.manage' || (!this.loading && this.summary.canManage === true)) },
     async load() {
       const seq = ++this.loadSeq
       this.loading = true

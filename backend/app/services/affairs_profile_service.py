@@ -12,7 +12,6 @@ from app.core.exceptions import AppException, not_found
 from app.core.tenant_scoped import tenant_get
 from app.services.db_service import _iso, _tid, session
 
-_DISC_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "COLLEGE_ADMIN", "COUNSELOR"}
 _PSY_ROLES = {"SCHOOL_ADMIN", "STUDENT_AFFAIRS_ADMIN", "PSYCHOLOGY_TEACHER"}
 
 # 360 时间线事件 → 中文标题
@@ -29,15 +28,8 @@ _STAGE_MODULE = {
 
 
 def _scope_or_403(db, student_id, user):
-    from app.models import StudentProfile
-    from app.services.affairs_dashboard_service import _allowed_class_ids
-    allowed, _ = _allowed_class_ids(db, user)
-    s = tenant_get(db, StudentProfile, int(student_id)) if student_id else None
-    if not s or s.is_deleted or s.tenant_id != _tid():
-        raise not_found("学生不存在")
-    if allowed is not None and s.class_id not in allowed:
-        raise AppException("NO_DATA_SCOPE", "该学生不在您的数据范围内")
-    return s
+    from app.core.affairs_security import build_affairs_context
+    return build_affairs_context(user, db).require_student(db, student_id)
 
 
 def get_profile(student_id, user) -> dict:
@@ -77,7 +69,8 @@ def get_profile(student_id, user) -> dict:
         funding_granted = _count(FundingApplication, FundingApplication.status == "GRANTED")
         # 处分（按权限出计数；无权限也只给数量，明细另走详情端点）
         disc_active = _count(DisciplineCase, DisciplineCase.status == "EFFECTIVE")
-        disc_visible = role in _DISC_ROLES
+        from app.core.permissions import has_permission
+        disc_visible = has_permission(user, "studentAffairs.discipline.view")
         # 风险
         risk_open = _count(AffairsRiskRecord, AffairsRiskRecord.status.notin_(["CLOSED"]))
         risk_levels = [r.risk_level for r in db.scalars(select(AffairsRiskRecord).where(

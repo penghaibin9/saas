@@ -104,7 +104,7 @@
               :disabled="!hasVersion(row)"
               @click="review(row)"
             >复核</AppPermissionButton>
-            <span v-else class="ap-dash">已处理</span>
+            <span v-else class="ap-dash">{{ row.reviewBlockReason || '已处理' }}</span>
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前筛选下暂无申诉。可切换状态查看已维持、已变更或已撤销记录。</p>
@@ -283,7 +283,7 @@ export default {
     },
     canDeliver(row) { return !row.deliveredAt && this.allows(row, 'DELIVER', row.status === 'EFFECTIVE') },
     canAppeal(row) { return !!row.deliveredAt && this.allows(row, 'APPEAL', row.status === 'EFFECTIVE') },
-    canReview(row) { return this.allows(row, 'REVIEW', ['SUBMITTED', 'REVIEWING'].includes(row.status)) },
+    canReview(row) { return this.allows(row, 'REVIEW', false) },
     async loadAll() {
       const seq = ++this.loadAllSeq
       this.loading = true

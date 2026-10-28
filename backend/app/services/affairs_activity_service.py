@@ -235,6 +235,8 @@ def create_activity(body, user) -> dict:
     quota = int(quota) if quota not in (None, "") else None
     with session() as db:
         publisher_name, _role, _uid = _op()
+        from app.services.affairs_activity_authority_guard import _normalize_create_scope
+        _normalize_create_scope(db, body, user)
         row = AffairsActivity(
             tenant_id=_tid(), activity_name=name, activity_type=activity_type,
             scope_type=getattr(body, "scopeType", None), scope_ref=getattr(body, "scopeRef", None),
@@ -262,6 +264,9 @@ def update_activity(activity_id, body, user) -> dict:
             raise not_found("活动不存在")
         if row.status != "DRAFT":
             raise AppException("DATA_CONFLICT", "仅草稿可编辑")
+        from app.services.affairs_activity_authority_guard import _normalize_create_scope, _require_manage_scope
+        _require_manage_scope(db, row, user)
+        _normalize_create_scope(db, body, user, current=row)
         expected = getattr(body, "version", None)
         atomic_claim_version(db, row, int(row.version or 0) if expected is None else expected)
         _validate_activity_body(body, row)
@@ -481,7 +486,7 @@ def list_participants(activity_id, user, page=1, page_size=20):
     with session() as db:
         activity = _load(db, activity_id)
         tenant_all, class_tokens, college_tokens = reliability._teacher_scope_tokens(db, user)
-        if not tenant_all and not reliability._activity_matches(activity, class_tokens, college_tokens):
+        if not tenant_all and not reliability._activity_matches(activity, class_tokens, college_tokens, db=db):
             raise AppException("NO_DATA_SCOPE", "该活动不在您的数据范围内")
         query = select(AffairsActivitySignup, StudentProfile).join(
             StudentProfile, StudentProfile.id == AffairsActivitySignup.student_id,

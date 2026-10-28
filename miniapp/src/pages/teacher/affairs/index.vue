@@ -4,17 +4,20 @@
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="data">
         <template v-if="!materialReturnContext.bizType">
-        <view class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/work-study/index' })">
+        <view v-if="(data.entryActions || []).includes('WORK_STUDY')" class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/work-study/index' })">
           <view><text class="ta__label">勤工助学工作区</text><text class="ta__sub">审核申请、核验协议、确认上岗与登记月度考核</text></view><text class="ta__go">›</text>
         </view>
-        <view class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/loan/index' })">
+        <view v-if="(data.entryActions || []).includes('LOAN')" class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/loan/index' })">
           <view><text class="ta__label">贷款回执核验</text><text class="ta__sub">核验、退回与确认台账</text></view><text class="ta__go">›</text>
         </view>
-        <view class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/reduction/index' })">
+        <view v-if="(data.entryActions || []).includes('REDUCTION')" class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/reduction/index' })">
           <view><text class="ta__label">减免与临补</text><text class="ta__sub">待审、退回与结果落实</text></view><text class="ta__go">›</text>
         </view>
-        <view class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/activity/index' })">
+        <view v-if="(data.entryActions || []).includes('ACTIVITY')" class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/activity/index' })">
           <view><text class="ta__label">活动现场与名单确认</text><text class="ta__sub">报名截止、现场签到、结束活动并生成积分</text></view><text class="ta__go">›</text>
+        </view>
+        <view v-if="(data.entryActions || []).includes('MENTAL')" class="ta__work-study" @click="uni.navigateTo({ url: '/pages/teacher/affairs/mental/index' })">
+          <view><text class="ta__label">心理个案办理</text><text class="ta__sub">仅处理当前职责授权的学生个案</text></view><text class="ta__go">›</text>
         </view>
         <view class="ta__total">
           <view><text class="ta__eyebrow">今日先做</text><view><text class="ta__total-n">{{ data.total }}</text><text class="ta__total-l">项学工待办</text></view></view>

@@ -182,7 +182,8 @@ def test_projection_is_batched_not_per_row(client, db_mode):
     db = get_sessionmaker()()
     try:
         base = db.get(AffairsMaterialRequirement, int(ids["leave"]))
-        for i in range(27):
+        # 管理员未获心理逐生授权；性能样本使用普通材料，不依赖心理材料可见。
+        for i in range(28):
             db.add(AffairsMaterialRequirement(
                 tenant_id=TID, student_id=base.student_id, biz_type="LEAVE",
                 biz_id=base.biz_id, item_code=f"BULK{i:03d}", item_name=f"批量材料{i:03d}",

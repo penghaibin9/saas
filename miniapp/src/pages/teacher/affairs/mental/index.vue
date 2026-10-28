@@ -3,7 +3,7 @@
     <MobileNavBar variant="teacher" :title="active ? '转介详情' : '心理关注'" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad" v-if="!active && loaded">
-        <MobileInlineAlert type="info" title="明细受限" description="名单仅展示业务身份、关注等级和状态；查看转介事由及明细必须填写原因并成功写入敏感访问审计。" />
+        <MobileInlineAlert type="info" title="明细受限" description="仅展示授权个案的办理摘要；查看原始记录还需单独授权、填写原因并完成审计。" />
 
         <view class="section-head"><text class="section-head__title">关注名单</text><text class="section-head__more" @click="toggleForm">{{ showForm ? '收起' : '+ 登记转介' }}</text></view>
         <view class="card stack-sm" v-if="showForm">
@@ -30,30 +30,30 @@
         <text class="mt__back" @click="active = null">‹ 返回列表</text>
         <view class="card"><view class="row-between"><text class="t-lg t-bold">{{ active.realName }}</text><text class="mt__level" :class="'is-' + (active.level || 'GENERAL').toLowerCase()">{{ active.levelLabel }}</text></view><text class="mt__sub">{{ active.studentNo }} · {{ active.statusLabel }}</text><button v-if="active.riskId" class="btn btn-ghost mt__risk-link" @click="openRisk">查看关联风险</button></view>
 
-        <template v-if="active.noteMasked">
+        <template v-if="active.noteMasked && active.canReveal">
           <view class="section-head"><text class="section-head__title">查看明细需填写原因</text></view>
           <view class="card stack-sm">
             <input class="mt__input" v-model="viewReason" maxlength="200" placeholder="查看原因（5-200字，将被审计留痕）" placeholder-class="mt__ph" />
             <button class="btn btn-primary" :disabled="viewReason.trim().length < 5 || viewReason.trim().length > 200" @click="revealDetail">查看明细</button>
           </view>
         </template>
+        <view v-else-if="active.noteMasked" class="card"><text class="mt__text">当前职责可按允许的操作办理个案，查看原始记录需单独授权。</text></view>
         <template v-else>
           <view class="section-head"><text class="section-head__title">转介事由</text></view>
           <view class="card"><text class="mt__text">{{ active.reasonSummary }}</text></view>
           <view class="section-head"><text class="section-head__title">明细记录</text></view>
           <view class="card"><text class="mt__text">{{ active.note || '（无附加明细）' }}</text></view>
+        </template>
 
-          <template v-if="active.status !== 'CLOSED'">
-            <view class="section-head"><text class="section-head__title">处理</text></view>
-            <view class="card stack-sm">
-              <textarea class="mt__textarea" v-model="actionContent" :maxlength="300" placeholder="记录内容（回访、升级原因或关闭结论，5-300字）" placeholder-class="mt__ph" />
-              <text class="mt__counter">{{ actionContent.trim().length }}/300</text>
-              <button v-if="canAct('FOLLOW')" class="btn btn-ghost" :disabled="acting || actionContent.trim().length < 5" @click="doFollow">回访（≥5字）</button>
-              <button v-if="canAct('ESCALATE')" class="btn btn-ghost mt__danger" :disabled="acting || actionContent.trim().length < 5" @click="doEscalate">升级为危机（说明≥5字）</button>
-              <button v-if="canAct('CLOSE')" class="btn btn-ghost" :disabled="acting || actionContent.trim().length < 5" @click="doClose">关闭（结论≥5字）</button>
-              <text v-if="!canAct('FOLLOW') && !canAct('ESCALATE') && !canAct('CLOSE')" class="mt__hint">当前状态暂无可执行动作。</text>
-            </view>
-          </template>
+        <template v-if="canAct('FOLLOW') || canAct('ESCALATE') || canAct('CLOSE')">
+          <view class="section-head"><text class="section-head__title">处理</text></view>
+          <view class="card stack-sm">
+            <textarea class="mt__textarea" v-model="actionContent" :maxlength="300" placeholder="记录内容（回访、升级原因或关闭结论，5-300字）" placeholder-class="mt__ph" />
+            <text class="mt__counter">{{ actionContent.trim().length }}/300</text>
+            <button v-if="canAct('FOLLOW')" class="btn btn-ghost" :disabled="acting || actionContent.trim().length < 5" @click="doFollow">回访（≥5字）</button>
+            <button v-if="canAct('ESCALATE')" class="btn btn-ghost mt__danger" :disabled="acting || actionContent.trim().length < 5" @click="doEscalate">升级为危机（说明≥5字）</button>
+            <button v-if="canAct('CLOSE')" class="btn btn-ghost" :disabled="acting || actionContent.trim().length < 5" @click="doClose">关闭（结论≥5字）</button>
+          </view>
         </template>
       </view>
     </MobileGlobalState>

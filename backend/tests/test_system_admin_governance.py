@@ -248,6 +248,7 @@ def test_delegation_matches_stable_user_id_after_login_rename(monkeypatch):
     patterns = gov.active_delegation_permission_patterns({
         "userId": "db-42",
         "loginName": "new-login",
+        "currentRoleCode": "COUNSELOR",
     })
     assert patterns
     gov._MEMORY_DOCS.pop(gov.DOC_DELEGATIONS, None)

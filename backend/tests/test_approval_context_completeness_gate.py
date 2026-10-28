@@ -45,8 +45,9 @@ def _seed_leave_task(db, assignee_id, *, leave_kwargs=None, biz_type="LEAVE"):
                     **(leave_kwargs or {}))
     db.add(leave)
     db.flush()
+    # 这里验证共享内容/版本门；正式学工只能在领域页面办理，另有拒绝回归。
     inst = WorkflowInstance(tenant_id=TID, workflow_code="LEAVE_WF",
-                            source_module="student-affairs", source_biz_type=biz_type,
+                            source_module="context-contract", source_biz_type=biz_type,
                             source_biz_id=leave.id, applicant_id=1, status="RUNNING",
                             current_node="NODE_1")
     db.add(inst)

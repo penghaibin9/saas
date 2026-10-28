@@ -48,11 +48,11 @@ export const counselorAssignmentApi = {
   assignments(params = {}) { return callList(`${B}/counselor-assignments`, params) },
   ledger(params = {}) { return callList(`${B}/counselor-ledger`, params) },
   vacancies() { return call(() => request(`${B}/counselor-vacancies`)) },
-  assign(body) { return call(() => request(`${B}/counselor-assignments`, { method: 'POST', body })) },
+  assign(body) { return call(() => request(`${B}/counselor-assignments`, { method: 'POST', body, timeoutMs: 60000 })) },
   end(assignmentId, body) {
     return call(() => request(`${B}/counselor-assignments/${assignmentId}/end`, { method: 'POST', body }))
   },
   handover(classId, body) {
-    return call(() => request(`${B}/classes/${classId}/counselor-handover`, { method: 'POST', body }))
+    return call(() => request(`${B}/classes/${classId}/counselor-handover`, { method: 'POST', body, timeoutMs: 60000 }))
   }
 }

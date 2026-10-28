@@ -17,6 +17,7 @@
     </nav>
     <div v-if="recordId" class="sa-student-filter"><span>{{ activeTab === 'checkout' ? '退宿单' : '调宿申请' }} #{{ recordId }}</span><button type="button" class="mp-link" @click="clearRecordFocus">返回{{ activeTab === 'checkout' ? '退宿' : '调宿' }}队列</button></div>
     <div v-if="studentFilterLabel" class="sa-student-filter"><span>{{ studentFilterLabel }}</span><button type="button" class="mp-link" @click="clearStudentFilter">清除筛选</button></div>
+    <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载调宿申请..." @retry="load" @back="$router.push('/admin/student-affairs/dashboard')">
 
 
@@ -37,7 +38,7 @@
               <AppPermissionButton v-if="canAction(row, 'APPROVE')" :allowed="canBtn('studentAffairs.dorm.transfer.approve')" code="studentAffairs.dorm.transfer.approve" size="sm" :loading="actioning" :disabled="!row.fromBedLabel || !row.toBedLabel || !hasVersion(row)" @click="openApprove(row)">核对后通过</AppPermissionButton>
               <AppPermissionButton v-if="canAction(row, 'REJECT')" :allowed="canBtn('studentAffairs.dorm.transfer.approve')" code="studentAffairs.dorm.transfer.approve" size="sm" variant="secondary" danger :loading="actioning" :disabled="!hasVersion(row)" @click="openReject(row)">驳回</AppPermissionButton>
             </div>
-            <span v-else class="sa-muted">当前节点无操作</span>
+            <span v-else class="sa-muted">{{ row.reviewBlockReason || '当前节点无操作' }}</span>
           </template>
         </DataTable>
         <p v-else class="sa-empty">当前范围暂无调宿申请。需要办理时，可从页面右上角发起调宿。</p>
@@ -168,7 +169,7 @@ export default {
   data() {
     return {
       transferColumns: TRANSFER_COLUMNS, checkoutColumns: CHECKOUT_COLUMNS, stayColumns: STAY_COLUMNS,
-      loading: true, actioning: false, errorMessage: '', items: [], statusCounts: null,
+      loading: true, actioning: false, errorMessage: '', actionError: '', items: [], statusCounts: null,
       checkoutItems: [], stayItems: [], stayTotal: 0, loadSerial: 0, activeTab: 'transfer',
       workspaceTabs: [{ key: 'transfer', label: '调宿申请' }, { key: 'checkout', label: '退宿待确认' }, { key: 'history', label: '住宿历史' }],
       checkoutPagination: { page: 1, pageSize: 20, total: 0 },
@@ -350,7 +351,7 @@ export default {
     async submitTransfer() {
       const d = this.dlg; const reason = (d.reason || '').trim()
       const ok = await this.runAction(() => studentAffairsApi.submitDormTransfer({ studentId: d.studentId, toBedId: d.toBedId, reason }))
-      if (ok) { d.visible = false; this.transferSubmitDlg.visible = false } else d.error = this.errorMessage
+      if (ok) { d.visible = false; this.transferSubmitDlg.visible = false } else d.error = this.actionError
     },
     openApprove(row) {
       if (!this.canAction(row, 'APPROVE') || !row.fromBedLabel || !row.toBedLabel || !this.hasVersion(row)) return
@@ -364,14 +365,14 @@ export default {
     },
     async submitReject({ reason }) {
       const d = this.rejDlg
-      if ((reason || '').trim().length > 300) { this.errorMessage = '驳回原因不能超过300字'; return }
+      if ((reason || '').trim().length > 300) { this.actionError = '驳回原因不能超过300字'; return }
       const ok = await this.runAction(() => studentAffairsApi.reviewDormTransfer(d.transferId, 'REJECT', reason.trim(), d.version))
       if (ok) d.visible = false
     },
     async runAction(fn) {
-      this.actioning = true; this.errorMessage = ''
+      this.actioning = true; this.actionError = ''
       try { await fn(); await this.load(); return true }
-      catch (e) { this.errorMessage = e.message || '操作失败'; return false }
+      catch (e) { this.actionError = e.message || '操作失败'; return false }
       finally { this.actioning = false }
     },
     isPending(s) { return PENDING_STATUSES.includes(s) },

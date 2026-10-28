@@ -432,7 +432,7 @@ export const teacherAffairsFeeReductions = (params = {}) =>
   realRequest('/mobile/teacher/affairs/fee-reductions', { data: params })
 export const teacherAffairsFeeReductionAction = (feeId, body) =>
   realRequest(`/mobile/teacher/affairs/fee-reductions/${encodeURIComponent(feeId)}/action`, { method: 'POST', data: body || {} })
-export const teacherAffairsDisciplinePending = () => realRequest('/mobile/teacher/affairs/discipline/pending')
+export const teacherAffairsDisciplinePending = (params = {}) => realRequest('/mobile/teacher/affairs/discipline/pending', { data: params })
 export const teacherAffairsDisciplineDetail = (caseId) => realRequest(`/mobile/teacher/affairs/discipline/${caseId}`)
 export const teacherAffairsDisciplineReview = (caseId, body) =>
   realRequest(`/mobile/teacher/affairs/discipline/${caseId}/review`, { method: 'POST', data: body || {} })

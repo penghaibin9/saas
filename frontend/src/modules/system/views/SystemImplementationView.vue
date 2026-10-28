@@ -239,7 +239,7 @@ const RELATION_STATUS_LABELS = { READY: '可安装', ALREADY: '已存在', CONFL
 const RISK_LEVEL_LABELS = { LOW: '低', MEDIUM: '中', HIGH: '高', CRITICAL: '紧急' }
 const CHECK_RESULT_LABELS = { PASS: '通过', FAIL: '不通过', FAILED: '不通过', PENDING: '待检查', UNKNOWN: '待处理', CONFIRMED: '已确认' }
 const SEVERITY_LABELS = { BLOCKER: '阻断项', CRITICAL: '紧急', HIGH: '高风险', MEDIUM: '中风险', LOW: '低风险', WARNING: '警告', INFO: '提示' }
-const ROLE_LABELS = { SCHOOL_ADMIN: '学校管理员', ACADEMIC_ADMIN: '教务管理员', STUDENT_AFFAIRS_ADMIN: '学工管理员', COUNSELOR: '辅导员', TEACHER: '教师', STUDENT: '学生', INTERNSHIP_ADMIN: '实习管理员', EMPLOYMENT_ADMIN: '就业管理员' }
+const ROLE_LABELS = { SCHOOL_ADMIN: '学校管理员', ACADEMIC_ADMIN: '教务管理员', STUDENT_AFFAIRS_ADMIN: '校学工管理员', STUDENT_AFFAIRS_COLLEGE: '学院学工负责人', COUNSELOR: '辅导员', TEACHER: '教师', STUDENT: '学生', INTERNSHIP_ADMIN: '实习管理员', EMPLOYMENT_ADMIN: '就业管理员' }
 const CHANNEL_LABELS = { IN_APP: '站内消息', SMS: '短信', EMAIL: '电子邮件', WECHAT: '微信', DINGTALK: '钉钉' }
 
 export default {

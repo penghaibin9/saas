@@ -77,7 +77,7 @@ const roles = {
   GD_REVIEWER: '毕设评阅教师', GRADUATION_ADMIN: '毕业设计管理员', INTERN_MENTOR: '实习指导教师',
   LEADER: '校领导', ORG_PERSONNEL: '组织人事人员', PSYCHOLOGY_TEACHER: '心理老师', SCHOOL_ADMIN: '学校管理员',
   SECURITY_AUDITOR: '安全审计员', STAFF: '教职工', STUDENT: '学生', STUDENT_AFFAIRS: '学工老师',
-  STUDENT_AFFAIRS_ADMIN: '学工管理员', SYS_ADMIN: '系统管理员', YOUTH_LEAGUE: '团委老师',
+  STUDENT_AFFAIRS_ADMIN: '校学工管理员', STUDENT_AFFAIRS_COLLEGE: '学院学工负责人', SYS_ADMIN: '系统管理员', YOUTH_LEAGUE: '团委老师',
 }
 
 export function roleDisplayLabel(code, label) {

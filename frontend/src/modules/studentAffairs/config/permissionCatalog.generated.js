@@ -181,6 +181,17 @@ export const STUDENT_AFFAIRS_PERMISSION_CATALOG = [
     "deprecatedAliases": []
   },
   {
+    "permissionCode": "studentAffairs.class.counselor.manage",
+    "label": "辅导员任职与交接",
+    "domain": "class",
+    "riskLevel": "HIGH",
+    "allowedScopes": [
+      "TENANT_ALL",
+      "COLLEGE"
+    ],
+    "deprecatedAliases": []
+  },
+  {
     "permissionCode": "studentAffairs.class.create",
     "label": "class·新增",
     "domain": "class",

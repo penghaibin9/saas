@@ -553,6 +553,8 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
         ).with_for_update()).first()
         if not inst:
             raise not_found("审批实例不存在")
+        from app.services.approval_business_context_service import assert_domain_action_entry
+        assert_domain_action_entry(inst)
         if enforce_context_gate:
             from app.services import approval_business_context_service as ctx_svc
             context = ctx_svc.resolve_context(db, inst, for_update=True)

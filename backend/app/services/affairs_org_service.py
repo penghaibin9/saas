@@ -7,11 +7,13 @@ from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
 from app.services.db_service import _iso, _tid, session
+from app.core import affairs_security
+from app.services.affairs_organization_scope import organization_condition, require_organization, student_condition
 
 ORG_TYPES = ("STUDENT_UNION", "SOCIETY_FEDERATION", "SELF_GOV", "OTHER")
 L_ORG_TYPE = {"STUDENT_UNION": "学生会", "SOCIETY_FEDERATION": "社团联合会",
@@ -39,11 +41,12 @@ def _audit(db, biz_id, action, detail=""):
                              operator=n, role_name=r, detail=detail, occurred_at=datetime.utcnow()))
 
 
-def _load(db, org_id):
+def _load(db, org_id, user):
     from app.models import AffairsStudentOrg
     o = db.get(AffairsStudentOrg, int(org_id))
     if not o or o.is_deleted or o.tenant_id != _tid():
         raise not_found("学生组织不存在")
+    require_organization(db, user, o.college_id, level=o.level)
     return o
 
 
@@ -57,17 +60,17 @@ def _org_row(o) -> dict:
 def list_orgs(user, level=None, status=None, page=1, page_size=50):
     from app.models import AffairsStudentOrg
     with session() as db:
-        conds = [AffairsStudentOrg.tenant_id == _tid(), AffairsStudentOrg.is_deleted.is_(False)]
+        conds = [AffairsStudentOrg.tenant_id == _tid(), AffairsStudentOrg.is_deleted.is_(False),
+                 organization_condition(db, user, AffairsStudentOrg)]
         if level:
             conds.append(AffairsStudentOrg.level == level)
         if status:
             conds.append(AffairsStudentOrg.status == status)
+        page, page_size = max(1, int(page)), max(1, min(200, int(page_size)))
+        total = int(db.scalar(select(func.count()).select_from(AffairsStudentOrg).where(*conds)) or 0)
         rows = db.scalars(select(AffairsStudentOrg).where(*conds).order_by(
-            AffairsStudentOrg.id.desc())).all()
-        out = [_org_row(o) for o in rows]
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+            AffairsStudentOrg.id.desc()).offset((page - 1) * page_size).limit(page_size)).all()
+        return [_org_row(o) for o in rows], total
 
 
 def create_org(body, user) -> dict:
@@ -78,7 +81,12 @@ def create_org(body, user) -> dict:
     otype = getattr(body, "orgType", "STUDENT_UNION") or "STUDENT_UNION"
     if otype not in ORG_TYPES:
         raise AppException("VALIDATION_ERROR", "组织类型非法")
+    level = getattr(body, "level", "SCHOOL") or "SCHOOL"
+    college_id = getattr(body, "collegeId", None)
+    if level not in L_LEVEL or (level == "COLLEGE") != (college_id is not None):
+        raise AppException("VALIDATION_ERROR", "院级组织须指定学院，校级组织不能指定学院")
     with session() as db:
+        require_organization(db, user, college_id, level=level)
         dup = db.scalars(select(AffairsStudentOrg).where(
             AffairsStudentOrg.tenant_id == _tid(), AffairsStudentOrg.org_name == name,
             AffairsStudentOrg.is_deleted.is_(False))).first()
@@ -106,10 +114,13 @@ def _pos_row(p, s=None, org=None) -> dict:
 def list_positions(org_id, user):
     from app.models import AffairsOrgPosition, StudentProfile
     with session() as db:
-        org = _load(db, org_id)
+        org = _load(db, org_id, user)
         rows = db.scalars(select(AffairsOrgPosition).where(
             AffairsOrgPosition.tenant_id == _tid(), AffairsOrgPosition.org_id == int(org_id),
-            AffairsOrgPosition.status == "ACTIVE", AffairsOrgPosition.is_deleted.is_(False))
+            AffairsOrgPosition.status == "ACTIVE", AffairsOrgPosition.is_deleted.is_(False),
+            AffairsOrgPosition.student_id.in_(select(StudentProfile.id).where(
+                StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+                student_condition(user, StudentProfile))))
             .order_by(AffairsOrgPosition.id.desc())).all()
         return [_pos_row(p, db.get(StudentProfile, int(p.student_id)) if p.student_id else None, org)
                 for p in rows]
@@ -122,12 +133,13 @@ def appoint(org_id, body, user) -> dict:
     if not position:
         raise AppException("VALIDATION_ERROR", "职务必填")
     with session() as db:
-        org = _load(db, org_id)
+        org = _load(db, org_id, user)
         if org.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "仅在运营组织可任命")
         s = db.get(StudentProfile, sid) if sid else None
         if not s or s.is_deleted or s.tenant_id != _tid():
             raise not_found("学生不存在")
+        affairs_security.build_affairs_context(user, db).require_student(db, sid)
         dup = db.scalars(select(AffairsOrgPosition).where(
             AffairsOrgPosition.tenant_id == _tid(), AffairsOrgPosition.org_id == int(org_id),
             AffairsOrgPosition.student_id == sid, AffairsOrgPosition.position == position,
@@ -149,6 +161,8 @@ def dismiss(position_id, user, *, expected_version=None) -> dict:
         p = db.get(AffairsOrgPosition, int(position_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
             raise not_found("任职记录不存在")
+        _load(db, p.org_id, user)
+        affairs_security.build_affairs_context(user, db).require_student(db, p.student_id)
         if p.status != "ACTIVE":
             raise AppException("DATA_CONFLICT", "该任职已卸任")
         atomic_claim_version(db, p, expected_version)
@@ -164,6 +178,7 @@ def student_resume(student_id, user):
 
     sid = int(student_id)
     with session() as db:
+        affairs_security.build_affairs_context(user, db).require_student(db, sid)
         positions = db.scalars(select(AffairsOrgPosition).where(
             AffairsOrgPosition.tenant_id == _tid(), AffairsOrgPosition.student_id == sid,
             AffairsOrgPosition.is_deleted.is_(False),

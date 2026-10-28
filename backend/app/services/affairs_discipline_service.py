@@ -9,7 +9,7 @@ from app.core.optimistic_lock import atomic_claim_version
 
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import and_, false, func, or_, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, check_version, not_found
@@ -66,12 +66,12 @@ def _audit(db, biz_id, action, detail=""):
     n, r, uid = _op()
     db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type="DISCIPLINE", biz_id=int(biz_id) if biz_id else None,
                              action=action, operator=n or uid, role_name=r, detail=detail,
-                             occurred_at=datetime.utcnow()))
+                             occurred_at=datetime.utcnow(), created_by=_uid_int(get_current_user_ctx())))
 
 
-def _assignee_for(db, node, student_id):
+def _assignee_for(db, node, student_id, *, exclude_user_ids=()):
     from app.services.affairs_assignee_service import require_assignee_id
-    return require_assignee_id(db, node, student_id=student_id)
+    return require_assignee_id(db, node, student_id=student_id, exclude_user_ids=exclude_user_ids)
 
 
 def _open_wf(db, wf_code, biz_type, biz_id, applicant_id, title, first_node, assignee_id):
@@ -173,24 +173,77 @@ def _disc_node_visible(ctx, node: str) -> bool:
     return node == "COUNSELOR_REVIEW"
 
 
-def _check_disc_node(db, node, user, *, workflow_instance_id=None, label_map=None):
+def _check_disc_node(db, node, user, *, workflow_instance_id=None, label_map=None, student_id=None):
     from app.core.affairs_security import build_affairs_context
     ctx = build_affairs_context(user, db)
     labels = label_map or L_DISC
     if not _disc_node_visible(ctx, node):
         raise AppException("NO_PERMISSION", f"无权审批当前节点（{labels.get(node, node)}）")
-    if ctx.scope_type == "TENANT_ALL" or not workflow_instance_id:
-        return
+    if not workflow_instance_id:
+        raise AppException("DATA_CONFLICT", "处分审批流缺失，请先核实历史单据并配置受理人")
     from app.models import WorkflowTask
     task = db.scalars(select(WorkflowTask).where(
         WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(workflow_instance_id),
         WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
         WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
-    if not task or not task.assignee_id:
-        return
+    if not task or int(task.assignee_id or 0) <= 0:
+        raise AppException("DATA_CONFLICT", "当前审批节点缺少有效受理人，请先配置或交接任务")
     uid = _uid_int(user)
-    if uid and int(task.assignee_id) != uid:
+    if uid <= 0:
+        raise AppException("NO_PERMISSION", "当前账号缺少可核验的受理人身份")
+    if int(task.assignee_id) != uid:
         raise AppException("NO_PERMISSION", "当前审批任务未指派给您")
+    _check_review_membership(db, user, node, student_id=student_id)
+
+
+def _check_review_membership(db, user, node, *, student_id=None):
+    from app.services.affairs_assignee_service import _NODE_ROLES, resolve_assignee_ids
+    role = str(user.get("currentRoleCode") or "").upper()
+    roles = {"COUNSELOR"} if node in {"COUNSELOR_REVIEW", "CLASS_REVIEW"} else _NODE_ROLES.get(node, set())
+    if role not in roles or _uid_int(user) not in resolve_assignee_ids(db, node, student_id=student_id, role_codes={role}):
+        raise AppException("NO_PERMISSION", "当前职责不是该节点的有效审核任职，请切换并核验授权")
+
+
+def _registrar(case):
+    if not case.created_by or int(case.created_by) <= 0:
+        raise AppException("DATA_CONFLICT", "历史登记人尚无法核实，原处分及材料保留，请先核验交接")
+    return int(case.created_by)
+
+
+def _decision_reviewers(db, case):
+    from app.services.affairs_assignee_service import completed_review_actor_ids
+    nodes = {"COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW"}
+    if case.disc_type in _SEVERE:
+        nodes.add("SCHOOL_REVIEW")
+    return completed_review_actor_ids(db, case.workflow_instance_id, nodes)
+
+
+def _appeal_assignee(db, case, *, preferred_id=None):
+    from app.services.affairs_assignee_service import require_assignee_id, resolve_assignee_ids
+    excluded = _decision_reviewers(db, case)
+    if preferred_id and int(preferred_id) not in excluded and int(preferred_id) in resolve_assignee_ids(db, "SA_OFFICE_REVIEW", student_id=case.student_id):
+        return int(preferred_id)
+    return require_assignee_id(db, "SA_OFFICE_REVIEW", student_id=case.student_id, exclude_user_ids=excluded)
+
+
+def _check_appeal_review(db, appeal, case, user):
+    from app.models import UnifiedTodo
+    uid = _uid_int(user)
+    if uid in _decision_reviewers(db, case):
+        raise AppException("NO_PERMISSION", "原决定审核人不得复核对应申诉，请转其他有权人员")
+    _check_review_membership(db, user, "SA_OFFICE_REVIEW", student_id=case.student_id)
+    from app.core.affairs_security import require_school_scope
+    require_school_scope(db, user)
+    todo = db.scalar(select(UnifiedTodo).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_type == "DISCIPLINE_APPEAL", UnifiedTodo.source_biz_id == appeal.id,
+        UnifiedTodo.student_id == appeal.student_id, UnifiedTodo.todo_type == "DISCIPLINE_APPEAL_REVIEW",
+        UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
+    ).order_by(UnifiedTodo.id.desc()).with_for_update())
+    if not todo or not todo.assignee_id:
+        raise AppException("DATA_CONFLICT", "本申诉缺少有效待办受理人，请先核验交接")
+    if int(todo.assignee_id) != uid:
+        raise AppException("NO_PERMISSION", "本申诉未指派给当前人员")
 
 
 def _cs_student_id(db, student_id):
@@ -247,14 +300,14 @@ def register(body, user) -> dict:
         _scope_or_403(db, s.id, user)
         x = DisciplineCase(tenant_id=_tid(), student_id=s.id, disc_type=body.discType,
                            reason=body.reason.strip(), doc_no=getattr(body, "docNo", None),
-                           status="REGISTERED")
+                           status="REGISTERED", created_by=_uid_int(user))
         db.add(x)
         db.flush()
         _audit(db, x.id, "REGISTER", body.discType)
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
-        return _row(x, s)
+        return _present_case(db, x, s, user)
 
 
 def submit(case_id, user, expected_version=None) -> dict:
@@ -263,6 +316,9 @@ def submit(case_id, user, expected_version=None) -> dict:
         _scope_or_403(db, x.student_id, user)
         if x.status not in ("REGISTERED", "RETURNED"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "仅登记/退回的处分可提交")
+        was_returned = x.status == "RETURNED"
+        if was_returned and not x.workflow_instance_id:
+            raise AppException("DATA_CONFLICT", "历史退回单缺少原流程，记录保留，请先核验交接")
         atomic_claim_version(db, x, expected_version)
         x.status, x.version = "COLLEGE_REVIEW", x.version + 1
         assignee = _assignee_for(db, "COLLEGE_REVIEW", x.student_id)
@@ -270,12 +326,25 @@ def submit(case_id, user, expected_version=None) -> dict:
             inst = _open_wf(db, "AFFAIRS_DISCIPLINE", "DISCIPLINE", x.id, x.student_id,
                             f"{s.real_name if s else ''} 违纪处分", "COLLEGE_REVIEW", assignee)
             x.workflow_instance_id = inst.id
+        else:
+            from app.models import WorkflowInstance, WorkflowTask
+            inst = db.get(WorkflowInstance, int(x.workflow_instance_id))
+            if (not was_returned or not inst or inst.tenant_id != _tid() or inst.is_deleted
+                    or inst.source_module != "student-affairs" or inst.source_biz_type != "DISCIPLINE"
+                    or int(inst.source_biz_id or 0) != int(x.id)):
+                raise AppException("DATA_CONFLICT", "原处分流程关联异常，记录保留，请先核验")
+            if db.scalar(select(WorkflowTask.id).where(WorkflowTask.tenant_id == _tid(),
+                    WorkflowTask.instance_id == inst.id, WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False)).limit(1)):
+                raise AppException("DATA_CONFLICT", "原流程仍有待审任务，拒绝重复创建，请先核验")
+            inst.status, inst.current_node = "RUNNING", "COLLEGE_REVIEW"
+            db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code="COLLEGE_REVIEW",
+                assignee_id=assignee, status="PENDING", created_by=_uid_int(user)))
         _todo_upsert(db, x.id, assignee, x.student_id, f"处分待初审：{s.real_name if s else ''}")
         _audit(db, x.id, "SUBMIT")
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
-        return _row(x, s)
+        return _present_case(db, x, s, user)
 
 
 def cancel(case_id, user, expected_version=None) -> dict:
@@ -291,7 +360,7 @@ def cancel(case_id, user, expected_version=None) -> dict:
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
-        return _row(x, s)
+        return _present_case(db, x, s, user)
 
 
 # ═══════════ 审批 ═══════════
@@ -315,16 +384,19 @@ def _make_effective(db, x, s):
     _audit(db, x.id, "EFFECTIVE", f"proj={proj.id}")
 
 
-def _act_task(db, x, action, reason=""):
+def _act_task(db, x, action, reason="", *, actor_id=None):
     from app.models import WorkflowInstance, WorkflowTask
     inst = db.get(WorkflowInstance, int(x.workflow_instance_id)) if x.workflow_instance_id else None
     if inst:
         task = db.scalars(select(WorkflowTask).where(
             WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == inst.id,
             WorkflowTask.node_code == x.status, WorkflowTask.status == "PENDING",
-            WorkflowTask.is_deleted.is_(False))).first()
+            WorkflowTask.is_deleted.is_(False)).order_by(WorkflowTask.id.desc())).first()
         if task:
             task.status, task.acted_at, task.action_reason = action, datetime.utcnow(), reason
+            task.updated_by = actor_id or _uid_int(get_current_user_ctx())
+            if str(task.remark or "").startswith("TRANSFER_TO:"):
+                task.remark = None
             task.version += 1
     return inst
 
@@ -338,9 +410,11 @@ def review(case_id, user, action, reason="", expected_version=None) -> dict:
         if x.status not in ("COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW"):
             raise AppException("APPROVAL_VERSION_CONFLICT", "该处分当前状态不可审批，请刷新")
         atomic_claim_version(db, x, expected_version)
-        _check_disc_node(db, x.status, user, workflow_instance_id=x.workflow_instance_id)
+        _check_disc_node(db, x.status, user, workflow_instance_id=x.workflow_instance_id, student_id=x.student_id)
+        if x.status in ("STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW") and _uid_int(user) == _registrar(x):
+            raise AppException("NO_PERMISSION", "处分登记人不能担任该处分的正式复核人")
         if action == "APPROVE":
-            inst = _act_task(db, x, "APPROVED", reason or "")
+            inst = _act_task(db, x, "APPROVED", reason or "", actor_id=_uid_int(user))
             if x.status == "COLLEGE_REVIEW":
                 nxt = "STUDENT_AFFAIRS_REVIEW"
             elif x.status == "STUDENT_AFFAIRS_REVIEW":
@@ -355,7 +429,7 @@ def review(case_id, user, action, reason="", expected_version=None) -> dict:
                 x.status, x.version = nxt, x.version + 1
                 if inst:
                     inst.current_node = nxt
-                assignee = _assignee_for(db, nxt, x.student_id)
+                assignee = _assignee_for(db, nxt, x.student_id, exclude_user_ids={_registrar(x)})
                 db.add(WorkflowTask(tenant_id=_tid(), instance_id=inst.id, node_code=nxt,
                                     assignee_id=assignee, status="PENDING"))
                 _todo_upsert(db, x.id, assignee, x.student_id,
@@ -364,7 +438,7 @@ def review(case_id, user, action, reason="", expected_version=None) -> dict:
         elif action in ("REJECT", "RETURN"):
             if not reason or len(reason.strip()) < 5:
                 raise AppException("VALIDATION_ERROR", "驳回/退回原因必填且不少于 5 字")
-            inst = _act_task(db, x, "REJECTED" if action == "REJECT" else "TRANSFERRED", reason.strip())
+            inst = _act_task(db, x, "REJECTED" if action == "REJECT" else "TRANSFERRED", reason.strip(), actor_id=_uid_int(user))
             new = "REJECTED" if action == "REJECT" else "RETURNED"
             x.status, x.return_reason, x.version = new, reason.strip(), x.version + 1
             if inst and action == "REJECT":
@@ -378,7 +452,7 @@ def review(case_id, user, action, reason="", expected_version=None) -> dict:
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
-        return _row(x, s)
+        return _present_case(db, x, s, user)
 
 
 # ═══════════ 解除子流程 ═══════════
@@ -416,7 +490,7 @@ def submit_remove(case_id, user, reason="", expected_version=None) -> dict:
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
-        return _row(x, s)
+        return _present_case(db, x, s, user)
 
 
 def review_remove(case_id, user, action, reason="", expected_version=None) -> dict:
@@ -438,6 +512,7 @@ def review_remove(case_id, user, action, reason="", expected_version=None) -> di
             raise AppException("APPROVAL_VERSION_CONFLICT", "解除申请不存在")
         _check_disc_node(db, ra.current_node or REMOVE_NODES[0], user,
                          workflow_instance_id=ra.workflow_instance_id,
+                         student_id=x.student_id,
                          label_map={"COUNSELOR_REVIEW": "辅导员初审", "COLLEGE_REVIEW": "学院复核",
                                     "SA_OFFICE_FINAL": "学工处终审"})
         from app.models import WorkflowInstance, WorkflowTask
@@ -502,7 +577,7 @@ def review_remove(case_id, user, action, reason="", expected_version=None) -> di
         db.commit()
         _drain_message_outbox()
         db.refresh(x)
-        return _row(x, s)
+        return _present_case(db, x, s, user)
 
 
 # ═══════════ 查询 / 对账 ═══════════
@@ -513,7 +588,7 @@ def get_case(case_id, user) -> dict:
         from app.models import DisciplineAppeal
         x, s = _load(db, case_id)
         _scope_or_403(db, x.student_id, user)
-        row = _row(x, s)
+        row = _present_case(db, x, s, user)
         appeal = db.scalars(select(DisciplineAppeal).where(
             DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.case_id == int(x.id),
             DisciplineAppeal.is_deleted.is_(False)
@@ -525,13 +600,83 @@ def get_case(case_id, user) -> dict:
         return row
 
 
-def list_cases(user, status=None, disc_type=None, page=1, page_size=20, student_id=None):
+def _pending_conditions(db, user, kind):
+    from sqlalchemy import case, false
+    from app.core.affairs_security import build_affairs_context
+    from app.models import DisciplineCase, DisciplineRemoveApply, WorkflowTask
+
+    actor_id = _uid_int(user)
+    if actor_id <= 0:
+        return [false()]
+    ctx = build_affairs_context(user, db)
+    from app.services.affairs_assignee_service import _NODE_ROLES, _active_user_ids_for_roles
+    role = str(user.get("currentRoleCode") or "").upper()
+    if actor_id not in _active_user_ids_for_roles(db, {role}):
+        return [false()]
+    remove_query = select(DisciplineRemoveApply).where(
+        DisciplineRemoveApply.tenant_id == _tid(),
+        DisciplineRemoveApply.case_id == DisciplineCase.id,
+        DisciplineRemoveApply.status.notin_(["APPROVED", "REJECTED"]),
+        DisciplineRemoveApply.is_deleted.is_(False),
+    ).order_by(DisciplineRemoveApply.id.desc()).limit(1).correlate(DisciplineCase)
+    remove_flow = remove_query.with_only_columns(DisciplineRemoveApply.workflow_instance_id).scalar_subquery()
+    remove_node = remove_query.with_only_columns(DisciplineRemoveApply.current_node).scalar_subquery()
+    is_remove = DisciplineCase.status == "REMOVE_REVIEW"
+    flow_id = case((is_remove, remove_flow), else_=DisciplineCase.workflow_instance_id)
+    node = case((is_remove, func.coalesce(func.nullif(remove_node, ""), REMOVE_NODES[0])),
+                else_=DisciplineCase.status)
+    owner = select(WorkflowTask.assignee_id).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == flow_id,
+        WorkflowTask.node_code == node, WorkflowTask.status == "PENDING",
+        WorkflowTask.is_deleted.is_(False),
+    ).order_by(WorkflowTask.id.desc()).limit(1).correlate(DisciplineCase).scalar_subquery()
+    statuses = ["COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "REMOVE_REVIEW"]
+    if kind == "DISCIPLINE_REMOVE":
+        statuses = ["REMOVE_REVIEW"]
+    elif kind == "DISCIPLINE_APPROVAL":
+        statuses.remove("REMOVE_REVIEW")
+    visible = [value for value in set(statuses + REMOVE_NODES) if _disc_node_visible(ctx, value)
+        and role in ({"COUNSELOR"} if value in {"COUNSELOR_REVIEW", "CLASS_REVIEW"} else _NODE_ROLES.get(value, set()))]
+    registrar_valid = or_(is_remove, and_(DisciplineCase.created_by > 0,
+        or_(~node.in_(("STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW")), DisciplineCase.created_by != actor_id)))
+    return [DisciplineCase.status.in_(statuses), node.in_(visible), owner == actor_id, registrar_valid]
+
+
+_CASE_ACTION_PERMISSIONS = {"SUBMIT": "discipline.create", "CANCEL": "discipline.create",
+    "APPROVE": "discipline.approve", "RETURN": "discipline.approve", "REJECT": "discipline.approve",
+    "REMOVE_APPROVE": "discipline.remove.approve", "REMOVE_REJECT": "discipline.remove.approve",
+    "DELIVER": "discipline.deliver", "REMOVE": "discipline.remove.create", "APPEAL": "discipline.appeal.create"}
+
+
+def _permitted_case_actions(user):
+    from app.core.permissions import permission_decisions
+    decisions = permission_decisions(user, ("studentAffairs." + code for code in set(_CASE_ACTION_PERMISSIONS.values())))
+    return {action for action, code in _CASE_ACTION_PERMISSIONS.items() if decisions["studentAffairs." + code]}
+
+
+def _present_case(db, row, student, user, *, review_allowed=None, permitted_actions=None):
+    from app.models import DisciplineCase
+    data = _row(row, student)
+    permitted_actions = _permitted_case_actions(user) if permitted_actions is None else permitted_actions
+    data["allowedActions"] = [action for action in data.get("allowedActions", []) if action in permitted_actions]
+    if row.status in ("COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW", "REMOVE_REVIEW"):
+        if review_allowed is None:
+            review_allowed = db.scalar(select(DisciplineCase.id).where(DisciplineCase.id == row.id,
+                DisciplineCase.tenant_id == _tid(), *_pending_conditions(db, user, "ALL"))) is not None
+        if not review_allowed:
+            data["allowedActions"] = []
+    return data
+
+
+def list_cases(user, status=None, disc_type=None, page=1, page_size=20, student_id=None, *, pending_kind=None):
     from app.models import DisciplineCase, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     from app.services.affairs_list_stats import status_counts_by_column
     with session() as db:
         allowed, _ = _allowed_class_ids(db, user)
         base_conds = [DisciplineCase.tenant_id == _tid(), DisciplineCase.is_deleted.is_(False)]
+        if pending_kind:
+            base_conds.extend(_pending_conditions(db, user, pending_kind))
         if disc_type:
             base_conds.append(DisciplineCase.disc_type == disc_type)
         if student_id:
@@ -557,12 +702,16 @@ def list_cases(user, status=None, disc_type=None, page=1, page_size=20, student_
         total = int(db.scalar(select(func.count()).select_from(DisciplineCase)
                               .join(StudentProfile, StudentProfile.id == DisciplineCase.student_id)
                               .where(*conds, *student_conds)) or 0)
-        rows = db.scalars(select(DisciplineCase)
+        can_review = and_(*_pending_conditions(db, user, "ALL"))
+        result = db.execute(select(DisciplineCase, can_review.label("can_review"))
                           .join(StudentProfile, StudentProfile.id == DisciplineCase.student_id)
                           .where(*conds, *student_conds).order_by(DisciplineCase.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
+        rows = [row for row, _ in result]
         students = _students_by_ids(db, rows)
-        return ([_row(x, students.get(int(x.student_id)) if x.student_id else None) for x in rows],
+        permitted_actions = _permitted_case_actions(user)
+        return ([_present_case(db, x, students.get(int(x.student_id)) if x.student_id else None,
+                    user, review_allowed=permitted, permitted_actions=permitted_actions) for x, permitted in result],
                 total, status_counts)
 
 
@@ -630,7 +779,7 @@ def deliver_case(case_id, body, user) -> dict:
         _audit(db, x.id, "DISCIPLINE_DELIVER", method)
         db.commit(); db.refresh(x)
         _drain_message_outbox()
-        return _row(x, s)
+        return _present_case(db, x, s, user)
 
 
 def _appeal_row(a, s=None) -> dict:
@@ -673,7 +822,48 @@ def submit_appeal(case_id, body, user, *, skip_scope_check: bool = False) -> dic
         return appeal_todo.sync_after_submit("DISCIPLINE_APPEAL_REVIEW", result_row, "appealId", "id")
 
 
-def list_appeals(user, status=None, page=1, page_size=50, case_id=None, appeal_id=None):
+def _appeal_review_predicate(db, user):
+    from app.core.affairs_security import require_school_scope
+    from app.core.permissions import has_permission
+    from app.models import DisciplineAppeal, DisciplineCase, UnifiedTodo, WorkflowTask
+    if not has_permission(user, "studentAffairs.discipline.appeal.review"):
+        return false()
+    try:
+        require_school_scope(db, user)
+        _check_review_membership(db, user, "SA_OFFICE_REVIEW")
+    except AppException:
+        return false()
+    uid = _uid_int(user)
+    def approved(node):
+        return select(WorkflowTask.id).where(
+            WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == DisciplineCase.workflow_instance_id,
+            WorkflowTask.node_code == node, WorkflowTask.status == "APPROVED", WorkflowTask.acted_at.is_not(None),
+            WorkflowTask.updated_by > 0, WorkflowTask.is_deleted.is_(False),
+        ).exists()
+    bad_actor = select(WorkflowTask.id).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == DisciplineCase.workflow_instance_id,
+        WorkflowTask.node_code.in_(("COLLEGE_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SCHOOL_REVIEW")),
+        WorkflowTask.acted_at.is_not(None), WorkflowTask.status.in_(("APPROVED", "REJECTED", "TRANSFERRED")),
+        WorkflowTask.is_deleted.is_(False),
+        or_(WorkflowTask.status != "TRANSFERRED", WorkflowTask.remark.is_(None), ~WorkflowTask.remark.like("TRANSFER_TO:%")),
+        or_(WorkflowTask.updated_by.is_(None), WorkflowTask.updated_by <= 0, WorkflowTask.updated_by == uid),
+    ).exists()
+    source = select(DisciplineCase.id).where(
+        DisciplineCase.tenant_id == _tid(), DisciplineCase.id == DisciplineAppeal.case_id,
+        DisciplineCase.is_deleted.is_(False), DisciplineCase.status == "EFFECTIVE",
+        approved("COLLEGE_REVIEW"), approved("STUDENT_AFFAIRS_REVIEW"),
+        or_(~DisciplineCase.disc_type.in_(_SEVERE), approved("SCHOOL_REVIEW")), ~bad_actor,
+    ).exists()
+    todo = select(UnifiedTodo.id).where(
+        UnifiedTodo.tenant_id == _tid(), UnifiedTodo.source_module == "student-affairs",
+        UnifiedTodo.source_biz_type == "DISCIPLINE_APPEAL", UnifiedTodo.source_biz_id == DisciplineAppeal.id,
+        UnifiedTodo.student_id == DisciplineAppeal.student_id, UnifiedTodo.todo_type == "DISCIPLINE_APPEAL_REVIEW",
+        UnifiedTodo.status == "PENDING", UnifiedTodo.assignee_id == uid, UnifiedTodo.is_deleted.is_(False),
+    ).exists()
+    return and_(DisciplineAppeal.status.in_(("SUBMITTED", "REVIEWING")), source, todo)
+
+
+def list_appeals(user, status=None, page=1, page_size=50, case_id=None, appeal_id=None, pending_only=False):
     from app.models import DisciplineAppeal, DisciplineCase, StudentProfile
     from app.services.affairs_dashboard_service import _allowed_class_ids
     with session() as db:
@@ -681,6 +871,11 @@ def list_appeals(user, status=None, page=1, page_size=50, case_id=None, appeal_i
         conds = [DisciplineAppeal.tenant_id == _tid(), DisciplineAppeal.is_deleted.is_(False)]
         if status:
             conds.append(DisciplineAppeal.status == status)
+        if allowed is not None:
+            conds.append(StudentProfile.class_id.in_(allowed or {-1}))
+        can_review = _appeal_review_predicate(db, user)
+        if pending_only:
+            conds.append(can_review)
         if case_id not in (None, ""):
             try:
                 conds.append(DisciplineAppeal.case_id == int(case_id))
@@ -691,18 +886,22 @@ def list_appeals(user, status=None, page=1, page_size=50, case_id=None, appeal_i
                 conds.append(DisciplineAppeal.id == int(appeal_id))
             except (TypeError, ValueError):
                 return [], 0
-        rows = db.scalars(select(DisciplineAppeal).where(*conds).order_by(
-            DisciplineAppeal.id.desc())).all()
+        relation = and_(StudentProfile.id == DisciplineAppeal.student_id,
+                        StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False))
+        total = int(db.scalar(select(func.count()).select_from(DisciplineAppeal).outerjoin(StudentProfile, relation).where(*conds)) or 0)
+        result = db.execute(select(DisciplineAppeal, can_review.label("can_review")).outerjoin(StudentProfile, relation)
+            .where(*conds).order_by(DisciplineAppeal.id.desc()).offset((max(1, page) - 1) * page_size).limit(page_size)).all()
+        rows = [row for row, _ in result]
         students = _students_by_ids(db, rows)
         out = []
-        for a in rows:
+        for a, permitted in result:
             s = students.get(int(a.student_id)) if a.student_id else None
-            if allowed is not None and (not s or s.class_id not in allowed):
-                continue
-            out.append(_appeal_row(a, s))
-        total = len(out)
-        start = (max(1, page) - 1) * page_size
-        return out[start:start + page_size], total
+            item = _appeal_row(a, s)
+            item["allowedActions"] = ["REVIEW"] if permitted else []
+            if not permitted and a.status in ("SUBMITTED", "REVIEWING"):
+                item["reviewBlockReason"] = "当前身份不是本单可办受理人，或历史审核证据尚待核验，请核对职责与交接。"
+            out.append(item)
+        return out, total
 
 
 def review_appeal(appeal_id, body, user) -> dict:

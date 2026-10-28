@@ -276,6 +276,33 @@ def revoke_delegation(user: dict, delegation_id: str, reason: str) -> dict:
     return hit
 
 
+def bound_delegation_patterns_to_context(user: dict, role_code: str, delegated) -> set[str]:
+    """学工临时能力只在对应职责下生效，旧通配不能绕过此边界。"""
+    from app.core.permissions import _match
+    current_role = str((user or {}).get("currentRoleCode") or "").upper()
+    if role_code and role_code == current_role:
+        return set(delegated)
+    from app.services.saas_role_templates import AFFAIRS_DELIVERY_ROLE_CODES
+    affairs_roles = AFFAIRS_DELIVERY_ROLE_CODES | {"STUDENT_AFFAIRS"}
+    if current_role in affairs_roles or role_code in affairs_roles:
+        return set()
+    bounded = set()
+    universe = None
+    for pattern in delegated:
+        if pattern.startswith(("studentAffairs.", "campusService.")):
+            continue
+        if pattern == "*" or pattern.startswith("*."):
+            if universe is None:
+                from app.services.system_role_shadow_service import active_tenant_permission_codes
+                universe = active_tenant_permission_codes()
+            bounded.update(code for code in universe
+                           if not code.startswith(("studentAffairs.", "campusService."))
+                           and _match(code, (pattern,)))
+        else:
+            bounded.add(pattern)
+    return bounded
+
+
 def active_delegation_permission_patterns(user: dict) -> set[str]:
     """对当前用户生效的临时授权权限模式（供 get_effective_permission_patterns 叠加）。"""
     login = str((user or {}).get("loginName") or (user or {}).get("userNo") or "").strip()
@@ -297,7 +324,8 @@ def active_delegation_permission_patterns(user: dict) -> set[str]:
         if item.get("expiresAt") and item["expiresAt"] < now:
             continue
         role_code = str(item.get("roleCode") or "").upper()
-        patterns.update(ROLE_PERMISSIONS.get(role_code) or set())
+        patterns.update(bound_delegation_patterns_to_context(
+            user, role_code, set(ROLE_PERMISSIONS.get(role_code) or set())))
     return patterns
 
 

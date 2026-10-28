@@ -47,6 +47,10 @@
           <div v-if="contextNotice" class="mp-form-err" style="margin: 0 var(--space-4) var(--space-3)">
             {{ contextNotice }}
           </div>
+          <div v-if="businessContext?.domainWorkspace" class="mp-card__body">
+            <p>此事项需在原业务页面核验学生范围、当前节点和审批回避。</p>
+            <AppButton @click="$router.push(businessContext.domainWorkspace)">打开原业务办理</AppButton>
+          </div>
         </section>
 
         <section class="mp-card">
@@ -226,7 +230,7 @@ export default {
       }
       return `退回后「${this.task.title}」仍保持流程运行，并给申请人生成修改重提待办。`
     },
-    canHandle() { return !!(this.task && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
+    canHandle() { return !!(this.task && !this.businessContext?.domainWorkspace && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
     activeAttachment() {
       return this.detail.attachments.find((item) => String(item.fileId) === String(this.activeAttachmentId)) || null
     },

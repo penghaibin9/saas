@@ -17,7 +17,9 @@ def _hdr(client, login_name):
 
 
 def test_counselor_eval_full_flow(client, db_mode):
-    hdr = _hdr(client, "school_admin01")
+    from test_affairs_eval_duty_boundary import actors
+    headers, _, _ = actors(client, db_mode)
+    hdr = headers["school"]
     # 建指标
     i1 = client.post(f"{BASE}/counselor-eval/indicators", headers=hdr,
                      json={"name": "师德师风", "weight": 30, "maxScore": 100}).json()
@@ -29,30 +31,30 @@ def test_counselor_eval_full_flow(client, db_mode):
     assert len(client.get(f"{BASE}/counselor-eval/indicators", headers=hdr).json()["data"]["items"]) >= 2
     # 录评分（总分=90+85=175）
     e = client.post(f"{BASE}/counselor-eval/evals", headers=hdr, json={
-        "periodCode": "2025-2026-1", "counselorKey": "teacher01", "counselorName": "李辅导员",
+        "periodCode": "2025-2026-1", "counselorKey": "eval_a", "counselorName": "李辅导员",
         "scores": {ind_id: 90, "x": 85}}).json()
     assert e["code"] == 0 and float(e["data"]["totalScore"]) == 175
     eid = e["data"]["evalId"]
     # upsert 覆盖（同周期同人唯一）
     e2 = client.post(f"{BASE}/counselor-eval/evals", headers=hdr, json={
-        "periodCode": "2025-2026-1", "counselorKey": "teacher01", "scores": {ind_id: 95}}).json()
+        "periodCode": "2025-2026-1", "counselorKey": "eval_a", "scores": {ind_id: 95}, "version": e["data"]["version"]}).json()
     assert e2["data"]["evalId"] == eid and float(e2["data"]["totalScore"]) == 95
     # 发布
     p = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/publish", headers=hdr).json()
     assert p["code"] == 0 and p["data"]["status"] == "PUBLISHED"
     # 发布后不可改
     assert client.post(f"{BASE}/counselor-eval/evals", headers=hdr, json={
-        "periodCode": "2025-2026-1", "counselorKey": "teacher01", "scores": {ind_id: 100}}).json()["code"] != 0
+        "periodCode": "2025-2026-1", "counselorKey": "eval_a", "scores": {ind_id: 100}}).json()["code"] != 0
     # 申诉
-    a = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal", headers=hdr,
+    a = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal", headers=headers["a"],
                     json={"reason": "对师德指标评分有异议申请复核"}).json()
     assert a["code"] == 0 and a["data"]["appealStatus"] == "SUBMITTED"
     # 复核调整分数
-    r = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr, json={
+    r = post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=headers["reviewer"], json={
         "result": "ADJUSTED", "opinion": "经复核上调师德得分", "scores": {ind_id: 98}}).json()
     assert r["code"] == 0 and r["data"]["appealStatus"] == "REVIEWED" and float(r["data"]["totalScore"]) == 98
     # 无待复核申诉再复核 → 冲突
-    assert post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=hdr,
+    assert post_versioned(client, f"{BASE}/counselor-eval/evals/{eid}/appeal-review", headers=headers["reviewer"],
                        json={"result": "UPHELD", "opinion": "重复复核测试意见"}).json()["code"] != 0
 
 

@@ -100,9 +100,16 @@ def _secure_timeline(db, *, biz_type: str, biz_id: int, created_at=None) -> list
         })
     for row in rows:
         label = _SAFE_ACTION_LABELS.get(row.action, "办理状态已更新")
+        operator = row.operator or "系统"
+        if row.action == "COUNSELOR_HANDOVER":
+            from app.models import User
+            actor_id = operator.removeprefix("db-")
+            actor = db.get(User, int(actor_id)) if actor_id.isdigit() else None
+            operator = actor.real_name if actor and actor.tenant_id == _tid() else "交接经办人"
+            label = "辅导员交接"
         items.append({
             "eventId": str(row.id), "action": row.action, "actionLabel": label,
-            "operator": row.operator or "系统", "role": row.role_name or "",
+            "operator": operator, "role": row.role_name or "",
             "occurredAt": _iso(row.occurred_at), "description": label,
             "fromStatus": _safe_status_token(row.before_val),
             "toStatus": _safe_status_token(row.after_val), "attachments": [],

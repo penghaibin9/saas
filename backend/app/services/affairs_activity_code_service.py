@@ -38,19 +38,8 @@ def _uid_int(user) -> int | None:
 def _require_activity_manager(db, activity, user) -> None:
     if not has_permission(user, "studentAffairs.activity.publish"):
         raise no_permission("当前身份无权生成活动签到码")
-    from app.services.affairs_activity_reliability_service import (
-        _activity_matches, _teacher_scope_tokens,
-    )
-    tenant_all, class_tokens, college_tokens = _teacher_scope_tokens(db, user)
-    if tenant_all:
-        return
-    uid = _uid_int(user)
-    if uid and activity.publisher_id and int(activity.publisher_id) == uid:
-        return
-    scope_type = str(activity.scope_type or "SCHOOL").upper()
-    if scope_type in ("CLASS", "COLLEGE") and _activity_matches(activity, class_tokens, college_tokens):
-        return
-    raise AppException("NO_DATA_SCOPE", "该活动不在你的管理范围内")
+    from app.services.affairs_activity_authority_guard import _require_manage_scope
+    _require_manage_scope(db, activity, user)
 
 
 def issue_activity_token(activity_id: int, user: dict) -> dict:

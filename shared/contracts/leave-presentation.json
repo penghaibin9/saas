@@ -33,6 +33,7 @@
     "CANCELLED": "已取消"
   },
   "actions": {
+    "COUNSELOR_HANDOVER": "辅导员交接",
     "CREATED": "申请创建",
     "APPLY": "提交请假",
     "SUBMIT": "提交请假",

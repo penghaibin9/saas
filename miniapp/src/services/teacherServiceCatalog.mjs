@@ -55,6 +55,7 @@ export const TEACHER_SERVICE_ROUTES = {
         care: '/pages/teacher/affairs/talk/index',
         urge: '/pages/teacher/notify-publish/index',
         affairsLeave: '/pages/teacher/affairs-leave/index',
+        counselorEval: '/pages/teacher/affairs/counselor-eval/index',
         dormReview: '/pages/teacher/dorm-review/index',
         classCadre: '/pages/teacher/class-cadre/index',
         classMaterial: '/pages/teacher/class-material/index',
@@ -91,7 +92,7 @@ export const INTERNSHIP_PERMISSIONS = {
 }
 
 const groups = [
-  ['班级管理', ['myClasses', 'myStudents', 'classCadre', 'classMaterial']],
+  ['班级管理', ['myClasses', 'myStudents', 'classCadre', 'classMaterial', 'counselorEval']],
   ['日常事务', ['affairsLeave', 'dormReview', 'talk', 'mental', 'contact', 'record', 'care', 'affairs', 'campus-service']],
   ['家校沟通', ['familyContact']],
   ['教学事务', ['academicTask', 'scheduleChange', 'progress']],

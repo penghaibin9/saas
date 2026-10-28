@@ -39,6 +39,7 @@ def _audit(db, biz_type, biz_id, action, detail=""):
     n, r, uid = _op()
     db.add(AffairsAuditTrail(tenant_id=_tid(), biz_type=biz_type, biz_id=int(biz_id) if biz_id else None,
                              action=action, operator=n or uid, role_name=r, detail=detail,
+                             created_by=int(uid.removeprefix("db-")) if uid.removeprefix("db-").isdigit() else None,
                              occurred_at=datetime.utcnow()))
 
 

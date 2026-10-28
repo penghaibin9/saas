@@ -116,12 +116,14 @@ ROLE_DEFAULT_SCOPE: dict[str, tuple[str, str]] = {
     "ACADEMIC_ADMIN": ("SCHOOL", "全校教务域"),
     "ACADEMIC_TEACHER": ("ASSIGNED", "本人教学任务"),
     "STUDENT_AFFAIRS_ADMIN": ("SCHOOL", "全校学工域"),
+    "STUDENT_AFFAIRS_COLLEGE": ("COLLEGE", "明确授权学院的学工业务"),
     "STUDENT_AFFAIRS": ("COLLEGE", "授权学工范围"),
     "COUNSELOR": ("COUNSELOR_CLASSES", "本人所带班级学生"),
     "PSYCHOLOGY_TEACHER": ("PSY_STUDENT", "专项授权心理关注学生"),
-    "FUNDING_TEACHER": ("FUNDING_BIZ", "资助业务学生"),
+    "FUNDING_TEACHER": ("SCHOOL_OR_COLLEGE", "明确授权学校或学院的资助业务学生"),
     "DORM_MANAGER": ("DORM_BUILDING", "负责楼栋学生"),
-    "YOUTH_LEAGUE": ("SCHOOL", "授权团学范围"),
+    "YOUTH_LEAGUE": ("SCHOOL_OR_COLLEGE", "明确授权学校或学院的团学业务"),
+    "ORG_PERSONNEL": ("SCHOOL_OR_COLLEGE", "明确授权学校或学院的辅导员考评"),
     "GD_MENTOR": ("GD_STUDENTS", "本人指导毕设学生"),
     "INTERN_MENTOR": ("INTERN_STUDENTS", "本人指导实习学生"),
     "EMPLOYMENT_TEACHER": ("ASSIGNED", "授权就业业务范围"),
@@ -159,6 +161,8 @@ def _public_context(role_id: int | None, role_code: str, role_name: str,
                     scope: str | None = None, scope_label: str | None = None,
                     version: int = 0, legacy: bool = False) -> dict:
     default_scope, default_label = _scope_for(role_code)
+    if role_code == "FUNDING_TEACHER" and scope == "FUNDING_BIZ":
+        scope = "SCHOOL_OR_COLLEGE"
     return {
         "contextId": f"legacy:{role_code}" if legacy else f"role:{role_id}",
         "contextType": role_code,
@@ -329,22 +333,24 @@ def _inject_org_scope_claims(db, user, claims: dict) -> None:
     role = (claims.get("currentRoleCode") or "").strip().upper()
     # 新授权链：直接读取与当前 user-role 绑定的稳定范围主键。
     # 先沿五级树补齐祖先 ID，供各业务域统一做范围判断；没有新范围时再回落历史表。
-    from app.models import Major, RoleAssignmentScope, SchoolClass, StudentProfile
-    now = datetime.now()
-    assigned = db.scalars(select(RoleAssignmentScope).where(
-        RoleAssignmentScope.tenant_id == user.tenant_id,
-        RoleAssignmentScope.user_id == user.id,
-        RoleAssignmentScope.role_code == role,
-        RoleAssignmentScope.status == "ACTIVE",
-        RoleAssignmentScope.is_deleted.is_(False),
-        RoleAssignmentScope.effective_at <= now,
-        (RoleAssignmentScope.expires_at.is_(None) | (RoleAssignmentScope.expires_at > now)),
-    )).all()
-    if assigned:
-        college_ids = {int(row.scope_id) for row in assigned if row.scope_type == "COLLEGE"}
-        major_ids = {int(row.scope_id) for row in assigned if row.scope_type == "MAJOR"}
-        class_ids = {int(row.scope_id) for row in assigned if row.scope_type == "CLASS"}
-        student_ids = {int(row.scope_id) for row in assigned if row.scope_type == "STUDENT"}
+    from app.models import Major, SchoolClass, StudentProfile
+    from app.services.role_assignment_scope_service import active_assignment_scopes
+    assigned = active_assignment_scopes(
+        db, tenant_id=user.tenant_id, user_id=user.id, role_code=role,
+        context_id=str(claims.get("activeContextId") or ""),
+    )
+    if assigned or role == "COUNSELOR":
+        if role == "COUNSELOR":
+            from app.core.affairs_security import build_affairs_context
+            context = build_affairs_context({**claims, "userId": f"db-{user.id}",
+                "loginName": user.login_name, "tenantId": str(user.tenant_id)}, db, trusted_tenant_id=int(user.tenant_id))
+            class_ids = set(context.allowed_class_ids(db) or ())
+            college_ids, major_ids, student_ids = set(), set(), set()
+        else:
+            college_ids = {int(row.scope_id) for row in assigned if row.scope_type == "COLLEGE"}
+            major_ids = {int(row.scope_id) for row in assigned if row.scope_type == "MAJOR"}
+            class_ids = {int(row.scope_id) for row in assigned if row.scope_type == "CLASS"}
+            student_ids = {int(row.scope_id) for row in assigned if row.scope_type == "STUDENT"}
         if major_ids:
             college_ids |= {int(value) for value in db.scalars(select(Major.college_id).where(
                 Major.tenant_id == user.tenant_id, Major.id.in_(major_ids))).all() if value}
@@ -378,23 +384,16 @@ def _inject_org_scope_claims(db, user, claims: dict) -> None:
 
     if role not in {"GD_COLLEGE_ADMIN", "COLLEGE_ADMIN", "GD_MAJOR_ADMIN"}:
         return
-    from app.models import College, Major, TeacherStudentScope
+    from app.models import College, Major
+    from app.services.role_assignment_scope_service import legacy_assignment_scopes, resolve_legacy_scope_ids
 
     keys = {k for k in (
         claims.get("loginName") or "",
         user.login_name or "",
-        user.real_name or "",
         f"db-{user.id}",
         str(user.id),
     ) if k}
-    rows = db.scalars(select(TeacherStudentScope).where(
-        TeacherStudentScope.tenant_id == user.tenant_id,
-        TeacherStudentScope.is_deleted.is_(False),
-        TeacherStudentScope.status == "ACTIVE",
-        (TeacherStudentScope.teacher_key.in_(list(keys))) |
-        (TeacherStudentScope.teacher_name.in_(list(keys))),
-    )).all()
-    rows = [r for r in rows if not r.role_code or (r.role_code or "").upper() == role]
+    rows = legacy_assignment_scopes(db, tenant_id=user.tenant_id, role_code=role, identity_keys=keys, user_id=user.id)
 
     college_names, major_names = set(), set()
     for r in rows:
@@ -411,7 +410,7 @@ def _inject_org_scope_claims(db, user, claims: dict) -> None:
     if college_names:
         cols = db.scalars(select(College).where(
             College.tenant_id == user.tenant_id,
-            College.college_name.in_(list(college_names)),
+            College.id.in_(resolve_legacy_scope_ids(db, tenant_id=user.tenant_id, scope_type="COLLEGE", values=college_names)),
             College.is_deleted.is_(False),
         )).all()
         college_ids = [str(c.id) for c in cols]
@@ -419,7 +418,7 @@ def _inject_org_scope_claims(db, user, claims: dict) -> None:
     if major_names:
         majors = db.scalars(select(Major).where(
             Major.tenant_id == user.tenant_id,
-            Major.major_name.in_(list(major_names)),
+            Major.id.in_(resolve_legacy_scope_ids(db, tenant_id=user.tenant_id, scope_type="MAJOR", values=major_names)),
             Major.is_deleted.is_(False),
         )).all()
         major_ids = [str(m.id) for m in majors]

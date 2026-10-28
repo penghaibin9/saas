@@ -48,15 +48,19 @@ def test_mental_statistics_permission_cannot_open_individual_detail():
     ) == ("studentAffairs.stats.view",)
     assert contract._teacher_permissions(
         "/api/v1/mobile/teacher/mental/123", "GET"
-    ) == ("studentAffairs.risk.psyDetail.view",)
+    ) == ("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view")
 
 
-def test_mental_detail_role_and_student_scope_live_in_formal_service():
+def test_mental_detail_role_and_student_scope_live_in_formal_service(monkeypatch):
     from app.services.affairs_mental_service import _can_view_detail
+    from app.core import permissions
+    monkeypatch.setattr(permissions, "get_base_permission_patterns", lambda user: user.get("granted", set()))
 
-    # 辅导员只有逐生授权命中时可见；学工处管理员默认不在原始明细角色内。
-    assert _can_view_detail({"currentRoleCode": "COUNSELOR"}, 1, {1}) is True
-    assert _can_view_detail({"currentRoleCode": "COUNSELOR"}, 2, {1}) is False
+    # 岗位名称不自动授原文；必须同时有独立明文能力与精确学生范围。
+    assert _can_view_detail({"currentRoleCode": "COUNSELOR"}, 1, {1}) is False
+    authorized = {"currentRoleCode": "COUNSELOR", "granted": {"studentAffairs.risk.psyDetail.view"}}
+    assert _can_view_detail(authorized, 1, {1}) is True
+    assert _can_view_detail(authorized, 2, {1}) is False
     assert _can_view_detail({"currentRoleCode": "STUDENT_AFFAIRS_ADMIN"}, 1, None) is False
 
 

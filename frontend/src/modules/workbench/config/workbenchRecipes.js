@@ -163,7 +163,7 @@ export const RECIPES = {
       statsCue('academicWarning', '学业预警在办', 'warning', '/admin/academic-affairs/warnings'),
       statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students')
     ],
-    typeCues: SA_TYPE_CUES,
+    typeCues: [...SA_TYPE_CUES.filter(cue => cue.key !== 'DISCIPLINE_APPROVAL'), typeCue('DISCIPLINE_REMOVE', '处分解除初审', 'warning')],
     quickLinks: [
       { label: '我的班级', to: '/admin/campus-service/classes' },
       { label: '谈心谈话', to: '/admin/student-affairs/talk' },
@@ -233,15 +233,35 @@ export const RECIPES = {
     label: '学工管理工作台',
     headline: pendingHeadline('全校学工今日无待处置事项'),
     summaryCues: SUMMARY_CUES,
-    statsCues: SCHOOL_STATS,
-    typeCues: SA_TYPE_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL), statsCue('studentTotal', '在册学生', 'primary', '/admin/student/list'), statsCue('orientationPending', '迎新待报到', 'primary', '/admin/orientation/students?status=PENDING')],
+    typeCues: SA_TYPE_CUES.filter(cue => cue.key !== 'FUNDING_APPROVAL'),
     quickLinks: [
       { label: '风险台账', to: '/admin/student-affairs/risk' },
       { label: '违纪处分', to: '/admin/student-affairs/discipline' },
       { label: '困难认定', to: '/admin/student-affairs/aid' },
-      { label: '资助评审', to: '/admin/student-affairs/funding' },
       { label: '学工总览', to: '/admin/student-affairs' }
     ]
+  },
+
+  STUDENT_AFFAIRS_COLLEGE: {
+    template: 'T5', label: '学院学工工作台',
+    headline: pendingHeadline('授权学院今日无待处置事项'), summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL), statsCue('studentTotal', '授权范围内学生', 'primary', '/admin/student/list')],
+    typeCues: SA_TYPE_CUES.filter(cue => cue.key !== 'FUNDING_APPROVAL'),
+    quickLinks: [
+      { label: '学生与班级', to: '/admin/campus-service/classes' },
+      { label: '请假审核', to: '/admin/student-affairs/leave' },
+      { label: '困难认定', to: '/admin/student-affairs/aid' },
+      { label: '风险台账', to: '/admin/student-affairs/risk' }
+    ]
+  },
+
+  STUDENT_AFFAIRS: {
+    template: 'T5', label: '原学工身份工作台',
+    headline: pendingHeadline('当前授权范围内暂无待办'), summaryCues: SUMMARY_CUES,
+    statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
+    typeCues: SA_TYPE_CUES,
+    quickLinks: [{ label: '学工事项', to: '/admin/student-affairs' }, { label: '全部待办', to: TODO_ALL }]
   },
 
   // ── T6a 心理老师 ──
@@ -525,14 +545,13 @@ export const RECIPES = {
   // ── T12e 组织人事：辅导员考评 ──
   ORG_PERSONNEL: {
     template: 'T12',
-    label: '组织人事工作台',
+    label: '辅导员考评工作台',
     headline: pendingHeadline('今日无考评待办，可去组织辅导员考评'),
     summaryCues: SUMMARY_CUES,
     statsCues: [statsCue('pendingApproval', '待我审批', 'primary', TODO_ALL)],
     typeCues: [],
     quickLinks: [
       { label: '辅导员考评', to: '/admin/student-affairs/counselor-eval' },
-      { label: '学工总览', to: '/admin/student-affairs' },
       { label: '全部待办', to: TODO_ALL }
     ]
   },
@@ -551,7 +570,6 @@ export const RECIPES = {
 
 /** 同模板多角色别名（不复制页面，只复用配方对象） */
 const RECIPE_ALIASES = {
-  STUDENT_AFFAIRS: 'STUDENT_AFFAIRS_ADMIN',
   GD_COLLEGE_ADMIN: 'GRADUATION_ADMIN',
   GD_MAJOR_ADMIN: 'GRADUATION_ADMIN'
 }
@@ -574,7 +592,7 @@ export const TEMPLATE_ROLE_COVERAGE = {
   T2: ['ACADEMIC_ADMIN'],
   T3: ['COLLEGE_ADMIN'],
   T4: ['COUNSELOR'],
-  T5: ['STUDENT_AFFAIRS_ADMIN', 'STUDENT_AFFAIRS'],
+  T5: ['STUDENT_AFFAIRS_ADMIN', 'STUDENT_AFFAIRS_COLLEGE', 'STUDENT_AFFAIRS'],
   T6: ['PSYCHOLOGY_TEACHER', 'FUNDING_TEACHER', 'YOUTH_LEAGUE', 'DORM_MANAGER'],
   T7: ['GD_MENTOR'],
   T8: ['GRADUATION_ADMIN', 'GD_COLLEGE_ADMIN', 'GD_MAJOR_ADMIN'],

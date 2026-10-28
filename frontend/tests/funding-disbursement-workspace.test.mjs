@@ -41,10 +41,19 @@ test('an older valid batch beyond the first 200 remains selectable without fallb
 })
 test('generation and export submit the batch reviewed in their own dialogs', async () => {
   const generated = [], exported = [], vm = make({ generateDisbursements: async id => { generated.push(id); return { code: 0, data: { generated: 1 } } } }, { create: async body => { exported.push(body); return { code: 0, data: { jobId: 'j2' } } } })
+  vm.batches = [{ batchId: '1', projectId: '9', canGenerateDisbursements: true }]
   vm.genBatchId = '1'; vm.openGenerate(); vm.openExport(); vm.genBatchId = '2'; vm.activeStatus = 'FAILED'
   vm.loadRecords = async () => {}; vm.loadStats = async () => {}; vm.startExportPolling = () => {}
   vm.exportDlg.purpose = '学工财务核对归档'; await vm.generate(); await vm.createExport()
   assert.deepEqual(generated, ['1']); assert.equal(exported[0].batchId, '1'); assert.equal(exported[0].bankStatus, undefined)
+})
+
+test('a batch without server school-level generation authority cannot open the generation dialog', () => {
+  const vm = make()
+  vm.batches = [{ batchId: '1', projectId: '9', canGenerateDisbursements: false }]
+  vm.genBatchId = '1'
+  vm.openGenerate()
+  assert.equal(vm.genDlg.visible, false)
 })
 test('failed issue keeps inspected version and input while rapid clicks submit once', async () => {
   let resolve; const calls = [], vm = make({ issueDisbursement: (id, body) => { calls.push([id, body]); return new Promise(r => { resolve = r }) } })

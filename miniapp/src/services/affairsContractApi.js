@@ -6,6 +6,12 @@ import { presentLeave } from './leavePresentation'
  * 所有状态变更必须显式携带页面当前 version；禁止服务层替调用方查询最新版本。
  */
 export const affairsContractApi = {
+  getCounselorEvals: (params = {}) => realRequest('/student-affairs/counselor-eval/evals', { data: params }),
+  getEvalIndicators: () => realRequest('/student-affairs/counselor-eval/indicators'),
+  saveCounselorEval: data => realRequest('/student-affairs/counselor-eval/evals', { method: 'POST', data }),
+  publishCounselorEval: (id, version) => realRequest(`/student-affairs/counselor-eval/evals/${id}/publish`, { method: 'POST', data: { version } }),
+  appealCounselorEval: (id, reason, version) => realRequest(`/student-affairs/counselor-eval/evals/${id}/appeal`, { method: 'POST', data: { reason, version } }),
+  reviewCounselorEval: (id, data) => realRequest(`/student-affairs/counselor-eval/evals/${id}/appeal-review`, { method: 'POST', data }),
   getLeaveDetail: async (id) => presentLeave(await realRequest(`/mobile/affairs/leave/${encodeURIComponent(id)}/detail`)),
   getStudentCandidates: (purpose = 'TALK', q = '', page = 1, pageSize = 20) =>
     realRequest(`/mobile/teacher/affairs/student-candidates?purpose=${encodeURIComponent(purpose)}&q=${encodeURIComponent(q)}&page=${page}&pageSize=${pageSize}`),

@@ -79,7 +79,7 @@
             <div><dt>学号</dt><dd>{{ selected.studentNo || '—' }}</dd></div>
             <div><dt>文号</dt><dd>{{ selected.docNo || '—' }}</dd></div>
             <div><dt>生效时间</dt><dd><AppDateDisplay :value="selected.effectiveAt" mode="datetime" empty-text="—" /></dd></div>
-            <div><dt>解除时间</dt><dd><AppDateDisplay :value="selected.removedAt" mode="datetime" empty-text="—" /></dd></div>
+            <div><dt>{{ selected.status === 'REVOKED' ? '撤销时间' : '解除时间' }}</dt><dd><AppDateDisplay :value="selected.removedAt" mode="datetime" empty-text="—" /></dd></div>
             <div class="dp-kv--full"><dt>违纪情况</dt><dd>{{ selected.reason || '—' }}</dd></div>
           </dl>
 
@@ -89,10 +89,10 @@
           </section>
 
           <details class="dp-tech">
-            <summary>技术与审计信息</summary>
+            <summary>实施人员使用：技术与审计信息</summary>
             <dl>
-              <div><dt>案件 ID</dt><dd>{{ selected.caseId || '—' }}</dd></div>
-              <div><dt>学生 ID</dt><dd>{{ selected.studentId || '—' }}</dd></div>
+              <div><dt>案件内部编号</dt><dd>{{ selected.caseId || '—' }}</dd></div>
+              <div><dt>学生内部编号</dt><dd>{{ selected.studentId || '—' }}</dd></div>
               <div><dt>处分记录编号</dt><dd>{{ selected.csDisciplineId || '—' }}</dd></div>
               <div><dt>当前版本</dt><dd>{{ selected.version ?? '—' }}</dd></div>
             </dl>
@@ -112,7 +112,7 @@
               {{ a.label }}
             </AppPermissionButton>
           </div>
-          <p v-else class="dp-terminal">该处分已处于终态（{{ selected.statusLabel }}），仅可查看。</p>
+          <p v-else class="dp-terminal">当前身份暂无可办理操作，仅可查看当前进度和历史记录。</p>
         </template>
       </div>
     </div>
@@ -270,37 +270,41 @@ export default {
       if (!row || row.status !== 'EFFECTIVE') return null
       const appeal = row.appealSummary
       if (!row.deliveredAt) return { key: 'DELIVERY_REQUIRED', label: '待送达', title: '处分已生效，下一步应先登记决定送达', description: '送达是后续申诉处理的前置业务动作；解除仍保留，但不应抢占当前主动作。', actionLabel: '登记送达', permission: 'studentAffairs.discipline.deliver', tone: 'warning' }
-      if (appeal && ['SUBMITTED', 'REVIEWING'].includes(appeal.status)) return { key: 'APPEAL_OPEN', label: appeal.statusLabel || '申诉中', title: '该处分正在申诉复核', description: '优先进入申诉复核处理当前 appeal；解除保留为次级动作。', actionLabel: '处理申诉', permission: 'studentAffairs.discipline.appeal.review', tone: 'warning' }
+      if (appeal && ['SUBMITTED', 'REVIEWING'].includes(appeal.status)) return { key: 'APPEAL_OPEN', label: appeal.statusLabel || '申诉中', title: '该处分正在申诉复核', description: '请查看本案申诉进度，由当前受理人在列表中继续办理。', actionLabel: '查看申诉进度', permission: 'studentAffairs.discipline.view', tone: 'warning' }
       if (appeal) return { key: 'APPEAL_CLOSED', label: appeal.statusLabel || '申诉已结案', title: '处分申诉已有正式复核结论', description: '可查看复核结论；若处分仍保持生效，解除流程可恢复为较高优先级。', actionLabel: '查看复核结论', permission: 'studentAffairs.discipline.view', tone: 'success' }
       return { key: 'DELIVERED_NO_APPEAL', label: '已送达', title: '决定已送达，当前可进入送达与申诉工作区', description: '如学生提出申诉，应在同一案件上下文登记并复核；解除继续作为次级动作。', actionLabel: '进入送达与申诉', permission: 'studentAffairs.discipline.view', tone: 'success' }
     },
     detailActions() {
       const s = this.selected && this.selected.status
       if (!s) return []
+      const allowed = new Set(Array.isArray(this.selected.allowedActions) ? this.selected.allowedActions : [])
+      const permitted = actions => actions.filter(action => allowed.has(action.action))
       if (['REGISTERED', 'RETURNED'].includes(s)) {
-        return [
-          { key: 'submit', label: '提交初审', tone: 'primary', code: 'studentAffairs.discipline.create' },
-          { key: 'cancel', label: '撤销登记', tone: 'default', code: 'studentAffairs.discipline.create' }
-        ]
+        return permitted([
+          { key: 'submit', action: 'SUBMIT', label: '提交初审', tone: 'primary', code: 'studentAffairs.discipline.create' },
+          { key: 'cancel', action: 'CANCEL', label: '撤销登记', tone: 'default', code: 'studentAffairs.discipline.create' }
+        ])
       }
       if (REVIEW_NODES.includes(s)) {
-        return [
-          { key: 'approve', label: '审批通过', tone: 'primary', code: 'studentAffairs.discipline.approve' },
-          { key: 'return', label: '退回重登', tone: 'default', code: 'studentAffairs.discipline.approve' },
-          { key: 'reject', label: '驳回', tone: 'danger', code: 'studentAffairs.discipline.approve' }
-        ]
+        return permitted([
+          { key: 'approve', action: 'APPROVE', label: '审批通过', tone: 'primary', code: 'studentAffairs.discipline.approve' },
+          { key: 'return', action: 'RETURN', label: '退回重登', tone: 'default', code: 'studentAffairs.discipline.approve' },
+          { key: 'reject', action: 'REJECT', label: '驳回', tone: 'danger', code: 'studentAffairs.discipline.approve' }
+        ])
       }
       if (s === 'EFFECTIVE') {
         const effect = this.postEffectState
         const next = { key: 'postEffect', label: effect.actionLabel, tone: effect.key === 'APPEAL_CLOSED' ? 'default' : 'primary', code: effect.permission }
-        const remove = { key: 'remove', label: '发起解除', tone: effect.key === 'APPEAL_CLOSED' ? 'primary' : 'default', code: 'studentAffairs.discipline.remove.create' }
-        return effect.key === 'APPEAL_CLOSED' ? [remove, next] : [next, remove]
+        if (effect.key === 'DELIVERY_REQUIRED' && !allowed.has('DELIVER')) { next.label = '查看送达进度'; next.code = 'studentAffairs.discipline.view' }
+        const remove = { key: 'remove', action: 'REMOVE', label: '发起解除', tone: effect.key === 'APPEAL_CLOSED' ? 'primary' : 'default', code: 'studentAffairs.discipline.remove.create' }
+        const ordered = effect.key === 'APPEAL_CLOSED' ? [remove, next] : [next, remove]
+        return ordered.filter(action => action.key === 'postEffect' || allowed.has(action.action))
       }
       if (s === 'REMOVE_REVIEW') {
-        return [
-          { key: 'removeApprove', label: '解除通过', tone: 'primary', code: 'studentAffairs.discipline.remove.approve' },
-          { key: 'removeReject', label: '解除驳回', tone: 'danger', code: 'studentAffairs.discipline.remove.approve' }
-        ]
+        return permitted([
+          { key: 'removeApprove', action: 'REMOVE_APPROVE', label: '解除通过', tone: 'primary', code: 'studentAffairs.discipline.remove.approve' },
+          { key: 'removeReject', action: 'REMOVE_REJECT', label: '解除驳回', tone: 'danger', code: 'studentAffairs.discipline.remove.approve' }
+        ])
       }
       return []
     },

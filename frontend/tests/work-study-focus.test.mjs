@@ -5,11 +5,27 @@ function mount(api, id = '') {
   const source = fs.readFileSync(new URL('../src/modules/studentAffairs/views/funding/WorkStudyView.vue', import.meta.url), 'utf8')
   const imports = []
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/import\s+\{([^}]+)\}\s+from\s+['"][^'"]+['"]/g, (_, names) => { imports.push(...names.split(',').map(x=>x.trim())); return '' }).replace(/import\s+(\w+)\s+from\s+['"][^'"]+['"]/g, (_, name) => { imports.push(name); return '' }).replace('export default', 'return')
-  const c = new Function(...imports, script)(...imports.map(n=>n==='studentAffairsApi'?api:{}))
+  const c = new Function(...imports, script)(...imports.map(n=>n==='studentAffairsApi'?api:n==='toast'?{success(){},error(){}}:{}))
   const vm = {...c.data(), $route:{query:{recordId:id}}, ...c.methods}
   for (const [k,v] of Object.entries(c.computed)) Object.defineProperty(vm,k,{get:()=>v.call(vm)})
   return vm
 }
+
+test('the confirmation event preserves the actual rejection reason', async () => {
+  let sent
+  const vm = mount({ actWorkStudy: async (...args) => { sent = args; return { code: 1, message: '测试未保存' } } })
+  vm.openAction({ recordId: '1', version: 3 }, 'REJECT')
+  await vm.submitAction({ reason: '学生可工作时段与岗位排班不符', notify: false })
+  assert.equal(sent[2], '学生可工作时段与岗位排班不符')
+  assert.equal(sent[3], 3)
+})
+
+test('masked subsidy bands remain readable without being converted to invalid money', () => {
+  const vm = mount({})
+  assert.equal(vm.money('2000以下'), '2000以下')
+  assert.equal(vm.money('5000以上'), '5000以上')
+  assert.equal(vm.money('640.00'), '¥640.00')
+})
 test('deep link queries the exact string ID without the default pending filter',async()=>{
   let query
   const vm=mount({getWorkStudyRecords:async q=>{query=q;return {code:0,data:{items:[{recordId:q.recordId,status:'CONFIRMED'}],total:1}}}},'9007199254740993')

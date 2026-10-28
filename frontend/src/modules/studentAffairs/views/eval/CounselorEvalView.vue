@@ -16,7 +16,7 @@
         <AppButton variant="secondary" type="submit">查询</AppButton>
         <div class="ce-toolbar__actions">
           <AppButton variant="ghost" @click="indicatorVisible = true">考评指标</AppButton>
-          <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" variant="primary" @click="openScore()">录入评分</AppPermissionButton>
+          <AppPermissionButton :allowed="capabilities.canScore" code="studentAffairs.counselorEval.manage" variant="primary" @click="openScore()">录入评分</AppPermissionButton>
         </div>
       </form>
       <p v-if="!indicators.length" class="ce-notice">尚未配置考评指标，请先配置指标再录入评分。</p>
@@ -36,9 +36,11 @@
           </template>
           <template #cell-actions="{ row }">
             <div class="ce-ops">
-              <AppPermissionButton v-if="row.status === 'DRAFT'" :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" size="sm" variant="ghost" @click="openScore(row)">修改评分</AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" v-if="row.status === 'DRAFT'" code="studentAffairs.counselorEval.manage" size="sm" :loading="acting===row.evalId" @click="publishDlg = { visible: true, row }">发布</AppPermissionButton>
-              <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" v-if="row.appealStatus === 'SUBMITTED'" code="studentAffairs.counselorEval.manage" size="sm" variant="secondary" :loading="acting===row.evalId" @click="reviewAppeal(row)">申诉复核</AppPermissionButton>
+              <AppButton v-if="allows(row, 'SCORE')" size="sm" variant="ghost" @click="openScore(row)">修改评分</AppButton>
+              <AppButton v-if="allows(row, 'PUBLISH')" size="sm" :loading="acting===row.evalId" @click="publishDlg = { visible: true, row }">发布</AppButton>
+              <AppButton v-if="allows(row, 'REVIEW')" size="sm" variant="secondary" :loading="acting===row.evalId" @click="reviewAppeal(row)">申诉复核</AppButton>
+              <AppButton v-if="allows(row, 'APPEAL')" size="sm" variant="ghost" @click="selfAppeal = { visible: true, row }">本人申诉</AppButton>
+              <span v-if="row.reviewBlockReason" class="ce-muted">{{ row.reviewBlockReason }}</span>
             </div>
           </template>
         </DataTable>
@@ -55,7 +57,7 @@
       <form class="ce-indicator-form" @submit.prevent="addIndicator">
         <AppFormItem label="指标名称" required><AppTextInput v-model="indForm.name" :disabled="acting === 'ind'" placeholder="如：学生日常管理" /></AppFormItem>
         <AppFormItem label="权重（%）"><AppNumberInput v-model="indForm.weight" :min="0" :disabled="acting === 'ind'" placeholder="选填" /></AppFormItem>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.counselorEval.manage')" code="studentAffairs.counselorEval.manage" variant="primary" :loading="acting === 'ind'" @click="addIndicator">新增指标</AppPermissionButton>
+        <AppPermissionButton :allowed="capabilities.canManageIndicators" code="studentAffairs.counselorEval.manage" variant="primary" :loading="acting === 'ind'" @click="addIndicator">新增指标</AppPermissionButton>
       </form>
       <AppInlineAlert v-if="indError" type="danger" :description="indError" />
       <template #footer><AppButton variant="ghost" @click="indicatorVisible = false">关闭</AppButton></template>
@@ -87,6 +89,7 @@
       <p v-if="publishDlg.row">{{ publishDlg.row.periodCode }} · {{ publishDlg.row.counselorName || publishDlg.row.counselorKey }}</p>
       <p>发布后不能直接修改评分，请确认分值无误。</p>
     </AppConfirmDialog>
+    <AppConfirmDialog v-model:visible="selfAppeal.visible" title="本人考评申诉" require-reason reason-label="申诉原因（至少5字）" confirm-text="提交申诉" :submitting="Boolean(acting)" @confirm="submitSelfAppeal" />
 
     <AppConfirmDialog
       v-model:visible="appealDlg.visible" title="复核考评申诉" type="primary"
@@ -137,6 +140,7 @@ export default {
       indicatorVisible: false, scoreVisible: false, editing: false, scoreError: '', indError: '', loadRequest: 0,
       scoreDrafts: {}, scoreKey: 'new',
       publishDlg: { visible: false, row: null },
+      selfAppeal: { visible: false, row: null }, capabilities: {},
       filters: { periodCode: '', status: '' }, pagination: { page: 1, pageSize: 20, total: 0 },
       statusOptions: [{ value: '', label: '全部状态' }, { value: 'DRAFT', label: '待发布' }, { value: 'PUBLISHED', label: '已发布' }],
       evalColumns: EVAL_COLUMNS,
@@ -157,6 +161,15 @@ export default {
   },
   mounted() { this.load() },
   methods: {
+    allows(row, action) { return (row.allowedActions || []).includes(action) },
+    async submitSelfAppeal({ reason }) {
+      if (this.acting || !this.selfAppeal.row) return
+      this.acting = this.selfAppeal.row.evalId
+      const res = await studentAffairsApi.appealCounselorEval(this.selfAppeal.row.evalId, reason, this.selfAppeal.row.version)
+      this.acting = ''
+      if (res.code !== 0) { toast.error(res.message || '申诉提交失败'); return }
+      this.selfAppeal.visible = false; toast.success('申诉已提交'); this.load()
+    },
     canBtn(code) { return canCode(this.ctx, code) },
     search() { this.pagination.page = 1; this.load() },
     changePage(next) { this.pagination.page = next.page; this.pagination.pageSize = next.pageSize; this.load() },
@@ -165,7 +178,7 @@ export default {
       this.scoreDrafts[this.scoreKey] = { ...this.scoreForm, scores: { ...this.scoreForm.scores } }
       this.scoreKey = row ? String(row.evalId) : 'new'
       const draft = this.scoreDrafts[this.scoreKey] || (row
-        ? { periodCode: row.periodCode, counselorKey: row.counselorKey, counselorName: row.counselorName, scores: row.scores, remark: row.remark }
+        ? { periodCode: row.periodCode, counselorKey: row.counselorKey, counselorName: row.counselorName, scores: row.scores, remark: row.remark, version: row.version }
         : { periodCode: this.filters.periodCode, counselorKey: '', counselorName: '', scores: {} })
       this.scoreForm = { ...draft, scores: { ...draft.scores } }
       this.editing = Boolean(row)
@@ -182,7 +195,7 @@ export default {
       if (requestId !== this.loadRequest) return
       if (ind.code === 0 && ind.data) this.indicators = ind.data.items || []
       else this.errorMessage = ind.message || '加载失败'
-      if (ev.code === 0 && ev.data) { this.evals = ev.data.items || []; this.pagination.total = ev.data.total || 0 }
+      if (ev.code === 0 && ev.data) { this.evals = ev.data.items || []; this.pagination.total = ev.data.total || 0; this.capabilities = ev.data.capabilities || {} }
       else { this.evals = []; this.errorMessage = ev.message || '考评记录加载失败' }
       this.loading = false
     },
@@ -206,7 +219,7 @@ export default {
       const scores = {}
       Object.keys(f.scores).forEach((k) => { if (f.scores[k] != null && f.scores[k] !== '') scores[k] = Number(f.scores[k]) })
       this.acting = 'save'
-      const res = await studentAffairsApi.upsertCounselorEval({ periodCode, counselorKey, counselorName: (f.counselorName || '').trim() || undefined, scores, remark: f.remark })
+      const res = await studentAffairsApi.upsertCounselorEval({ periodCode, counselorKey, counselorName: (f.counselorName || '').trim() || undefined, scores, remark: f.remark, version: f.version })
       this.acting = ''
       if (res.code === 0) {
         toast.success('评分已保存，可在记录中核对并发布')

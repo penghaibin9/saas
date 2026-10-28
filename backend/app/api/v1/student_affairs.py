@@ -192,26 +192,30 @@ def counselor_vacancies(user=Depends(require_permission("studentAffairs.class.vi
 
 
 @router.post("/counselor-assignments/scan-expired", summary="临时代班到期扫描（定时/手动，幂等）")
-def counselor_scan_expired(user=Depends(require_permission("studentAffairs.class.create"))):
+def counselor_scan_expired(user=Depends(require_permission("studentAffairs.class.counselor.manage"))):
+    from app.core.affairs_security import require_school_scope
+    from app.services.db_service import session
+    with session() as db:
+        require_school_scope(db, user)
     return success(counselor_svc.scan_expired_temps())
 
 
 @router.post("/counselor-assignments", summary="分配主辅导员/协同辅导员/临时代班")
 def counselor_assignment_create(body: CounselorAssignmentCreate,
-                                user=Depends(require_permission("studentAffairs.class.create"))):
+                                user=Depends(require_permission("studentAffairs.class.counselor.manage"))):
     return success(counselor_svc.assign(user, body.classId, body.userId, body.dutyType,
                                         body.effectiveFrom, body.effectiveTo, body.reason or ""), message="已分配")
 
 
 @router.post("/counselor-assignments/{assignmentId}/end", summary="结束辅导员责任关系")
 def counselor_assignment_end(body: CounselorAssignmentEnd, assignmentId: int = Path(...),
-                             user=Depends(require_permission("studentAffairs.class.create"))):
+                             user=Depends(require_permission("studentAffairs.class.counselor.manage"))):
     return success(counselor_svc.end_assignment(user, assignmentId, body.reason, body.version), message="已结束")
 
 
 @router.post("/classes/{classId}/counselor-handover", summary="辅导员调岗/离职交接")
 def counselor_handover(body: CounselorHandover, classId: int = Path(...),
-                       user=Depends(require_permission("studentAffairs.class.create"))):
+                       user=Depends(require_permission("studentAffairs.class.counselor.manage"))):
     return success(counselor_svc.handover(user, classId, body.fromUserId, body.toUserId,
                                           body.reason, body.version), message="已交接")
 
@@ -582,7 +586,7 @@ def aid_difficult_students(level: Optional[str] = None, page: int = Query(1, ge=
 
 
 @router.get("/aid/stats", summary="困难认定统计（按状态/等级聚合，仅聚合口径）")
-def aid_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+def aid_stats(user=Depends(require_permission("studentAffairs.aid.view"))):
     return success(aid_svc.aid_stats(user))
 
 
@@ -811,14 +815,14 @@ def funding_appeal_review(body: FundingAppealReviewBody, appealId: int = Path(..
 
 
 @router.get("/funding/stats", summary="资助综合统计（奖助/勤工/贷款/减免及发放对账）")
-def funding_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+def funding_stats(user=Depends(require_permission("studentAffairs.funding.view"))):
     return success(funding_svc.funding_stats(user))
 
 
 @router.get("/funding/stats/drill", summary="资助统计脱敏下钻名单")
 def funding_stats_drill(metric: str = Query(..., min_length=1),
                         page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
-                        user=Depends(require_permission("studentAffairs.stats.view"))):
+                        user=Depends(require_permission("studentAffairs.funding.view"))):
     items, total, meta = funding_svc.funding_stats_drill(user, metric, page, pageSize)
     return success({**paginate(items, total, page, pageSize), **meta})
 
@@ -840,7 +844,7 @@ def funding_disbursements(batchId: Optional[int] = None, bankStatus: Optional[st
 
 @router.post("/funding/batches/{batchId}/disbursements/generate", summary="按批次生成发放台账（GRANTED→PENDING，幂等）")
 def funding_disbursement_generate(batchId: int = Path(...),
-                                  user=Depends(require_permission("studentAffairs.funding.disburse.manage"))):
+                                  user=Depends(require_permission("studentAffairs.funding.project.manage"))):
     return success(funding_svc.generate_disbursements(batchId, user), message="已生成")
 
 
@@ -859,7 +863,7 @@ def funding_disbursement_fail(body: ReasonBody, disbursementId: int = Path(...),
 
 @router.get("/funding/disbursements/stats", summary="发放概览（按状态计数，授权角色见已发放金额合计）")
 def funding_disbursement_stats(batchId: Optional[int] = Query(None, ge=1),
-                               user=Depends(require_permission("studentAffairs.stats.view"))):
+                               user=Depends(require_permission("studentAffairs.funding.view"))):
     return success(funding_svc.disbursement_stats(user, batch_id=batchId))
 
 
@@ -1123,7 +1127,7 @@ def discipline_reconcile(user=Depends(require_permission("studentAffairs.discipl
 
 
 @router.get("/discipline/stats", summary="违纪处分统计（按类型/状态聚合 + 投影对账）")
-def discipline_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+def discipline_stats(user=Depends(require_permission("studentAffairs.discipline.view"))):
     return success(disc_svc.discipline_stats(user))
 
 
@@ -1366,20 +1370,20 @@ class PsyCloseBody(BaseModel):
 
 @router.get("/mental/list", summary="心理关注名单（PSY_STUDENT 数据范围，列表仅摘要）")
 def mental_list(level: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+                user=Depends(require_any_permission("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view"))):
     items, total = mental_svc.list_attention(user, level=level, page=page, page_size=pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/mental/referrals/{refId}", summary="转介详情（心理明细须原因+SENSITIVE_VIEW）")
 def mental_referral(refId: int = Path(...), reason: Optional[str] = None,
-                    user=Depends(require_permission("studentAffairs.risk.psyDetail.view"))):
+                    user=Depends(require_any_permission("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view"))):
     return success(mental_svc.get_referral(user, refId, reason))
 
 
 @router.get("/mental/students/{studentId}/summary", summary="心理预警摘要（仅需关注标记，无明细）")
 def mental_summary(studentId: int = Path(...),
-                   user=Depends(require_permission("studentAffairs.risk.view"))):
+                   user=Depends(require_any_permission("studentAffairs.risk.view", "studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view"))):
     return success(mental_svc.student_summary(user, studentId))
 
 
@@ -1408,7 +1412,7 @@ def mental_close(body: PsyCloseBody, refId: int = Path(...),
 
 
 @router.get("/mental/stats", summary="心理统计（仅聚合，禁个体明细）")
-def mental_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+def mental_stats(user=Depends(require_any_permission("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view"))):
     return success(mental_svc.stats(user))
 
 
@@ -2289,14 +2293,14 @@ def activity_archive(body: ActivityVersionBody, activityId: int = Path(...),
 
 @router.get("/second-class/ledger", summary="二课积分台账（数据范围过滤）")
 def second_class_ledger(creditType: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
-                        user=Depends(require_permission("studentAffairs.stats.view"))):
+                        user=Depends(require_permission("studentAffairs.activity.view"))):
     items, total = activity_svc.credit_ledger(user, creditType, page, pageSize)
     return success(paginate(items, total, page, pageSize))
 
 
 @router.get("/second-class/students/{studentId}/report", summary="个人第二课堂成绩单")
 def second_class_report(studentId: int = Path(...),
-                        user=Depends(require_permission("studentAffairs.stats.view"))):
+                        user=Depends(require_permission("studentAffairs.activity.view"))):
     return success(activity_svc.student_report(studentId, user))
 
 
@@ -2312,7 +2316,7 @@ def second_class_category_create(body: CategoryBody,
 
 
 @router.get("/activity-stats", summary="活动与第二课堂统计（仅聚合）")
-def activity_stats(user=Depends(require_permission("studentAffairs.stats.view"))):
+def activity_stats(user=Depends(require_permission("studentAffairs.activity.view"))):
     return success(activity_svc.activity_stats(user))
 
 
@@ -2368,10 +2372,12 @@ class EvalUpsertBody(BaseModel):
     counselorName: Optional[str] = None
     scores: Optional[dict] = Field(default_factory=dict)
     remark: Optional[str] = None
+    version: Optional[int] = None
 
 
 class EvalAppealBody(BaseModel):
     reason: str = Field(..., min_length=5)
+    version: int = Field(..., description="页面当前版本")
 
 
 class EvalAppealReviewBody(BaseModel):
@@ -2397,7 +2403,7 @@ def ce_indicator_create(body: EvalIndicatorBody,
 def ce_evals(periodCode: Optional[str] = None, status: Optional[str] = None, page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
              user=Depends(require_permission("studentAffairs.counselorEval.view"))):
     items, total = ce_svc.list_evals(user, periodCode, status, page, pageSize)
-    return success(paginate(items, total, page, pageSize))
+    return success({**paginate(items, total, page, pageSize), "capabilities": ce_svc.capabilities(user)})
 
 
 @router.post("/counselor-eval/evals", summary="录/改考评评分（发布前）")

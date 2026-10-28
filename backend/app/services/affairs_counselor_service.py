@@ -5,6 +5,7 @@ TEMP 到期写路径结束；交接/主责变更迁移班级学生相关待办�
 """
 
 from app.core.optimistic_lock import atomic_claim_version
+from app.core.timeutil import utc_now_naive
 
 from datetime import datetime
 
@@ -20,7 +21,7 @@ _STATUSES = {"ACTIVE", "ENDED"}
 
 def _actor_id(user) -> int | None:
     try:
-        return int((user or {}).get("userId") or 0) or None
+        return int(str((user or {}).get("userId") or "0").removeprefix("db-")) or None
     except (TypeError, ValueError):
         return None
 
@@ -39,10 +40,20 @@ def _dt(value):
 
 
 def _active_user(db, user_id):
-    from app.models import User
+    from app.models import Role, User, UserRole
     u = db.get(User, int(user_id))
     if not u or u.tenant_id != _tid() or u.is_deleted or u.status != "ACTIVE":
         raise AppException("VALIDATION_ERROR", "辅导员不存在、已离职或不在当前租户")
+    from app.services.role_assignment_scope_service import active_role_membership_query
+    member = db.scalar(active_role_membership_query(_tid()).where(
+        Role.role_code == "COUNSELOR", UserRole.user_id == int(user_id),
+    ).limit(1))
+    if not member:
+        raise AppException("VALIDATION_ERROR", "接任人员没有当前有效的辅导员任职，请先核验任职和有效期")
+    from app.core.permissions import has_permission
+    if not has_permission({"userId": f"db-{u.id}", "tenantId": str(_tid()),
+            "currentRoleCode": "COUNSELOR", "activeContextId": f"role:{member.role_id}"}, "studentAffairs.student.view"):
+        raise AppException("VALIDATION_ERROR", "接任人员没有辅导员学生查看能力，请先核验授权")
     return u
 
 
@@ -90,9 +101,17 @@ def _sync_primary_scope(db, class_row, old_counselor_id, new_counselor_id) -> st
     teacher_key=登录名、role_code=COUNSELOR、scope_type=CLASS、ref_value=班级名。
     撤旧兼容 teacher_key=登录名或 userId；新辅导员不存在时不写 scope。
     """
-    from app.models import TeacherStudentScope, User
+    from app.models import RoleAssignmentScope, TeacherStudentScope, User
     notes = []
     if old_counselor_id:
+        for scope in db.scalars(select(RoleAssignmentScope).where(
+            RoleAssignmentScope.tenant_id == _tid(), RoleAssignmentScope.user_id == int(old_counselor_id),
+            RoleAssignmentScope.role_code == "COUNSELOR", RoleAssignmentScope.scope_type == "CLASS",
+            RoleAssignmentScope.scope_id == class_row.id, RoleAssignmentScope.status == "ACTIVE",
+            RoleAssignmentScope.is_deleted.is_(False),
+        )).all():
+            scope.status = "REVOKED"
+            scope.version = int(scope.version or 0) + 1
         old_u = db.get(User, int(old_counselor_id))
         old_keys = [str(old_counselor_id)] + ([old_u.login_name] if old_u and old_u.login_name else [])
         for row in db.scalars(select(TeacherStudentScope).where(
@@ -137,23 +156,108 @@ def _class_student_ids(db, class_id) -> set[int]:
         StudentProfile.is_deleted.is_(False))).all())
 
 
+def _counselor_pending_sources(db, student_ids):
+    """只取真实源单当前辅导员节点，不按兼岗账号或待办标题推断职责。"""
+    from app.models import AidApply, CsLeave, DisciplineRemoveApply, DormTransfer, FundingApplication, WorkflowInstance, WorkflowTask
+    expected, origins, records = {}, {}, {}
+    for model, biz_type, todo_type, status_attr in (
+        (CsLeave, "LEAVE", "LEAVE_APPROVAL", "affairs_status"),
+        (AidApply, "AID", "AID_APPROVAL", "status"),
+        (FundingApplication, "FUNDING", "FUNDING_APPROVAL", "status"),
+        (DisciplineRemoveApply, "DISCIPLINE", "DISCIPLINE_REMOVE", "current_node"),
+    ):
+        for row in db.scalars(select(model).where(
+            model.tenant_id == _tid(), model.student_id.in_(student_ids), model.is_deleted.is_(False),
+            getattr(model, status_attr).in_(("CLASS_REVIEW", "COUNSELOR_REVIEW")),
+        ).with_for_update()).all():
+            if row.workflow_instance_id:
+                expected[(int(row.workflow_instance_id), getattr(row, status_attr))] = (
+                    biz_type, int(row.case_id if model is DisciplineRemoveApply else row.id), todo_type)
+                origins[int(row.workflow_instance_id)] = ("DISCIPLINE_REMOVE" if model is DisciplineRemoveApply else biz_type, int(row.id))
+                records[expected[(int(row.workflow_instance_id), getattr(row, status_attr))]] = row
+    sources, tasks, seen = set(), [], set()
+    for task, flow in db.execute(select(WorkflowTask, WorkflowInstance).join(
+        WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id.in_({key[0] for key in expected} or {-1}),
+        WorkflowTask.status == "PENDING", WorkflowTask.is_deleted.is_(False),
+        WorkflowInstance.tenant_id == _tid(), WorkflowInstance.is_deleted.is_(False),
+        WorkflowInstance.status == "RUNNING", WorkflowInstance.source_module == "student-affairs",
+        WorkflowInstance.current_node == WorkflowTask.node_code,
+    ).order_by(WorkflowTask.id.desc()).with_for_update()).all():
+        key = (int(task.instance_id), task.node_code)
+        if key in seen:
+            continue
+        seen.add(key)
+        if key in expected and origins.get(int(flow.id)) == (str(flow.source_biz_type or "").upper(), int(flow.source_biz_id)):
+            tasks.append(task)
+    for row in db.scalars(select(CsLeave).where(
+        CsLeave.tenant_id == _tid(), CsLeave.student_id.in_(student_ids), CsLeave.is_deleted.is_(False),
+        CsLeave.affairs_status.in_(("WAIT_CANCEL_LEAVE", "EXTENSION_REVIEW", "OVERDUE")),
+    ).with_for_update()).all():
+        kind = {"WAIT_CANCEL_LEAVE": "LEAVE_CANCEL", "EXTENSION_REVIEW": "LEAVE_EXTENSION", "OVERDUE": "LEAVE_OVERDUE"}[row.affairs_status]
+        sources.add(("LEAVE", int(row.id), kind))
+        records[("LEAVE", int(row.id), kind)] = row
+    for row in db.scalars(select(DormTransfer).where(
+        DormTransfer.tenant_id == _tid(), DormTransfer.student_id.in_(student_ids),
+        DormTransfer.is_deleted.is_(False), DormTransfer.status == "COUNSELOR_REVIEW",
+        DormTransfer.current_node == "COUNSELOR_REVIEW",
+    ).with_for_update()).all():
+        sources.add(("DORM_TRANSFER", int(row.id), "DORM_TRANSFER"))
+        records[("DORM_TRANSFER", int(row.id), "DORM_TRANSFER")] = row
+    return expected, sources, tasks, records
+
+
 def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> dict:
     """将班级学生相关 PENDING 待办/审批任务/风险责任人从原辅导迁到新辅导。"""
     from app.models import AffairsRiskRecord, UnifiedTodo, WorkflowTask
 
     from_uid, to_uid = int(from_user_id), int(to_user_id)
     if from_uid == to_uid:
-        return {"todos": 0, "workflowTasks": 0, "risks": 0}
+        return {"todos": 0, "workflowTasks": 0, "risks": 0, "retained": 0}
     student_ids = _class_student_ids(db, class_id)
     if not student_ids:
-        return {"todos": 0, "workflowTasks": 0, "risks": 0}
+        return {"todos": 0, "workflowTasks": 0, "risks": 0, "retained": 0}
+
+    expected, sources, tasks, records = _counselor_pending_sources(db, student_ids)
+    tasks = [task for task in tasks if int(task.assignee_id or 0) == from_uid]
+    sources.update(expected[(int(task.instance_id), task.node_code)] for task in tasks)
+    risks = db.scalars(select(AffairsRiskRecord).where(
+        AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.owner_id == from_uid,
+        AffairsRiskRecord.student_id.in_(student_ids), AffairsRiskRecord.status != "CLOSED",
+        AffairsRiskRecord.is_deleted.is_(False),
+    ).with_for_update()).all()
+    sources.update(("RISK", int(risk.id), "RISK_HANDLE") for risk in risks)
 
     moved_todos = 0
-    todos = db.scalars(select(UnifiedTodo).where(
+    candidates = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.assignee_id == from_uid,
+        UnifiedTodo.source_module == "student-affairs",
         UnifiedTodo.status == "PENDING", UnifiedTodo.is_deleted.is_(False),
-        UnifiedTodo.student_id.in_(student_ids))).all()
-    source_biz_ids = {int(todo.source_biz_id) for todo in todos if todo.source_biz_id}
+        UnifiedTodo.student_id.in_(student_ids)).with_for_update()).all()
+    todos = [todo for todo in candidates if (str(todo.source_biz_type or "").upper(),
+             int(todo.source_biz_id or 0), todo.todo_type) in sources]
+    from app.core.permissions import has_permission
+    from app.models import Role, UserRole
+    from app.services.role_assignment_scope_service import active_role_membership_query
+    member = db.scalar(active_role_membership_query(_tid()).where(
+        Role.role_code == "COUNSELOR", UserRole.user_id == to_uid).limit(1))
+    target = {"userId": f"db-{to_uid}", "tenantId": str(_tid()), "currentRoleCode": "COUNSELOR",
+              "activeContextId": f"role:{member.role_id}"} if member else {}
+    permissions = {
+        "LEAVE_APPROVAL": ("studentAffairs.leave.approve",),
+        "AID_APPROVAL": ("studentAffairs.aid.approve", "studentAffairs.aid.counselorReview"),
+        "FUNDING_APPROVAL": ("studentAffairs.funding.approve",),
+        "DISCIPLINE_REMOVE": ("studentAffairs.discipline.remove.approve",),
+        "DORM_TRANSFER": ("studentAffairs.dorm.transfer.approve",),
+        "LEAVE_CANCEL": ("studentAffairs.leave.cancelLeaveConfirm",),
+        "LEAVE_EXTENSION": ("studentAffairs.leave.extension.approve",),
+        "LEAVE_OVERDUE": ("studentAffairs.leave.overdue.handle",),
+        "RISK_HANDLE": ("studentAffairs.risk.handle",),
+    }
+    required_types = {todo.todo_type for todo in todos} | {expected[(int(t.instance_id), t.node_code)][2] for t in tasks}
+    if not member or any(not any(has_permission(target, code) for code in permissions[kind]) for kind in required_types):
+        raise AppException("NO_PERMISSION", "接任人员缺少当前辅导员办理能力，交接未执行，请先核验授权")
+    source_biz_ids = {int(todo.source_biz_id) for todo in todos if todo.source_biz_id} | {int(r.id) for r in risks}
     target_rows = db.scalars(select(UnifiedTodo).where(
         UnifiedTodo.tenant_id == _tid(), UnifiedTodo.assignee_id == to_uid,
         UnifiedTodo.source_biz_id.in_(source_biz_ids) if source_biz_ids else UnifiedTodo.source_biz_id == -1,
@@ -167,7 +271,7 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
         clash = target_map.get((todo.source_module, int(todo.source_biz_id or 0), todo.todo_type))
         if clash:
             if clash.status != "PENDING":
-                clash.status = "PENDING"
+                raise AppException("DATA_CONFLICT", "接任者有同一事项的已办历史，交接未执行，请先核验；原记录已保留")
             clash.title = todo.title
             clash.version = int(clash.version or 0) + 1
             todo.status = "CANCELLED"
@@ -179,53 +283,42 @@ def _migrate_class_work(db, class_id, from_user_id, to_user_id, reason: str) -> 
             todo.version = int(todo.version or 0) + 1
         moved_todos += 1
 
-    moved_tasks = 0
-    from app.models import WorkflowInstance
-    # 以学工 UnifiedTodo 的学生归属作为跨域权威映射，覆盖请假、奖助、处分、宿舍等。
-    source_pairs = {
-        (str(biz_type or "").upper(), str(biz_id or ""))
-        for biz_type, biz_id in db.execute(
-            select(UnifiedTodo.source_biz_type, UnifiedTodo.source_biz_id).where(
-                UnifiedTodo.tenant_id == _tid(),
-                UnifiedTodo.source_module == "student-affairs",
-                UnifiedTodo.student_id.in_(student_ids),
-                UnifiedTodo.is_deleted.is_(False),
-            )
-        ).all()
-    }
-    if source_pairs:
-        task_rows = db.execute(
-            select(WorkflowTask, WorkflowInstance)
-            .join(WorkflowInstance, WorkflowInstance.id == WorkflowTask.instance_id)
-            .where(
-                WorkflowTask.tenant_id == _tid(),
-                WorkflowTask.assignee_id == from_uid,
-                WorkflowTask.status == "PENDING",
-                WorkflowTask.is_deleted.is_(False),
-                WorkflowInstance.tenant_id == _tid(),
-                func.replace(WorkflowInstance.source_module, "_", "-") == "student-affairs",
-                WorkflowInstance.is_deleted.is_(False),
-            )
-        ).all()
-        for task, inst in task_rows:
-            key = (str(inst.source_biz_type or "").upper(), str(inst.source_biz_id or ""))
-            if key not in source_pairs:
-                continue
-            task.assignee_id = to_uid
-            task.version = int(task.version or 0) + 1
-            moved_tasks += 1
+    for task in tasks:
+        task.assignee_id = to_uid
+        task.version = int(task.version or 0) + 1
+        _audit(db, "WORKFLOW_TASK", task.id, "COUNSELOR_HANDOVER",
+               f"instance={task.instance_id},node={task.node_code},from={from_uid},to={to_uid},reason={reason}")
+    changed = {(str(t.source_biz_type or "").upper(), int(t.source_biz_id), t.todo_type) for t in todos}
+    changed.update(expected[(int(t.instance_id), t.node_code)] for t in tasks)
+    for row in {id(records[key]): records[key] for key in changed if key in records}.values():
+        row.version = int(row.version or 0) + 1
+    for biz_type, biz_id, _kind in changed:
+        if biz_type != "RISK":
+            _audit(db, biz_type, biz_id, "COUNSELOR_HANDOVER", f"from={from_uid},to={to_uid},reason={reason}")
+    from app.models import DisciplineCase, DisciplineRemoveApply
+    for row in (records[key] for key in changed if key in records and isinstance(records[key], DisciplineRemoveApply)):
+        case = db.get(DisciplineCase, int(row.case_id))
+        if case and case.tenant_id == _tid():
+            case.version = int(case.version or 0) + 1
 
     moved_risks = 0
-    for risk in db.scalars(select(AffairsRiskRecord).where(
-            AffairsRiskRecord.tenant_id == _tid(), AffairsRiskRecord.owner_id == from_uid,
-            AffairsRiskRecord.student_id.in_(student_ids),
-            AffairsRiskRecord.status.notin_(["CLOSED"]),
-            AffairsRiskRecord.is_deleted.is_(False))).all():
+    migrated_risk_ids = {int(todo.source_biz_id) for todo in todos if todo.todo_type == "RISK_HANDLE"}
+    for risk in risks:
+        if not has_permission(target, "studentAffairs.risk.handle"):
+            raise AppException("NO_PERMISSION", "接任人员缺少风险跟进能力，交接未执行，请先核验授权")
         risk.owner_id = to_uid
         risk.version = int(risk.version or 0) + 1
+        if int(risk.id) not in migrated_risk_ids:
+            clash = target_map.get(("student-affairs", int(risk.id), "RISK_HANDLE"))
+            if clash and clash.status != "PENDING":
+                raise AppException("DATA_CONFLICT", "接任者有该风险的已办历史，交接未执行，请先核验")
+            from app.services.affairs_risk_service import _todo_upsert
+            _todo_upsert(db, risk.id, to_uid, risk.student_id, f"风险交接待跟进：{risk.title or '学生风险'}")
+        _audit(db, "RISK", risk.id, "COUNSELOR_HANDOVER", f"from={from_uid},to={to_uid},reason={reason}")
         moved_risks += 1
 
-    return {"todos": moved_todos, "workflowTasks": moved_tasks, "risks": moved_risks}
+    return {"todos": moved_todos, "workflowTasks": len(tasks), "risks": moved_risks,
+            "retained": len(candidates) - len(todos)}
 
 
 def _expire_due_temps(db, *, now: datetime | None = None, actor_id: int | None = None) -> int:
@@ -386,7 +479,8 @@ def assign(user, class_id, user_id, duty_type, effective_from=None, effective_to
     duty_type = (duty_type or "").upper()
     if duty_type not in _DUTY_TYPES:
         raise AppException("VALIDATION_ERROR", "责任类型仅支持 PRIMARY、CO、TEMP")
-    start, end = _dt(effective_from) or datetime.utcnow(), _dt(effective_to)
+    # 现有数据库按秒存任期；避免微秒被进位为未来一秒，导致刚交接却暂无范围。
+    start, end = _dt(effective_from) or utc_now_naive().replace(microsecond=0), _dt(effective_to)
     if duty_type == "TEMP" and not end:
         raise AppException("VALIDATION_ERROR", "临时代班必须填写有效截止时间")
     if end and end < start:
@@ -396,7 +490,7 @@ def assign(user, class_id, user_id, duty_type, effective_from=None, effective_to
         c = _class_in_scope_or_403(db, class_id, user)
         _active_user(db, user_id)
         actor = _actor_id(user)
-        migrated = {"todos": 0, "workflowTasks": 0, "risks": 0}
+        migrated = {"todos": 0, "workflowTasks": 0, "risks": 0, "retained": 0}
         scope_note = ""
         if duty_type == "PRIMARY":
             old_counselor_id = c.counselor_id
@@ -432,7 +526,9 @@ def assign(user, class_id, user_id, duty_type, effective_from=None, effective_to
             detail += f";migrate={migrated}"
         _audit(db, "COUNSELOR_ASSIGN", x.id, "ASSIGN", detail)
         db.commit(); db.refresh(x)
-        return _row(db, x)
+        result = _row(db, x)
+        result["handoverWork"] = migrated
+        return result
 
 
 def handover(user, class_id, from_user_id, to_user_id, reason, version):
@@ -467,7 +563,7 @@ def handover(user, class_id, from_user_id, to_user_id, reason, version):
             AffairsCounselorAssignment.is_deleted.is_(False))).all():
             _end(db, x, "主辅导员交接", actor)
         x = AffairsCounselorAssignment(tenant_id=_tid(), class_id=c.id, user_id=int(to_user_id),
-            duty_type="PRIMARY", status="ACTIVE", effective_from=datetime.utcnow(), reason=reason.strip(),
+            duty_type="PRIMARY", status="ACTIVE", effective_from=utc_now_naive().replace(microsecond=0), reason=reason.strip(),
             handover_from_user_id=int(from_user_id), created_by=actor, updated_by=actor)
         c.counselor_id, c.updated_by = int(to_user_id), actor
         db.add(x); db.flush()
@@ -477,7 +573,12 @@ def handover(user, class_id, from_user_id, to_user_id, reason, version):
                f"class={c.id},from={from_user_id},to={to_user_id},reason={reason.strip()};"
                f"{scope_note};migrate={migrated}")
         db.commit(); db.refresh(x)
-        return _row(db, x)
+        result = _row(db, x)
+        result["handoverWork"] = migrated
+        result["handoverNotice"] = (
+            f"主责交接已完成；另有{migrated['retained']}项其他职责或尚未核实的待办保留原受理人，请核验交接清单。"
+            if migrated["retained"] else "辅导员主责和可核验的班级待办已交接，历史审批与附件保留。")
+        return result
 
 
 def end_assignment(user, assignment_id, reason, version):

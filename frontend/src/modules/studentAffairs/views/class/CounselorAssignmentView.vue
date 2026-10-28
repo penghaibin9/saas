@@ -16,7 +16,7 @@
             <option value="">全部状态</option><option value="ACTIVE">有效</option><option value="ENDED">已结束</option>
           </select>
         </div>
-        <AppPermissionButton :allowed="canBtn('studentAffairs.class.create')" code="studentAffairs.class.create" type="button" @click="openAssign">分配责任</AppPermissionButton>
+        <AppPermissionButton :allowed="canBtn('studentAffairs.class.counselor.manage')" code="studentAffairs.class.counselor.manage" type="button" @click="openAssign">分配责任</AppPermissionButton>
       </div>
 
       <p v-if="notice" class="responsibility-success">{{ notice }}</p>
@@ -33,9 +33,9 @@
         <template #cell-status="{ row }"><AppStatusTag :status="row.status" /></template>
         <template #cell-actions="{ row }">
           <div class="responsibility-actions">
-            <AppPermissionButton v-if="tab === 'vacancies'" :allowed="canBtn('studentAffairs.class.create')" code="studentAffairs.class.create" size="sm" variant="primary" @click="openAssign(row)">立即分配</AppPermissionButton>
-            <button v-if="tab === 'assignments' && row.status === 'ACTIVE' && row.dutyType === 'PRIMARY'" type="button" class="mp-link" @click="openHandover(row)">交接</button>
-            <button v-if="tab === 'assignments' && row.status === 'ACTIVE'" type="button" class="mp-link danger" @click="openEnd(row)">结束</button>
+            <AppPermissionButton v-if="tab === 'vacancies'" :allowed="canBtn('studentAffairs.class.counselor.manage')" code="studentAffairs.class.counselor.manage" size="sm" variant="primary" @click="openAssign(row)">立即分配</AppPermissionButton>
+            <button v-if="canBtn('studentAffairs.class.counselor.manage') && tab === 'assignments' && row.status === 'ACTIVE' && row.dutyType === 'PRIMARY'" type="button" class="mp-link" @click="openHandover(row)">交接</button>
+            <button v-if="canBtn('studentAffairs.class.counselor.manage') && tab === 'assignments' && row.status === 'ACTIVE'" type="button" class="mp-link danger" @click="openEnd(row)">结束</button>
           </div>
         </template>
       </DataTable>
@@ -56,7 +56,7 @@
         <p class="dialog__hint" v-else>结束后保留历史记录；若这是主辅导员，该班级会进入空缺台账。</p>
         <template v-if="dialog.mode === 'assign'">
           <label>班级<AppClassPicker v-model="form.classId" placeholder="搜索班级名称" /></label>
-          <label>辅导员<AppTeacherPicker v-model="form.userId" placeholder="按姓名 / 工号搜索" /></label>
+          <label>辅导员<AppTeacherPicker v-model="form.userId" :query="{ roleCode: 'COUNSELOR' }" placeholder="按姓名 / 工号搜索" /></label>
           <label>责任类型<select v-model="form.dutyType"><option value="PRIMARY">主辅导员</option><option value="CO">协同辅导员</option><option value="TEMP">临时代班</option></select></label>
           <div class="dialog__dates">
             <label>开始日期<input v-model="form.effectiveFrom" type="date"></label>
@@ -65,7 +65,7 @@
         </template>
         <template v-else-if="dialog.mode === 'handover'">
           <label>原辅导员<input :value="dialog.row.counselorName || dialog.row.name || '—'" disabled></label>
-          <label>新主辅导员<AppTeacherPicker v-model="form.toUserId" placeholder="按姓名 / 工号搜索" /></label>
+          <label>新主辅导员<AppTeacherPicker v-model="form.toUserId" :query="{ roleCode: 'COUNSELOR' }" placeholder="按姓名 / 工号搜索" /></label>
           <label>当前版本<input :value="dialog.row.version" disabled type="number"></label>
         </template>
         <label>原因<textarea v-model="form.reason" required maxlength="500" placeholder="说明分配、交接或结束责任关系的原因"></textarea></label>
@@ -158,7 +158,7 @@ export default {
       const doneMode = this.dialog.mode
       this.dialog.visible = false
       this.notice = doneMode === 'handover'
-        ? '交接完成：新辅导员已接管该班学生、待办与未关闭风险。'
+        ? (res.data?.handoverNotice || '辅导员主责已交接，请核对在办事项；历史记录保留。')
         : doneMode === 'end'
           ? '责任关系已结束；主责结束后，该班会进入空缺班级。'
           : '责任关系已生效，教师端班级与学生范围将同步更新。'

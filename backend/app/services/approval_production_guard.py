@@ -317,6 +317,7 @@ def install(runtime_module):
                     "status": "TRANSFERRED",
                     "acted_at": datetime.utcnow(),
                     "action_reason": (comment or "").strip(),
+                    "remark": f"TRANSFER_TO:{target_id}",
                 },
             )
             new_task = WorkflowTask(
@@ -326,7 +327,7 @@ def install(runtime_module):
                 assignee_id=target_id,
                 status="PENDING",
                 deadline_at=task.deadline_at,
-                remark=task.remark,
+                remark=None if str(task.remark or "").startswith("TRANSFER_TO:") else task.remark,
             )
             db.add(new_task)
             db.flush()

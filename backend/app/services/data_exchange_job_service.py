@@ -378,6 +378,9 @@ def _owned_export(
     if row.export_type == 'PHONE_MASKED_LEDGER':
         from app.modules.system_admin.services.phone_governance_service import assert_export_scope
         assert_export_scope(db, user, row)
+    if row.export_type == 'FUNDING_DISBURSEMENT_XLSX':
+        from app.services.affairs_funding_export_service import assert_export_scope
+        assert_export_scope(db, user, row)
     _assert_row_visible(row, user, visibility=visibility, module_code=module_code)
     return row
 

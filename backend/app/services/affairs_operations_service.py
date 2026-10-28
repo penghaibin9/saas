@@ -923,7 +923,7 @@ def _risk_allowed_actions(db, risk, user: dict) -> list[str]:
         if rel == "OWNER_OR_ADMIN" and ctx.scope_type != "TENANT_ALL" and int(risk.owner_id or 0) != uid:
             continue
         if rel == "SUPERIOR" and ctx.scope_type != "TENANT_ALL" and role not in {
-            "COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"
+            "COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS_COLLEGE", "STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SCHOOL_ADMIN"
         }:
             continue
         actions.append(action)

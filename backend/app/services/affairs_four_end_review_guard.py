@@ -81,7 +81,7 @@ def _install_permission_guard(contract) -> None:
         if path == "/api/v1/mobile/teacher/mental" or path.startswith("/api/v1/mobile/teacher/mental/"):
             if write:
                 return ("studentAffairs.mental.manage",)
-            return ("studentAffairs.risk.psyDetail.view",)
+            return ("studentAffairs.mental.manage", "studentAffairs.risk.psyDetail.view")
 
         required = original(path, method)
         if (

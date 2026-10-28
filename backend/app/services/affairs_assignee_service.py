@@ -9,7 +9,7 @@ from app.services.db_service import _tid
 
 
 _NODE_ROLES = {
-    "COLLEGE_REVIEW": {"COLLEGE_ADMIN", "COLLEGE_SA"},
+    "COLLEGE_REVIEW": {"COLLEGE_ADMIN", "COLLEGE_SA", "STUDENT_AFFAIRS_COLLEGE"},
     "STUDENT_AFFAIRS_REVIEW": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
     "SA_OFFICE_REVIEW": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
     "SA_OFFICE_FINAL": {"STUDENT_AFFAIRS", "STUDENT_AFFAIRS_ADMIN", "SA_ADMIN"},
@@ -22,27 +22,12 @@ _NODE_ROLES = {
 
 
 def _active_user_ids_for_roles(db, role_codes: set[str]) -> list[int]:
-    from app.models import Role, User, UserRole
-
-    return [int(value) for value in db.scalars(
-        select(User.id)
-        .join(UserRole, UserRole.user_id == User.id)
-        .join(Role, Role.id == UserRole.role_id)
-        .where(
-            User.tenant_id == _tid(),
-            User.is_deleted.is_(False),
-            User.status == "ACTIVE",
-            UserRole.tenant_id == _tid(),
-            UserRole.is_deleted.is_(False),
-            UserRole.status == "ACTIVE",
-            Role.tenant_id == _tid(),
-            Role.is_deleted.is_(False),
-            Role.status == "ACTIVE",
-            Role.role_code.in_(role_codes),
-        )
-        .distinct()
-        .order_by(User.id)
-    ).all()]
+    from app.models import Role, UserRole
+    from app.services.role_assignment_scope_service import active_role_membership_query
+    query = active_role_membership_query(_tid()).with_only_columns(UserRole.user_id).where(
+        Role.role_code.in_(role_codes),
+    ).distinct().order_by(UserRole.user_id)
+    return [int(value) for value in db.scalars(query).all()]
 
 
 def _student_org(db, student_id):
@@ -67,7 +52,7 @@ def resolve_assignee_ids(db, node: str, *, student_id=None, role_codes: set[str]
     the historical shared-node mapping remains authoritative, so one domain cannot widen
     or narrow another domain merely because both happen to call the node SCHOOL_REVIEW.
     """
-    from app.models import AffairsCounselorAssignment, TeacherStudentScope, User
+    from app.models import AffairsCounselorAssignment, Role, TeacherStudentScope, User, UserRole
 
     student, school_class, college = _student_org(db, student_id)
     if node in {"COUNSELOR_REVIEW", "CLASS_REVIEW"}:
@@ -91,38 +76,94 @@ def resolve_assignee_ids(db, node: str, *, student_id=None, role_codes: set[str]
                 AffairsCounselorAssignment.effective_to > now,
             ),
         ).order_by(priority, AffairsCounselorAssignment.id)).all()]
-        if not ids and school_class.counselor_id:
+        has_formal_assignment = db.scalar(select(AffairsCounselorAssignment.id).where(
+            AffairsCounselorAssignment.tenant_id == _tid(),
+            AffairsCounselorAssignment.class_id == school_class.id,
+        ).limit(1)) is not None
+        if not ids and not has_formal_assignment and school_class.counselor_id:
             ids = [int(school_class.counselor_id)]
-        return [uid for uid in dict.fromkeys(ids) if db.scalar(select(User.id).where(
-            User.id == uid, User.tenant_id == _tid(), User.status == "ACTIVE",
-            User.is_deleted.is_(False)
-        ))]
+        from app.services.role_assignment_scope_service import active_role_membership_query
+        valid = set(db.scalars(active_role_membership_query(_tid()).with_only_columns(UserRole.user_id).where(
+            Role.role_code == "COUNSELOR", UserRole.user_id.in_(ids or {-1}),
+        )).all())
+        ids = [uid for uid in dict.fromkeys(ids) if uid in valid]
+        if ids and not has_formal_assignment:
+            from app.core.affairs_security import build_affairs_context
+            actor = db.get(User, ids[0])
+            try:
+                build_affairs_context({"userId": str(actor.id), "loginName": actor.login_name,
+                    "currentRoleCode": "COUNSELOR", "tenantId": str(_tid())}, db).require_student(db, student.id)
+            except AppException:
+                return []
+        return ids
 
     candidate_roles = set(role_codes) if role_codes is not None else _NODE_ROLES.get(node, set())
-    candidates = _active_user_ids_for_roles(db, candidate_roles)
     if node == "COLLEGE_REVIEW":
         if not college:
             return []
-        users = {u.id: u for u in db.scalars(select(User).where(
-            User.tenant_id == _tid(), User.id.in_(candidates or {-1}),
-            User.status == "ACTIVE", User.is_deleted.is_(False),
-        )).all()}
-        scoped_keys = set(db.scalars(select(TeacherStudentScope.teacher_key).where(
-            TeacherStudentScope.tenant_id == _tid(),
-            TeacherStudentScope.scope_type == "COLLEGE",
-            TeacherStudentScope.ref_value == college.college_name,
-            TeacherStudentScope.status == "ACTIVE",
+        from sqlalchemy import String, and_, cast
+        from app.models import Role, RoleAssignmentScope, UserRole
+        from app.services.role_assignment_scope_service import active_assignment_scope_query, active_role_membership_query, resolve_legacy_scope_ids
+        explicit = active_assignment_scope_query(_tid()).with_only_columns(RoleAssignmentScope.user_id).where(
+            RoleAssignmentScope.role_code.in_(candidate_roles),
+            RoleAssignmentScope.scope_type == "COLLEGE", RoleAssignmentScope.scope_id == college.id,
+        )
+        legacy = active_role_membership_query(_tid()).join(TeacherStudentScope, and_(
+            TeacherStudentScope.tenant_id == UserRole.tenant_id,
+            func.upper(TeacherStudentScope.role_code).collate("utf8mb4_unicode_ci") == Role.role_code,
+            or_(TeacherStudentScope.teacher_key.collate("utf8mb4_unicode_ci") == User.login_name,
+                TeacherStudentScope.teacher_key.collate("utf8mb4_unicode_ci") == cast(User.id, String),
+                TeacherStudentScope.teacher_key.collate("utf8mb4_unicode_ci") == func.concat("db-", cast(User.id, String))),
+        )).with_only_columns(UserRole.user_id).where(
+            Role.role_code.in_(candidate_roles), TeacherStudentScope.scope_type == "COLLEGE",
+            TeacherStudentScope.ref_value == college.college_name, TeacherStudentScope.status == "ACTIVE",
             TeacherStudentScope.is_deleted.is_(False),
-        )).all())
-        return [
-            uid for uid in candidates
-            if uid in users and (str(uid) in scoped_keys or users[uid].login_name in scoped_keys)
-        ]
-    return candidates
+            ~select(RoleAssignmentScope.id).where(
+                RoleAssignmentScope.tenant_id == UserRole.tenant_id,
+                RoleAssignmentScope.user_id == UserRole.user_id,
+                RoleAssignmentScope.role_code == Role.role_code,
+            ).correlate(UserRole, Role).exists(),
+        )
+        legacy_ids = set(db.scalars(legacy).all()) if college.id in resolve_legacy_scope_ids(
+            db, tenant_id=_tid(), scope_type="COLLEGE", values={college.college_name},
+        ) else set()
+        return sorted(set(db.scalars(explicit).all()) | legacy_ids)
+    if node in {"SCHOOL_REVIEW", "STUDENT_AFFAIRS_REVIEW", "SA_OFFICE_REVIEW", "SA_OFFICE_FINAL"}:
+        scoped_roles = candidate_roles & {"FUNDING_TEACHER", "STUDENT_AFFAIRS"}
+        if scoped_roles:
+            from app.models import RoleAssignmentScope
+            from app.services.role_assignment_scope_service import active_assignment_scope_query
+            explicit = active_assignment_scope_query(_tid()).with_only_columns(RoleAssignmentScope.user_id).where(
+                RoleAssignmentScope.role_code.in_(scoped_roles), RoleAssignmentScope.scope_type == "SCHOOL",
+            )
+            fixed = _active_user_ids_for_roles(db, candidate_roles - scoped_roles)
+            return sorted(set(fixed) | set(db.scalars(explicit).all()))
+    return _active_user_ids_for_roles(db, candidate_roles)
 
 
-def require_assignee_id(db, node: str, *, student_id=None, role_codes: set[str] | None = None) -> int:
+def completed_review_actor_ids(db, instance_id: int, node_codes) -> set[int]:
+    """回避依据为实际办理人；历史缺失身份时保留在办单等待核验。"""
+    from app.models import WorkflowTask
+    nodes = set(node_codes)
+    rows = list(db.scalars(select(WorkflowTask).where(
+        WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == int(instance_id or 0),
+        WorkflowTask.node_code.in_(nodes), WorkflowTask.acted_at.is_not(None),
+        WorkflowTask.status.in_(("APPROVED", "REJECTED", "TRANSFERRED")),
+        WorkflowTask.is_deleted.is_(False),
+    )).all())
+    rows = [row for row in rows if not (row.status == "TRANSFERRED"
+                                        and str(row.remark or "").startswith("TRANSFER_TO:"))]
+    if not nodes <= {row.node_code for row in rows if row.status == "APPROVED"} or any(
+            not row.updated_by or int(row.updated_by) <= 0 for row in rows):
+        raise AppException("DATA_CONFLICT", "前序实际评审人记录不完整，请先核验交接；申请与材料已保留")
+    return {int(row.updated_by) for row in rows}
+
+
+def require_assignee_id(db, node: str, *, student_id=None, role_codes: set[str] | None = None,
+                        exclude_user_ids=()) -> int:
     ids = resolve_assignee_ids(db, node, student_id=student_id, role_codes=role_codes)
+    excluded = set(exclude_user_ids)
+    ids = [uid for uid in ids if uid not in excluded]
     if not ids:
         from app.services.db_service import audit_insert
         audit_insert(
@@ -133,7 +174,12 @@ def require_assignee_id(db, node: str, *, student_id=None, role_codes: set[str] 
         )
         raise AppException(
             "ASSIGNEE_NOT_CONFIGURED",
-            f"未配置受理人：{node}。请在组织任职/临时代办配置中指定有效用户",
+            "未配置受理人：" + {
+                "COUNSELOR_REVIEW": "辅导员审核", "CLASS_REVIEW": "班级评议",
+                "COLLEGE_REVIEW": "学院审核", "SCHOOL_REVIEW": "学校审核",
+                "STUDENT_AFFAIRS_REVIEW": "校学工审核", "SA_OFFICE_REVIEW": "校学工审核",
+                "SA_OFFICE_FINAL": "校学工终审", "EMPLOYMENT_TEACHER_REVIEW": "就业审核",
+            }.get(node, "当前审批环节") + "。请核验任职、范围和不同人审核要求后重新指派",
         )
     from app.models import UnifiedTodo
     loads = dict(db.execute(
