@@ -94,8 +94,9 @@ def programs(
     page: int = 1,
     pageSize: int = 20,
     user=Depends(_PROG_VIEW),
+    keyword: Optional[str] = None,
 ):
-    items, total = prog_svc.list_programs(user, majorId, status, page, pageSize, statusIn)
+    items, total = prog_svc.list_programs(user, majorId, status, page, pageSize, statusIn, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -282,6 +283,10 @@ def courses(
     status: Optional[str] = None,
     ownerTeacherId: Optional[str] = None,
     ownerCollegeId: Optional[str] = None,
+    examMode: Optional[str] = None,
+    ownerAssigned: Optional[bool] = None,
+    history: Optional[str] = None,
+    togglable: bool = False,
     page: int = 1,
     pageSize: int = 20,
     user=Depends(_COURSE_VIEW),
@@ -296,6 +301,7 @@ def courses(
         pageSize,
         owner_teacher_id=ownerTeacherId,
         owner_college_id=ownerCollegeId,
+        exam_mode=examMode, owner_assigned=ownerAssigned, history=history, togglable=togglable,
     )
     return success(paginate(items, total, page, pageSize))
 

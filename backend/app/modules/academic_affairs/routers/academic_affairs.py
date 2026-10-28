@@ -809,8 +809,8 @@ def program_create(body: ProgramCreate, user=Depends(_PROG_MANAGE)):
 
 @router.get("/programs", summary="培养方案列表（statusIn 支持逗号分隔多状态，供审核/发布工作台筛选）")
 def programs(majorId: Optional[str] = None, status: Optional[str] = None, statusIn: Optional[str] = None,
-             page: int = 1, pageSize: int = 20, user=Depends(_PROG_VIEW)):
-    items, total = prog_svc.list_programs(user, majorId, status, page, pageSize, statusIn)
+             page: int = 1, pageSize: int = 20, user=Depends(_PROG_VIEW), keyword: Optional[str] = None):
+    items, total = prog_svc.list_programs(user, majorId, status, page, pageSize, statusIn, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -1072,9 +1072,12 @@ def course_create(body: CourseCreate, user=Depends(_COURSE_MANAGE)):
 @router.get("/courses", summary="课程库列表")
 def courses(keyword: Optional[str] = None, category: Optional[str] = None, nature: Optional[str] = None,
             status: Optional[str] = None, ownerTeacherId: Optional[str] = None, ownerCollegeId: Optional[str] = None,
-            page: int = 1, pageSize: int = 20, user=Depends(_COURSE_VIEW)):
+            page: int = 1, pageSize: int = 20, user=Depends(_COURSE_VIEW),
+            examMode: Optional[str] = None, ownerAssigned: Optional[bool] = None,
+            history: Optional[str] = None, togglable: bool = False):
     items, total = course_svc.list_courses(user, keyword, category, nature, status, page, pageSize,
-                                           owner_teacher_id=ownerTeacherId, owner_college_id=ownerCollegeId)
+                                           owner_teacher_id=ownerTeacherId, owner_college_id=ownerCollegeId,
+                                           exam_mode=examMode, owner_assigned=ownerAssigned, history=history, togglable=togglable)
     return success(paginate(items, total, page, pageSize))
 
 

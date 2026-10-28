@@ -7,7 +7,7 @@
   >
     <template #actions>
       <AppButton @click="returnToSource">返回来源工作区</AppButton>
-      <AppButton v-if="course && editable" @click="$router.push(`/admin/academic-affairs/courses/${courseId}/edit`)">编辑</AppButton>
+      <AppButton v-if="course && editable" @click="$router.push({ path: `/admin/academic-affairs/courses/${courseId}/edit`, query: { returnTo: $route.query.returnTo || $route.fullPath } })">编辑</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />

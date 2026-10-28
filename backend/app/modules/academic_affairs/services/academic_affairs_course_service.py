@@ -21,7 +21,7 @@ import re
 from datetime import datetime
 
 from sqlalchemy import func, or_, select
-from sqlalchemy.orm import object_session
+from sqlalchemy.orm import object_session, aliased
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -333,7 +333,8 @@ def get_course(course_id, user) -> dict:
 
 
 def list_courses(user, keyword=None, category=None, nature=None, status=None, page=1, page_size=20,
-                 owner_teacher_id=None, owner_college_id=None):
+                 owner_teacher_id=None, owner_college_id=None, exam_mode=None, owner_assigned=None,
+                 history=None, togglable=False):
     """课程库列表——关键字/分页下推到 SQL，不再整表拉回内存再切片。
 
     原实现 `select(AaCourse).where(*conds)...all()` 先取出全部满足分类/性质/状态/
@@ -356,6 +357,28 @@ def list_courses(user, keyword=None, category=None, nature=None, status=None, pa
             conds.append(AaCourse.owner_teacher_id == int(owner_teacher_id))
         if owner_college_id:
             conds.append(AaCourse.owner_college_id == int(owner_college_id))
+        if exam_mode:
+            conds.append(AaCourse.exam_mode == exam_mode)
+        if owner_assigned is not None:
+            unassigned = or_(AaCourse.owner_teacher_id.is_(None), AaCourse.owner_teacher_id == 0)
+            conds.append(~unassigned if owner_assigned else unassigned)
+        if togglable:
+            conds.append(AaCourse.status.in_(("ENABLED", "DISABLED")))
+        if history:
+            newer = aliased(AaCourse)
+            superseded = select(newer.id).where(
+                newer.tenant_id == AaCourse.tenant_id, newer.is_deleted.is_(False),
+                newer.course_code == AaCourse.course_code, newer.version > AaCourse.version,
+                newer.status.in_(("ENABLED", "DISABLED")),
+            ).exists()
+            if history == "DISABLED":
+                conds.append(AaCourse.status == "DISABLED")
+            elif history == "SUPERSEDED":
+                conds.extend((AaCourse.status != "DISABLED", superseded))
+            elif history == "ALL":
+                conds.append(or_(AaCourse.status == "DISABLED", superseded))
+            else:
+                raise AppException("VALIDATION_ERROR", "历史课程筛选条件无效")
         if keyword:
             conds.append(or_(
                 AaCourse.course_name.contains(keyword),
@@ -369,7 +392,12 @@ def list_courses(user, keyword=None, category=None, nature=None, status=None, pa
             .offset((page - 1) * page_size).limit(page_size)
         ).all()
         teacher_names = _resolve_teacher_names(db, [r.owner_teacher_id for r in rows])
-        return [_row(c, teacher_names) for c in rows], total
+        result = [_row(c, teacher_names) for c in rows]
+        if history:
+            for item in result:
+                item["archiveVersionLabel"] = f"第 {item['version']} 版"
+                item["archiveReason"] = "已停用" if item["status"] == "DISABLED" else "已有更高正式版本；历史引用仍保留"
+        return result, total
 
 
 def search_teachers(keyword="", limit=20) -> list[dict]:

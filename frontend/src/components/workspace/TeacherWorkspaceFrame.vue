@@ -96,9 +96,12 @@ async function confirmUnsubmitted(to, from) {
     academicNavigationOwners.set(to, { identityKey: props.identityKey, legacyIdentityKey: props.legacyIdentityKey,
       activeCenter: props.activeCenter, sourceFullPath: from.fullPath })
   }
-  if (to.path === from.path) return true
   if (window.__SAAS_DIRTY_FORM_GUARD__?.handlesRoute?.(from)) return true
-  const editing = [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.disabled && field.value.trim() && field.getClientRects().length)
+  // 已接入的表单提供真实修改状态，避免把服务器载入的文字当作未保存输入。
+  const formState = document.querySelector?.('[data-workspace-form-state]')?.getAttribute('data-workspace-form-state')
+  if (to.path === from.path && !formState) return true
+  if (formState === 'busy') return false
+  const editing = ['clean', 'dirty'].includes(formState) ? formState === 'dirty' : [...document.querySelectorAll('textarea')].some(field => !field.readOnly && !field.disabled && field.value.trim() && field.getClientRects().length)
   if (!editing) return true
   const academic = props.activeCenter === 'academic-affairs'
   const sourceFullPath = from.fullPath

@@ -7,7 +7,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton v-if="hasPermission('academicAffairs.program.manage')" @click="importChooserVisible = !importChooserVisible">Excel导入</AppButton>
+      <AppButton v-if="hasPermission('academicAffairs.program.manage')" @click="importChooserVisible = !importChooserVisible">批量导入</AppButton>
       <AppButton v-if="!isAcademicTeacher" @click="$router.push('/admin/academic-affairs/programs/opening-plan')">开课差异</AppButton>
       <AppButton v-if="hasPermission('academicAffairs.program.manage')" variant="primary" @click="showCreate = !showCreate">＋ 新建方案</AppButton>
     </template>
@@ -36,7 +36,7 @@
 
       <div class="aa-list-card">
         <div class="aa-list-card__head">
-          <form class="aa-actions aa-list-card__filters" role="search" @submit.prevent="pagination.page = 1; applyPage()"><input v-model="keyword" class="aa-input" aria-label="搜索人才培养方案" placeholder="搜索人才培养方案" /><AppButton type="submit">查询</AppButton><AppButton variant="ghost" @click="keyword = ''; pagination.page = 1; applyPage()">清空</AppButton></form>
+          <form class="aa-actions aa-list-card__filters" role="search" @submit.prevent="updateQuery(1)"><input v-model="keyword" class="aa-input" aria-label="搜索方案、专业或年级" placeholder="搜索方案、专业或年级" /><AppButton type="submit">查询</AppButton><AppButton variant="ghost" @click="keyword = ''; updateQuery(1)">清空</AppButton></form>
           <ul v-if="summary && !isAcademicTeacher" class="aa-stat-strip" aria-label="方案概况">
             <li><span>共</span><b>{{ stageSummary.total }}</b></li>
             <li><span>编制中</span><b>{{ stageSummary.authoring }}</b></li>
@@ -48,7 +48,9 @@
         </div>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
-      <EmptyState v-else-if="!rows.length" :title="isAcademicTeacher ? '暂无正式培养方案' : '还没有培养方案'" :description="isAcademicTeacher ? '当前没有已正式发布或生效的培养方案，请联系教务管理人员。' : '点击「新建方案」开始编制课程、学分结构、毕业要求和实践环节'" />
+      <EmptyState v-else-if="!rows.length" :title="keyword ? '没有符合条件的方案' : isAcademicTeacher ? '暂无正式培养方案' : '还没有培养方案'" :description="keyword ? '请调整关键词，或清空筛选查看方案。' : isAcademicTeacher ? '当前没有已正式发布或生效的培养方案，请联系教务管理人员。' : '点击「新建方案」开始编制课程、学分结构、毕业要求和实践环节'">
+        <template #actions><AppButton v-if="keyword" @click="keyword = ''; updateQuery(1)">清空筛选</AppButton></template>
+      </EmptyState>
       <DataTable v-else :columns="columns" :rows="rows" row-key="programId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.programName }}</div>
@@ -60,15 +62,15 @@
         </template>
         <template #cell-version="{ row }">v{{ row.version }}</template>
         <template #cell-credits="{ row }">
-          <div class="mp-cell-main">{{ row.totalCredits ?? '—' }} 学分</div>
-          <div class="mp-cell-sub">已编 {{ row.creditSum ?? '—' }}</div>
+          <div class="mp-cell-main">毕业要求 {{ row.totalCredits ?? '未设置' }}</div>
+          <div class="mp-cell-sub">已编课程 {{ row.creditSum ?? '—' }} 学分</div>
         </template>
         <template #cell-status="{ row }">
           <AppStatusTag :type="reviewStatusColor(row.status)" :label="statusLabel(row.status)" dot />
-          <div v-if="row.blockerCount" class="mp-cell-sub is-danger-text">{{ row.blockerCount }} 项阻断</div>
+          <button v-if="row.blockerCount" class="mp-link is-danger-text" @click="openProgram(row)">需处理 {{ row.blockerCount }} 项</button>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push(`/admin/academic-affairs/programs/${row.programId}`)">打开方案</button>
+          <button class="mp-link" @click="openProgram(row)">{{ programActionLabel(row) }}</button>
         </template>
       </DataTable>
       </div>
@@ -146,7 +148,8 @@ export default {
     }
   },
   beforeUnmount() { this.requestRevision++ },
-  created() { this.load() },
+  created() { this.restoreQuery(); this.load() },
+  watch: { '$route.fullPath'() { if (this.$route.path === '/admin/academic-affairs/programs') { this.restoreQuery(); this.applyPage() } } },
   methods: {
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     reviewStatusColor,
@@ -175,7 +178,28 @@ export default {
       this.rows = visible.slice(start, start + this.pagination.pageSize)
       this.pagination.total = visible.length
     },
-    onPageChange(page) { this.pagination.page = page; this.applyPage() },
+    restoreQuery() {
+      this.keyword = typeof this.$route.query.keyword === 'string' ? this.$route.query.keyword : ''
+      const page = Number(this.$route.query.page || 1)
+      this.pagination.page = Number.isSafeInteger(page) && page > 0 ? page : 1
+    },
+    updateQuery(page) {
+      if (!Number.isSafeInteger(page) || page < 1) return
+      this.pagination.page = page
+      if (String(this.$route.query.keyword || '') === this.keyword && Number(this.$route.query.page || 1) === page) return this.applyPage()
+      return this.$router.replace({ query: { ...this.$route.query, keyword: this.keyword || undefined, page: String(page) } })
+    },
+    onPageChange(page) { return this.updateQuery(page) },
+    programActionLabel(row) {
+      if (this.hasPermission('academicAffairs.program.manage')) {
+        if (row.status === 'DRAFT') return '继续编制'
+        if (row.status === 'RETURNED') return '按意见修改'
+      }
+      return ['COLLEGE_REVIEW', 'ACADEMIC_REVIEW'].includes(row.status) ? '查看审核进度' : '查看方案'
+    },
+    openProgram(row) {
+      return this.$router.push({ path: `/admin/academic-affairs/programs/${row.programId}`, query: { returnTo: this.$route.fullPath, step: ['COLLEGE_REVIEW', 'ACADEMIC_REVIEW'].includes(row.status) ? 'review' : undefined } })
+    },
     async createProgram() {
       if (this.creating || !this.canCreate) return
       this.creating = true

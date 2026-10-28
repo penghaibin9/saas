@@ -9,23 +9,28 @@
     <template #actions>
       <AppButton v-if="!isAcademicTeacher" @click="downloadCourseTemplate">下载导入模板</AppButton>
       <AppButton v-if="hasPermission('academicAffairs.course.manage')" @click="importVisible = true">批量导入</AppButton>
-      <AppButton v-if="hasPermission('academicAffairs.course.manage')" variant="primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</AppButton>
+      <AppButton v-if="hasPermission('academicAffairs.course.manage')" variant="primary" @click="openCourse()">＋ 新建课程</AppButton>
     </template>
 
     <div class="mp-stack">
       <div class="aac-list-card">
         <div class="aac-list-card__head">
-          <strong>课程库 · 稳定课程身份</strong>
+          <strong>课程库</strong>
           <span>共 {{ pagination.total }} 个课程版本</span>
         </div>
         <form class="aac-filter" role="search" @submit.prevent="search">
-          <input v-model.trim="filters.keyword" class="aac-input" aria-label="搜索稳定课程版本" placeholder="搜索稳定课程版本" />
+          <input v-model.trim="filters.keyword" class="aac-input" aria-label="搜索课程名称或代码" placeholder="搜索课程名称或代码" />
+          <select v-model="filters.category" class="aac-input aac-select" aria-label="课程类别"><option value="">全部类别</option><option v-for="(label, value) in COURSE_CATEGORY" :key="value" :value="value">{{ label }}</option></select>
+          <select v-model="filters.nature" class="aac-input aac-select" aria-label="课程性质"><option value="">全部性质</option><option v-for="(label, value) in COURSE_NATURE" :key="value" :value="value">{{ label }}</option></select>
+          <select v-if="!isAcademicTeacher" v-model="filters.status" class="aac-input aac-select" aria-label="课程状态"><option value="">全部状态</option><option v-for="(label, value) in courseStatuses" :key="value" :value="value">{{ label }}</option></select>
           <AppButton type="submit">查询</AppButton>
           <AppButton variant="ghost" @click="reset">清空</AppButton>
         </form>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="课程库为空" :description="isAcademicTeacher ? '当前没有已正式启用的课程，请联系教务管理人员。' : '点击「新建课程」录入第一门课程，提交两级审核后启用'" />
+        <EmptyState v-else-if="!rows.length" :title="hasFilters ? '没有符合条件的课程' : '暂无可查看的课程'" :description="hasFilters ? '请调整关键词或筛选条件后重试。' : isAcademicTeacher ? '当前没有已正式启用的课程，请联系教务管理人员。' : '可新建课程，保存草稿后提交审核。'">
+          <template #actions><AppButton v-if="hasFilters" @click="reset">清空筛选</AppButton><AppButton v-else-if="hasPermission('academicAffairs.course.manage')" @click="openCourse()">新建课程</AppButton></template>
+        </EmptyState>
         <DataTable v-else :columns="columns" :rows="rows" row-key="courseId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-code="{ row }">
           <div class="mp-cell-main">{{ row.courseCode }}</div>
@@ -47,7 +52,7 @@
           <AppStatusTag :type="reviewStatusColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="$router.push(`/admin/academic-affairs/courses/${row.courseId}`)">课程档案</button>
+          <button class="mp-link" @click="openCourse(row)">{{ ['DRAFT', 'RETURNED'].includes(row.status) && hasPermission('academicAffairs.course.manage') ? '继续编辑' : '查看课程' }}</button>
         </template>
       </DataTable>
       </div>
@@ -55,7 +60,7 @@
 
     <AaAuthoritativeImportDrawer
       v-model:visible="importVisible"
-      title="课程库权威 XLSX 导入"
+      title="批量导入课程"
       template-name="课程库权威导入模板.xlsx"
       :preview-fields="['courseCode', 'courseName', 'version', 'credit', 'category', 'nature']"
       :download-template-fn="academicFileExchangeApi.downloadCourseCatalogTemplate"
@@ -88,28 +93,48 @@ export default {
       filters: { keyword: '', category: '', nature: '', status: '' },
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
-        { key: 'code', title: '课程代码', width: '155px' },
         { key: 'name', title: '课程名称' },
+        { key: 'code', title: '课程代码与版本', width: '155px' },
         { key: 'nature', title: '性质', width: '155px' },
         { key: 'creditHours', title: '学分学时', width: '145px' },
-        { key: 'status', title: '启用状态', width: '130px' },
+        { key: 'status', title: '当前状态', width: '130px' },
         { key: 'actions', title: '办理入口', width: '100px' }
       ]
     }
   },
   computed: {
+    courseStatuses() { return Object.fromEntries(Object.entries(REVIEW_STATUS).filter(([key]) => !['PUBLISHED', 'FROZEN'].includes(key))) },
+    hasFilters() { return ['keyword', 'category', 'nature', 'status'].some(key => Boolean(this.$route.query[key])) },
     isAcademicTeacher() {
       return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
     }
   },
   beforeUnmount() { this.requestRevision++ },
-  created() { this.load() },
+  created() { this.restoreQuery(); this.load() },
+  watch: { '$route.fullPath'() { if (this.$route.path === '/admin/academic-affairs/courses') { this.restoreQuery(); this.load() } } },
   methods: {
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     reviewStatusColor,
     statusLabel(s) { return REVIEW_STATUS[s] || (s ? '状态待确认' : '') },
-    onPageChange(p) { this.pagination.page = p; this.load() },
-    search() { this.pagination.page = 1; this.load() },
+    restoreQuery() {
+      for (const key of Object.keys(this.filters)) this.filters[key] = typeof this.$route.query[key] === 'string' ? this.$route.query[key] : ''
+      if (this.isAcademicTeacher) this.filters.status = ''
+      const page = Number(this.$route.query.page || 1)
+      this.pagination.page = Number.isSafeInteger(page) && page > 0 ? page : 1
+    },
+    updateQuery(page) {
+      if (!Number.isSafeInteger(page) || page < 1) return
+      this.pagination.page = page
+      if (Object.keys(this.filters).every(key => String(this.$route.query[key] || '') === this.filters[key]) && Number(this.$route.query.page || 1) === page) return this.load()
+      return this.$router.replace({ query: { ...this.$route.query, ...Object.fromEntries(Object.entries(this.filters).map(([key, value]) => [key, value || undefined])), page: String(page) } })
+    },
+    onPageChange(p) { return this.updateQuery(p) },
+    search() { return this.updateQuery(1) },
+    openCourse(row) {
+      const edit = row && ['DRAFT', 'RETURNED'].includes(row.status) && this.hasPermission('academicAffairs.course.manage')
+      const path = row ? `/admin/academic-affairs/courses/${row.courseId}${edit ? '/edit' : ''}` : '/admin/academic-affairs/courses/new'
+      return this.$router.push({ path, query: { returnTo: this.$route.fullPath } })
+    },
     reset() { this.filters = { keyword: '', category: '', nature: '', status: '' }; this.search() },
     async downloadCourseTemplate() {
       const res = await academicFileExchangeApi.downloadCourseCatalogTemplate()
@@ -152,5 +177,7 @@ export default {
 .aac-list-card__head span { font-size: 12px; color: var(--text-500, #64748b); }
 .aac-filter { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; padding: 12px 16px; }
 .aac-input { width: 280px; max-width: 100%; height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
+.aac-select { width: 145px; }
+@media (max-width: 600px) { .aac-filter > .aac-input { flex: 1 1 140px; width: 100%; } }
 .aac-list-card :deep(.data-table) { border: 0; border-radius: 0; }
 </style>

@@ -266,9 +266,11 @@ test('旧创建导航迟到失败不污染切换后的身份', async () => {
   }
 })
 
-test('T07 course governance consoles cap each rendered page for large course libraries',()=>{
-  const vm=instance('AaCourseConsoleView')
-  vm.rows=Array.from({length:120},(_,index)=>({courseId:index+1,status:'ENABLED',category:'MAJOR_CORE'}))
+test('T07 course governance consoles request only the selected server page',async()=>{
+  const calls=[]
+  const vm=instance('AaCourseConsoleView',{academicAffairsApi:{getCourses:async params=>{calls.push(params);return ok({list:Array.from({length:20},(_,index)=>({courseId:index+21})),total:120})}}})
   vm.viewPage=2
-  assert.equal(vm.totalPages,3);assert.equal(vm.displayRows.length,50);assert.equal(vm.displayRows[0].courseId,51)
+  await vm.load()
+  assert.equal(calls.length,1);assert.equal(calls[0].page,2);assert.equal(calls[0].pageSize,20)
+  assert.equal(vm.totalPages,6);assert.equal(vm.displayRows.length,20);assert.equal(vm.displayRows[0].courseId,21)
 })

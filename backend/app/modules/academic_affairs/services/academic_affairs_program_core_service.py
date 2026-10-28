@@ -7,7 +7,7 @@ import json
 import uuid
 from datetime import datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import or_, func, select
 
 from app.core.context import get_current_user_ctx
 from app.core.exceptions import AppException, not_found
@@ -224,7 +224,7 @@ def get_program(program_id, user, *, review_node_reader=None) -> dict:
         return d
 
 
-def list_programs(user, major_id=None, status=None, page=1, page_size=20, status_in=None):
+def list_programs(user, major_id=None, status=None, page=1, page_size=20, status_in=None, keyword=None):
     """方案列表。status_in：逗号分隔多状态（供「方案审核」「方案发布」工作台按状态集筛选），
     与单值 status 二选一，同时传入以 status_in 优先。"""
     from app.models import AaProgram, Major
@@ -245,6 +245,9 @@ def list_programs(user, major_id=None, status=None, page=1, page_size=20, status
                 conds.append(AaProgram.status.in_(statuses))
             elif status:
                 conds.append(AaProgram.status == status)
+        if keyword:
+            matching_majors = select(Major.id).where(Major.tenant_id == _tid(), Major.is_deleted.is_(False), Major.major_name.contains(keyword))
+            conds.append(or_(AaProgram.program_name.contains(keyword), AaProgram.grade_year.contains(keyword), AaProgram.major_id.in_(matching_majors)))
         size = max(1, min(int(page_size), 200))
         total = int(db.scalar(select(func.count(AaProgram.id)).where(*conds)) or 0)
         rows = db.scalars(select(AaProgram).where(*conds).order_by(AaProgram.id.desc())

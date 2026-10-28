@@ -2,7 +2,7 @@
   <AaOpeningPlanDiffView v-if="isOpeningPlan" :ctx="ctx" />
   <ModulePageShell
     v-else
-    title="方案完整编制"
+    :title="editable ? '编制培养方案' : '培养方案详情'"
     :subtitle="program ? `年级 ${program.gradeYear || '—'} · v${program.version} · ${validation?.conclusion || '等待校验'}` : ''"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
@@ -22,7 +22,7 @@
       <div class="aa-program-layout">
       <aside class="aa-program-nav">
         <div class="aa-nav-title">编制步骤</div>
-        <button v-for="item in steps" :key="item.key" :class="{ active: activeStep === item.key }" @click="activeStep = item.key">
+        <button v-for="item in steps" :key="item.key" :class="{ active: activeStep === item.key }" @click="selectStep(item.key)">
           <span>{{ item.index }}</span><b>{{ item.label }}</b>
         </button>
         <div class="aa-nav-links">
@@ -43,7 +43,7 @@
         </div>
 
         <AppInlineAlert
-          v-if="validation && !validation.canSubmit"
+          v-if="editable && validation && !validation.canSubmit"
           type="warning"
           title="方案暂不能提交审核"
           :description="`请先处理右侧 ${validation.counts.blocker} 个阻断项；提醒项可在确认制度口径后保留。`"
@@ -231,9 +231,12 @@ export default {
     qualityClass() { return this.validation?.canSubmit ? 'is-ok' : 'is-warn' },
     canAddCourse() { return Boolean(this.addForm.courseId && this.addForm.openTermNo && this.addForm.module && this.addForm.formationMode) }
   },
-  watch: { programId() { this.requestRevision++; this.program = null; this.validation = null; this.receipt = null; this.showAdd = false; this.showEdit = false; if (!this.isOpeningPlan) this.load() } },
+  watch: {
+    '$route.query.step'(step) { if (['basic', 'courses', 'standards', 'review'].includes(step)) this.activeStep = step },
+    programId() { this.requestRevision++; this.program = null; this.validation = null; this.receipt = null; this.showAdd = false; this.showEdit = false; if (!this.isOpeningPlan) this.load() }
+  },
   beforeUnmount() { this.requestRevision++ },
-  created() { if (!this.isOpeningPlan) this.load() },
+  created() { if (['basic', 'courses', 'standards', 'review'].includes(this.$route.query.step)) this.activeStep = this.$route.query.step; if (!this.isOpeningPlan) this.load() },
   methods: {
     reviewStatusColor, inReview, canSubmit,
     returnToSource() { const to = this.$route.query.returnTo; this.$router.push(typeof to === 'string' && /^\/admin\/academic-affairs\/(programs|courses)(\/|\?|$)/.test(to) ? to : '/admin/academic-affairs/programs') },
@@ -245,7 +248,8 @@ export default {
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     setReceipt(title, next) { this.receipt = { title, object: this.program?.programName || '当前方案', status: this.program ? this.statusLabel(this.program.status) : '正式状态待确认', time: this.program?.updatedAt, pending: !this.program || !!this.error, next } },
     statusLabel(value) { return REVIEW_STATUS[value] || (value ? '待确认' : '') },
-    openConsole(tab) { this.$router.push(`/admin/academic-affairs/programs/console?tab=${tab}&programId=${this.programId}`) },
+    selectStep(step) { this.activeStep = step; this.$router.replace({ query: { ...this.$route.query, step } }) },
+    openConsole(tab) { this.$router.push({ path: '/admin/academic-affairs/programs/console', query: { tab, programId: this.programId, returnTo: this.$route.fullPath } }) },
     courseIssueCount(course) {
       if (!this.validation) return 0
       return this.validation.issues.filter(issue => String(issue.objectId) === String(course.programCourseId) && ['courses', 'courseId', 'courseName', 'module', 'credit', 'openTermNo', 'hoursTotal', 'hoursTheory', 'hoursPractice'].includes(issue.fieldPath)).length

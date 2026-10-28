@@ -1,5 +1,6 @@
 <template>
   <ModulePageShell
+    :data-workspace-form-state="submitting ? 'busy' : hasChanges ? 'dirty' : 'clean'"
     :title="isEdit ? '编辑课程' : '新建课程'"
     subtitle="课程为草稿态，保存后可提交两级审核；已启用课程的改动会强制生成新版本"
     :role-name="ctx.currentRole.roleName"
@@ -23,7 +24,7 @@
       <div class="aa-course-form-layout">
         <AppSectionCard :title="`${isEdit ? '课程版本' : '课程草稿'} · 完整表单`" class="aa-course-form-card">
           <span class="aa-draft-state">{{ isEdit ? statusLabel(loadedCourseStatus) : '尚未提交' }}</span>
-          <p class="aa-form-intro">先确认稳定课程身份，再核对学分学时、开课责任与适用范围。保存后从课程档案提交审核。</p>
+          <p class="aa-form-intro">填写课程信息并保存草稿，再从课程档案提交审核。已启用课程修改后生成新版本，原有引用保持不变。</p>
       <fieldset class="aa-form-group" :disabled="submitting || saveCompleted">
         <legend>基本信息</legend>
       <div class="aa-grid">
@@ -155,10 +156,11 @@ export default {
   data() {
     return {
       ownerTeacherOption: null, courseEpoch: 0, courseReady: true, loading: false, submitting: false, saveCompleted: false, savedCourseId: '', formError: '', prereqText: '', loadedCourseStatus: 'DRAFT', form: EMPTY(),
-      collegeOptions: [], majorOptions: []
+      collegeOptions: [], majorOptions: [], formBaseline: ''
     }
   },
   computed: {
+    hasChanges() { return this.courseReady && !this.saveCompleted && this.formBaseline !== '' && this.formSnapshot() !== this.formBaseline },
     ownerTeacherResolver() {
       const option = this.ownerTeacherOption, epoch = this.courseEpoch, id = this.courseId
       const adapter = this.appPickerAdapters?.teacher
@@ -215,13 +217,17 @@ export default {
       this.submitting = false
       this.loading = false
       this.courseReady = !this.isEdit
+      this.formBaseline = this.formSnapshot()
       if (this.isEdit) return this.loadCourse()
     },
+    formSnapshot() { return JSON.stringify({ form: this.form, prereqText: this.prereqText }) },
     isCurrentCourse(epoch, id) { return epoch === this.courseEpoch && id === this.courseId },
     statusLabel(value) {
       return { DRAFT: '草稿', COLLEGE_REVIEW: '学院审核中', ACADEMIC_REVIEW: '教务审核中', ENABLED: '已启用', DISABLED: '已停用' }[value] || '状态待确认'
     },
     goBack() {
+      const source = this.$route.query?.returnTo
+      if (typeof source === 'string' && /^\/admin\/academic-affairs\/(programs|courses)(\/|\?|$)/.test(source)) return this.$router.push(source)
       this.$router.push(this.isEdit ? `/admin/academic-affairs/courses/${this.courseId}` : '/admin/academic-affairs/courses')
     },
     async loadOrgOptions() {
@@ -268,6 +274,7 @@ export default {
             prerequisiteCodes: d.prerequisiteCodes || []
           }
           this.prereqText = (d.prerequisiteCodes || []).join(',')
+          this.formBaseline = this.formSnapshot()
           this.courseReady = true
         } else {
           this.formError = res.message || '课程读取失败，请刷新后重试'
@@ -343,7 +350,8 @@ export default {
       }
       this.formError = ''
       try {
-        const failure = await this.$router.push(`/admin/academic-affairs/courses/${this.savedCourseId}`)
+        const path = `/admin/academic-affairs/courses/${this.savedCourseId}`
+        const failure = await this.$router.push(this.$route.query?.returnTo ? { path, query: { returnTo: this.$route.query.returnTo } } : path)
         if (!this.isCurrentCourse(epoch, courseId)) return
         if (failure) this.formError = '课程已保存，但档案尚未打开；再次点击保存只重试打开同一档案'
       } catch {

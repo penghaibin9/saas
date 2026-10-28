@@ -7,7 +7,7 @@
   >
     <template #actions>
       <AppButton @click="$router.push('/admin/academic-affairs/courses')">课程列表</AppButton>
-      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</AppButton>
+      <AppButton v-if="hasPermission('academicAffairs.course.manage')" variant="primary" @click="$router.push('/admin/academic-affairs/courses/new')">＋ 新建课程</AppButton>
     </template>
 
     <details class="aacc-workspace-directory"><summary>切换相关工作区</summary><div class="aacc-tabs">
@@ -16,30 +16,32 @@
 
     <!-- 分类/性质/考核方式：快捷筛选芯片（带计数） -->
     <div v-if="tab === 'category' || tab === 'nature' || tab === 'assessment'" class="aacc-chips">
-      <button class="aacc-chip" :class="{ 'is-active': !dimFilter }" @click="dimFilter = ''">全部（{{ rows.length }}）</button>
+      <button class="aacc-chip" :class="{ 'is-active': !dimFilter }" @click="dimFilter = ''">全部</button>
       <button v-for="opt in dimOptions" :key="opt.value" class="aacc-chip" :class="{ 'is-active': dimFilter === opt.value }" @click="dimFilter = opt.value">
-        {{ opt.label }}（{{ dimCount(opt.value) }}）
+        {{ opt.label }}
       </button>
     </div>
     <!-- 课程负责人：未指定筛选 -->
     <div v-if="tab === 'owner'" class="aacc-chips">
-      <button class="aacc-chip" :class="{ 'is-active': !ownerFilter }" @click="ownerFilter = ''">全部（{{ rows.length }}）</button>
-      <button class="aacc-chip" :class="{ 'is-active': ownerFilter === 'UNSET' }" @click="ownerFilter = 'UNSET'">未指定负责人（{{ unsetOwnerCount }}）</button>
-      <button class="aacc-chip" :class="{ 'is-active': ownerFilter === 'SET' }" @click="ownerFilter = 'SET'">已指定（{{ rows.length - unsetOwnerCount }}）</button>
+      <button class="aacc-chip" :class="{ 'is-active': !ownerFilter }" @click="ownerFilter = ''">全部</button>
+      <button class="aacc-chip" :class="{ 'is-active': ownerFilter === 'UNSET' }" @click="ownerFilter = 'UNSET'">未指定负责人</button>
+      <button class="aacc-chip" :class="{ 'is-active': ownerFilter === 'SET' }" @click="ownerFilter = 'SET'">已指定</button>
     </div>
     <!-- 课程停用：状态筛选 -->
     <div v-if="tab === 'disable'" class="aacc-chips">
-      <button class="aacc-chip" :class="{ 'is-active': !statusFilter }" @click="statusFilter = ''">全部可停用/启用（{{ togglableRows.length }}）</button>
-      <button class="aacc-chip" :class="{ 'is-active': statusFilter === 'ENABLED' }" @click="statusFilter = 'ENABLED'">已启用（{{ enabledCount }}）</button>
-      <button class="aacc-chip" :class="{ 'is-active': statusFilter === 'DISABLED' }" @click="statusFilter = 'DISABLED'">已停用（{{ disabledCount }}）</button>
+      <button class="aacc-chip" :class="{ 'is-active': !statusFilter }" @click="statusFilter = ''">全部可停用/启用</button>
+      <button class="aacc-chip" :class="{ 'is-active': statusFilter === 'ENABLED' }" @click="statusFilter = 'ENABLED'">已启用</button>
+      <button class="aacc-chip" :class="{ 'is-active': statusFilter === 'DISABLED' }" @click="statusFilter = 'DISABLED'">已停用</button>
     </div>
     <!-- 历史课程：已停用 / 旧版本（被新版本取代）筛选 -->
     <div v-if="tab === 'archive'" class="aacc-chips">
-      <button class="aacc-chip" :class="{ 'is-active': !archiveFilter }" @click="archiveFilter = ''">全部（{{ archiveRows.length }}）</button>
-      <button class="aacc-chip" :class="{ 'is-active': archiveFilter === 'DISABLED' }" @click="archiveFilter = 'DISABLED'">已停用（{{ archiveDisabledCount }}）</button>
-      <button class="aacc-chip" :class="{ 'is-active': archiveFilter === 'SUPERSEDED' }" @click="archiveFilter = 'SUPERSEDED'">历史版本（{{ archiveSupersededCount }}）</button>
+      <button class="aacc-chip" :class="{ 'is-active': !archiveFilter }" @click="archiveFilter = ''">全部</button>
+      <button class="aacc-chip" :class="{ 'is-active': archiveFilter === 'DISABLED' }" @click="archiveFilter = 'DISABLED'">已停用</button>
+      <button class="aacc-chip" :class="{ 'is-active': archiveFilter === 'SUPERSEDED' }" @click="archiveFilter = 'SUPERSEDED'">历史版本</button>
     </div>
 
+    <AppInlineAlert v-if="savedCourse" type="success" :description="savedCourse.message" />
+    <AppButton v-if="savedCourse?.courseId" @click="$router.push({ path: '/admin/academic-affairs/courses/' + savedCourse.courseId, query: { returnTo: $route.fullPath } })">打开已保存课程</AppButton>
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <template v-else>
@@ -57,7 +59,7 @@
           <div class="mp-cell-main">{{ row.credit }} 学分</div>
           <div class="mp-cell-sub">总{{ row.hoursTotal ?? '—' }}（理{{ row.hoursTheory ?? 0 }}/实{{ row.hoursPractice ?? 0 }}）</div>
         </template>
-        <template #cell-owner="{ row }">{{ row.ownerTeacherId ? (row.ownerTeacherName || '教师 #' + row.ownerTeacherId) : '未指定' }}</template>
+        <template #cell-owner="{ row }">{{ row.ownerTeacherId ? (row.ownerTeacherName || '负责人姓名未取得') : '未指定' }}</template>
         <template #cell-archiveReason="{ row }"><span class="mp-note">{{ row.archiveReason }}</span></template>
         <template #cell-ops="{ row }">
           <template v-if="tab === 'category'"><button class="mp-link" @click="openDimForm(row, 'category')">调整类别</button></template>
@@ -75,8 +77,8 @@
           <button class="mp-link" @click="$router.push(`/admin/academic-affairs/courses/${row.courseId}`)">详情</button>
         </template>
       </DataTable>
-      <nav v-if="filteredRows.length > viewPageSize" class="aacc-pagination" aria-label="课程工作区分页">
-        <span>共 {{ filteredRows.length }} 条 · 第 {{ viewPage }} / {{ totalPages }} 页</span>
+      <nav v-if="serverTotal > viewPageSize || viewPage > 1" class="aacc-pagination" aria-label="课程工作区分页">
+        <span>共 {{ serverTotal }} 条 · 第 {{ viewPage }} / {{ totalPages }} 页</span>
         <div>
           <AppButton size="sm" :disabled="viewPage <= 1" @click="viewPage -= 1">上一页</AppButton>
           <AppButton size="sm" :disabled="viewPage >= totalPages" @click="viewPage += 1">下一页</AppButton>
@@ -85,55 +87,55 @@
     </template>
 
     <!-- 调整类别/性质/考核方式 -->
-    <AppDrawer :visible="dimForm.visible" :title="dimFormTitle" mode="modal" size="medium" @update:visible="dimForm.visible = $event">
+    <AppDrawer :visible="dimForm.visible" :title="dimFormTitle" mode="modal" size="medium" @update:visible="!saving && (dimForm.visible = $event)">
       <div class="aacc-form" v-if="dimForm.row">
         <AppFormItem :label="dimForm.row.courseName"><span class="mp-note">{{ dimForm.row.courseCode }}</span></AppFormItem>
         <AppFormItem v-if="dimForm.dim === 'category'" label="课程类别" required>
-          <AppSelect v-model="dimForm.value" :options="categoryOptions" />
+          <AppSelect :disabled="saving" v-model="dimForm.value" :options="categoryOptions" />
         </AppFormItem>
         <AppFormItem v-else-if="dimForm.dim === 'nature'" label="课程性质" required>
-          <AppSelect v-model="dimForm.value" :options="natureOptions" />
+          <AppSelect :disabled="saving" v-model="dimForm.value" :options="natureOptions" />
         </AppFormItem>
         <AppFormItem v-else label="考核方式" required hint="将影响该课程期中期末考试组织方式（考试/考查）">
-          <AppSelect v-model="dimForm.value" :options="assessmentOptions" />
+          <AppSelect :disabled="saving" v-model="dimForm.value" :options="assessmentOptions" />
         </AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
-        <AppButton variant="ghost" @click="dimForm.visible = false">取消</AppButton>
+        <AppButton variant="ghost" :disabled="saving" @click="dimForm.visible = false">取消</AppButton>
         <AppButton variant="primary" :loading="saving" @click="submitDimForm">保存</AppButton>
       </template>
     </AppDrawer>
 
     <!-- 编辑学分学时 -->
-    <AppDrawer :visible="creditForm.visible" title="编辑学分学时" mode="modal" size="large" @update:visible="creditForm.visible = $event">
+    <AppDrawer :visible="creditForm.visible" title="编辑学分学时" mode="modal" size="large" @update:visible="!saving && (creditForm.visible = $event)">
       <div class="aacc-form" v-if="creditForm.row">
         <AppFormItem :label="creditForm.row.courseName"><span class="mp-note">{{ creditForm.row.courseCode }}</span></AppFormItem>
-        <AppFormItem label="学分" required><AppNumberInput v-model="creditForm.credit" :min="0" :step="0.5" /></AppFormItem>
-        <AppFormItem label="总学时" hint="留空或与下方分项之和一致"><AppNumberInput v-model="creditForm.hoursTotal" :min="0" /></AppFormItem>
-        <AppFormItem label="理论学时"><AppNumberInput v-model="creditForm.hoursTheory" :min="0" /></AppFormItem>
-        <AppFormItem label="实践学时"><AppNumberInput v-model="creditForm.hoursPractice" :min="0" /></AppFormItem>
-        <AppFormItem label="实验学时"><AppNumberInput v-model="creditForm.hoursExperiment" :min="0" /></AppFormItem>
-        <AppFormItem label="上机学时"><AppNumberInput v-model="creditForm.hoursComputer" :min="0" /></AppFormItem>
+        <AppFormItem label="学分" required><AppNumberInput :disabled="saving" v-model="creditForm.credit" :min="0" :step="0.5" /></AppFormItem>
+        <AppFormItem label="总学时" hint="留空或与下方分项之和一致"><AppNumberInput :disabled="saving" v-model="creditForm.hoursTotal" :min="0" /></AppFormItem>
+        <AppFormItem label="理论学时"><AppNumberInput :disabled="saving" v-model="creditForm.hoursTheory" :min="0" /></AppFormItem>
+        <AppFormItem label="实践学时"><AppNumberInput :disabled="saving" v-model="creditForm.hoursPractice" :min="0" /></AppFormItem>
+        <AppFormItem label="实验学时"><AppNumberInput :disabled="saving" v-model="creditForm.hoursExperiment" :min="0" /></AppFormItem>
+        <AppFormItem label="上机学时"><AppNumberInput :disabled="saving" v-model="creditForm.hoursComputer" :min="0" /></AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
-        <AppButton variant="ghost" @click="creditForm.visible = false">取消</AppButton>
+        <AppButton variant="ghost" :disabled="saving" @click="creditForm.visible = false">取消</AppButton>
         <AppButton variant="primary" :loading="saving" @click="submitCreditForm">保存</AppButton>
       </template>
     </AppDrawer>
 
     <!-- 指定/更换课程负责人 -->
-    <AppDrawer :visible="ownerForm.visible" title="指定课程负责人" mode="modal" size="medium" @update:visible="ownerForm.visible = $event">
+    <AppDrawer :visible="ownerForm.visible" title="指定课程负责人" mode="modal" size="medium" @update:visible="!saving && (ownerForm.visible = $event)">
       <div class="aacc-form" v-if="ownerForm.row">
         <AppFormItem :label="ownerForm.row.courseName"><span class="mp-note">{{ ownerForm.row.courseCode }}</span></AppFormItem>
         <AppFormItem label="课程负责人" required hint="须为本校在职教师">
-          <AppTeacherPicker v-model="ownerForm.ownerTeacherId" clearable />
+          <AppTeacherPicker :disabled="saving" v-model="ownerForm.ownerTeacherId" clearable />
         </AppFormItem>
         <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       </div>
       <template #footer>
-        <AppButton variant="ghost" @click="ownerForm.visible = false">取消</AppButton>
+        <AppButton variant="ghost" :disabled="saving" @click="ownerForm.visible = false">取消</AppButton>
         <AppButton variant="primary" :loading="saving" @click="submitOwnerForm">保存</AppButton>
       </template>
     </AppDrawer>
@@ -143,18 +145,19 @@
       <div class="aacc-form" v-if="materialPanel.course">
         <AppFormItem :label="materialPanel.course.courseName"><span class="mp-note">{{ materialPanel.course.courseCode }}</span></AppFormItem>
 
-        <AppFileList
+        <ErrorState v-if="materialPanel.error" :description="materialPanel.error" @retry="loadMaterials" />
+        <AppFileList v-else
           :files="materialFiles"
           :loading="materialPanel.loading"
           :empty-text="materialPanel.lockedType === 'SYLLABUS' ? '暂无大纲文档' : '暂无课程材料'"
           :previewable="false"
           downloadable
-          removable
+          :removable="canVoidMaterial"
           @download="downloadMaterial"
           @remove="confirmVoidMaterial"
         />
 
-        <div class="aacc-material-add">
+        <div v-if="hasPermission('academicAffairs.course.manage')" class="aacc-material-add">
           <div class="aacc-material-add__title">{{ materialPanel.lockedType === 'SYLLABUS' ? '＋ 上传大纲文档' : '＋ 新增材料' }}</div>
           <AppFormItem v-if="!materialPanel.lockedType" label="材料类型" required>
             <AppSelect v-model="materialForm.materialType" :options="materialTypeOptions" />
@@ -163,7 +166,7 @@
             <AppTextInput v-model="materialForm.title" placeholder="如：数据结构教学大纲（2026版）" :maxlength="200" />
           </AppFormItem>
           <AppFormItem label="附件" hint="选填，支持 pdf/doc/docx/ppt/pptx/xls/xlsx 等，≤50MB">
-            <input type="file" @change="onMaterialFilePick" />
+            <input type="file" :disabled="materialForm.uploading || materialForm.submitting" @change="onMaterialFilePick" />
             <span v-if="materialForm.uploading" class="mp-note">上传中…</span>
             <span v-else-if="materialForm.fileName" class="mp-note">已上传：{{ materialForm.fileName }}</span>
           </AppFormItem>
@@ -228,8 +231,8 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
-      tab: 'category', loading: true, error: '', rows: [], saving: false, formError: '',
-      dimFilter: '', ownerFilter: '', statusFilter: '', archiveFilter: '', viewPage: 1, viewPageSize: 50,
+      tab: 'category', loading: true, error: '', rows: [], saving: false, formError: '', disposed: false, listReadRevision: 0, serverTotal: 0, materialReadRevision: 0, savedCourse: null,
+      dimFilter: '', ownerFilter: '', statusFilter: '', archiveFilter: '', viewPage: 1, viewPageSize: 20,
       tabs: [
         { key: 'category', label: '课程分类' },
         { key: 'nature', label: '课程性质' },
@@ -244,12 +247,16 @@ export default {
       dimForm: { visible: false, dim: 'category', row: null, value: '' },
       creditForm: { visible: false, row: null, credit: 0, hoursTotal: null, hoursTheory: null, hoursPractice: null, hoursExperiment: null, hoursComputer: null },
       ownerForm: { visible: false, row: null, ownerTeacherId: '' },
-      materialPanel: { visible: false, course: null, lockedType: '', loading: false, items: [] },
+      materialPanel: { visible: false, course: null, lockedType: '', loading: false, items: [], error: '' },
       materialForm: { materialType: 'COURSEWARE', title: '', fileId: '', fileName: '', remark: '', uploading: false, submitting: false, err: '' },
       materialVoidConfirm: { visible: false, id: '', title: '', submitting: false }
     }
   },
   computed: {
+    contextIdentity() { return JSON.stringify([this.ctx.ctxKey, this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
+    canVoidMaterial() {
+      return this.hasPermission('academicAffairs.course.manage') && String(this.ctx.currentRole?.roleCode || this.ctx.currentRole?.roleType || '').toUpperCase() !== 'COLLEGE_ACADEMIC'
+    },
     categoryOptions() { return Object.keys(COURSE_CATEGORY).map((k) => ({ label: COURSE_CATEGORY[k], value: k })) },
     natureOptions() { return Object.keys(COURSE_NATURE).map((k) => ({ label: COURSE_NATURE[k], value: k })) },
     assessmentOptions() { return Object.keys(EXAM_MODE).map((k) => ({ label: EXAM_MODE[k], value: k })) },
@@ -263,39 +270,6 @@ export default {
       if (this.dimForm.dim === 'category') return '调整课程类别'
       if (this.dimForm.dim === 'nature') return '调整课程性质'
       return '调整考核方式'
-    },
-    unsetOwnerCount() { return this.rows.filter((r) => !r.ownerTeacherId).length },
-    togglableRows() { return this.rows.filter((r) => r.status === 'ENABLED' || r.status === 'DISABLED') },
-    enabledCount() { return this.rows.filter((r) => r.status === 'ENABLED').length },
-    disabledCount() { return this.rows.filter((r) => r.status === 'DISABLED').length },
-    /** 历史课程（纯前端派生，不建新状态）：按 courseCode 分组取"最大**已定稿**版本"视为当前版本；
-     * DISABLED 或版本低于当前版本者计入本视图（历史版本仍可能是 ENABLED——旧版本供历史培养方案引用，
-     * 见 SM-05 冻结规则，不代表已停用，archiveReason 分别标注区分）。
-     * 当前版本判定只认 ENABLED/DISABLED 两个已定稿态：SM-05 规定已发布课程的改动会先生成新版本 DRAFT，
-     * 若把在途的 DRAFT/审核中/RETURNED 版本也计入 max，正在使用的 ENABLED v1 会在有人刚起草 v2 的瞬间
-     * 被误标成"已有新版本（历史版本）"——而 v2 可能被退回后永不通过，v1 其实一直是现行课程。 */
-    archiveRows() {
-      const SETTLED = ['ENABLED', 'DISABLED']
-      const maxVerByCode = {}
-      this.rows.forEach((r) => {
-        if (!SETTLED.includes(r.status)) return
-        const v = Number(r.version) || 1
-        if (!maxVerByCode[r.courseCode] || v > maxVerByCode[r.courseCode]) maxVerByCode[r.courseCode] = v
-      })
-      return this.rows
-        .filter((r) => r.status === 'DISABLED' || Number(r.version) < (maxVerByCode[r.courseCode] || 1))
-        .map((r) => ({
-          ...r,
-          archiveVersionLabel: `v${r.version}`,
-          archiveReason: r.status === 'DISABLED' ? '已停用' : `已有新版本 v${maxVerByCode[r.courseCode]}（历史版本供既有培养方案引用）`
-        }))
-    },
-    archiveDisabledCount() { return this.archiveRows.filter((r) => r.status === 'DISABLED').length },
-    archiveSupersededCount() { return this.archiveRows.filter((r) => r.status !== 'DISABLED').length },
-    archiveFilteredRows() {
-      if (this.archiveFilter === 'DISABLED') return this.archiveRows.filter((r) => r.status === 'DISABLED')
-      if (this.archiveFilter === 'SUPERSEDED') return this.archiveRows.filter((r) => r.status !== 'DISABLED')
-      return this.archiveRows
     },
     materialPanelTitle() { return this.materialPanel.lockedType === 'SYLLABUS' ? '课程大纲' : '课程材料' },
     materialFiles() {
@@ -318,34 +292,12 @@ export default {
       }
       return map[this.tab] || []
     },
-    filteredRows() {
-      if (this.tab === 'archive') return this.archiveFilteredRows
-      let list = this.rows
-      if ((this.tab === 'category' || this.tab === 'nature' || this.tab === 'assessment') && this.dimFilter) {
-        list = list.filter((r) => r[this.dimFieldName(this.tab)] === this.dimFilter)
-      }
-      if (this.tab === 'owner' && this.ownerFilter) {
-        list = list.filter((r) => (this.ownerFilter === 'UNSET' ? !r.ownerTeacherId : !!r.ownerTeacherId))
-      }
-      if (this.tab === 'disable') {
-        list = this.statusFilter ? this.rows.filter((r) => r.status === this.statusFilter) : this.togglableRows
-      }
-      return list
-    },
-    emptyStateCopy() {
-      // 区分课程库确实为空、当前页签或筛选下无匹配，避免有课程时仍提示去新建
-      if (!this.rows.length) return { title: '课程库还没有课程', description: '先在「新增课程」录入课程' }
-      if (this.tab === 'archive') return { title: '暂无停用或旧版本课程', description: '课程停用或发布新版本后，原版本会显示在这里' }
-      return { title: '当前筛选下没有课程', description: '可调整筛选条件后再查看' }
-    },
-    totalPages() { return Math.max(1, Math.ceil(this.filteredRows.length / this.viewPageSize)) },
-    displayRows() {
-      const safePage = Math.min(this.viewPage, this.totalPages)
-      const start = (safePage - 1) * this.viewPageSize
-      return this.filteredRows.slice(start, start + this.viewPageSize)
-    }
+    emptyStateCopy() { return { title: '当前条件下没有课程', description: '请调整筛选条件后重试。历史课程只包含已停用或已有更高正式版本的记录。' } },
+    totalPages() { return Math.max(1, Math.ceil(this.serverTotal / this.viewPageSize)) },
+    displayRows() { return this.rows }
   },
   watch: {
+    contextIdentity() { this.materialPanel.visible = false; this.materialVoidConfirm.visible = false; this.dimForm.visible = false; this.creditForm.visible = false; this.ownerForm.visible = false; this.savedCourse = null; this.rows = []; this.load() },
     '$route.query.tab': function (nextTab) {
       if (!nextTab || nextTab === this.tab || !this.tabs.some((item) => item.key === nextTab)) return
       this.tab = nextTab
@@ -353,18 +305,20 @@ export default {
       this.ownerFilter = ''
       this.statusFilter = ''
       this.archiveFilter = ''
-      this.viewPage = 1
+      this.searchPage()
     },
-    dimFilter() { this.viewPage = 1 },
-    ownerFilter() { this.viewPage = 1 },
-    statusFilter() { this.viewPage = 1 },
-    archiveFilter() { this.viewPage = 1 }
+    dimFilter() { this.searchPage() },
+    ownerFilter() { this.searchPage() },
+    statusFilter() { this.searchPage() },
+    archiveFilter() { this.searchPage() },
+    viewPage() { this.load() }
   },
   created() {
     const q = this.$route && this.$route.query && this.$route.query.tab
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
     this.load()
   },
+  beforeUnmount() { this.disposed = true; this.materialReadRevision++; this.listReadRevision++ },
   methods: {
     hasPermission(key) { return matchPermission(this.ctx.permissionPatterns || [], key) },
     reviewStatusColor,
@@ -372,45 +326,36 @@ export default {
     examModeLabel(v) { return EXAM_MODE[v] || (v ? '考核方式待确认' : '') },
     /** 维度 Tab 对应的真实课程字段名（assessment Tab 展示名与后端字段名 examMode 不同名）。 */
     dimFieldName(dim) { return dim === 'assessment' ? 'examMode' : dim },
-    dimCount(v) { return this.rows.filter((r) => r[this.dimFieldName(this.tab)] === v).length },
     switchTab(k) {
-      this.tab = k
-      this.viewPage = 1
-      this.dimFilter = ''; this.ownerFilter = ''; this.statusFilter = ''; this.archiveFilter = ''
-      this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
+      return this.$router.replace({ query: { ...this.$route.query, tab: k } })
     },
+    searchPage() { if (this.viewPage === 1) return this.load(); this.viewPage = 1 },
     async load() {
-      // 全量拉取（非单页截断）：本控制台 9 个 tab 全部从 this.rows 前端派生，其中「历史课程」tab 的
-      // 当前版本判定（maxVerByCode）必须基于同一 courseCode 的**全部**版本才正确——只取首页会让
-      // 未加载到的更高版本缺席，把实际的历史版本误判成当前版本。真实规模佐证：同类职业院校（常州工业
-      // 职业技术学院）正方课程库实测 3863 条，此前固定 pageSize:500 会静默截断约 8 倍数据。
-      // 故按 total 循环取完所有页；单页 500 仅作为分批粒度，不再是数据上限。
-      this.loading = true
-      this.error = ''
-      const PAGE_SIZE = 500
-      const first = await academicAffairsApi.getCourses({ page: 1, pageSize: PAGE_SIZE })
-      if (first.code !== 0) {
-        this.error = first.message
-        this.loading = false
-        return
-      }
-      let all = first.data.list
-      const total = Number(first.data.total) || all.length
-      const pages = Math.ceil(total / PAGE_SIZE)
-      for (let p = 2; p <= pages; p++) {
-        const res = await academicAffairsApi.getCourses({ page: p, pageSize: PAGE_SIZE })
-        if (res.code !== 0) {
-          this.error = res.message
-          this.loading = false
-          return
-        }
-        all = all.concat(res.data.list)
-      }
-      this.rows = all
-      this.loading = false
+      const revision = ++this.listReadRevision, identity = this.contextIdentity
+      const current = () => !this.disposed && revision === this.listReadRevision && identity === this.contextIdentity
+      const params = { page: this.viewPage, pageSize: this.viewPageSize }
+      if (['category', 'nature'].includes(this.tab) && this.dimFilter) params[this.tab] = this.dimFilter
+      if (this.tab === 'assessment' && this.dimFilter) params.examMode = this.dimFilter
+      if (this.tab === 'owner' && this.ownerFilter) params.ownerAssigned = this.ownerFilter === 'SET'
+      if (this.tab === 'disable') { params.togglable = true; if (this.statusFilter) params.status = this.statusFilter }
+      if (this.tab === 'archive') params.history = this.archiveFilter || 'ALL'
+      this.loading = true; this.error = ''; this.rows = []
+      try {
+        const res = await academicAffairsApi.getCourses(params)
+        if (!current()) return
+        if (res.code !== 0) { this.error = res.message || '课程读取失败，请重试'; return }
+        this.rows = res.data.list; this.serverTotal = res.data.total
+      } catch { if (current()) this.error = '课程读取失败，请重试' }
+      finally { if (current()) this.loading = false }
     },
     // ── 通用：整表 merge 后 PUT ──
     async putCourse(row, patch) {
+      const identity = this.contextIdentity
+      const detail = await academicAffairsApi.getCourse(row.courseId)
+      if (this.disposed || identity !== this.contextIdentity || !this.hasPermission('academicAffairs.course.manage')) return { code: -1, message: '当前身份已变化，请重新打开课程' }
+      if (detail.code !== 0) return detail
+      if (String(detail.data?.courseId) !== String(row.courseId)) return { code: -1, message: '课程信息不一致，请重新打开课程' }
+      row = detail.data
       const body = {
         courseCode: row.courseCode, courseName: row.courseName, courseNameEn: row.courseNameEn,
         category: row.category, nature: row.nature, credit: row.credit, hoursTotal: row.hoursTotal,
@@ -422,20 +367,34 @@ export default {
       }
       return academicAffairsApi.updateCourse(row.courseId, body)
     },
+    async saveCoursePatch(form, patch) {
+      if (this.saving || !form.visible || !form.row || !this.hasPermission('academicAffairs.course.manage')) return
+      const identity = this.contextIdentity
+      this.saving = true; this.formError = ''; this.savedCourse = null
+      try {
+        const res = await this.putCourse(form.row, patch)
+        if (this.disposed || identity !== this.contextIdentity || !form.visible) return
+        if (res.code !== 0) { this.formError = res.message || '保存失败，已保留输入'; return }
+        form.visible = false
+        const id = res.data?.courseId
+        this.savedCourse = { courseId: id, message: id ? String(id) !== String(form.row.courseId) ? '已建立新的课程草稿，请打开新版本继续办理审核。原版本及已有引用保持不变。' : '课程已保存，可打开课程核对结果。' : '保存已确认，但未取得课程编号，请从课程列表核对，勿重复提交。' }
+        await this.load()
+      } catch { if (!this.disposed && identity === this.contextIdentity) this.formError = '保存失败，已保留输入，请重试' }
+      finally { this.saving = false }
+    },
     // ── 课程分类/性质/考核方式 ──
     openDimForm(row, dim) {
+      if (this.saving || !this.hasPermission('academicAffairs.course.manage')) return
       this.formError = ''
       this.dimForm = { visible: true, dim, row, value: row[this.dimFieldName(dim)] }
     },
     async submitDimForm() {
-      this.saving = true
       const field = this.dimFieldName(this.dimForm.dim)
-      const res = await this.putCourse(this.dimForm.row, { [field]: this.dimForm.value })
-      this.saving = false
-      if (res.code === 0) { toast.success('已保存'); this.dimForm.visible = false; this.load() } else this.formError = res.message
+      return this.saveCoursePatch(this.dimForm, { [field]: this.dimForm.value })
     },
     // ── 学分学时 ──
     openCreditForm(row) {
+      if (this.saving || !this.hasPermission('academicAffairs.course.manage')) return
       this.formError = ''
       this.creditForm = {
         visible: true, row, credit: row.credit, hoursTotal: row.hoursTotal, hoursTheory: row.hoursTheory,
@@ -443,26 +402,21 @@ export default {
       }
     },
     async submitCreditForm() {
-      this.saving = true
       const f = this.creditForm
-      const res = await this.putCourse(f.row, {
+      return this.saveCoursePatch(f, {
         credit: f.credit, hoursTotal: f.hoursTotal, hoursTheory: f.hoursTheory,
         hoursPractice: f.hoursPractice, hoursExperiment: f.hoursExperiment, hoursComputer: f.hoursComputer
       })
-      this.saving = false
-      if (res.code === 0) { toast.success('已保存'); this.creditForm.visible = false; this.load() } else this.formError = res.message
     },
     // ── 课程负责人 ──
     openOwnerForm(row) {
+      if (this.saving || !this.hasPermission('academicAffairs.course.manage')) return
       this.formError = ''
       this.ownerForm = { visible: true, row, ownerTeacherId: row.ownerTeacherId || '' }
     },
     async submitOwnerForm() {
       if (!this.ownerForm.ownerTeacherId) { this.formError = '请选择课程负责人'; return }
-      this.saving = true
-      const res = await this.putCourse(this.ownerForm.row, { ownerTeacherId: this.ownerForm.ownerTeacherId })
-      this.saving = false
-      if (res.code === 0) { toast.success('已保存'); this.ownerForm.visible = false; this.load() } else this.formError = res.message
+      return this.saveCoursePatch(this.ownerForm, { ownerTeacherId: this.ownerForm.ownerTeacherId })
     },
     // ── 课程停用 ──
     async doDisable(row) {
@@ -477,7 +431,8 @@ export default {
     },
     // ── 课程大纲 / 课程材料（共用同一 Drawer，lockedType='SYLLABUS' 时即「课程大纲」）──
     openMaterialPanel(row, lockedType) {
-      this.materialPanel = { visible: true, course: row, lockedType: lockedType || '', loading: true, items: [] }
+      this.materialVoidConfirm.visible = false
+      this.materialPanel = { visible: true, course: row, lockedType: lockedType || '', loading: true, items: [], error: '' }
       this.resetMaterialForm()
       this.loadMaterials()
     },
@@ -488,33 +443,49 @@ export default {
       }
     },
     async loadMaterials() {
-      this.materialPanel.loading = true
-      const res = await academicAffairsApi.getCourseMaterials(this.materialPanel.course.courseId, this.materialPanel.lockedType)
-      this.materialPanel.loading = false
-      if (res.code === 0) this.materialPanel.items = res.data.list
-      else toast.error(res.message || '材料加载失败')
+      const panel = this.materialPanel, identity = this.contextIdentity, revision = ++this.materialReadRevision
+      if (!panel.visible || !panel.course) return
+      const current = () => !this.disposed && panel === this.materialPanel && panel.visible && revision === this.materialReadRevision && identity === this.contextIdentity
+      panel.loading = true; panel.error = ''; panel.items = []
+      try {
+        const res = await academicAffairsApi.getCourseMaterials(panel.course.courseId, panel.lockedType)
+        if (!current()) return
+        if (res.code === 0) panel.items = res.data.list
+        else panel.error = res.message || '材料读取失败，请重试'
+      } catch { if (current()) panel.error = '材料读取失败，请重试' }
+      finally { if (current()) panel.loading = false }
     },
     async onMaterialFilePick(e) {
       const file = e.target.files && e.target.files[0]
-      if (!file) return
-      this.materialForm.uploading = true; this.materialForm.err = ''
-      const res = await academicAffairsApi.uploadCourseMaterialFile(file)
-      this.materialForm.uploading = false
-      if (res.code === 0) { this.materialForm.fileId = res.data.fileId; this.materialForm.fileName = res.data.fileName || file.name }
-      else this.materialForm.err = '附件上传失败：' + (res.message || '')
+      const f = this.materialForm, panel = this.materialPanel, identity = this.contextIdentity
+      if (!file || f.uploading || f.submitting || !panel.visible || !this.hasPermission('academicAffairs.course.manage')) return
+      const current = () => !this.disposed && f === this.materialForm && panel === this.materialPanel && panel.visible && identity === this.contextIdentity
+      f.uploading = true; f.err = ''
+      try {
+        const res = await academicAffairsApi.uploadCourseMaterialFile(file)
+        if (!current()) return
+        if (res.code === 0) { f.fileId = res.data.fileId; f.fileName = res.data.fileName || file.name }
+        else f.err = '附件上传失败：' + (res.message || '')
+      } catch { if (current()) f.err = '附件上传失败，请重试' }
+      finally { f.uploading = false }
     },
     async submitMaterialForm() {
-      this.materialForm.err = ''
-      const f = this.materialForm
+      const f = this.materialForm, panel = this.materialPanel, identity = this.contextIdentity
+      if (f.submitting || f.uploading || !panel.visible || !panel.course || !this.hasPermission('academicAffairs.course.manage')) return
+      const current = () => !this.disposed && f === this.materialForm && panel === this.materialPanel && panel.visible && identity === this.contextIdentity
+      f.err = ''
       if (!f.title || !f.title.trim()) { f.err = '请填写标题'; return }
-      const materialType = this.materialPanel.lockedType || f.materialType
+      const materialType = panel.lockedType || f.materialType
       f.submitting = true
-      const res = await academicAffairsApi.addCourseMaterial(this.materialPanel.course.courseId, {
+      try {
+      const res = await academicAffairsApi.addCourseMaterial(panel.course.courseId, {
         materialType, title: f.title.trim(), fileId: f.fileId || null, fileName: f.fileName || null, remark: f.remark || null
       })
-      f.submitting = false
+      if (!current()) return
       if (res.code !== 0) { f.err = res.message || '新增失败'; return }
       toast.success('已新增'); this.resetMaterialForm(); this.loadMaterials()
+      } catch { if (current()) f.err = '材料保存失败，已保留输入，请重试' }
+      finally { f.submitting = false }
     },
     async downloadMaterial(f) {
       if (!f.fileId) { toast.error('该材料未上传附件'); return }
@@ -528,14 +499,21 @@ export default {
       } catch (e) { toast.error('下载失败：' + (e.message || '')) }
     },
     confirmVoidMaterial(f) {
-      this.materialVoidConfirm = { visible: true, id: f.id, title: f.name, submitting: false }
+      if (!this.canVoidMaterial || !this.materialPanel.visible || !this.materialPanel.items.some(item => String(item.id) === String(f.id))) return
+      this.materialVoidConfirm = { visible: true, id: f.id, title: f.name, submitting: false, courseId: this.materialPanel.course.courseId }
     },
     async doVoidMaterial() {
-      this.materialVoidConfirm.submitting = true
-      const res = await academicAffairsApi.voidCourseMaterial(this.materialVoidConfirm.id)
-      this.materialVoidConfirm.submitting = false
-      if (res.code !== 0) { toast.error(res.message || '作废失败'); return }
-      toast.success('已作废'); this.materialVoidConfirm.visible = false; this.loadMaterials()
+      const dlg = this.materialVoidConfirm, panel = this.materialPanel, identity = this.contextIdentity
+      if (!this.canVoidMaterial || !dlg.visible || dlg.submitting || !panel.visible || dlg.courseId !== panel.course?.courseId) return
+      const current = () => !this.disposed && panel === this.materialPanel && dlg === this.materialVoidConfirm && identity === this.contextIdentity
+      dlg.submitting = true
+      try {
+        const res = await academicAffairsApi.voidCourseMaterial(dlg.id)
+        if (!current()) return
+        if (res.code !== 0) { toast.error(res.message || '作废失败'); return }
+        toast.success('已作废'); dlg.visible = false; this.loadMaterials()
+      } catch { if (current()) toast.error('作废失败，请重试') }
+      finally { dlg.submitting = false }
     }
   }
 }
