@@ -22,6 +22,7 @@
       <div class="aa-tabs">
         <button class="aa-tab" :class="{ 'is-active': tab === 'ACADEMIC_REVIEW' }" @click="switchTab('ACADEMIC_REVIEW')">待终审</button>
         <button class="aa-tab" :class="{ 'is-active': tab === 'PUBLISHED' }" @click="switchTab('PUBLISHED')">已发布（可归档）</button>
+        <button class="mp-btn mp-btn--sm" :disabled="loading || dlg.submitting" @click="load">刷新任务状态</button>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -31,7 +32,7 @@
         <section v-if="selectedTask" class="aa-publish-context" aria-label="当前成绩发布任务">
           <div><h2>{{ selectedTask.courseName }}<template v-if="selectedTask.teachingClassName"> · {{ selectedTask.teachingClassName }}</template></h2><p>{{ selectedTask.termCode }} · 任务 {{ selectedTask.gradeTaskId }}</p><p>来源：{{ selectedTask.teachingTaskId ? `正式教学任务 ${selectedTask.teachingTaskId}` : '任务来源待核对' }}</p></div>
           <div><small>当前状态</small><strong>{{ statusLabel(selectedTask.status) }}</strong></div>
-          <div><small>下一责任</small><strong>{{ selectedTask.status === 'ACADEMIC_REVIEW' ? '教务成绩发布岗' : '后置扫描处理岗 / 受控更正' }}</strong></div>
+          <div><small>下一责任</small><strong>{{ nextResponsibility(selectedTask.status) }}</strong></div>
         </section>
         <div class="aa-publish-workspace">
           <aside class="aa-publish-queue" aria-label="发布责任队列">
@@ -156,7 +157,14 @@ export default {
       if (state.error) { this.loading = false; return }
       return this.load()
     },
-    statusLabel(s) { return ({ ACADEMIC_REVIEW: '待教务终审', PUBLISHED: '已发布', ARCHIVED: '已归档', RETURNED: '已退回', INPUTTING: '录入中', NOT_STARTED: '未开始', COLLEGE_REVIEW: '待学院审核' })[s] || '状态待确认' },
+    statusLabel(s) { return ({ ACADEMIC_REVIEW: '待教务终审', PUBLISHED: '已发布', ARCHIVED: '已归档', RETURNED: '已退回', INPUTTING: '录入中', NOT_STARTED: '未开始', SUBMITTED: '待学院审核', COLLEGE_REVIEW: '待学院审核' })[s] || '状态待确认' },
+    nextResponsibility(s) {
+      if (['SUBMITTED', 'COLLEGE_REVIEW'].includes(s)) return '学院成绩审核岗；审核完成后刷新状态'
+      if (s === 'ACADEMIC_REVIEW') return '教务成绩发布岗'
+      if (['PUBLISHED', 'ARCHIVED'].includes(s)) return '后置扫描处理岗 / 受控更正'
+      if (['NOT_STARTED', 'INPUTTING', 'RETURNED'].includes(s)) return '任课教师录入并提交'
+      return '请刷新状态后核对责任节点'
+    },
     switchTab(tab) { const query = { ...this.$route.query, tab, page: '1' }; delete query.selectedTaskId; this.$router.push({ path: this.$route.path, query }) },
     onPageChange(page) { const query = { ...this.$route.query, page: String(page) }; delete query.selectedTaskId; this.$router.push({ path: this.$route.path, query }) },
     returnToQueue() {

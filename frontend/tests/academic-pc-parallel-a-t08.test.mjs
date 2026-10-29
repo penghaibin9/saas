@@ -23,6 +23,26 @@ function instance(file, deps = {}, options = {}) {
 const ok=data=>({code:0,data})
 const page=list=>ok({list,total:list.length})
 
+test('教学任务进入同一学期同一教学班名单，接收页按编号查询', async () => {
+  const routes = []
+  const task = instance('AaTaskDetailView', {}, { $router: { push: route => routes.push(route) } })
+  task.workbench = { termId: '52' }
+  task.openTeachingClass({ teachingClassCode: 'TC52-QA26092301-4671' })
+  assert.equal(routes[0].query.termId, '52')
+  assert.equal(routes[0].query.keyword, 'TC52-QA26092301-4671')
+  let requested
+  const classes = instance('AaTeachingClassListView', {
+    academicAffairsApi: { getTerms: async () => ok({ list: [{ termId: '52' }] }), getCurrentTerm: async () => ok({ termId: '52' }) },
+    teachingClassApi: { list: async params => { requested = params; return page([]) } }
+  }, { $route: { query: routes[0].query } })
+  await classes.initialize()
+  assert.equal(requested.keyword, 'TC52-QA26092301-4671')
+  assert.equal(requested.termId, '52')
+  task.pendingResult = { action: '待核对' }
+  task.openTeachingClass({ teachingClassCode: 'other' })
+  assert.equal(routes.length, 1)
+})
+
 test('草稿批次的办理阶段跟随正式任务汇总，不停留在生成阶段',()=>{
   const vm=instance('AaTaskDetailView')
   vm.workbench={status:'DRAFT',taskTotal:1,unassignedCount:1};assert.equal(vm.currentStage,2)

@@ -81,7 +81,7 @@ import AcademicDecisionTraceCard from '../../components/academic/AcademicDecisio
 import AcademicBusinessReceipt from '../../components/academic/AcademicBusinessReceipt.vue'
 import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
 import AcademicPrototypeIcon from '../../components/academic/AcademicPrototypeIcon.vue'
-import { academicErrorKind, academicErrorMessage, academicReceipt } from '../../components/academic/studentAcademicUi'
+import { academicErrorKind, academicErrorMessage, academicReceipt, formatDateTime } from '../../components/academic/studentAcademicUi'
 import { createStudentAcademicCommandGuard, studentAcademicIdentity, studentAcademicWriteErrorKind } from '../../components/academic/studentAcademicCommandGuard'
 import StateBlock from '../../components/StateBlock.vue'
 import { portalApi } from '../../services/portalApi'
@@ -142,7 +142,7 @@ function normalizeGroups(data) {
   }
   return source.length ? [{ batch: { batchId: 'current', batchName: '当前可办理课程', status: 'OPEN' }, courses: source }] : []
 }
-function dateText(value) { return String(value || '').slice(0, 10) || '—' }
+function dateText(value) { return formatDateTime(value, '—') }
 const weekdayLabels = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
 function scheduleText(course) {
   const rows = Array.isArray(course?.scheduleItems) ? course.scheduleItems : []
@@ -215,7 +215,7 @@ const detailBatch = computed(() => groups.value.find(group => group.courses.some
 const visibleCourseCount = computed(() => visibleGroups.value.reduce((sum, group) => sum + group.courses.length, 0))
 const sampledAt = computed(() => {
   const times = groups.value.flatMap(group => group.courses.map(course => course.sampledAt || course.capacitySampledAt || course.evaluatedAt || group.batch.sampledAt)).filter(Boolean)
-  return times.length ? String(times.sort().at(-1)).replace('T', ' ').slice(11,16) : '时间未提供'
+  return times.length ? formatDateTime(times.sort().at(-1), '时间未提供') : '时间未提供'
 })
 function clearForbidden(e) {
   guard.invalidate()

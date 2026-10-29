@@ -187,9 +187,12 @@ def test_r8_rectification_review_requires_school_scope(client, db_mode):
                        json={"title": "本院整改任务", "requirement": "限期完成本院教学秩序整改"}).json()["data"]
     rect_id = rect["rectId"]
     client.post(f"{BASE}/quality/rectifications/{rect_id}/submit", headers=college, json={"note": "已整改"})
+    assert client.get(f"{BASE}/quality/rectifications/{rect_id}", headers=college).json()["data"]["reviewAllowed"] is False
+    assert client.get(f"{BASE}/quality/rectifications/{rect_id}", headers=admin).json()["data"]["reviewAllowed"] is True
     # 学院范围角色不可复核关闭
     assert client.post(f"{BASE}/quality/rectifications/{rect_id}/review", headers=college,
                        json={"action": "APPROVE"}).status_code == 403
+    assert client.get(f"{BASE}/quality/rectifications/{rect_id}", headers=admin).json()["data"]["status"] == "SUBMITTED"
     # 全校范围角色可以
     ok = client.post(f"{BASE}/quality/rectifications/{rect_id}/review", headers=admin,
                      json={"action": "APPROVE"}).json()["data"]
@@ -260,3 +263,25 @@ def test_r12_cross_college_scope_denied(client, db_mode):
     # 列表不传 collegeId 时按自身范围收敛，看不到机械学院的记录
     scoped = client.get(f"{BASE}/quality/records", headers=college).json()["data"]["items"]
     assert all(str(i["recordId"]) != str(rid) for i in scoped)
+def test_rectification_not_closed_filters_before_paging_and_keeps_college_scope(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaQualityRectification
+    ids = _seed_colleges(db_mode)
+    college = _hdr(client, "college_admin01")
+    with get_sessionmaker()() as db:
+        rows = [AaQualityRectification(tenant_id=TID, college_id=ids["soft"], title=f"分页验收{state}", requirement="虚构分页与范围回归", status=state)
+                for state in ["PENDING", "IN_PROGRESS", "SUBMITTED", "CLOSED"]]
+        other = AaQualityRectification(tenant_id=TID, college_id=ids["other"], title="另一学院验收", requirement="虚构范围隔离回归", status="PENDING")
+        db.add_all([*rows, other]); db.commit(); other_id=other.id
+    def read(status, page):
+        response = client.get(f"{BASE}/quality/rectifications", headers=college, params={"status": status, "page": page, "pageSize": 2})
+        assert response.status_code == 200, response.text
+        return response.json()["data"]
+    first, second = read("NOT_CLOSED", 1), read("NOT_CLOSED", 2)
+    assert first["total"] == second["total"] == 3
+    assert len(first["items"]) == 2 and len(second["items"]) == 1
+    assert all(row["status"] != "CLOSED" for row in first["items"] + second["items"])
+    assert len({row["rectId"] for row in first["items"] + second["items"]}) == 3
+    assert read("CLOSED", 1)["total"] == 1
+    assert read("NOT_CLOSED", 3)["items"] == []
+    assert client.get(f"{BASE}/quality/rectifications/{other_id}", headers=college).status_code == 403

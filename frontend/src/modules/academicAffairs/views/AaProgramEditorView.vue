@@ -18,6 +18,10 @@
     <div v-else-if="program">
       <AaObjectContext :name="program.programName" :identity="[program.gradeYear && (program.gradeYear + '级'), '版本 v' + program.version].filter(Boolean).join(' · ')" :status="statusLabel(program.status)" :owner="programOwner" :next-step="programNextOwner" source="当前方案的课程、绑定与版本以正式记录为准" />
       <AaOperationReceipt :receipt="receipt" />
+      <p v-if="program.responsibility?.resolved === false" class="mp-note" role="status">责任岗位尚未就绪，请按学校实际任职核对。
+        <router-link v-if="hasPermission('system.org.view')" class="mp-link" to="/admin/system/org?tab=positions">核对组织与岗位</router-link>
+        <router-link v-if="hasPermission('system.user.view')" class="mp-link" to="/admin/system/accounts/staff">核对教职工任职</router-link>
+      </p>
       <AppInlineAlert v-if="['ENABLED', 'PUBLISHED'].includes(program.status) && validation && !validation.canSubmit" type="warning" description="该版本已有生效记录，但按当前规则校验仍有待处理项。现行方案不会因此自动停用；请在版本与变更中按受控流程补齐要求，并核对受影响的开课与毕业审核。" />
       <div class="aa-program-layout">
       <aside class="aa-program-nav">
@@ -138,6 +142,7 @@
               />
               <AppButton variant="primary" :disabled="!/^\d{4}$/.test(bindForm.gradeYear)" :loading="acting" @click="doBind">{{ bindForm.classId ? '绑定班级特例' : '绑定年级' }}</AppButton>
             </template>
+            <p v-else-if="['PUBLISHED', 'ENABLED'].includes(program.status)" class="mp-note">本方案已发布；年级和班级绑定请由具有方案发布权限的教务责任人员办理。</p>
           </div>
           <p class="mp-note">提交前必须通过右侧结构化校验；留空班级时建立专业年级通用绑定，选择班级时仅建立该班特例，其他同专业年级班级继续走通用方案。</p>
         </AppSectionCard>
@@ -260,6 +265,7 @@ export default {
         return
       }
       if (issue.fieldPath?.startsWith('courses') || issue.fieldPath === 'courseId' || issue.fieldPath === 'module' || issue.fieldPath === 'credit' || issue.fieldPath === 'openTermNo') this.activeStep = 'courses'
+      else if (issue.fieldPath === 'bindings' || issue.fieldPath?.startsWith('bindings.')) this.activeStep = 'review'
       else if (issue.fieldPath === 'nationalStandards') this.activeStep = 'standards'
       else this.activeStep = 'basic'
       this.$nextTick(() => {

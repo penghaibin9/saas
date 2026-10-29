@@ -23,6 +23,15 @@ function page(api = {}, query = {}) {
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 
+test('未确认统计保留任务已就绪状态，并解释缺失的是确认时间', async () => {
+  const { state } = page({ getStatsTeachingTaskPending: async () => ({ code: 0, data: { list: [{ taskId: '9', status: 'READY' }], total: 1 } }) }, { tab: 'teachingTask' })
+  state.tab = 'teachingTask'
+  await state.loadDetail()
+  assert.equal(state.detail.rows[0].status, 'READY')
+  assert.match(state.detail.rows[0].confirmationEvidence, /缺少教师确认时间/)
+  assert.equal(state.detail.pagination.total, 1)
+})
+
 test('indicator topic preserves the displayed scope rather than unsent edits', () => {
   const { state, destinations } = page()
   state.appliedFilters = { termId: '9007199254740993', collegeId: '12', majorId: '' }
@@ -224,4 +233,22 @@ test('overview records the actual source time and rejects a missing indicator li
   const invalid = page({ getStatsOverview: async () => ({ code: 0, data: {} }) }).state
   await invalid.loadTab()
   assert.match(invalid.error, /统计指标回执不完整/)
+})
+
+
+test('确认依据直达精确任务，失去权限或旧行不得继续跳转', async () => {
+  const row = { taskId: '9007199254740993123', batchId: '9007199254740993124', status: 'READY' }
+  const { state, destinations } = page({ getStatsTeachingTaskPending: async () => ({ code: 0, data: { list: [row], total: 1 } }) }, { tab: 'teachingTask', termId: '51', detail: '1', detailPage: '2' })
+  state.tab = 'teachingTask'; state.academicFlow = { captureReturn: () => 'stats-source' }
+  await state.loadDetail()
+  state.openTaskSource(state.detail.rows[0])
+  assert.equal(destinations[0].path, '/admin/academic-affairs/teaching-tasks/9007199254740993124')
+  assert.equal(destinations[0].query.teachingTaskId, row.taskId)
+  assert.equal(destinations[0].query.returnToken, 'stats-source')
+  state.openTaskSource(row)
+  assert.equal(destinations.length, 1)
+  state.ctx.permissionPatterns = []; state.openTaskSource(state.detail.rows[0])
+  assert.equal(destinations.length, 1)
+  state.ctx.permissionPatterns = ['*']; state.detail.rows[0].batchId = null
+  state.openTaskSource(state.detail.rows[0]); assert.equal(destinations.length, 1)
 })

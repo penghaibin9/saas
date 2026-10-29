@@ -39,7 +39,7 @@
       <DataTable v-else :columns="columns" :rows="rows" row-key="certificateId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-student="{ row }"><div class="mp-cell-main">{{ row.studentName || `学生 ${row.studentId}` }}</div><div class="mp-cell-sub">{{ row.studentNo || row.studentId }} · {{ row.majorName || '专业待确认' }}</div></template>
         <template #cell-cert="{ row }"><div class="mp-cell-main">{{ row.certNo }}</div><div class="mp-cell-sub">{{ row.eRegNo ? `电子注册号 ${row.eRegNo}` : '无电子注册号' }}</div></template>
-        <template #cell-source="{ row }"><div class="mp-cell-main">{{ row.auditBatchName || '毕业审核' }}</div><div class="mp-cell-sub">签发 {{ row.issueDate || row.issueYear || '待确认' }}</div></template>
+        <template #cell-source="{ row }"><div class="mp-cell-main">{{ row.auditBatchName || '历史审核批次待核对' }}</div><div class="mp-cell-sub">签发 {{ row.issueDate || row.issueYear || '待确认' }}</div></template>
         <template #cell-type="{ row }"><StatusTag :type="row.certType === 'GRADUATION' ? 'success' : 'warning'" :label="row.certType === 'GRADUATION' ? '毕业证' : '结业证'" dot /></template>
         <template #cell-status="{ row }"><StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot /></template>
         <template #cell-ops="{ row }">

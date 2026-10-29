@@ -123,6 +123,92 @@ def _create_case(service, creator: dict, batch_id: int, grade_id: int):
 
 
 @pytest.mark.usefixtures("db_mode")
+def test_applied_correction_keeps_case_readable_without_claiming_unverified_fact():
+    from app.models import AcademicGrade, PostArchiveCorrectionCase
+    from app.modules.academic_affairs.services import academic_affairs_archive_correction_review_service as review
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as service
+    creator = _user(41011, "stage_c3_fact_reader")
+    _activate(creator)
+    batch_id, grade_id, _, _ = _seed_grade_archive()
+    case_id = int(_create_case(service, creator, batch_id, grade_id)["caseId"])
+    with get_sessionmaker()() as db:
+        original = db.get(AcademicGrade, grade_id)
+        policy = dict(effective_policy_code=original.effective_policy_code, effective_policy_version=original.effective_policy_version, effective_attempt_strategy=original.effective_attempt_strategy, pass_line_snapshot=original.pass_line_snapshot)
+        correct = AcademicGrade(tenant_id=TID, acad_student_id=original.acad_student_id, course_name="操作系统", term=TERM_CODE, score=78, pass_status="PASSED", record_status="ACTIVE", source="POST_ARCHIVE", source_biz_type="POST_ARCHIVE", source_biz_id=case_id, **policy)
+        foreign = AcademicGrade(tenant_id=TID + 1, acad_student_id=original.acad_student_id, course_name="其他学校不应返回", term=TERM_CODE, score=99, pass_status="PASSED", record_status="ACTIVE", **policy)
+        db.add_all([correct, foreign]); db.flush(); correct_id, foreign_id = correct.id, foreign.id; db.commit()
+    for fact_type, fact_id in [("AA_GRADE_CORRECTION", grade_id), ("ACADEMIC_GRADE", grade_id), ("ACADEMIC_GRADE", foreign_id), ("ACADEMIC_GRADE", None)]:
+        with get_sessionmaker()() as db:
+            case = db.get(PostArchiveCorrectionCase, case_id)
+            case.status = "APPLIED"; case.official_fact_type = fact_type; case.official_fact_id = fact_id; db.commit()
+        result = review.get_correction_case(creator, case_id)
+        assert result["caseId"] == str(case_id) and result["status"] == "APPLIED"
+        assert result["originalOfficialFact"]["factId"] == str(grade_id)
+        assert result["resultingOfficialFact"] is None and result["resultingFactError"]
+        assert result["reviewAction"]["allowed"] is False
+        assert "其他学校不应返回" not in str(result)
+    with get_sessionmaker()() as db:
+        case = db.get(PostArchiveCorrectionCase, case_id)
+        case.official_fact_id = correct_id; db.commit()
+    result = review.get_correction_case(creator, case_id)
+    assert result["resultingFactError"] == ""
+    assert result["resultingOfficialFact"]["factId"] == str(correct_id)
+    assert result["resultingOfficialFact"]["score"] == 78
+
+
+@pytest.mark.usefixtures("db_mode")
+def test_legacy_change_request_archive_requires_complete_typed_lineage():
+    import json
+    from app.models import AaArchiveBatch, AaGradeChangeRequest, AaGradeCorrection, AcademicGrade, ArchiveManifest, PostArchiveCorrectionCase
+    from app.modules.academic_affairs.services import academic_affairs_archive_correction_review_service as review
+    from app.modules.academic_affairs.services import academic_affairs_archive_manifest_service as manifest_service
+    from app.modules.academic_affairs.services import academic_affairs_archive_service as service
+    creator = _user(41021, "stage_c3_legacy_reader"); _activate(creator)
+    batch_id, grade_id, v1_id, _ = _seed_grade_archive()
+    case_id = int(_create_case(service, creator, batch_id, grade_id)["caseId"])
+    with get_sessionmaker()() as db:
+        original = db.get(AcademicGrade, grade_id)
+        request = AaGradeChangeRequest(id=99001, tenant_id=TID, grade_task_id=1, grade_record_id=1, student_id=1, current_grade_id=grade_id, proposed_total_score=78, reason="历史正式更正证据", status="APPROVED")
+        db.add(request); db.flush()
+        grade_fields = {key: getattr(original, key) for key in ("acad_student_id", "course_id", "course_code", "course_version", "attempt_no", "term", "effective_policy_code", "effective_policy_version", "effective_attempt_strategy", "pass_line_snapshot")}
+        corrected = AcademicGrade(tenant_id=TID, course_name=original.course_name, score=78, pass_status="PASSED", record_status="ACTIVE", source="CHANGE", source_biz_type="GRADE_CHANGE_REQUEST", source_biz_id=request.id, **grade_fields)
+        db.add(corrected); db.flush()
+        correction = AaGradeCorrection(tenant_id=TID, source_type="CHANGE_REQUEST", source_ref_id=request.id, original_grade_id=grade_id, corrected_grade_id=corrected.id, before_score=72, after_score=78, pass_line=60, rule_snapshot_json=json.dumps({"archiveBatchId": batch_id}), status="ACTIVE")
+        db.add(correction); db.flush()
+        batch = db.get(AaArchiveBatch, batch_id)
+        counts, hashes, max_ids = {"GRADE": 1}, {"GRADE": "c" * 64}, {"GRADE": corrected.id}
+        payload = manifest_service._manifest_payload(batch=batch, version_no=2, domain_counts=counts, domain_hashes=hashes, max_ids=max_ids, supersedes_id=v1_id, reason="历史成绩更正后的第二版")
+        manifest = ArchiveManifest(tenant_id=TID, archive_batch_id=batch_id, version_no=2, domain_counts_json=json.dumps(counts), domain_hashes_json=json.dumps(hashes), max_ids_json=json.dumps(max_ids), manifest_hash=manifest_service._hash(payload), reason="历史成绩更正后的第二版", supersedes_id=v1_id, archived_at=datetime.utcnow(), archived_by=41021, created_by=41021)
+        db.add(manifest); db.flush()
+        case = db.get(PostArchiveCorrectionCase, case_id)
+        case.status = "APPLIED"; case.target_ref = f"acadGrade:{grade_id}"; case.official_fact_type = "AA_GRADE_CORRECTION"; case.official_fact_id = correction.id; case.resulting_manifest_id = manifest.id
+        good_payload = json.dumps({"beforeGradeId": grade_id, "afterGradeId": corrected.id, "beforeScore": 72, "afterScore": 78})
+        case.correction_json = good_payload
+        correction_id, corrected_id = correction.id, corrected.id
+        db.commit()
+    result = review.get_correction_case(creator, case_id)
+    assert case_id != 99001
+    assert result["originalOfficialFact"]["factId"] == str(grade_id)
+    assert result["resultingOfficialFact"]["factId"] == str(corrected_id) and not result["resultingFactError"]
+    verified = service.verify_manifest(creator, batch_id)
+    assert verified["ok"] is True and any("LEGACY_GRADE_CORRECTION_FACT" in value for value in verified["warnings"])
+    for broken in ("wrong-request", "wrong-payload", "wrong-archive", "unapproved"):
+        with get_sessionmaker()() as db:
+            correction = db.get(AaGradeCorrection, correction_id)
+            request = db.get(AaGradeChangeRequest, 99001)
+            case = db.get(PostArchiveCorrectionCase, case_id)
+            correction.source_ref_id = case_id if broken == "wrong-request" else 99001
+            correction.rule_snapshot_json = json.dumps({"archiveBatchId": batch_id + 1 if broken == "wrong-archive" else batch_id})
+            case.correction_json = '{}' if broken == "wrong-payload" else good_payload
+            request.status = "REJECTED" if broken == "unapproved" else "APPROVED"
+            db.commit()
+        result = review.get_correction_case(creator, case_id)
+        assert result["status"] == "APPLIED" and result["resultingOfficialFact"] is None
+        assert result["resultingFactError"] and not result["reviewAction"]["allowed"]
+        assert service.verify_manifest(creator, batch_id)["ok"] is False
+
+
+@pytest.mark.usefixtures("db_mode")
 def test_reject_requires_different_reviewer_and_creates_no_fact_or_manifest():
     from app.models import AaArchiveBatch, AcademicGrade, ArchiveManifest, PostArchiveCorrectionCase
     from app.modules.academic_affairs.services import academic_affairs_archive_correction_review_service as review

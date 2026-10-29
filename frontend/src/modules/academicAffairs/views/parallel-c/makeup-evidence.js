@@ -53,7 +53,9 @@ export function gradeIdentity(grade) {
 export function gradeResult(grade) {
   if (!grade?.gradeId) return '正式成绩待核对'
   const score = grade.score == null ? '无数值分' : `${grade.score}分`
-  return `${score} · ${grade.passStatus || '通过状态待核对'} · ${grade.recordStatus || '记录状态待核对'}`
+  const pass = { PASSED: '已通过', FAIL: '未通过', FAILED: '未通过', EXEMPT: '免修', DEFERRED: '缓考', ABSENT: '缺考' }[grade.passStatus] || '通过状态待核对'
+  const record = { ACTIVE: '有效记录', SUPERSEDED: '已被新版本替代', VOIDED: '已作废' }[grade.recordStatus] || '记录状态待核对'
+  return `${score} · ${pass} · ${record}`
 }
 
 export function gradeSource(grade) {

@@ -212,3 +212,34 @@ test('a candidate 403 after a complete command clears old rows/result and reques
   assert.equal(mounted.events.filter(([name]) => name === 'recheck').length, 1)
   assert.doesNotMatch(await render(mounted), /PRIVATE-STUDENT|1000000000000033681/)
 })
+test('候选行核验携带精确批次学生与返回上下文，保留筛选页码',async()=>{
+  const {state}=mount(),routes=[]
+  state.ctx.permissionPatterns.push('academicAffairs.registration.eligibility.view')
+  state.$route={query:{returnToken:'batch-list',candidateKeyword:'原筛选',candidatePage:'2'}}
+  state.restoreCandidateQuery();assert.equal(state.keyword,'原筛选');assert.equal(state.page,2)
+  state.$router={replace:async route=>routes.push(route),push:route=>routes.push(route)}
+  state.academicFlow={captureReturn:()=> 'candidate-source'}
+  await state.goEligibility({studentId:studentA,studentNo:'S001'})
+  assert.equal(routes[0].query.candidatePage,'2');assert.equal(routes[0].query.candidateKeyword,'原筛选')
+  assert.equal(routes[1].query.batchId,batchId);assert.equal(routes[1].query.studentId,studentA);assert.equal(routes[1].query.keyword,'S001');assert.equal(routes[1].query.returnToken,'candidate-source')
+  state.selectedIds=[studentB];await state.goEligibility({studentId:studentA,studentNo:'S001'});assert.equal(routes.length,2)
+  state.clearSelection();assert.equal(state.selectedIds.length,0)
+  state.ctx.permissionPatterns=[];await state.goEligibility({studentId:studentA,studentNo:'S001'});assert.equal(routes.length,2)
+})
+
+test('候选搜索和翻页立即写入刷新地址，身份变化时不再读取旧查询', async () => {
+  const calls = [], { state } = mount({ getCandidates: async (_, query) => { calls.push(query); return { code: 0, data: { list: [], total: 120 } } } })
+  state.$route = { query: { returnToken: 'original-list' } }
+  state.$router = { replace: async route => { state.$route.query = route.query } }
+  state.keyword = '2026'; state.page = 2
+  await state.search()
+  assert.equal(state.$route.query.candidateKeyword, '2026')
+  assert.equal(state.$route.query.candidatePage, '1')
+  await state.changePage(2)
+  assert.equal(state.$route.query.candidatePage, '2')
+  assert.equal(state.$route.query.returnToken, 'original-list')
+  assert.equal(calls.length, 2)
+  state.$router.replace = async () => { state.ctx = { ...state.ctx, userId: 'another-user' } }
+  await state.search()
+  assert.equal(calls.length, 2)
+})

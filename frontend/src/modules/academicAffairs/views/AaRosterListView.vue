@@ -117,18 +117,27 @@ export default {
     }
   },
   created() {
+    this.pagination.page = this.routePage(this.$route.query.page)
     this.load()
   },
   watch: {
     '$route.query': {
       handler(query) {
+        const page = this.routePage(query.page)
+        if (this.filters.keyword === (query.keyword || '') && this.filters.status === (query.status || '') && this.pagination.page === page) return
         this.filters = { keyword: query.keyword || '', status: query.status || '' }
-        this.search()
+        this.pagination.page = page
+        this.load()
       },
       deep: true
     }
   },
   methods: {
+    routePage(value) { const page = Number(value); return Number.isSafeInteger(page) && page > 0 ? page : 1 },
+    async syncQuery() {
+      await this.$router.replace({ query: { ...this.$route.query, keyword: this.filters.keyword || undefined, status: this.filters.status || undefined, page: String(this.pagination.page) } })
+      await this.load()
+    },
     goDetail(row) { this.$router.push({ name: 'aa-roster-detail', params: { studentId: row.studentId } }) },
     canResume(row) { return ['SUSPENDED', 'PRESERVED'].includes(row.studentStatus) },
     statusLabel(s) {
@@ -143,16 +152,16 @@ export default {
     },
     onPageChange(page) {
       this.pagination.page = page
-      this.load()
+      return this.syncQuery()
     },
     search() {
       this.pagination.page = 1
-      this.load()
+      return this.syncQuery()
     },
     reset() {
       this.filters = { keyword: '', status: this.$route.query.status || '' }
       this.pagination.page = 1
-      this.load()
+      return this.syncQuery()
     },
     async load() {
       const version = ++this.requestVersion

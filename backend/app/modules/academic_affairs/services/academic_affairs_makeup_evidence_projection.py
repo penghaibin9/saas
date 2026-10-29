@@ -12,8 +12,9 @@ import json
 from sqlalchemy import func, select
 
 from app.core.permissions import has_permission
+from app.core.timeutil import iso_utc
 from app.models import (
-    AaCourse, AaTeachingClass, AaTeachingClassMember, AaTeachingClassRosterVersion,
+    AaCourse, AaGradeTask, AaTeachingClass, AaTeachingClassMember, AaTeachingClassRosterVersion,
     AcademicGrade, AcademicStudent,
 )
 from app.models.academic_affairs_effective_grade import AaGradeCorrection
@@ -32,7 +33,7 @@ def _id(value):
 
 
 def _iso(value):
-    return value.isoformat() if value else None
+    return iso_utc(value)
 
 
 def _rows(db, model, ids, *, lock=False):
@@ -131,6 +132,8 @@ def retake_sources(db, rows, user):
         sid: {int(g.id) for g in public._effective_failed_rows(items)}
         for sid, items in active_by_student.items()
     }
+    grade_tasks = _rows(db, AaGradeTask, [grade.grade_task_id
+        for items in active_by_student.values() for grade in items if grade.grade_task_id])
     versions = _rows(db, AaTeachingClassRosterVersion, [row.enrollment_roster_version_id for row in rows])
     classes = _rows(db, AaTeachingClass, [version.teaching_class_id for version in versions.values()])
     members = set(db.execute(select(AaTeachingClassMember.roster_version_id, AaTeachingClassMember.student_id).where(
@@ -161,11 +164,27 @@ def retake_sources(db, rows, user):
         classroom = classes.get(version.teaching_class_id) if version else None
         enrolled = bool(version and classroom and classroom.teaching_task_id == row.teaching_task_ref
                         and (version.id, row.student_id) in members)
+        retake_grades = []
+        if row.status == core._RT_ENROLLED and enrolled and original:
+            for grade in active_by_student.get(row.acad_student_id, []):
+                task = grade_tasks.get(grade.grade_task_id)
+                if (task and task.status in {"PUBLISHED", "ARCHIVED"}
+                        and task.teaching_task_id == row.teaching_task_ref
+                        and grade.roster_version_id == version.id
+                        and grade.course_id == original.course_id
+                        and grade.course_code == original.course_code
+                        and grade.course_version == original.course_version
+                        and (grade.attempt_no or 0) > (original.attempt_no or 0)):
+                    retake_grades.append(grade)
+        retake_grade = retake_grades[0] if len(retake_grades) == 1 else None
+        if retake_grade is not None and state == "NOT_EFFECTIVE_FAILED":
+            blockers = []
         results[row.id] = {
             "applicationVersion": int(row.version or 0), "appliedAt": _iso(row.created_at), "updatedAt": _iso(row.updated_at),
             "courseId": _id(row.course_id), "teachingTaskId": _id(row.teaching_task_ref),
             "workflowInstanceId": _id(row.workflow_instance_id),
             "originGrade": grade_dto(original), "currentGrade": grade_dto(current),
+            "retakeGrade": grade_dto(retake_grade),
             "sourceGradeState": state, "sourceGradeBlockers": blockers, "allowedActions": actions,
             "sourceEvidenceHash": grade_evidence_hash(current) if state == "RESOLVED" else None,
             "enrollment": {

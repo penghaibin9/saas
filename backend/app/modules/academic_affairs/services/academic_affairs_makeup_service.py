@@ -307,56 +307,20 @@ def _exemption_actions(row, ctx, user):
 
 
 def makeup_pending(user, term=None, page=1, page_size=50):
-    """范围内当前有效挂科成绩；已被补考/清考/更正覆盖的旧失败行不再出现。"""
-    from app.models import AcademicGrade, AcademicStudent
-
+    """复用有界挂科查询，仍叠加补考岗位原有行政班范围。"""
     with _core.session() as db:
-        ctx = _core._ctx(user, db)
-        students = _scope_students(
-            ctx,
-            db,
-            db.query(AcademicStudent).filter(
-                AcademicStudent.tenant_id == _core._tid(),
-                AcademicStudent.is_deleted.is_(False),
-            ).all(),
-        )
-        student_by_id = {int(row.id): row for row in students}
-        query = db.query(AcademicGrade).filter(
-            AcademicGrade.tenant_id == _core._tid(),
-            AcademicGrade.acad_student_id.in_(list(student_by_id) or [0]),
-            AcademicGrade.record_status == "ACTIVE",
-            AcademicGrade.is_deleted.is_(False),
-        )
-        if term:
-            query = query.filter(AcademicGrade.term == term)
-        failed = _effective_failed_rows(query.all())
-        items = []
-        for grade in failed:
-            student = student_by_id.get(int(grade.acad_student_id))
-            if not student:
-                continue
-            identity_ready = bool(
-                grade.course_id and grade.course_code and grade.course_version and grade.attempt_no
-            )
-            items.append({
-                "gradeId": str(grade.id),
-                "acadStudentId": str(grade.acad_student_id),
-                "studentNo": student.student_no,
-                "studentName": student.name,
-                "className": student.class_name,
-                "courseId": str(grade.course_id or ""),
-                "courseCode": grade.course_code or "",
-                "courseVersion": grade.course_version,
-                "attemptNo": grade.attempt_no,
-                "courseName": grade.course_name,
-                "score": grade.score,
-                "effectiveSource": grade.source,
-                "identityReady": identity_ready,
-            })
-        items.sort(key=lambda row: (row["courseCode"] or row["courseName"] or "", row["studentNo"] or ""))
-        total = len(items)
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return items[start:start + int(page_size)], total
+        allowed = _core._ctx(user, db).allowed_class_ids(db)
+    rows, total = grade_service.fail_list(
+        user, term=term, page=page, page_size=page_size, allowed_class_ids=allowed,
+    )
+    return [{
+        "gradeId": row["gradeId"], "acadStudentId": row["acadStudentId"],
+        "studentNo": row["studentNo"], "studentName": row["studentName"], "className": row["className"],
+        "courseId": row["courseId"], "courseCode": row["courseCode"], "courseVersion": row["courseVersion"],
+        "attemptNo": row["attemptNo"], "courseName": row["courseName"], "score": row["score"],
+        "termCode": row["term"], "effectiveSource": row["source"],
+        "identityReady": bool(row["courseId"] and row["courseCode"] and row["courseVersion"] and row["attemptNo"]),
+    } for row in rows], total
 
 
 def create_makeup_batch(user, body):

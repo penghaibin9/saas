@@ -32,9 +32,9 @@ async function call(fn) {
     return toErr(e)
   }
 }
-async function callList(path, params = {}, requirePage = false) {
+async function callList(path, params = {}, requirePage = false, options = {}) {
   try {
-    const d = await request(path, { params })
+    const d = await request(path, { ...options, params })
     if (requirePage && (!Array.isArray(d?.items) || !Number.isSafeInteger(d.total) || d.total < 0
       || !Number.isSafeInteger(d.page) || d.page < 1 || !Number.isSafeInteger(d.pageSize) || d.pageSize < 1
       || d.items.length > d.pageSize || d.items.length > d.total)) {
@@ -615,7 +615,7 @@ export const academicAffairsApi = {
     return call(() => request(`${BASE}/schedule-batches/${batchId}/room-view`, { params: { classroom } }))
   },
   getScheduleSummary(batchId) {
-    return call(() => request(`${BASE}/schedule-batches/${batchId}/summary`))
+    return call(() => request(`${BASE}/schedule-batches/${batchId}/summary`, { timeoutMs: 60000 }))
   },
   async downloadScheduleImportTemplate() {
     const blob = await requestBlob(`${BASE}/schedule-batches/import/template`)
@@ -797,7 +797,7 @@ export const academicAffairsApi = {
     }
   },
   getFailList(params = {}) {
-    return callList(`${BASE}/grade-views/fail-list`, params)
+    return callList(`${BASE}/grade-views/fail-list`, params, false, { timeoutMs: 30000 })
   },
   getGradeAnalysis(term, dimension) {
     const params = {}
@@ -1197,13 +1197,13 @@ export const academicAffairsExamApi = {
 export const academicAffairsMakeupApi = {
   commandReceipt(commandKey, operation) { return call(() => request(`${BASE}/makeup-command-receipts/${encodeURIComponent(commandKey)}`, { params: { operation } })) },
   // 补考
-  makeupPending(params = {}) { return callList(`${BASE}/makeup/pending`, params, true) },
+  makeupPending(params = {}) { return callList(`${BASE}/makeup/pending`, params, true, { timeoutMs: 30000 }) },
   listBatches(params = {}) { return callList(`${BASE}/makeup/batches`, params, true) },
   createBatch(body) { return call(() => request(`${BASE}/makeup/batches`, { method: 'POST', body })) },
   // 纳入只认 gradeId：课程、版本、修读次数、原始分全部由服务器从这条正式成绩推导，
   // 前端不再传 courseName/originScore（传了也会被 422 挡下）。
   enroll(bid, body) { return call(() => request(`${BASE}/makeup/batches/${bid}/enroll`, { method: 'POST', body })) },
-  batchRecords(bid, params = {}) { return callList(`${BASE}/makeup/batches/${bid}/records`, params, true) },
+  batchRecords(bid, params = {}) { return callList(`${BASE}/makeup/batches/${bid}/records`, params, true, { timeoutMs: 30000 }) },
   publishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/publish`, { method: 'POST' })) },
   score(mid, score) { return call(() => request(`${BASE}/makeup/records/${mid}/score`, { method: 'POST', body: { score } })) },
   collegeReview(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST' })) },

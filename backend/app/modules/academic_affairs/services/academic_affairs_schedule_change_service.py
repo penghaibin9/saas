@@ -785,11 +785,24 @@ def get_change(cid, user) -> dict:
 
 def _review_node(db, change, user) -> dict:
     from app.core.permissions import has_permission
-    from app.models import User, WorkflowTask
+    from app.models import User, WorkflowTask, WorkflowInstance, AaScheduleItem
     from .academic_affairs_schedule_change_r3_service import _actor_numeric_id
 
     result = {"canReview": False, "assigneeName": None, "reason": "当前单据不在待审阶段"}
     if change.status not in _ACTIVE or not change.workflow_instance_id:
+        return result
+    instance = db.scalars(select(WorkflowInstance).where(
+        WorkflowInstance.id == change.workflow_instance_id, WorkflowInstance.tenant_id == _tid(),
+        WorkflowInstance.is_deleted.is_(False),
+    )).first()
+    if instance and instance.status in {"APPROVED", "REJECTED", "CANCELLED"}:
+        result["reason"] = "审批流程已结束，但调课申请尚未形成生效记录。请由流程管理员核对原审批记录与正式课表，不能重复审批。"
+        origin = db.scalars(select(AaScheduleItem).where(
+            AaScheduleItem.id == change.origin_item_id, AaScheduleItem.tenant_id == _tid(),
+            AaScheduleItem.is_deleted.is_(False),
+        )).first() if change.origin_item_id else None
+        if origin and origin.status != "EFFECTIVE":
+            result["reason"] += "原课位也已被调整，请由申请人核对后从当前正式课表重新申请。"
         return result
     tasks = db.scalars(select(WorkflowTask).where(
         WorkflowTask.tenant_id == _tid(), WorkflowTask.instance_id == change.workflow_instance_id,

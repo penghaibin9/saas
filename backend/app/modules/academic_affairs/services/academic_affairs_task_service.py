@@ -636,6 +636,18 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20, *, keywo
         return output, total
 
 
+def _task_keyword_filter(keyword):
+    from app.models import AaTeachingTask, SchoolClass
+    value = str(keyword).strip()
+    return or_(*[column.contains(value, autoescape=True) for column in (
+        AaTeachingTask.course_name, AaTeachingTask.course_code, AaTeachingTask.teaching_class_name,
+        AaTeachingTask.teaching_class_code, AaTeachingTask.teacher_name, AaTeachingTask.teacher_key,
+    )], AaTeachingTask.class_id.in_(select(SchoolClass.id).where(
+        SchoolClass.tenant_id == _tid(), SchoolClass.is_deleted.is_(False),
+        SchoolClass.class_name.contains(value, autoescape=True),
+    )))
+
+
 def list_tasks(batch_id, user, status=None, page=1, page_size=50, *, keyword=None, task_id=None):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
@@ -660,10 +672,7 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50, *, keyword=Non
         if task_id is not None:
             conditions.append(AaTeachingTask.id == int(task_id))
         if keyword and str(keyword).strip():
-            conditions.append(or_(*[column.contains(str(keyword).strip(), autoescape=True) for column in (
-                AaTeachingTask.course_name, AaTeachingTask.course_code, AaTeachingTask.teaching_class_name,
-                AaTeachingTask.teaching_class_code, AaTeachingTask.teacher_name, AaTeachingTask.teacher_key,
-            )]))
+            conditions.append(_task_keyword_filter(keyword))
         size = max(1, min(int(page_size), 200))
         start = (max(1, int(page)) - 1) * size
         total = int(db.scalar(select(func.count()).select_from(AaTeachingTask).where(*conditions)) or 0)
@@ -692,13 +701,7 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
                 AaTeachingTaskBatch.term_id == int(term_id),
             )))
         if str(keyword or "").strip():
-            from sqlalchemy import or_
-            value = str(keyword).strip()
-            conditions.append(or_(
-                AaTeachingTask.course_name.contains(value, autoescape=True),
-                AaTeachingTask.course_code.contains(value, autoescape=True),
-                AaTeachingTask.teacher_name.contains(value, autoescape=True),
-            ))
+            conditions.append(_task_keyword_filter(keyword))
         if status:
             conditions.append(AaTeachingTask.status == status)
         if task_id not in (None, ""):

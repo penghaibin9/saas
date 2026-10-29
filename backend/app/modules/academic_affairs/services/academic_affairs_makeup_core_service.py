@@ -136,7 +136,7 @@ def create_makeup_batch(user, body):
         return _mb_dto(b)
 
 
-def list_makeup_batches(user, status=None, page=1, page_size=20, kind=None):
+def list_makeup_batches(user, status=None, page=1, page_size=20, kind=None, batch_id=None):
     from app.models import AaMakeupBatch
     with session() as db:
         _ctx(user, db)
@@ -145,8 +145,12 @@ def list_makeup_batches(user, status=None, page=1, page_size=20, kind=None):
             q = q.filter(AaMakeupBatch.status == status)
         if kind:
             q = q.filter(AaMakeupBatch.kind == kind)
-        rows = q.order_by(AaMakeupBatch.id.desc()).all()
-        return [_mb_dto(b) for b in rows[(page - 1) * page_size: page * page_size]], len(rows)
+        if batch_id is not None:
+            q = q.filter(AaMakeupBatch.id == int(batch_id))
+        total = q.count()
+        size = max(1, min(200, int(page_size)))
+        rows = q.order_by(AaMakeupBatch.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size).all()
+        return [_mb_dto(b) for b in rows], total
 
 
 def link_exam_batch(user, batch_id, exam_batch_id):
@@ -422,6 +426,7 @@ def clearance_records(user, batch_id, page=1, page_size=100, *, makeup_id=None, 
         items = [{"makeupId": str(m.id), "acadStudentId": str(m.acad_student_id),
                   "originGradeId": str(m.origin_grade_id) if m.origin_grade_id else None,
                   "studentNo": s.student_no, "studentName": s.name,
+                  "studentId": str(s.student_id) if s.student_id else None,
                   "courseName": m.course_name, "courseCode": m.course_code,
                   "attemptNo": m.attempt_no, "kind": getattr(m, "kind", "MAKEUP"),
                   "originScore": m.origin_score,

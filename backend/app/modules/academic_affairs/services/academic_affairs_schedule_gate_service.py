@@ -336,7 +336,7 @@ def _opening_source_fingerprint(db, term_id, *, lock=False):
 def evaluate_school_publish(db, batch, *, lock=False, cache=None) -> dict:
     """正式发布前核验全学期候选；预发布仍只办理本责任范围。"""
     from collections import Counter
-    from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch
+    from app.models import AaClassroom, AaScheduleItem, AaTeachingTask, AaTeachingTaskBatch, SchoolClass
     from .academic_affairs_archive_rule_evaluator import evaluate_teaching_task
     from .academic_affairs_schedule_conflict_index import iter_same_slot_pairs
     from . import academic_affairs_schedule_truth_service as truth
@@ -362,6 +362,18 @@ def evaluate_school_publish(db, batch, *, lock=False, cache=None) -> dict:
         blockers.append({"code": code, "message": message})
 
     reconciliation = evaluate_teaching_task(db, batch.term_id, cache=cache)
+    evidence = [dict(item) for item in reconciliation.get("evidence", [])]
+    class_ids = {int(item["classId"]) for item in evidence if str(item.get("classId", "")).isdigit()}
+    class_names = dict(db.query(SchoolClass.id, SchoolClass.class_name).filter(
+        SchoolClass.tenant_id == _tid(), SchoolClass.id.in_(class_ids), SchoolClass.is_deleted.is_(False)).all()) if class_ids else {}
+    tasks_by_id = {str(task.id): task for task in tasks}
+    for item in evidence:
+        item["className"] = class_names.get(int(item["classId"])) if str(item.get("classId", "")).isdigit() else None
+        task_ids = item.get("taskIds") or ([item["taskId"]] if item.get("taskId") else [])
+        related = [tasks_by_id[str(task_id)] for task_id in task_ids if str(task_id) in tasks_by_id]
+        item["taskBatches"] = [{"batchId": str(task.batch_id), "courseName": task.course_name,
+                                "className": item["className"] or task.teaching_class_name} for task in related]
+    reconciliation = {**reconciliation, "evidence": evidence}
     if lock and source_before != _opening_source_fingerprint(db, batch.term_id, lock=True):
         raise AppException("DATA_CONFLICT", "应开课程来源已变化，请重新核对后发布", http_status=409)
     if reconciliation.get("result") != "PASS":

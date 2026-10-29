@@ -64,7 +64,7 @@
           </section>
 
           <details class="aa-flow-fold aa-selection-fold">
-            <summary>办理进度：{{ lifecycleSteps[currentStep] ? lifecycleSteps[currentStep].label : '已完成' }}（第 {{ Math.min(currentStep + 1, lifecycleSteps.length) }} 步 / 共 {{ lifecycleSteps.length }} 步）</summary>
+            <summary>{{ current.windowNotice ? `当前办理：${batchStatusLabel(current)}` : `办理进度：${lifecycleSteps[currentStep] ? lifecycleSteps[currentStep].label : '已完成'}（第 ${Math.min(currentStep + 1, lifecycleSteps.length)} 步 / 共 ${lifecycleSteps.length} 步）` }}</summary>
             <section class="aa-selection-steps" aria-label="选课批次办理阶段">
               <article v-for="(step, index) in lifecycleSteps" :key="step.key" :class="stepClass(index)">
                 <i>{{ index < currentStep ? '✓' : index + 1 }}</i>
@@ -123,12 +123,12 @@
                 <template #cell-mode="{ row }">
                   <StatusTag :type="row.mode === 'LOTTERY' ? 'warning' : 'primary'" :label="row.mode === 'LOTTERY' ? '抽签' : '先到先得'" dot />
                 </template>
-                <template #cell-ctrl="{ row }">{{ row.allowEnroll ? '可选' : '禁选' }} / {{ row.allowDrop ? '可退' : '禁退' }}</template>
+                <template #cell-ctrl="{ row }"><div>{{ roundAvailability(row) }}</div><small>轮次设置：{{ row.allowEnroll ? '可选' : '禁选' }} / {{ row.allowDrop ? '可退' : '禁退' }}</small></template>
                 <template #cell-status="{ row }">
                   <StatusTag :type="roundStatusType(row.status)" :label="roundStatusLabel(row.status)" dot />
                 </template>
                 <template #cell-ops="{ row }">
-                  <button v-if="canManageRule && ['DRAFT','CLOSED'].includes(row.status)" class="mp-link" @click="roundAction(row, 'openRound', '开启轮次')">开启</button>
+                  <button v-if="canManageRule && ['DRAFT','CLOSED'].includes(row.status)" class="mp-link" :disabled="!canOpenRound(row)" :title="canOpenRound(row) ? '开启轮次' : '批次须开放、窗口未截止，且其他轮次已关闭'" @click="roundAction(row, 'openRound', '开启轮次')">开启</button>
                   <button v-if="canManageRule && row.status === 'OPEN'" class="mp-link" @click="roundAction(row, 'closeRound', '关闭轮次')">关闭</button>
                   <button v-if="canManageRule && row.status === 'CLOSED' && row.mode === 'LOTTERY'" class="mp-link is-danger" @click="roundAction(row, 'drawRound', '抽签摇号（一次性，不可重摇）')">摇号</button>
                 </template>
@@ -151,7 +151,7 @@
               <div>
                 <span class="aa-selection-eyebrow">课程供给</span>
                 <h3>可选课程与实时容量</h3>
-                <p>容量、已选与余量均来自当前批次真实课程供给；名单入口保留在每门课程。</p>
+                <p>容量、已选与余量来自本批次正式供给。供给有效不代表当前可选，学生能否办理仍以批次窗口和轮次为准。</p>
               </div>
               <AppButton v-if="canManageSelection && ['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
             </header>
@@ -170,7 +170,7 @@
                   </div>
                 </template>
                 <template #cell-status="{ row }">
-                  <StatusTag :type="row.status === 'OPEN' ? 'success' : 'default'" :label="row.status === 'OPEN' ? '开放' : '已取消'" dot />
+                  <StatusTag :type="row.status === 'OPEN' ? 'success' : 'default'" :label="courseSupplyLabel(row.status)" dot />
                 </template>
                 <template #cell-ops="{ row }">
                   <button class="mp-link" v-if="canReadRoster" @click="openRoster(row)">名单</button>
@@ -197,6 +197,9 @@
         <AppFormItem label="选课学分上限">
           <AppNumberInput v-model="form.maxCredits" :min="0" :max="50" :disabled="saving" />
         </AppFormItem>
+        <AppFormItem label="开选时间"><AppDateTimePicker v-model="form.selectStartAt" placeholder="选填，留空由教务手动开选" :disabled="saving" /></AppFormItem>
+        <AppFormItem label="截止时间"><AppDateTimePicker v-model="form.selectEndAt" placeholder="选填，留空由教务手动截止" :disabled="saving" /></AppFormItem>
+        <p class="mp-note">按本地时间填写；发布后到达开选时间才允许选课，截止后不能继续办理。留空沿用手动开选与截止。</p>
         <AppFormItem label="适用范围" required>
           <AppSelect v-model="form.scopeType" :options="[{ label: '指定行政班', value: 'CLASS' }, { label: '全校学生', value: 'SCHOOL' }]" :disabled="saving" />
         </AppFormItem>
@@ -285,7 +288,7 @@ import AcademicObjectResponsibility from '../components/AcademicObjectResponsibi
 import { matchPermission } from '@/config/navPlan'
 import { ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
-import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker } from '@/components/common'
+import { AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker, AppDateTimePicker } from '@/components/common'
 import { academicAffairsApi, academicAffairsSelectionApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { academicIdentity, createAcademicRequestGate } from '../academicFlowContext.js'
@@ -309,7 +312,7 @@ export default {
   inject: { academicFlow: { default: null } },
   components: {
     AcademicObjectResponsibility, ModulePageShell, DataTable, StatusTag, LoadingState, ErrorState, EmptyState,
-    AaSelectionSpecialWorkspace, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker
+    AaSelectionSpecialWorkspace, AppButton, AppDrawer, AppTextInput, AppNumberInput, AppTextarea, AppFormItem, AppConfirmDialog, AppInlineAlert, AppSelect, AppTeachingTaskPicker, AppTermEntityPicker, AppPagination, AppClassPicker, AppDateTimePicker
   },
   data() {
     return {
@@ -318,7 +321,7 @@ export default {
       pagination: { page: 1, pageSize: 50, total: 0 },
       coursePagination: { page: 1, pageSize: 20, total: 0 },
       current: null, courses: [], stats: null, detailLoading: false, detailError: '', disposed: false, selectionVersion: 0, writeSeq: 0,
-      createVisible: false, form: { batchName: '', termId: '', maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [] }, formError: '',
+      createVisible: false, form: { batchName: '', termId: '', maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [], selectStartAt: '', selectEndAt: '' }, formError: '',
       courseVisible: false,
       courseForm: { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 },
       courseError: '',
@@ -334,7 +337,7 @@ export default {
       ],
       courseColumns: [
         { key: 'course', title: '课程' }, { key: 'fill', title: '选课情况' },
-        { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }
+        { key: 'status', title: '供给状态' }, { key: 'ops', title: '操作' }
       ],
       rosterColumns: [{ key: 'student', title: '学生' }, { key: 'status', title: '状态' }]
     }
@@ -429,10 +432,12 @@ export default {
     this.listGate = createAcademicRequestGate(() => this.pageContext())
     this.detailGate = createAcademicRequestGate(() => this.commandContext())
     this.rosterGate = createAcademicRequestGate(() => this.commandContext())
+    this.pagination.page = this.routeBatchPage()
     this.load()
   },
   beforeUnmount() { this.disposed = true; this.invalidateSelection(); this.listGate.invalidate() },
   methods: {
+    routeBatchPage() { const page = Number(this.$route?.query?.page); return Number.isSafeInteger(page) && page > 0 ? page : 1 },
     routeTerm() {
       const query = this.$route?.query || {}
       if (!Object.prototype.hasOwnProperty.call(query, 'termId')) return { scoped: false, invalid: false, id: '' }
@@ -480,6 +485,7 @@ export default {
       const termChanged = this.lastRouteTermKey !== JSON.stringify(this.routeTerm())
       this.clearSensitiveSelectionData()
       if (termChanged) this.pagination.page = 1
+      else if (this.$route?.query?.page !== undefined) this.pagination.page = this.routeBatchPage()
       this.detailLoading = false; this.rosterLoading = false
       this.detailError = ''; this.createVisible = false; this.formError = ''; this.tickReceipt = null
       return this.load()
@@ -509,13 +515,18 @@ export default {
       return this.statusLabel(batch.status)
     },
     statusLabel(s) { return _LABEL[s] || (s ? '状态待确认' : '—') },
+    courseSupplyLabel(status) { return ({ OPEN: '供给有效', CANCELLED: '已取消' })[status] || '供给状态待核对' },
     statusType(s) {
       if (s === 'OPEN') return 'success'
       if (s === 'CLOSED') return 'warning'
       if (['LOCKED', 'ARCHIVED'].includes(s)) return 'default'
       return 'primary'
     },
-    nextActionFor(status) { return _NEXT[status] || '查看批次详情' },
+    nextActionFor(status) {
+      if (status === 'OPEN' && this.current?.windowState === 'ENDED') return '办理批次截止，再核对低人数课程与选课名单'
+      if (status === 'OPEN' && this.current?.windowState === 'NOT_STARTED') return '核对开放时间与轮次，等待选课窗口开始'
+      return _NEXT[status] || '查看批次详情'
+    },
     lifecycleAction(status) { return { DRAFT: 'PUBLISH', PUBLISHED: 'OPEN', OPEN: 'CLOSE', CLOSED: 'LOCK' }[status] || '' },
     preflightMessage(result) {
       const blockers = (result && result.blockers) || []
@@ -594,7 +605,8 @@ export default {
         this.pagination.total = res.data.total
         if (!this.current && this.rows.length) {
           const requestedBatchId = this.$route?.query?.batchId
-          const preferred = this.rows.find((row) => requestedBatchId && String(row.batchId) === String(requestedBatchId)) || this.rows.find((row) => ['OPEN', 'PUBLISHED', 'CLOSED'].includes(row.status)) || this.rows[0]
+          const preferred = requestedBatchId ? this.rows.find((row) => String(row.batchId) === String(requestedBatchId)) : this.rows.find((row) => ['OPEN', 'PUBLISHED', 'CLOSED'].includes(row.status)) || this.rows[0]
+          if (!preferred) { this.current = null; this.error = '当前列表未找到指定选课批次，请返回原队列核对，不会改为办理其他批次。'; this.loading = false; return }
           await this.select(preferred)
         } else if (this.current) {
           const fresh = this.rows.find((row) => String(row.batchId) === String(this.current.batchId))
@@ -608,8 +620,17 @@ export default {
       }
       if (latest()) this.loading = false
     },
-    pickBatch(id) { const batch = this.rows.find(row => String(row.batchId) === String(id)); if (batch) this.select(batch) },
-    onBatchPage({ page }) { this.pagination.page = page; this.current = null; this.load() },
+    pickBatch(id) {
+      if (this.saving) return
+      const batch = this.rows.find(row => String(row.batchId) === String(id))
+      if (!batch) return
+      if (String(this.$route?.query?.batchId || '') === String(id)) return this.select(batch)
+      return this.$router.replace({ query: { ...this.$route.query, batchId: String(id), page: String(this.pagination.page) } })
+    },
+    onBatchPage({ page }) {
+      if (this.saving) return
+      return this.$router.replace({ query: { ...this.$route.query, batchId: undefined, page: String(page) } })
+    },
     async select(b) {
       this.invalidateSelection()
       this.courses = []; this.stats = null; this.rounds = []; this.coursePagination.total = 0
@@ -674,6 +695,16 @@ export default {
     onCoursePage({ page }) { this.coursePagination.page = page; this.refreshDetail() },
     selectionRecordLabel(s) { return { SELECTED: '已取得名额', PENDING: '待抽签', PENDING_LOTTERY: '待抽签', LOST: '未中签', LOTTERY_LOST: '未中签', DROPPED: '已退课', COURSE_CANCELLED: '课程已取消', LOCKED: '名单已锁定' }[s] || '状态待核对' },
     roundStatusLabel(s) { return { DRAFT: '草稿', OPEN: '进行中', CLOSED: '已关闭', DRAWN: '已摇号' }[s] || (s ? '状态待确认' : '—') },
+    roundAvailability(row) {
+      if (this.current?.status !== 'OPEN') return '批次未开放，学生不可办理'
+      if (this.current.windowState === 'ENDED') return '选课窗口已截止'
+      if (this.current.windowState === 'NOT_STARTED') return '选课窗口尚未开始'
+      return row.status === 'OPEN' ? '按轮次设置办理' : '轮次未开放，学生不可办理'
+    },
+    canOpenRound(row) {
+      return this.current?.status === 'OPEN' && this.current.windowState !== 'ENDED' && ['DRAFT', 'CLOSED'].includes(row.status)
+        && !this.rounds.some(other => String(other.roundId) !== String(row.roundId) && other.status === 'OPEN')
+    },
     roundStatusType(s) {
       if (s === 'OPEN') return 'success'
       if (s === 'DRAWN') return 'default'
@@ -697,6 +728,7 @@ export default {
       else this.roundError = res.message
     },
     roundAction(row, fn, label) {
+      if (fn === 'openRound' && !this.canOpenRound(row)) return
       if (!this.canManageRule) return
       const roundId = row.roundId
       const context = this.commandContext()
@@ -718,7 +750,7 @@ export default {
       if (!this.canManageSelection) return
       const term = this.routeTerm()
       if (term.invalid) return
-      this.form = { batchName: '', termId: term.id, maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [] }
+      this.form = { batchName: '', termId: term.id, maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [], selectStartAt: '', selectEndAt: '' }
       this.formError = ''; this.createVisible = true
     },
     async submitCreate() {
@@ -731,8 +763,14 @@ export default {
       if (!this.form.batchName) { this.formError = '批次名称必填'; return }
       if (!this.form.termId) { this.formError = '学期必选'; return }
       if (this.form.scopeType !== 'SCHOOL' && !this.form.classIds?.length) { this.formError = '请选择适用班级'; return }
+      const start = this.form.selectStartAt ? new Date(this.form.selectStartAt) : null
+      const end = this.form.selectEndAt ? new Date(this.form.selectEndAt) : null
+      if ((start && Number.isNaN(start.getTime())) || (end && Number.isNaN(end.getTime()))) { this.formError = '请填写有效的开选时间和截止时间'; return }
+      if (start && end && end <= start) { this.formError = '截止时间必须晚于开选时间'; return }
       this.saving = true
       const body = { batchName: this.form.batchName, termId: this.form.termId, remark: this.form.remark }
+      if (start) body.selectStartAt = start.toISOString()
+      if (end) body.selectEndAt = end.toISOString()
       if (this.form.scopeType !== 'SCHOOL') body.applyScope = { classIds: this.form.classIds.map(String) }
       if (this.form.maxCredits > 0) body.rule = { maxCredits: this.form.maxCredits }
       try {
@@ -742,6 +780,8 @@ export default {
           toast.success('已创建'); this.createVisible = false
           await this.select(res.data)
           await this.load()
+          if (context !== this.pageContext() || this.disposed) return
+          await this.$router.replace({ query: { ...this.$route.query, batchId: String(res.data.batchId), page: '1' } })
         } else this.formError = res.message
       } catch (error) {
         if (context === this.pageContext() && !this.disposed) this.formError = error?.message || '创建结果待核对，请先刷新批次列表'
@@ -892,8 +932,9 @@ export default {
 <style scoped>
 .aa-selection-layout { display: grid; gap: 12px; }
 .aa-selection-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; border: 1px solid #dce6f3; border-radius: 10px; background: #fff; }
-.aa-selection-switch__pick { display: flex; align-items: center; gap: 10px; color: #4e6075; font-size: 13px; font-weight: 600; }
-.aa-selection-switch__pick .aa-select { min-width: min(360px, 100%); max-width: 100%; height: 34px; }
+.aa-selection-switch__pick { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; color: #4e6075; font-size: 13px; font-weight: 600; }
+.aa-selection-switch__pick > span { flex-shrink: 0; white-space: nowrap; }
+.aa-selection-switch__pick .aa-select { width: 360px; min-width: 0; max-width: 100%; height: 34px; }
 .aa-selection-switch__count { color: #65778b; font-size: 12px; }
 .aa-selection-switch :deep(.app-pagination) { margin-left: auto; }
 .aa-selection-list-card,

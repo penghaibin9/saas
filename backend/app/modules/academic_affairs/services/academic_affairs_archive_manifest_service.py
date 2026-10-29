@@ -164,6 +164,71 @@ def _latest_manifest(db, batch_id):
     ).order_by(ArchiveManifest.version_no.desc()).limit(1)).first()
 
 
+def _legacy_grade_fact(db, case):
+    """Resolve typed legacy references only when the persisted evidence closes the chain."""
+    from app.models import AaArchiveBatch, AaGradeChangeRequest, AaGradeCorrection, AcademicGrade, ArchiveManifest
+    if case.business_type != "GRADE" or case.official_fact_type != "AA_GRADE_CORRECTION":
+        return None
+    correction = db.query(AaGradeCorrection).filter(
+        AaGradeCorrection.id == case.official_fact_id, AaGradeCorrection.tenant_id == _tid(),
+        AaGradeCorrection.is_deleted.is_(False), AaGradeCorrection.status == "ACTIVE",
+    ).first()
+    if correction is None:
+        return None
+    grades = db.query(AcademicGrade).filter(
+        AcademicGrade.id.in_([correction.original_grade_id, correction.corrected_grade_id]),
+        AcademicGrade.tenant_id == _tid(), AcademicGrade.is_deleted.is_(False),
+    ).all()
+    by_id = {row.id: row for row in grades}
+    original, corrected = by_id.get(correction.original_grade_id), by_id.get(correction.corrected_grade_id)
+    if not original or not corrected or original.id == corrected.id:
+        return None
+    if str(case.target_ref) not in {str(original.id), f"acadGrade:{original.id}"}:
+        return None
+    identity_fields = ("acad_student_id", "course_id", "course_code", "course_version", "attempt_no", "term")
+    if any(getattr(original, key) != getattr(corrected, key) for key in identity_fields):
+        return None
+    if correction.before_score != original.score or correction.after_score != corrected.score:
+        return None
+    batch = db.query(AaArchiveBatch).filter(
+        AaArchiveBatch.id == case.archive_batch_id, AaArchiveBatch.tenant_id == _tid(), AaArchiveBatch.is_deleted.is_(False),
+    ).first()
+    manifest = db.query(ArchiveManifest).filter(
+        ArchiveManifest.id == case.resulting_manifest_id, ArchiveManifest.tenant_id == _tid(),
+        ArchiveManifest.archive_batch_id == case.archive_batch_id,
+    ).first()
+    if not batch or not manifest or original.term != batch.term_code:
+        return None
+    if correction.source_type == "POST_ARCHIVE":
+        return corrected if correction.source_ref_id == case.id and corrected.source_biz_type == "POST_ARCHIVE" and corrected.source_biz_id == case.id else None
+    if correction.source_type != "CHANGE_REQUEST":
+        return None
+    request = db.query(AaGradeChangeRequest).filter(
+        AaGradeChangeRequest.id == correction.source_ref_id, AaGradeChangeRequest.tenant_id == _tid(),
+        AaGradeChangeRequest.is_deleted.is_(False), AaGradeChangeRequest.status == "APPROVED",
+    ).first()
+    if not request or request.current_grade_id != original.id or request.proposed_total_score != corrected.score:
+        return None
+    if corrected.source_biz_type != "GRADE_CHANGE_REQUEST" or corrected.source_biz_id != request.id:
+        return None
+    try:
+        payload = json.loads(case.correction_json or "null")
+        rules = json.loads(correction.rule_snapshot_json or "null")
+        max_ids = json.loads(manifest.max_ids_json or "null")
+    except (TypeError, ValueError):
+        return None
+    if not all(isinstance(value, dict) for value in (payload, rules, max_ids)):
+        return None
+    linked = (
+        str(payload.get("beforeGradeId")) == str(original.id)
+        and str(payload.get("afterGradeId")) == str(corrected.id)
+        and payload.get("beforeScore") == original.score and payload.get("afterScore") == corrected.score
+        and str(rules.get("archiveBatchId")) == str(batch.id)
+        and str(max_ids.get("GRADE")) == str(corrected.id)
+    )
+    return corrected if linked else None
+
+
 def _case_dto(case, *, detail: bool = False) -> dict:
     payload = {
         "caseId": str(case.id),
@@ -401,25 +466,7 @@ def verify_manifest(user, batch_id) -> dict:
                     AcademicGrade.is_deleted.is_(False),
                 ).first()
                 if not fact or case.official_fact_type != "ACADEMIC_GRADE":
-                    # Legacy sandbox used the append-only AaGradeCorrection fact as
-                    # the official target.  Accept it only when it points back to the
-                    # exact case and its corrected grade still exists.
-                    from app.models import AaGradeCorrection
-                    legacy = db.query(AaGradeCorrection).filter(
-                        AaGradeCorrection.id == int(case.official_fact_id),
-                        AaGradeCorrection.tenant_id == _tid(),
-                        AaGradeCorrection.source_ref_id == case.id,
-                        AaGradeCorrection.is_deleted.is_(False),
-                    ).first()
-                    corrected = None if legacy is None else db.query(AcademicGrade).filter(
-                        AcademicGrade.id == int(legacy.corrected_grade_id),
-                        AcademicGrade.tenant_id == _tid(),
-                        AcademicGrade.is_deleted.is_(False),
-                    ).first()
-                    if (
-                        not legacy or not corrected
-                        or case.official_fact_type != "AA_GRADE_CORRECTION"
-                    ):
+                    if _legacy_grade_fact(db, case) is None:
                         problems.append(f"{prefix}:GRADE_FACT_LINEAGE_BROKEN")
                     else:
                         warnings.append(f"{prefix}:LEGACY_GRADE_CORRECTION_FACT")

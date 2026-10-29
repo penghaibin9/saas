@@ -20,6 +20,18 @@ function instance(file, deps = {}, options = {}) {
 }
 const ok = data=>({code:0,data})
 
+test('方案绑定问题定位到可办理的审核发布步骤，而不是只读基本信息', () => {
+  const vm = instance('AaProgramEditorView')
+  vm.$nextTick = () => {}
+  for (const fieldPath of ['bindings', 'bindings.gradeYear', 'bindings.classId']) {
+    vm.activeStep = 'basic'
+    vm.focusIssue({ fieldPath, fixRoute: '/admin/academic-affairs/programs/a' })
+    assert.equal(vm.activeStep, 'review')
+  }
+  vm.focusIssue({ fieldPath: 'courses' })
+  assert.equal(vm.activeStep, 'courses')
+})
+
 test('方案课程必须显式确认编班方式并写入正式请求',async()=>{
   const writes=[]
   const vm=instance('AaProgramEditorView',{academicAffairsApi:{addProgramCourse:async(id,body)=>{writes.push({id,body});return ok({})},getProgram:async()=>ok({programId:'a',status:'DRAFT'})},programQualityApi:{validate:async()=>ok({issues:[]})}})

@@ -93,7 +93,7 @@
         </section>
       </template>
 
-      <section v-else class="aatb-table-card">
+      <section v-else class="aatb-table-card" :class="{ 'aatb-wide-table': ['catalog', 'selection'].includes(tab) }">
         <div class="aatb-toolbar">
           <AppTextInput v-model="keyword" :placeholder="`搜索${pageSpec.title}`" :disabled="saving" @keyup.enter="search" />
           <AppButton size="small" :disabled="saving" @click="search">查询</AppButton>
@@ -108,7 +108,7 @@
           v-else
           :columns="columns"
           :rows="filteredRows"
-          :row-key="rowKey"
+          row-key="objectId"
           :pagination="{ page, pageSize, total }"
           @page-change="turnPage"
         >
@@ -272,7 +272,9 @@ export default {
     normalizedRows() {
       return this.visibleRows.map(row => {
         if (this.tab === 'catalog') return { ...row, primary: row.name || '未命名教材', secondary: `${row.isbn || 'ISBN 未维护'} · 目录 ${row.textbookId || '—'}`, objectId: row.textbookId }
-        if (this.tab === 'selection') return { ...row, primary: row.courseName || '课程待核对', secondary: `教学任务 ${row.taskId || '未关联'} · 申报 ${row.selectionId || '—'}`, objectId: row.selectionId }
+        if (this.tab === 'selection') return { ...row, primary: row.courseName || '课程待核对', secondary: `教学任务 ${row.taskId || '未关联'} · 申报 ${row.selectionId || '—'}`, objectId: row.selectionId,
+          currentOwner: ['SUBMITTED', 'REVIEWING'].includes(row.status) ? '教材选用审核岗' : row.currentOwner,
+          nextOwner: ['SUBMITTED', 'REVIEWING'].includes(row.status) ? '审核通过后交征订岗位' : row.nextOwner }
         if (this.tab === 'review') return { ...row, primary: row.batchName || '未命名审核批次', secondary: `审核批次 ${row.reviewBatchId || '—'}`, objectId: row.reviewBatchId }
         if (this.tab === 'order') return { ...row, primary: row.batchName || '未命名征订批次', secondary: `征订批次 ${row.orderBatchId || '—'}`, objectId: row.orderBatchId, detailHint: '打开后读取征订与到货明细' }
         if (this.tab === 'distribution') return { ...row, primary: row.orderBatchName || '教材发放批次', secondary: `${row.className || '班级待核对'} · 发放批次 ${row.distributionBatchId || '—'}`, objectId: row.distributionBatchId }
@@ -301,7 +303,7 @@ export default {
     metricCards() {
       const count = status => this.rows.filter(row => row.status === status).length
       const sum = field => this.rows.reduce((total, row) => total + Number(row[field] || 0), 0)
-      if (this.tab === 'catalog') return [{ label: '目录总数', value: this.total, note: '正式教材目录' }, { label: '本页在用', value: count('ENABLED'), note: '当前页真实状态' }, { label: '本页有定价', value: this.rows.filter(row => row.unitPrice != null).length, note: '目录定价已维护' }, { label: '本页待核验', value: this.rows.filter(row => !row.isbn || !row.publisher).length, note: 'ISBN 或出版社缺失', warning: true }]
+      if (this.tab === 'catalog') return [{ label: this.appliedKeyword ? '筛选结果总数' : '目录总数', value: this.total, note: this.appliedKeyword ? '当前目录查询结果' : '正式教材目录' }, { label: '本页在用', value: count('ENABLED'), note: '当前页真实状态' }, { label: '本页有定价', value: this.rows.filter(row => row.unitPrice != null).length, note: '目录定价已维护' }, { label: '本页待核验', value: this.rows.filter(row => !row.isbn || !row.publisher).length, note: 'ISBN 或出版社缺失', warning: true }]
       if (this.tab === 'selection') return [{ label: '选用总数', value: this.total, note: '当前数据范围' }, { label: '本页草稿', value: count('DRAFT'), note: '待申报人提交' }, { label: '本页审核中', value: count('SUBMITTED') + count('REVIEWING'), note: '等待审核岗位' }, { label: '本页已备案', value: count('APPROVED') + count('ORDERED'), note: '可进入征订' }]
       if (this.tab === 'review') return [{ label: '审核批次', value: this.total, note: '正式批次总数' }, { label: '本页待办', value: this.rows.filter(row => this.canAdvance(row)).length, note: '当前节点可推进', warning: true }, { label: '本页已备案', value: count('PUBLISHED'), note: '可进入征订' }, { label: '本页已退回', value: count('RETURNED'), note: '返回申报人修订' }]
       if (this.tab === 'order') return [{ label: '征订批次', value: this.total, note: '正式批次总数' }, { label: '本页待提交', value: count('DRAFT'), note: '需提交征订' }, { label: '本页到货中', value: count('ORDERED') + count('PARTIALLY_ARRIVED'), note: '等待到货验收', warning: true }, { label: '本页已到货', value: count('ARRIVED') + count('ARCHIVED'), note: '可进入发放' }]
@@ -316,7 +318,12 @@ export default {
     emptyHint() { return { catalog: '可由教材目录管理岗新建正式目录', selection: '请从正式教学任务发起教材选用', review: '当前学期没有已提交选用可建审核批次', order: '当前学期没有已备案选用可生成征订', distribution: '请从已到货征订批次生成班级发放名单', fee: '学生签收后按征订价格快照生成费用', stock: '征订到货并签收后形成库存口径' }[this.tab] || '' }
   },
   watch: {
-    '$route.query.tab'(value) { const next = this.resolveTab(value); if (this.tab !== next) { this.tab = next; this.resetView(); if (this.initialized) this.reload() } },
+    '$route.fullPath'() {
+      if (this.initialized && this.tab === 'catalog' && (this.appliedKeyword !== String(this.$route.query.catalogKeyword || '') || this.page !== textbookQueuePage(this.$route.query.page))) {
+        this.restoreCatalogQuery(); this.reload()
+      }
+    },
+    '$route.query.tab'(value) { const next = this.resolveTab(value); if (this.tab !== next) { this.tab = next; this.resetView(); if (next === 'catalog') this.restoreCatalogQuery(); if (this.initialized) this.reload() } },
     '$route.query.selectionId'() { if (this.initialized && this.tab === 'selection') this.reload() },
     '$route.query.taskId'() { if (this.initialized) this.openSelectionFromRoute() },
     '$route.query.action'(value) { if (this.initialized) { if (value === 'edit') this.reload(); else this.openSelectionFromRoute() } },
@@ -324,6 +331,7 @@ export default {
       if (this.initialized) {
         this.loadSeq++; this.actionSeq++; this.saving = false; this.showHistory = false; this.openedSetupTaskId = ''; this.selectionReceipt = null; this.selectionDraftReceipt = null; this.editingSelectionId = ''
         this.resetView(); this.page = textbookQueuePage(this.$route.query.page); this.rows = []; this.stats = {}; this.total = 0
+        if (this.tab === 'catalog') this.restoreCatalogQuery()
         this.reload(); this.openSelectionFromRoute()
       }
     }
@@ -341,6 +349,7 @@ export default {
       await this.$router.replace({ query: { ...this.$route.query, tab: 'selection' } }).catch(() => {})
     }
     this.page = textbookQueuePage(this.$route.query.page)
+    if (this.tab === 'catalog') this.restoreCatalogQuery()
     this.initialized = true
     await this.reload()
     await this.openSelectionFromRoute()
@@ -360,9 +369,11 @@ export default {
     selectRow(row) { this.activeRowKey = this.rowKey(row) },
     resetView() { this.page = 1; this.keyword = ''; this.appliedKeyword = ''; this.activeRowKey = ''; this.showSource = false; this.clearDialogs() },
     clearDialogs() { this.arrivalSeq++; this.arrivalVisible = false; this.partialVisible = false; this.tbVisible = false; this.selectionVisible = false; this.reasonDialog.visible = false; this.arrivalItems = []; this.arrivalQty = {}; this.partialRow = null; this.reviewCreateVisible = false; this.reviewCandidates = []; this.reviewCollegeId = ''; this.reviewCreateError = ''; this.reviewActions = {} },
-    search() { this.page = 1; this.appliedKeyword = this.keyword.trim(); if (this.tab === 'catalog') this.reload() },
-    clearSearch() { this.keyword = ''; this.appliedKeyword = ''; this.page = 1; if (this.tab === 'catalog') this.reload() },
-    turnPage(value) { this.page = value; this.activeRowKey = ''; this.reload() },
+    restoreCatalogQuery() { this.keyword = this.appliedKeyword = String(this.$route.query.catalogKeyword || ''); this.page = textbookQueuePage(this.$route.query.page) },
+    async saveCatalogQuery() { await this.$router.replace({ query: { ...this.$route.query, page: String(this.page), catalogKeyword: this.appliedKeyword || undefined } }); await this.reload() },
+    search() { this.page = 1; this.appliedKeyword = this.keyword.trim(); if (this.tab === 'catalog') return this.saveCatalogQuery() },
+    clearSearch() { this.keyword = ''; return this.search() },
+    turnPage(value) { this.page = value; this.activeRowKey = ''; return this.tab === 'catalog' ? this.saveCatalogQuery() : this.reload() },
     async toggleSelectionHistory() {
       if (!this.isAcademicTeacher || this.saving || this.loading) return
       this.showHistory = !this.showHistory
@@ -589,6 +600,8 @@ export default {
 .aatb-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0; padding: 18px; }.aatb-facts div { min-height: 58px; padding: 11px 12px; border-radius: 8px; background: #f5f8fc; }.aatb-facts dt { color: #7b899b; font-size: 11px; }.aatb-facts dd { margin: 7px 0 0; color: #2d435e; font-size: 15px; font-weight: 650; }
 .aatb-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 16px; }.aatb-form-wide { grid-column: 1 / -1; }.aatb-form-stack { display: flex; flex-direction: column; gap: 12px; }.aatb-items { display: flex; flex-direction: column; gap: 8px; margin: 0; padding: 0; list-style: none; }.aatb-items li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-bottom: 1px solid #edf1f5; }.aatb-arr { display: flex; align-items: center; gap: 8px; }
 @media (max-width: 900px) { .aatb-metrics, .aatb-guidance, .aatb-analytics { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.aatb-wide-table :deep(.dt__table) { min-width: 880px; }
+.aatb-wide-table :deep(.mp-link) { white-space: nowrap; }
 @media (max-width: 640px) { .aatb-metrics, .aatb-guidance, .aatb-analytics, .aatb-form-grid { grid-template-columns: 1fr; }.aatb-form-wide { grid-column: auto; }.aatb-toolbar { align-items: stretch; flex-direction: column; }.aatb-toolbar small { margin-left: 0; } }
 </style>
 <style>

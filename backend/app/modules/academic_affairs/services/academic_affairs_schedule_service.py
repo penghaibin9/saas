@@ -622,7 +622,8 @@ def student_view(batch_id, user, student_id):
 
 
 def list_batches(user, term_id=None, status=None, page=1, page_size=20):
-    from app.models import AaScheduleBatch, AaTerm
+    from app.models import AaScheduleBatch, AaTerm, AaScheduleScopeHead
+    from .academic_affairs_schedule_truth_service import scope_of
     with session() as db:
         conds = [AaScheduleBatch.tenant_id == _tid(), AaScheduleBatch.is_deleted.is_(False)]
         # 与精确批次详情共用已配置的数据范围，并在 count/分页前收敛。
@@ -646,7 +647,15 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20):
         terms = {int(t.id): f"{t.year_code} 第{t.term_no}学期" for t in db.scalars(select(AaTerm).where(
             AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in rows] or [-1]), AaTerm.is_deleted.is_(False),
         )).all()}
+        heads = {head.active_batch_id: head for head in db.scalars(select(AaScheduleScopeHead).where(
+            AaScheduleScopeHead.tenant_id == _tid(), AaScheduleScopeHead.is_deleted.is_(False),
+            AaScheduleScopeHead.active_batch_id.in_([b.id for b in rows] or [-1]),
+        )).all()}
+        def current_version(batch):
+            head = heads.get(batch.id)
+            return head.version if head and batch.status == 'PUBLISHED' and head.term_id == batch.term_id and (head.scope_type, head.scope_id) == scope_of(batch) else None
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "termId": str(b.term_id),
+                "publishedVersion": current_version(b),
                 "collegeId": str(b.college_id) if b.college_id else None,
                 "termLabel": terms.get(int(b.term_id), "学期待核对"),
                 "status": b.status, "publishAt": _iso(b.publish_at)} for b in rows]

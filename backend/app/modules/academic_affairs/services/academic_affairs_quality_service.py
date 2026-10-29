@@ -557,7 +557,9 @@ def list_rectifications(user, status=None, term_id=None, college_id=None, source
         scope = _scope(user, db)
         q = db.query(AaQualityRectification).filter(AaQualityRectification.tenant_id == _tid(),
                                                      AaQualityRectification.is_deleted.is_(False))
-        if status:
+        if status == "NOT_CLOSED":
+            q = q.filter(AaQualityRectification.status != "CLOSED")
+        elif status:
             q = q.filter(AaQualityRectification.status == status)
         if term_id:
             q = q.filter(AaQualityRectification.term_id == int(term_id))
@@ -571,21 +573,22 @@ def list_rectifications(user, status=None, term_id=None, college_id=None, source
                 q = q.filter(AaQualityRectification.college_id.in_(scope.college_ids))
             else:
                 return [], 0
-        rows = q.order_by(AaQualityRectification.id.desc()).all()
         if overdue:
-            now = datetime.utcnow()
-            rows = [r for r in rows if r.deadline and r.status != "CLOSED" and r.deadline < now]
-        total = len(rows)
-        items = [_rect_dto(r) for r in rows[(page - 1) * page_size: page * page_size]]
+            q = q.filter(AaQualityRectification.deadline < datetime.utcnow(), AaQualityRectification.status != "CLOSED")
+        total = q.count()
+        size = min(100, max(1, int(page_size)))
+        rows = q.order_by(AaQualityRectification.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size).all()
+        items = [_rect_dto(r) for r in rows]
         return items, total
 
 
 def get_rectification(user, rid):
+    from app.core.permissions import has_permission
     with session() as db:
         scope = _scope(user, db)
         r = _get_rect(db, rid)
         _check_rect_scope(scope, r)
-        return _rect_dto(r)
+        return {**_rect_dto(r), "reviewAllowed": bool(scope.all and r.status == "SUBMITTED" and has_permission(user, "academicAffairs.quality.rectification.manage"))}
 
 
 def create_rectification(user, body):

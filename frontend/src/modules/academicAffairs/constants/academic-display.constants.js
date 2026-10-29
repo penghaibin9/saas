@@ -24,6 +24,7 @@ export const ACADEMIC_STATUS_LABELS = Object.freeze({
   SCORING: '录分中',
   SCORED: '已录分',
   REVIEWED: '学院已审核',
+  REVIEWING: '审核中',
   FINISHED: '已结束',
   SUBMITTED: '已提交',
   TEACHER_REVIEW: '教师审核中',

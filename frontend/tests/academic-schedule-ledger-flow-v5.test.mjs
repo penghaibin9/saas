@@ -14,6 +14,33 @@ function instance(api = {}, roleCode = 'COLLEGE_ADMIN', terms = {}, permissionPa
   }, { ctx: { currentRole: { roleCode }, dataScope: { scope: roleCode === 'ACADEMIC_TEACHER' ? 'ASSIGNED' : 'COLLEGE' }, permissionPatterns } })
 }
 
+test('从调课详情进入审批携带原对象及学期，不回到未选单队列',()=>{
+  const {state}=instance({},'COLLEGE_ADMIN',{},['academicAffairs.scheduleChange.collegeReview'])
+  const routes=[];state.$router.push=route=>routes.push(route)
+  state.$route.query={changeId:'9007199254740997',termId:'51',returnToken:'local-return'}
+  state.filters.termId='51'
+  state.goApproval()
+  assert.equal(routes.length,1)
+  assert.equal(routes[0].query.changeId,'9007199254740997')
+  assert.equal(routes[0].query.termId,'51')
+  assert.equal(routes[0].query.returnToken,'local-return')
+})
+
+test('台账详情保留筛选页码，进入审批记住原台账返回位置', async () => {
+  const { state } = instance({}, 'COLLEGE_ADMIN', {}, ['academicAffairs.scheduleChange.collegeReview'])
+  const routes = []; state.$router.push = value => routes.push(value)
+  state.$route.path = '/admin/academic-affairs/schedule-change'
+  state.filters = { termId: '52', status: 'APPLIED', changeType: 'ADJUST' }; state.page = 3
+  state.goDetail({ changeId: '10' })
+  assert.equal(routes[0].query.page, '3'); assert.equal(routes[0].query.status, 'APPLIED'); assert.equal(routes[0].query.type, 'ADJUST')
+  state.$route.query = routes[0].query
+  await state.syncRoute()
+  assert.equal(state.page, 3); assert.equal(state.filters.status, 'APPLIED')
+  state.academicFlow = { captureReturn: () => 'ledger-position' }
+  state.goApproval()
+  assert.equal(routes[1].query.returnToken, 'ledger-position'); assert.equal(routes[1].query.changeId, '10')
+})
+
 test('只读领导台账不展示发起和撤销，点击入口也不能导航', async () => {
   const { state } = instance({}, 'LEADER', {}, ['academicAffairs.scheduleChange.view'])
   const routes = []; state.$router.push = route => routes.push(route)

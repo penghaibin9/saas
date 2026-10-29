@@ -56,14 +56,16 @@ async function render(type, rows, extra = {}) {
   return renderToString(app)
 }
 
-test('AA056/057/058 render their design columns and keep unavailable fields separate from actual batch facts', async () => {
-  for (const [type, headings] of [['ENROLL', ['招生年级', '学期', '候选学生']], ['ANNUAL', ['学年', '学生范围', '已注册人数']], ['SEMESTER', ['学期', '学生范围', '已注册人数']]]) {
-    const html = await render(type, [row({ registerType: type, year: '2099学年', registeredCount: 987654, studentScope: '虚构全校范围' })])
-    for (const title of ['批次名称', ...headings, '状态', '办理入口']) assert.ok(html.includes(`<th>${title}</th>`), title)
+test('注册批次呈现正式学期和授权名单汇总，不借用未知范围或候选人数', async () => {
+  for (const type of ['ENROLL', 'ANNUAL', 'SEMESTER']) {
+    const html = await render(type, [row({ registerType: type, termName: '2026秋季学期', registrationCount: 12, registeredCount: 4, studentScope: '虚构全校范围' })])
+    for (const title of ['批次名称', '所属学期', '名单人数', '已注册人数', '状态', '办理入口']) assert.ok(html.includes(`<th>${title}</th>`), title)
     assert.ok(!html.includes(id)); assert.ok(html.includes('本学年原始批次')); assert.ok(html.includes('开放中'))
-    assert.equal((html.match(/待核对<\/span>/g) || []).length, 3)
-    assert.doesNotMatch(html, /2099学年|987654|虚构全校范围/)
-    assert.match(html, /尚待核对，请进入注册名单查看/)
+    assert.match(html, /2026秋季学期/); assert.match(html, /12 人/); assert.match(html, /4 人/)
+    assert.doesNotMatch(html, /虚构全校范围/)
+    assert.match(html, /不等同于全部候选学生/)
+    const missing = await render(type, [row({ registerType: type })])
+    assert.match(missing, /人数暂未取得/); assert.match(missing, /未关联学期/)
   }
 })
 

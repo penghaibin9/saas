@@ -21,14 +21,14 @@
         :identity="contextObject.identity"
         :source="contextObject.source"
         :status="contextObject.status"
-        :owner="workbench?.batchId === workbenchBatchId ? academicFlowOwner(workbench.responsibility) : '选择具体批次后核对责任'"
-        :next-owner="workbench?.batchId === workbenchBatchId ? academicFlowNextOwner(workbench.nextStep) : '选择具体批次后核对下一责任'"
+        :owner="historicalWorkbench ? '历史课表，按权限查阅' : workbench?.batchId === workbenchBatchId ? academicFlowOwner(workbench.responsibility) : '选择具体批次后核对责任'"
+        :next-owner="historicalWorkbench ? '后续办理以当前正式版本为准' : workbench?.batchId === workbenchBatchId ? academicFlowNextOwner(workbench.nextStep) : '选择具体批次后核对下一责任'"
       />
-      <dl v-if="workbench?.batchId === workbenchBatchId" class="aasg-course-responsibility" aria-label="课程分类排课责任">
+      <dl v-if="workbench?.batchId === workbenchBatchId && !historicalWorkbench" class="aasg-course-responsibility" aria-label="课程分类排课责任">
         <div><dt>公共/通识课程 · {{ academicFlowCount(workbench.courseScopeCounts?.public) }} 门</dt><dd>{{ publicScheduleResponsibility }}</dd></div>
         <div><dt>专业课程 · {{ academicFlowCount(workbench.courseScopeCounts?.professional) }} 门</dt><dd>按正式教学任务的开课学院归属办理；当前批次责任见上方。正式课表由校教务处统一发布。</dd></div>
       </dl>
-      <AaScheduleStageRail mode="scheduling" :active-index="pageMeta.stage" />
+      <AaScheduleStageRail v-if="tab !== 'workbench'" mode="scheduling" :active-index="pageMeta.stage" />
     </div>
 
     <ErrorState v-if="routeError" :description="routeError" />
@@ -106,7 +106,13 @@
             </AppButton>
           </div>
           <AppInlineAlert
-            v-if="workbench.workflow.blockers.length"
+            v-if="historicalWorkbench"
+            type="info"
+            title="历史版本只读对照"
+            description="下方数量按当前教学任务与本版本课位对照，不代表当时发布检查的结论；旧版本不再补排，后续办理请核对当前正式版本。"
+          />
+          <AppInlineAlert
+            v-else-if="workbench.workflow.blockers.length"
             type="warning"
             title="当前阻断原因"
             :description="workbench.workflow.blockers.join('；')"
@@ -147,11 +153,12 @@
           </div>
         </AppSectionCard>
 
-        <AppSectionCard title="排课任务队列">
-          <p v-if="workbench.duplicateTaskGroupCount > 0" class="mp-note aasg-queue-note">先核对重复开课来源，再补齐未排与漏排；计划学时包含待核定任务，不能据此继续重复开课。</p>
+        <AppSectionCard :title="historicalWorkbench ? '历史版本与当前任务对照' : '排课任务队列'">
+          <p v-if="historicalWorkbench" class="mp-note aasg-queue-note">保留原版本课位供查阅，本页不再提供补排或调整旧版本的入口。</p>
+          <p v-else-if="workbench.duplicateTaskGroupCount > 0" class="mp-note aasg-queue-note">先核对重复开课来源，再补齐未排与漏排；计划学时包含待核定任务，不能据此继续重复开课。</p>
           <p v-else-if="hasPublishedGap && canCorrectSchedule" class="mp-note aasg-queue-note">当前是四端正在使用的正式版本，不能直接写入。点击“创建草稿后补排”，系统会先保留现有课位，再把你带到对应班级和教学任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
           <p v-else class="mp-note aasg-queue-note">默认把未排、部分漏排放在前面。教务员不需要记班级 ID 或教学任务 ID，点击“去排课”即可带入对应批次、班级和任务。<template v-if="workbench.taskQueueTotal > workbench.taskQueue.length"> 当前显示优先级最高的 {{ workbench.taskQueue.length }} / {{ workbench.taskQueueTotal }} 项。</template></p>
-          <EmptyState v-if="!workbench.taskQueue.length" title="当前没有待处理任务" description="教学任务已排齐；请继续检查冲突并进入预发布。" />
+          <EmptyState v-if="!workbench.taskQueue.length" :title="historicalWorkbench ? '当前对照没有任务行' : '当前没有待处理任务'" :description="historicalWorkbench ? '可通过上方入口查阅历史课表，无需重新预发布。' : '教学任务已排齐；请继续检查冲突并进入预发布。'" />
           <DataTable v-else :columns="taskQueueColumns" :rows="workbench.taskQueue" row-key="taskId">
             <template #cell-course="{ row }">
               <div class="mp-cell-main">{{ row.courseName || row.courseCode || '未命名课程' }}</div>
@@ -169,16 +176,18 @@
               <StatusTag :type="row.issueType === 'NOT_READY' ? 'warning' : 'danger'" :label="row.issueLabel" dot />
             </template>
             <template #cell-ops="{ row }">
-              <span v-if="row.issueType === 'SOURCE_CONFLICT'"><button class="mp-link" @click="openTeachingTasks">核对重复开课任务</button><button class="mp-link" @click="openSourceReview(row)">查看来源差异</button></span>
+              <span v-if="historicalWorkbench">历史对照，仅供查阅</span>
+              <span v-else-if="row.issueType === 'SOURCE_CONFLICT'"><button class="mp-link" @click="openTeachingTasks">核对重复开课任务</button><button class="mp-link" @click="openSourceReview(row)">查看来源差异</button></span>
               <button v-else-if="row.canSchedule && row.classId" class="mp-link" @click="openTask(row)">去排课</button>
               <button v-else-if="hasPublishedGap && canCorrectSchedule && row.classId" class="mp-link" @click="openCorrectionDraft(row)">创建草稿后补排</button>
               <button v-else-if="workbench.batchStatus === 'PUBLISHED'" class="mp-link" @click="openPublishedSchedule">查看正式课表</button>
-              <button v-else class="mp-link" @click="openTeachingTasks">完善任务</button>
+              <span v-else><button class="mp-link" @click="openTeachingTasks">完善任务</button><button v-if="row.sourceProgramCourseId" class="mp-link" @click="openFormationProof(row)">核对形成方式依据</button></span>
             </template>
           </DataTable>
         </AppSectionCard>
         <AppInlineAlert v-if="sourceReviewError" type="warning" :description="sourceReviewError" />
         <AaTaskSourceReview v-if="sourceReview" :key="sourceReviewContext + ':' + sourceReview.taskId" :task-id="sourceReview.taskId" :other-tasks="sourceReview.otherTasks" :term-id="String(workbench.termId || termId || '')" :context-key="sourceReviewContext" @close="sourceReview = null" @confirmed="onSourceHandoffConfirmed" />
+        <AaFormationProof v-if="formationProofSourceId" :key="sourceReviewContext + ':' + formationProofSourceId" :program-course-id="formationProofSourceId" :context-key="sourceReviewContext" @close="formationProofSourceId = ''" @confirmed="loadWorkbench" />
       </template>
       <EmptyState v-else title="请选择课表批次" description="选择批次后，系统会汇总教学任务、漏排、冲突、教师异议并给出下一步。" />
     </div>
@@ -464,6 +473,7 @@ import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
 import AaSchedulingOptimizerPanel from '../components/AaSchedulingOptimizerPanel.vue'
 import AaTaskSourceReview from '../components/teaching-tasks/AaTaskSourceReview.vue'
+import AaFormationProof from '../components/teaching-tasks/AaFormationProof.vue'
 
 const MANAGE_ROLES = new Set(['PLATFORM_SUPER_ADMIN', 'SCHOOL_ADMIN', 'ACADEMIC_ADMIN'])
 const DEFAULT_DAYS = [
@@ -474,7 +484,7 @@ const DEFAULT_DAYS = [
 
 export default {
   name: 'AaSchedulingConsoleView',
-  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel, AaTaskSourceReview },
+  components: { ModulePageShell, DataTable, StatusTag, EmptyState, LoadingState, ErrorState, AppButton, AppInlineAlert, AppConfirmDialog, AppTermEntityPicker, AppScheduleBatchPicker, AppSectionCard, AaAuthoritativeImportDrawer, AaResourceOccupancyView, AaScheduleObjectBar, AaScheduleStageRail, AaSchedulingOptimizerPanel, AaTaskSourceReview, AaFormationProof },
   props: { ctx: { type: Object, required: true } },
   inject: { academicFlow: { default: null } },
   data() {
@@ -483,7 +493,7 @@ export default {
       tab: 'workbench',
       tabs: [{ key: 'workbench', label: '排课工作台' }, { key: 'rules', label: '排课规则' }, { key: 'availability', label: '教师不可排时间' }, { key: 'auto', label: '自动排课' }, { key: 'conflict', label: '冲突报告' }, { key: 'room', label: '教室可用时间' }, { key: 'import', label: '导入排课结果' }, { key: 'result', label: '排课结果' }, { key: 'adjust', label: '排课调整' }],
       termId: '', termInfo: null,
-      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '', sourceReview: null, sourceReviewError: '', sourceHandoffReceipt: null,
+      workbenchBatchId: '', workbench: null, workbenchLoading: false, workbenchError: '', sourceReview: null, sourceReviewError: '', sourceHandoffReceipt: null, formationProofSourceId: '',
       rules: [], catalog: [], timeSlots: [],
       ruleLoading: false, catalogLoading: false, ruleError: '', catalogError: '', termError: '', slotLoadWarning: '',
       editorVisible: false, editingRuleId: '', saving: false, formError: '',
@@ -580,19 +590,21 @@ export default {
       return Object.values(grouped).sort((a, b) => b.count - a.count)
     },
     currentStageLabel() {
+      if (this.historicalWorkbench) return this.batchStatusLabel(this.workbench.batchStatus)
       const current = this.workbench?.workflow?.steps?.find(row => row.state === 'current')
       return current?.label || '状态待确认'
     },
+    historicalWorkbench() { return this.workbench?.batchId === this.workbenchBatchId && ['SUPERSEDED', 'ARCHIVED', 'VOIDED'].includes(this.workbench?.batchStatus) },
     workbenchCards() {
       if (!this.workbench) return []
       const row = this.workbench
       return [
         { label: '教学任务', value: row.totalTasks, note: `已确认 ${row.confirmedTaskCount} · 已就绪 ${row.readyTaskCount}`, alert: row.notReadyTaskCount > 0 },
         { label: '已排任务', value: row.scheduledTasks, note: `任务触达率 ${row.completionRate}%` },
-        { label: '未排 / 漏排', value: `${row.unplacedTaskCount} / ${row.partiallyScheduledTaskCount}`, note: `共 ${row.missingTaskCount} 个待补齐`, alert: row.missingTaskCount > 0 },
+        { label: this.historicalWorkbench ? '当前任务对照差额' : '未排 / 漏排', value: `${row.unplacedTaskCount} / ${row.partiallyScheduledTaskCount}`, note: this.historicalWorkbench ? `共 ${row.missingTaskCount} 项对照差额，不在旧版补排` : `共 ${row.missingTaskCount} 个待补齐`, alert: !this.historicalWorkbench && row.missingTaskCount > 0 },
         { label: '计划 / 已排学时', value: this.contactMetrics(row).known ? `${row.expectedContactHours} / ${row.scheduledContactHours}` : '待核对', note: this.contactSummary(row), alert: !this.contactMetrics(row).known || row.missingContactHours > 0 || row.excessContactHours > 0 || row.weeklyOverloadCount > 0 },
-        { label: '硬 / 软冲突', value: `${row.hardConflicts} / ${row.softConflicts}`, note: '硬冲突必须清零', alert: row.hardConflicts > 0 },
-        { label: '教师异议', value: row.teacherObjectionCount, note: `待处理偏好 ${row.pendingAvailabilityCount}`, alert: row.teacherObjectionCount > 0 }
+        { label: '硬 / 软冲突', value: `${row.hardConflicts} / ${row.softConflicts}`, note: this.historicalWorkbench ? '当前条件对照，不作为旧版发布门槛' : '硬冲突必须清零', alert: !this.historicalWorkbench && row.hardConflicts > 0 },
+        { label: '教师异议', value: row.teacherObjectionCount, note: this.historicalWorkbench ? '保留记录供查阅，不催办旧版本' : `待处理偏好 ${row.pendingAvailabilityCount}`, alert: !this.historicalWorkbench && row.teacherObjectionCount > 0 }
       ]
     }
   },
@@ -642,7 +654,7 @@ export default {
     routeContextKey() { return JSON.stringify([this.academicFlow?.identity() || academicIdentity(currentUserFromToken(), this.ctx), this.$route?.fullPath]) },
     commandContextKey() { return JSON.stringify([this.disposed, this.routeContextKey(), this.termId, this.workbenchBatchId, this.autoBatchId, this.conflictBatchId]) },
     async syncRoute() {
-      this.sourceHandoffReceipt = null; this.sourceReview = null; this.sourceReviewError = ''
+      this.sourceHandoffReceipt = null; this.sourceReview = null; this.sourceReviewError = ''; this.formationProofSourceId = ''
       if (!this.routeGate || this.disposed) return
       const current = this.routeGate.begin()
       this.workbenchGate.invalidate(); this.ruleGate.invalidate()
@@ -712,13 +724,21 @@ export default {
     returnQuery() { const returnToken = this.academicFlow?.captureReturn(); return returnToken ? { returnToken } : {} },
     openBatchEditor() { this.$router.push({ path: `/admin/academic-affairs/schedule/${this.workbenchBatchId}/edit`, query: this.returnQuery() }) },
     batchStatusLabel(status) {
-      return ({ DRAFT: '编排中', PRE_PUBLISHED: '预发布', PUBLISHED: '已正式发布', SUPERSEDED: '已被新版本替代', ARCHIVED: '已归档' })[status] || (status ? '状态待确认' : '状态待确认')
+      return ({ DRAFT: '编排中', PRE_PUBLISHED: '预发布', PUBLISHED: '已正式发布', SUPERSEDED: '已被新版本替代', ARCHIVED: '已归档', VOIDED: '已作废' })[status] || '状态待确认'
     },
     weekRangeText(row) { return row.startWeek && row.endWeek ? `第 ${row.startWeek}-${row.endWeek} 周` : '周次待确认' },
-    roomRequirementText(value) { return value ? `教室要求：${value}` : '教室类型不限' },
+    roomRequirementText(value) {
+      return value ? `教室要求：${({ LECTURE: '普通教室', MULTIMEDIA: '多媒体教室', COMPUTER: '机房', LAB: '实验室', OTHER: '其他' })[value] || '类型待核对'}` : '教室类型不限'
+    },
     openTeachingTasks() {
       const termId = this.workbench?.termId || this.termId
       this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: termId ? { termId: String(termId) } : {} })
+    },
+    openFormationProof(row) {
+      this.formationProofSourceId = ''; this.sourceReview = null
+      const sourceId = String(row?.sourceProgramCourseId || '')
+      if (!/^[1-9]\d*$/.test(sourceId) || !this.workbench?.taskQueue?.some(task => String(task.taskId) === String(row.taskId) && String(task.sourceProgramCourseId) === sourceId)) return
+      this.formationProofSourceId = sourceId
     },
     openSourceReview(row) {
       this.sourceReview = null; this.sourceReviewError = ''
@@ -777,7 +797,7 @@ export default {
       if (['PRE_PUBLISH', 'PUBLISH'].includes(code)) return this.$router.push({ path: '/admin/academic-affairs/schedule/publish', query: { batchId: this.workbenchBatchId } })
       if (code === 'BATCH_REISSUE') return this.openCorrectionDraft()
       if (code === 'CHANGE_LEDGER') return this.$router.push('/admin/academic-affairs/schedule-change')
-      this.$router.push(`/admin/academic-affairs/schedule/${this.workbenchBatchId}/views`)
+      return this.openPublishedSchedule()
     },
     async loadCatalog() {
       this.catalogLoading = true; this.catalogError = ''

@@ -1,4 +1,5 @@
 """D7-U 考务便利性与批量查询合同（MySQL-only）。"""
+import pytest
 from sqlalchemy import event
 
 BASE = "/api/v1/academic-affairs"
@@ -140,6 +141,68 @@ def test_d7_u_candidates_preview_confirm_and_readiness(client, auth_headers, db_
     assert after["canPublish"] is False
     assert not any("尚未圈定" in reason for reason in after["blockingReasons"])
     assert any("待学院确认" in reason for reason in after["blockingReasons"])
+
+
+@pytest.mark.parametrize("status", ["PUBLISHED", "FINISHED", "ARCHIVED"])
+def test_post_publish_readiness_keeps_source_and_roster_defects(client, auth_headers, db_mode, monkeypatch, status):
+    from app.db.session import get_sessionmaker
+    from app.models import AaExamBatch, AaExamCourse, AaTeachingTaskBatch
+
+    ids = _seed(db_mode)
+    bid = _create_batch(client, auth_headers, ids["term"])
+    preview = _preview(client, auth_headers, bid, ids["tasks"][:1])
+    assert _confirm(client, auth_headers, bid, preview["previewToken"]).status_code == 200
+    with get_sessionmaker()() as db:
+        batch = db.get(AaExamBatch, bid)
+        batch.status = status
+        course = db.query(AaExamCourse).filter_by(tenant_id=TID, batch_id=bid).one()
+        course.status = "CONFIRMED"
+        # A legacy published record can lack both resources and offering ownership.
+        db.query(AaTeachingTaskBatch).filter_by(tenant_id=TID, term_id=ids["term"]).one().college_id = None
+        db.commit()
+
+    response = client.get(f"{BASE}/exam/batches/{bid}/readiness", headers=auth_headers)
+    assert response.status_code == 200, response.text
+    result = response.json()["data"]
+    assert result["batchStatus"] == status
+    assert result["canPublish"] is False
+    assert result["roomShortageCount"] == 1
+    assert not any("尚未进入可发布阶段" in reason for reason in result["blockingReasons"])
+    assert any("缺少有效课程或开课责任单位" in reason for reason in result["blockingReasons"])
+    assert any("名单" in reason for reason in result["blockingReasons"])
+
+    from app.models import AaExamInvigilator, AaExamRoom
+    with get_sessionmaker()() as db:
+        course = db.query(AaExamCourse).filter_by(tenant_id=TID, batch_id=bid).one()
+        cid = course.id
+        room = AaExamRoom(tenant_id=TID, exam_course_id=cid, room_seq=1, classroom_text="历史虚构考场", capacity=30, planned_count=1)
+        db.add(room); db.flush()
+        rid = room.id
+        db.add(AaExamInvigilator(tenant_id=TID, exam_room_id=rid, teacher_key="legacy_invigilator", teacher_name="历史虚构监考", role="CHIEF", confirm_status="ASSIGNED"))
+        db.commit()
+    path = f"{BASE}/exam/courses/{cid}/rooms"
+    rooms = client.get(path, headers=auth_headers)
+    assert rooms.status_code == 200, rooms.text
+    assert rooms.json()["data"]["items"][0]["capacity"] == 30
+    invigilator_path = f"{BASE}/exam/rooms/{rid}/invigilators"
+    invigilators = client.get(invigilator_path, headers=auth_headers)
+    assert invigilators.status_code == 200, invigilators.text
+    assert [item["teacherKey"] for item in invigilators.json()["data"]["items"]] == ["legacy_invigilator"]
+    assert client.post(path, headers=auth_headers, json={"classroomText":"不可补造", "capacity":50}).status_code == 409
+    assert client.post(invigilator_path, headers=auth_headers, json={"teacherKey":"not_allowed", "teacherName":"不可补造", "role":"ASSISTANT"}).status_code == 409
+    with get_sessionmaker()() as db:
+        db.get(AaExamBatch, bid).status = "COURSE_CONFIRMED"
+        db.commit()
+    assert client.get(path, headers=auth_headers).status_code == 409
+    assert client.get(invigilator_path, headers=auth_headers).status_code == 409
+    with get_sessionmaker()() as db:
+        db.get(AaExamBatch, bid).status = status
+        db.commit()
+    from types import SimpleNamespace
+    from app.modules.academic_affairs.services import academic_affairs_exam_facade
+    monkeypatch.setattr(academic_affairs_exam_facade._legacy, "_ctx", lambda *_args: SimpleNamespace(scope_type="COLLEGE", college_ids=set()))
+    assert client.get(path, headers=auth_headers).status_code == 409
+    assert client.get(invigilator_path, headers=auth_headers).status_code == 409
 
 
 def test_d7_u_course_list_batches_roster_snapshot_query(client, auth_headers, db_mode):

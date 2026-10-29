@@ -4036,8 +4036,9 @@ def makeup_batch_create(body: MakeupBatchBody, user=Depends(require_permission(_
 @router.get("/makeup/batches", summary="补考批次列表（kind 可筛 MAKEUP/CLEARANCE）")
 def makeup_batches(status: Optional[str] = None, kind: Optional[str] = None,
                    page: int = 1, pageSize: int = 20,
+                   batchId: Optional[int] = Query(None, gt=0),
                    user=Depends(require_permission(_MK_VIEW))):
-    items, total = makeup_svc.list_makeup_batches(user, status, page, pageSize, kind)
+    items, total = makeup_svc.list_makeup_batches(user, status, page, pageSize, kind, batch_id=batchId)
     return success(paginate(items, total, page, pageSize))
 
 

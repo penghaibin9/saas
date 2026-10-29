@@ -7,6 +7,7 @@ import { renderToString } from 'vue/server-renderer'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import { academicFlowText } from '../src/modules/academicAffairs/config/academicFlowRegistry.js'
 import * as results from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
+import { matchPermission } from '../src/config/navPlan.js'
 
 const hours = { expectedContactHours: 36, scheduledContactHours: 36, missingContactHours: 0, excessContactHours: 0, weeklyOverloadCount: 0, scheduledItemCount: 2 }
 const withHours = data => data && Object.hasOwn(data, 'complete') ? { ...hours, ...data } : data
@@ -14,7 +15,7 @@ const ok = data => ({ code: 0, data: withHours(data) })
 const row = { batchId: '9007199254740993', batchName: '本学期正式课表', status: 'PRE_PUBLISHED' }
 const ready = () => ({ complete: true, schoolGate: { ready: true, blockers: [], requiredBatchIds: [row.batchId] } })
 function instance(api = {}, summary = ready(), intent = 'pub') {
-  const value = page('AaSchedulePublishView', { academicFlowText, ...results, academicAffairsApi: api }, {
+  const value = page('AaSchedulePublishView', { academicFlowText, matchPermission, ...results, academicAffairsApi: api }, {
     ctx: { currentRole: { roleCode: 'ACADEMIC_ADMIN' }, dataScope: { scope: 'TENANT_ALL' } },
     focusGate: { invalidate() {} }
   })
@@ -39,6 +40,25 @@ test('新学时核验缺失或周超量时即使旧门禁通过仍不可发布',
   await state.confirmGateAction()
   assert.equal(writes, 0)
   assert.match(state.commandError, /尚未取得计划总学时/)
+})
+
+test('全校来源缺项显示中文对象并按权限进入原教学任务，未知编号不导航', async () => {
+  const {state}=instance({}, {complete:true,schoolGate:{ready:false,teachingTaskReconciliation:{evidence:[
+    {type:'TASK_RECONCILIATION'},
+    {type:'PROGRAM_UNRESOLVED',classId:'unresolved-without-label'},
+    {type:'PROGRAM_UNRESOLVED',className:'验收班'},
+    {type:'OVER_OPENED',className:'联通班',taskBatches:[{batchId:'25',courseName:'实践课',className:'联通班'},{batchId:'25',courseName:'实践课',className:'联通班'}]},
+    {type:'UNKNOWN_INTERNAL',message:'DO_NOT_RENDER'}
+  ]}}})
+  assert.deepEqual(Array.from(state.schoolTaskIssues,x=>x.title),['培养方案尚未落实','教学任务未匹配应开依据'])
+  assert.equal(state.schoolTaskIssues[1].subject,'联通班')
+  assert.equal(state.schoolTaskIssues[1].batches.length,1)
+  const routes=[];state.$router={push:r=>routes.push(r)};state.$route={fullPath:'/admin/academic-affairs/schedule/publish?batchId=47'}
+  state.ctx.permissionPatterns=[];state.openSchoolSource('25');assert.equal(routes.length,0)
+  state.ctx.permissionPatterns=['academicAffairs.teachingTask.view'];state.openSchoolSource('25')
+  assert.equal(routes[0].path,'/admin/academic-affairs/teaching-tasks/25');assert.equal(routes[0].query.returnTo,state.$route.fullPath)
+  state.openSchoolSource('../escape');assert.equal(routes.length,1)
+  assert.equal(state.gateActionReady,false)
 })
 
 test('重复开课组即使收到矛盾完整状态也不开放发布，重新回读同样阻断', async () => {

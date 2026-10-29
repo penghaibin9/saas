@@ -148,6 +148,7 @@ export default {
       try {
         await this.loadTerms(current)
         if (!current()) return
+        this.filters.keyword = typeof this.$route.query.keyword === 'string' ? this.$route.query.keyword : ''
         this.initialized = true
         await this.load()
       } catch (error) { if (current()) this.handleFailure(error, '学期读取失败，请重试；尚未查询教学班。') }

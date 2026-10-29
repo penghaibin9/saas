@@ -90,8 +90,8 @@
               <button class="mp-link aa-batch-name" :disabled="creating || !!busyId" @click="goDetail(row)">{{ row.batchName || '批次名称未提供' }}</button>
             </template>
             <template #cell-type="{ row }">{{ typeLabelOf(row.registerType) }}</template>
-            <template v-for="column in unavailableColumns" :key="column.key" #[`cell-${column.key}`]>
-              <span class="aa-batch-unavailable">待核对</span>
+            <template v-for="column in unavailableColumns" :key="column.key" #[`cell-${column.key}`]="{ row }">
+              <span>{{ batchField(row, column.key) }}</span>
             </template>
             <template #cell-status="{ row }">
               <AppStatusTag :status="row.status" dot>{{ statusLabel(row.status) }}</AppStatusTag>
@@ -166,17 +166,14 @@ export default {
       ].map(step => ({ ...step, status: 'wait' }))
     },
     unavailableColumns() {
-      if (this.fixedType === 'ENROLL') return [{ key: 'grade', title: '招生年级' }, { key: 'term', title: '学期' }, { key: 'candidateCount', title: '候选学生' }]
-      if (this.fixedType === 'ANNUAL') return [{ key: 'year', title: '学年' }, { key: 'studentScope', title: '学生范围' }, { key: 'registeredCount', title: '已注册人数' }]
-      if (this.fixedType === 'SEMESTER') return [{ key: 'term', title: '学期' }, { key: 'studentScope', title: '学生范围' }, { key: 'registeredCount', title: '已注册人数' }]
-      return [{ key: 'studentScope', title: '学生范围' }, { key: 'registeredCount', title: '已注册人数' }]
+      return [{ key: 'termName', title: '所属学期' }, { key: 'registrationCount', title: '名单人数' }, { key: 'registeredCount', title: '已注册人数' }]
     },
     columns() {
       return [{ key: 'batchName', title: '批次名称', width: '27%' },
         ...(!this.fixedType ? [{ key: 'type', title: '类型' }] : []), ...this.unavailableColumns,
         { key: 'status', title: '状态', width: '160px' }, { key: 'actions', title: '办理入口', width: '150px' }]
     },
-    missingFieldsNote() { return `${this.unavailableColumns.map(column => column.title).join('、')}尚待核对，请进入注册名单查看。` },
+    missingFieldsNote() { return '人数按当前授权范围内的正式注册名单统计，不等同于全部候选学生；点击注册名单继续核验。' },
     statusOptions() { return [{ value: '', label: '全部状态' }, ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))] },
     visibleRows() {
       const keyword = this.appliedKeyword.toLocaleLowerCase()
@@ -252,6 +249,10 @@ export default {
   beforeRouteUpdate(to, from, next) { next(!this.creating && !this.busyId) },
   beforeUnmount() { this.disposed = true; this.requestVersion++ },
   methods: {
+    batchField(row, key) {
+      if (key === 'termName') return row.termName || (row.termId ? '学期名称待核对' : '未关联学期')
+      return Number.isSafeInteger(row[key]) && row[key] >= 0 ? `${row[key]} 人` : '人数暂未取得'
+    },
     validTermId(value) { return typeof value === 'string' && /^[1-9]\d*$/.test(value) },
     restoreListQuery() {
       const query = this.$route.query || {}, rawPage = Number(query.page), rawSize = Number(query.pageSize)

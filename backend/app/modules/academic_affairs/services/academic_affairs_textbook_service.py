@@ -210,7 +210,7 @@ def list_selections(user, status=None, page=1, page_size=50, *, selection_id=Non
     原实现对非学校级角色，先取出全租户全部选用记录，再在 Python 里按 college_ids
     过滤、按页码切片——学院管理员只该看到自己学院的记录，却要为此让数据库把
     全校记录先搬进应用内存一遍。"""
-    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection
+    from app.models import AaTeachingTask, AaTeachingTaskBatch, AaTextbookSelection, User
     from app.core.affairs_security import _derive_keys
     with session() as db:
         ctx = _ctx(user, db)
@@ -259,7 +259,27 @@ def list_selections(user, status=None, page=1, page_size=50, *, selection_id=Non
         rows = db.query(AaTextbookSelection).filter(*conds).order_by(
             AaTextbookSelection.id.desc()
         ).offset((page - 1) * page_size).limit(page_size).all()
-        return [_sel_dto(s) for s in rows], total
+        keys = {str(s.officer_key) for s in rows if s.officer_key}
+        numeric_keys = {}
+        for key in keys:
+            account_id = key.removeprefix("db-")
+            if account_id.isascii() and account_id.isdecimal() and len(account_id) <= 19 and int(account_id) <= 9223372036854775807:
+                numeric_keys.setdefault(int(account_id), set()).add(key)
+        officers = {}
+        if keys:
+            users = db.query(User.id, User.login_name, User.real_name).filter(
+                User.tenant_id == _tid(), User.is_deleted.is_(False),
+                or_(User.login_name.in_(keys), User.id.in_(numeric_keys)),
+            ).all()
+            for account_id, login_name, name in users:
+                for key in numeric_keys.get(account_id, set()) | ({login_name} & keys):
+                    officers.setdefault(key, {})[account_id] = (name, login_name)
+        items = []
+        for selection in rows:
+            matches = officers.get(str(selection.officer_key), {})
+            name, login = next(iter(matches.values())) if len(matches) == 1 else (None, None)
+            items.append({**_sel_dto(selection), "officerName": name, "officerLoginName": login})
+        return items, total
 
 
 def _is_school(ctx):

@@ -76,7 +76,7 @@ test('quality records use server pages and discard out-of-order pages', async ()
   assert.equal(state.recPagination.total, 83)
 })
 
-test('rectification paging preserves a truthful total when the current follow-up page is closed', async () => {
+test('rectification paging rejects closed rows returned for the open queue instead of showing a false empty page', async () => {
   let query
   const { state } = page('AaQualityDashboardView', { academicAffairsQualityApi: {
     listRectifications: async (params) => { query = params; return ok([{ rectId: 12, status: 'CLOSED' }], 62) },
@@ -86,9 +86,10 @@ test('rectification paging preserves a truthful total when the current follow-up
   await state.loadRectifications()
   assert.equal(query.page, 2)
   assert.equal(query.pageSize, 20)
+  assert.equal(query.status, 'NOT_CLOSED')
   assert.equal(state.displayRectRows.length, 0)
   assert.equal(state.rectPagination.total, 62)
-  assert.equal(state.panelError, '')
+  assert.match(state.panelError, /状态已经变化/)
 })
 
 test('quality paging clears the previous object deep-link and keeps the return token', async () => {

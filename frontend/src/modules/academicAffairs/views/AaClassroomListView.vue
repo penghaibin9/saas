@@ -40,7 +40,7 @@
           <template #cell-examSeats="{ row }"><strong>{{ row.examSeats ?? '未设置' }}</strong><small class="cr-unit">{{ row.examSeats === null || row.examSeats === undefined ? '沿用教学座位' : '考试座位' }}</small></template>
           <template #cell-usageRules="{ row }"><div class="cr-rule-summary cr-rule-summary--table"><span>{{ ruleShort(row.allowSchedule, '排课') }}</span><span>{{ ruleShort(row.allowExam, '排考') }}</span><span>{{ ruleShort(row.allowBorrow, '借用') }}</span></div></template>
           <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="row.statusLabel" dot /></template>
-          <template #cell-actions="{ row }"><div class="cr-row-actions"><button v-if="can('update')" class="cr-link" @click="openEdit(row)">编辑</button><button class="cr-link" @click="goSchedule(row)">课表</button><button class="cr-link" :aria-label="`查看${row.roomName}资料与操作`" @click="openDetail(row)">资料与操作</button></div></template>
+          <template #cell-actions="{ row }"><div class="cr-row-actions"><button v-if="can('update')" class="cr-link" :disabled="saving" @click="openEdit(row)">编辑</button><button class="cr-link" @click="goSchedule(row)">课表</button><button class="cr-link" :aria-label="`查看${row.roomName}资料与操作`" @click="openDetail(row)">资料与操作</button></div></template>
         </DataTable>
       </section>
       </div>
@@ -262,6 +262,12 @@ export default {
     },
     rulesMatch(formal, requested) {
       const formalExamSeats = formal?.examSeats === null || formal?.examSeats === undefined ? null : Number(formal.examSeats)
+      if (requested.buildingId && String(formal?.buildingId) !== String(requested.buildingId)) return false
+      if (Object.hasOwn(requested, 'floorNo')) {
+        const expectedFloor = requested.floorNo === null || requested.floorNo === '' || requested.floorNo === undefined ? null : Number(requested.floorNo)
+        const actualFloor = formal?.floorNo === null || formal?.floorNo === undefined ? null : Number(formal.floorNo)
+        if (expectedFloor !== actualFloor) return false
+      }
       return formalExamSeats === requested.examSeats && ['allowSchedule', 'allowExam', 'allowBorrow'].every(key => typeof formal?.[key] === 'boolean' && formal[key] === requested[key])
     },
     async openDetail(row) { this.detailId = row.classroomId; this.detailVisible = true; await this.loadDetail() },

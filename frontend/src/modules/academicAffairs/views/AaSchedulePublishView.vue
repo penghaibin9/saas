@@ -68,6 +68,15 @@
             </div>
             <p v-if="schoolGateReady" class="mp-note">全校所需批次已就绪，发布时将再次检查。</p>
             <ul v-else class="aa-school-gate__reasons"><li v-for="(message, index) in schoolGateBlockers" :key="index">{{ message }}</li></ul>
+            <ul v-if="!schoolGateReady && schoolTaskIssues.length" class="aa-school-gate__objects" aria-label="需核对的开课对象">
+              <li v-for="(issue, index) in schoolTaskIssues" :key="index">
+                <strong>{{ issue.title }}</strong><p>{{ issue.subject }}</p>
+                <AppButton v-if="issue.program && hasPermission('academicAffairs.program.view')" size="small" @click="openSchoolSource()">核对培养方案</AppButton>
+                <template v-if="hasPermission('academicAffairs.teachingTask.view')">
+                  <AppButton v-for="target in issue.batches" :key="target.batchId" size="small" @click="openSchoolSource(target.batchId)">核对 {{ target.courseName || '教学任务' }}</AppButton>
+                </template>
+              </li>
+            </ul>
             <AppButton :disabled="writeBusy" @click="openGate(gate.batch, gate.intent)">重新检查发布条件</AppButton>
           </div>
           <div class="aa-gate-actions">
@@ -159,6 +168,7 @@ import { readAllPages } from '../components/parallel-a/pagedRead'
 import { academicRouteState, createAcademicRequestGate } from '../academicFlowContext'
 import AaScheduleStageRail from '../components/AaScheduleStageRail.vue'
 import { academicFlowText } from '../config/academicFlowRegistry'
+import { matchPermission } from '@/config/navPlan'
 
 export default {
   name: 'AaSchedulePublishView',
@@ -197,6 +207,17 @@ export default {
       return value.known && value.expected === value.scheduled && value.missing === 0 && value.excess === 0 && value.overload === 0 && !(this.gate.summary?.duplicateTaskGroupCount > 0)
     },
     schoolGateBlockers() { return this.schoolGateReasons(this.gate.summary) },
+    schoolTaskIssues() {
+      const titles = { PROGRAM_UNRESOLVED: '培养方案尚未落实', MISSING_TASK: '应开课程尚未生成任务', DUPLICATE_TASK: '同一课程存在重复任务', OVER_OPENED: '教学任务未匹配应开依据', TASK_NOT_READY: '教学任务尚未确认', TASK_NO_TEACHER: '教学任务尚未分配教师', BATCH_NOT_APPROVED: '教学任务批次尚未批准' }
+      const evidence = this.gate.summary?.schoolGate?.teachingTaskReconciliation?.evidence
+      return (Array.isArray(evidence) ? evidence : []).filter(item => titles[item.type] && (item.className || item.taskBatches?.length)).map(item => ({
+        title: titles[item.type], subject: item.className || item.taskBatches?.[0]?.className || '请进入责任工作区核对具体对象',
+        program: item.type === 'PROGRAM_UNRESOLVED',
+        batches: Array.from(new Map((Array.isArray(item.taskBatches) ? item.taskBatches : [])
+          .filter(target => /^[1-9]\d*$/.test(String(target.batchId || '')))
+          .map(target => [String(target.batchId), target])).values())
+      }))
+    },
     gateActionReady() {
       return this.gate.summary?.complete === true && this.contactGateReady && (this.gate.intent === 'pre' || (this.gate.intent === 'pub' && this.schoolGateReady))
     },
@@ -367,6 +388,12 @@ export default {
     },
     scheduleBatchColor,
     statusLabel(s) { return SCHEDULE_BATCH_STATUS[s] || (s ? '状态待确认' : '') },
+    hasPermission(key) { return matchPermission(this.ctx?.permissionPatterns || [], key) },
+    openSchoolSource(batchId) {
+      if (batchId && !/^[1-9]\d*$/.test(String(batchId))) return
+      if (!this.hasPermission(batchId ? 'academicAffairs.teachingTask.view' : 'academicAffairs.program.view')) return
+      return this.$router.push({ path: batchId ? `/admin/academic-affairs/teaching-tasks/${batchId}` : '/admin/academic-affairs/programs', query: { returnTo: this.$route.fullPath } })
+    },
     returnToQueue() {
       return this.academicFlow?.back(this.$route.query.returnToken, '/admin/academic-affairs/schedule')
         || this.$router.push('/admin/academic-affairs/schedule')
@@ -569,6 +596,9 @@ export default {
 .aa-gate-warning { margin: 12px 0 0; padding: 10px 12px; border-radius: 8px; color: var(--warning-700, #b45309); background: var(--warning-50, #fffbeb); font-size: 13px; }
 .aa-school-gate { margin-top: 14px; padding: 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; }
 .aa-school-gate__reasons { margin: 12px 0; padding-left: 20px; color: var(--warning-700, #b45309); line-height: 1.7; overflow-wrap: anywhere; }
+.aa-school-gate__objects { display: grid; gap: 10px; padding: 0; list-style: none; }
+.aa-school-gate__objects li { min-width: 0; padding: 10px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 6px; overflow-wrap: anywhere; }
+.aa-school-gate__objects p { margin: 5px 0 8px; }
 .aa-gate-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 14px; }
 @media (max-width: 980px) { .aa-truth-card__grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 760px) { .aa-gate-grid, .aa-truth-card__grid { grid-template-columns: 1fr; } .aa-gate-head, .aa-truth-card__head { flex-direction: column; } }

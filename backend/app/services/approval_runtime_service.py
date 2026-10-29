@@ -83,6 +83,9 @@ def _task_can_act(db, task, inst, user=None) -> bool:
     """与既有 SYS-14 节点动作策略保持同一事实源。"""
     from app.services import db_service
 
+    if inst and inst.source_biz_type == "AA_SCHEDULE_CHANGE":
+        return False
+
     if db_service._can_manage_all_approvals(
         user,
         workflow_code=(inst.workflow_code if inst else None),
@@ -98,7 +101,7 @@ def _enrich_rows(rows: list[dict], *, user=None) -> list[dict]:
     if not rows:
         return rows
     from sqlalchemy import select
-    from app.models import WorkflowInstance, WorkflowTask
+    from app.models import WorkflowInstance, WorkflowTask, User
     from app.services import db_service
 
     task_ids = []
@@ -123,6 +126,10 @@ def _enrich_rows(rows: list[dict], *, user=None) -> list[dict]:
             WorkflowInstance.is_deleted.is_(False),
         )).all() if instance_ids else []
         inst_map = {int(x.id): x for x in instances}
+        applicant_ids = {x.applicant_id for x in instances if x.applicant_id}
+        applicant_names = dict(db.execute(select(User.id, User.real_name).where(
+            User.tenant_id == _tid(), User.is_deleted.is_(False), User.id.in_(applicant_ids),
+        )).all()) if applicant_ids else {}
         now = datetime.utcnow()
         for row in rows:
             row["sourceBizTypeLabel"] = _BIZ_TYPE_LABELS.get(row.get("sourceBizType"), "审批事项")
@@ -137,6 +144,7 @@ def _enrich_rows(rows: list[dict], *, user=None) -> list[dict]:
             row["instanceStatus"] = inst.status if inst else ""
             row["currentInstanceNode"] = inst.current_node if inst else ""
             row["sourceBizId"] = str(inst.source_biz_id) if inst else ""
+            row["applicantName"] = applicant_names.get(inst.applicant_id, '') if inst else ''
             row["deadlineAt"] = task.deadline_at.isoformat(timespec="seconds") if task.deadline_at else None
             row["urgency"] = (
                 "OVERDUE" if task.deadline_at and task.deadline_at < now
@@ -195,7 +203,7 @@ def next_task(anchor_task_id, *, user=None, keyword=None, biz_type=None, urgency
 def get_task(task_id: str, *, user=None) -> dict:
     _require_db()
     from sqlalchemy import select
-    from app.models import WorkflowInstance, WorkflowTask
+    from app.models import WorkflowInstance, WorkflowTask, User
     from app.services import db_service
 
     try:
@@ -219,6 +227,9 @@ def get_task(task_id: str, *, user=None) -> dict:
         if not inst:
             raise not_found("审批实例不存在")
         row = db_service._task_row(task, inst)
+        row["applicantName"] = db.scalar(select(User.real_name).where(
+            User.id == inst.applicant_id, User.tenant_id == _tid(), User.is_deleted.is_(False),
+        )) or ''
         row["sourceBizTypeLabel"] = _BIZ_TYPE_LABELS.get(inst.source_biz_type, "审批事项")
         row["instanceStatus"] = inst.status
         row["currentInstanceNode"] = inst.current_node or ""
@@ -236,12 +247,17 @@ def get_task(task_id: str, *, user=None) -> dict:
             WorkflowTask.tenant_id == _tid(),
             WorkflowTask.is_deleted.is_(False),
         ).order_by(WorkflowTask.created_at, WorkflowTask.id)).all()
+        assignee_ids = {item.assignee_id for item in history if item.assignee_id}
+        assignee_names = dict(db.execute(select(User.id, User.real_name).where(
+            User.tenant_id == _tid(), User.is_deleted.is_(False), User.id.in_(assignee_ids),
+        )).all()) if assignee_ids else {}
         row["history"] = [{
             "taskId": str(x.id),
             "nodeCode": x.node_code or "",
             "action": x.status,
             "comment": x.action_reason or "",
             "assigneeId": str(x.assignee_id),
+            "assigneeName": assignee_names.get(x.assignee_id, ''),
             "createdAt": x.created_at.isoformat(timespec="seconds") if x.created_at else None,
             "actedAt": x.acted_at.isoformat(timespec="seconds") if x.acted_at else None,
         } for x in history]
@@ -421,6 +437,7 @@ def return_for_revision(task_id, reason, *, user=None, version=None, expected_so
             raise not_found("审批实例不存在")
 
         from app.services import approval_business_context_service as ctx_svc
+        db_service.require_generic_approval_source(inst)
         ctx_svc.assert_domain_action_entry(inst)
         _assert_context_gate(
             ctx_svc.resolve_context(db, inst, for_update=True),
@@ -556,6 +573,7 @@ def resubmit(instance_id, *, user=None, version=None, comment=None):
             raise not_found("审批实例不存在")
         if int(inst.applicant_id) != int(actor_id or 0):
             raise no_permission("仅申请人本人可重新提交")
+        db_service.require_generic_approval_source(inst)
         if inst.status != "RUNNING" or inst.current_node != "APPLICANT_RESUBMIT":
             raise AppException("APPROVAL_STATE_CONFLICT", "当前申请不处于待修改重提状态", http_status=409)
         if int(inst.version or 0) != int(version):
@@ -656,6 +674,7 @@ def transfer(task_id, target_user_id, comment, *, user=None, version=None):
         )).first()
         if not inst:
             raise not_found("审批实例不存在")
+        db_service.require_generic_approval_source(inst)
         atomic_versioned_update(
             db, WorkflowTask, entity_id=int(task_id), tenant_id=_tid(),
             expected_version=version, expected_status="PENDING",

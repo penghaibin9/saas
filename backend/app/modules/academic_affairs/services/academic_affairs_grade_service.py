@@ -914,11 +914,16 @@ def _scoped_academic_student_query(db, user):
         AcademicStudent.tenant_id == _core._tid(),
         AcademicStudent.is_deleted.is_(False),
     )
-    role = str((user or {}).get("currentRoleCode") or "").upper()
-    if role == "COLLEGE_ADMIN":
-        from app.core.affairs_security import build_affairs_context
+    from app.core.affairs_security import build_affairs_context
 
-        context = build_affairs_context(user, db)
+    context = build_affairs_context(user, db)
+    if context.scope_type == "NONE":
+        raise AppException("NO_DATA_SCOPE", "当前岗位没有成绩汇总数据范围，请从本人教学任务查看成绩", http_status=403)
+    if context.scope_type == "SELF":
+        query = query.filter(AcademicStudent.student_id == (context.self_student_id or -1))
+    elif context.scope_type == "STUDENT":
+        query = query.filter(AcademicStudent.student_id.in_(list(context.student_ids | context.psychology_student_ids) or [-1]))
+    else:
         allowed = context.allowed_class_ids(db)
         if allowed is not None:
             profile_ids = select(StudentProfile.id).where(
@@ -1285,31 +1290,83 @@ def export_transcript_xlsx(user, student_id, purpose="") -> bytes:
     return content
 
 
-def fail_list(user, term=None, page=1, page_size=50):
-    from app.models import AcademicGrade
+def _fail_remedies(db, grade_ids):
+    """Only exact, same-student source links prove a remedy; names cannot."""
+    from app.models import AcademicGrade, AcademicMakeup, AaRetakeApply
+
+    result = {}
+    if not grade_ids:
+        return result
+    for model, kind in ((AcademicMakeup, 'MAKEUP'), (AaRetakeApply, 'RETAKE')):
+        query = db.query(func.max(model.id).label('id')).join(
+            AcademicGrade, model.origin_grade_id == AcademicGrade.id,
+        ).filter(
+            model.tenant_id == _core._tid(), model.is_deleted == False,
+            AcademicGrade.tenant_id == _core._tid(),
+            model.acad_student_id == AcademicGrade.acad_student_id,
+            model.origin_grade_id.in_(grade_ids),
+        )
+        if model is AcademicMakeup:
+            query = query.filter(model.record_status == 'ACTIVE')
+        latest = query.group_by(model.origin_grade_id).subquery()
+        for record in db.query(model).join(latest, model.id == latest.c.id).all():
+            result.setdefault(int(record.origin_grade_id), []).append({
+                'kind': (record.kind or 'MAKEUP') if model is AcademicMakeup else kind,
+                'id': str(record.id), 'status': record.status,
+                'batchId': str(record.batch_id) if model is AcademicMakeup and record.batch_id else None,
+            })
+    return result
+
+
+def fail_list(user, term=None, page=1, page_size=50, *, allowed_class_ids=None):
+    from app.models import AcademicGrade, AcademicStudent
 
     with _core.session() as db:
-        students = _scoped_academic_students(db, user)
+        scoped_query = _scoped_academic_student_query(db, user)
+        if allowed_class_ids is not None:
+            scoped_query = scoped_query.filter(AcademicStudent.class_id.in_(list(allowed_class_ids) or [-1]))
+        scoped_students = scoped_query.subquery()
+        # 补考可在后续学期发布；先仲裁完整成绩链，再筛选原成绩学期。
+        filters = _grade_analysis_filters(AcademicGrade, None)
+        query = db.query(AcademicGrade).join(scoped_students, AcademicGrade.acad_student_id == scoped_students.c.id).filter(*filters)
+        size = max(1, min(200, int(page_size)))
+        start = (max(1, int(page)) - 1) * size
+        if not _grade_analysis_has_competing_identity(db, AcademicGrade, scoped_students, filters):
+            failed = query.filter(func.upper(AcademicGrade.pass_status).in_(['FAIL', 'FAILED']))
+            if term:
+                failed = failed.filter(AcademicGrade.term == term)
+            total = failed.count()
+            rows = failed.order_by(
+                func.hex(func.coalesce(AcademicGrade.term, '')).desc(),
+                func.hex(func.coalesce(func.nullif(AcademicGrade.course_code, ''), AcademicGrade.course_name, '')).desc(),
+                AcademicGrade.id.desc(),
+            ).offset(start).limit(size).all()
+        else:
+            # Multiple attempts still use the frozen canonical policy, never filter failures before arbitration.
+            candidates = query.with_entities(
+                AcademicGrade.id, AcademicGrade.acad_student_id, AcademicGrade.course_id,
+                AcademicGrade.course_code, AcademicGrade.course_version, AcademicGrade.course_name,
+                AcademicGrade.nature, AcademicGrade.credit_value, AcademicGrade.score, AcademicGrade.pass_status,
+                AcademicGrade.exam_type, AcademicGrade.record_status, AcademicGrade.source,
+                AcademicGrade.attempt_no, AcademicGrade.effective_attempt_strategy, AcademicGrade.term,
+            ).all()
+            effective = resolve_effective_grade(candidates)
+            rows = [row for row in effective if str(row.pass_status or '').upper() in {'FAIL', 'FAILED'} and (not term or row.term == term)]
+            rows.sort(key=lambda row: (str(row.term or ''), str(row.course_code or row.course_name or ''), int(row.id)), reverse=True)
+            total = len(rows)
+            rows = rows[start:start + size]
+        students = db.query(AcademicStudent).filter(AcademicStudent.tenant_id == _core._tid(), AcademicStudent.id.in_({r.acad_student_id for r in rows})).all() if rows else []
         student_by_id = {int(row.id): row for row in students}
-        query = db.query(AcademicGrade).filter(
-            AcademicGrade.tenant_id == _core._tid(),
-            AcademicGrade.acad_student_id.in_(list(student_by_id) or [0]),
-            AcademicGrade.record_status == "ACTIVE",
-            AcademicGrade.is_deleted.is_(False),
-        )
-        if term:
-            query = query.filter(AcademicGrade.term == term)
-        effective = resolve_effective_grade(query.all())
-        rows = [
-            row for row in effective
-            if str(row.pass_status or "").upper() in {"FAIL", "FAILED"}
-        ]
-        rows.sort(key=lambda row: (str(row.term or ""), str(row.course_code or row.course_name or ""), int(row.id)), reverse=True)
+        remedies = _fail_remedies(db, [row.id for row in rows])
         items = []
         for row in rows:
             student = student_by_id.get(int(row.acad_student_id))
             items.append({
                 "gradeId": str(row.id),
+                "remedies": remedies.get(int(row.id), []),
+                "acadStudentId": str(row.acad_student_id),
+                "studentNo": student.student_no if student else "",
+                "className": student.class_name if student else "",
                 "studentName": student.name if student else "",
                 "attemptNo": row.attempt_no,
                 "courseVersion": row.course_version,
@@ -1321,8 +1378,7 @@ def fail_list(user, term=None, page=1, page_size=50):
                 "score": row.score,
                 "source": row.source or "LEGACY",
             })
-        start = (max(1, int(page)) - 1) * int(page_size)
-        return items[start:start + int(page_size)], len(items)
+        return items, total
 
 
 def grade_analysis(user, term=None, dimension=None):

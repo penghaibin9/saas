@@ -32,7 +32,8 @@
         <div><span>下一岗位</span><strong>{{ nextOwner }}</strong></div>
       </section>
 
-      <GraduationStageRail :active="stageIndex" />
+      <p v-if="currentBatch && batchTotal && unconcludedCount === 0" class="mp-note" role="status">{{ currentBatch.status === 'ARCHIVED' ? '批次已归档，按权限查阅历史结果。' : '本批次已形成终审结论，请核对毕业、结业、延毕名单及各自后续事项；终审完成不等于已发证或已归档。' }}</p>
+      <GraduationStageRail v-else :active="stageIndex" />
       <div v-if="currentBatch" class="agc-coverage"><span>终审覆盖度</span><b>{{ finalProgressPct }}%</b><i><em :style="{ width: `${finalProgressPct}%` }"></em></i></div>
 
       <EmptyState v-if="!loadingBatches && !batches.length" title="暂无审核批次" description="请先到「审核批次」页新建批次并执行预审" />
@@ -42,6 +43,8 @@
           v-for="t in tabs"
           :key="t.key"
           :class="['agc-tab', { 'is-active': tab === t.key }]"
+          :disabled="loading || detailBusy || finalDlg.submitting || archiving || !!pendingWrite"
+          :aria-current="tab === t.key ? 'page' : undefined"
           @click="switchTab(t.key)"
         >{{ t.label }}</button>
       </div>
@@ -77,7 +80,8 @@
       </section>
 
       <template v-if="!batchId">
-        <EmptyState title="请先选择批次" description="从上方选择一个审核批次后再进入具体审核工作区" />
+        <ErrorState v-if="error" :description="error" @retry="reloadForIdentity" @back="returnToBatchQueue" />
+        <EmptyState v-else title="请先选择批次" description="从上方选择一个审核批次后再进入具体审核工作区" />
       </template>
 
       <template v-else-if="['credit', 'practice', 'thesis', 'internship', 'discipline', 'fee'].includes(tab)">
@@ -160,13 +164,17 @@
       </template>
 
       <template v-else-if="tab === 'final'">
+        <AppInlineAlert v-if="!canManagePermission" type="info" description="当前岗位仅查阅授权范围内的结果；正式终审由有权限的校教务岗位办理。" />
         <AppInlineAlert
+          v-else-if="!finalComplete"
           type="warning"
           description="教务终审会写入毕业/结业/延毕学籍终态，属于不可逆业务动作；请在十一项证据和学院初审均核对完成后操作。"
         />
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="暂无待终审名单" description="需学院初审通过后才进入本队列" />
+        <EmptyState v-else-if="!rows.length" :title="finalComplete ? '本批次终审已完成' : '暂无待终审名单'" :description="finalComplete ? '正式结论已保留，请进入审核结果核对；无需重新进行学院初审。' : '需学院初审通过后才进入本队列'">
+          <template v-if="finalComplete" #actions><AppButton @click="switchTab('results')">查看审核结果</AppButton></template>
+        </EmptyState>
         <DataTable v-else :columns="finalColumns" :rows="rows" row-key="resultId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-overall="{ row }"><AppStatusTag :type="overallColor(row.overall)" dot>{{ overallLabel(row.overall) }}</AppStatusTag></template>
           <template #cell-ops="{ row }">
@@ -229,15 +237,20 @@
       </template>
 
       <template v-else-if="tab === 'archive'">
-        <AppSectionCard title="归档操作">
-          <p class="mp-note">收敛该批次已终审的「毕业/结业」结果为已归档；延毕滚入下一批次、退回待重初审的结果不在本次归档范围内，需重新走完流程后再归档。</p>
+        <AppSectionCard :title="currentBatch?.status === 'ARCHIVED' ? '已归档批次保留记录' : '归档操作'">
+          <p v-if="!canManagePermission" class="mp-note">当前岗位仅查阅，正式归档由有权限的校教务岗位办理。</p>
+          <p v-if="currentBatch?.status === 'ARCHIVED'" class="mp-note">本批次已经归档，下方保留原结果状态与终审结论，仅供查阅；不重复归档，不修改原决定。</p>
+          <template v-else>
+          <p class="mp-note">归档该批次已终审的毕业、结业结果；延毕和退回结果保留原记录，后续按学校审核流程另行处理。</p>
           <AppButton variant="primary" :disabled="!canManagePermission || !batchId || archiving || !!pendingWrite" :loading="archiving" @click="confirmArchive">执行归档</AppButton>
+          </template>
         </AppSectionCard>
         <ErrorState v-if="error" :description="error" @retry="loadTab" />
         <LoadingState v-else-if="loading" />
-        <EmptyState v-else-if="!rows.length" title="暂无已归档结果" description="执行归档后，已终审的毕业/结业名单会出现在此" />
+        <EmptyState v-else-if="!rows.length" :title="currentBatch?.status === 'ARCHIVED' ? '当前范围未读到保留结果' : '暂无已归档结果'" :description="currentBatch?.status === 'ARCHIVED' ? '请核对原批次及当前数据范围，不要重复执行归档。' : '执行归档后，已终审的毕业/结业名单会出现在此'" />
         <DataTable v-else :columns="archiveColumns" :rows="rows" row-key="resultId" :pagination="pagination" @page-change="onPageChange">
           <template #cell-conclusion="{ row }"><span class="agc-conclusion">{{ conclusionLabel(row.conclusion) }}</span></template>
+          <template #cell-status="{ row }">{{ statusLabel(row.status) }}</template>
         </DataTable>
       </template>
     </div>
@@ -254,11 +267,12 @@
             <AppStatusTag :type="detail.row.status === 'ARCHIVED' ? 'default' : 'primary'" dot>{{ statusLabel(detail.row.status) }}</AppStatusTag>
           </div>
         </div>
+        <AppInlineAlert v-if="detailHasLegacyItems" type="info" description="以下为历史预审项目和当时结论，仅供回查；未核实当前正式供数的项目，不代表已通过现行十一项审核。" />
         <div class="agc-items">
           <div v-for="it in detail.row.items" :key="it.item" class="agc-item">
             <span class="agc-item__label">{{ itemLabel(it.item) }}</span>
-            <AppStatusTag :type="gradItemColor(it.result)" dot>{{ itemResultLabel(it.result) }}</AppStatusTag>
-            <span class="agc-item__ev">{{ evidenceText(it.evidence, it.item) }}</span>
+            <AppStatusTag :type="gradItemColor(it.result)" dot>{{ detailItemResult(it) }}</AppStatusTag>
+            <span class="agc-item__ev">{{ detailItemEvidence(it) }}</span>
             <router-link v-if="linkForItem(detail.row, it)" class="mp-link" :to="linkForItem(detail.row, it)">{{ sourceLinkLabel(it) }}</router-link>
           </div>
         </div>
@@ -356,6 +370,8 @@ const TAB_CONFIG = {
   archive: { label: '审核归档', status: 'ARCHIVED' }
 }
 
+const LEGACY_ITEM_LABEL = { studentStatus: '学籍状态', credits: '学分达成', internship: '岗位实习', graduationDesign: '毕业设计', discipline: '违纪处分', fees: '费用结清', physical: '体测（历史项目）' }
+
 const LINK_ITEM = {
   GRADUATION_DESIGN: (refId) => `/admin/graduation/students/${refId}`,
   INTERNSHIP: (refId) => `/admin/internship/students/${refId}`
@@ -422,7 +438,7 @@ export default {
         { key: 'conclusion', title: '终审结论' }, { key: 'ops', title: '操作', width: '120px' }
       ],
       archiveColumns: [
-        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' }, { key: 'conclusion', title: '终审结论' }
+        { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' }, { key: 'conclusion', title: '终审结论' }, { key: 'status', title: '原结果状态' }
       ],
       rosterColumns: [
         { key: 'studentNo', title: '学号' }, { key: 'realName', title: '姓名' },
@@ -470,10 +486,10 @@ export default {
     focusedRow(){return this.queueRows.find(row=>String(row.resultId)===String(this.focusedResultId))||this.queueRows[0]||null},
     focusedItems(){if(!this.focusedRow)return[];if(this.tab==='final')return this.focusedRow.items||[];if(this.tab==='course')return (this.focusedRow.items||[]).filter(item=>['COURSE_REQUIRED','COURSE_ELECTIVE'].includes(item.item));const item=this.itemOf(this.focusedRow);return item?.item?[item]:[]},
     showEvidenceBoard(){return ['credit','course','practice','thesis','internship','discipline','fee','final'].includes(this.tab)},
-    currentOwner(){if(this.tab==='final')return '教务终审岗';if(this.tab==='archive')return '教务归档岗';if(this.tab==='results')return '教务复核岗';if(this.tab==='roster')return '学院名单核对岗';const item=this.focusedItems.find(entry=>entry.result!=='PASS')||this.focusedItems[0];return this.ownerLabel(item?.owner)},
+    currentOwner(){if(this.currentBatch?.status==='ARCHIVED')return '历史结果查阅';if(this.batchTotal&&this.unconcludedCount===0)return '教务结果复核岗';if(this.tab==='final')return '教务终审岗';if(this.tab==='archive')return '教务归档岗';if(this.tab==='results')return '教务复核岗';if(this.tab==='roster')return '学院名单核对岗';const item=this.focusedItems.find(entry=>entry.result!=='PASS')||this.focusedItems[0];return this.ownerLabel(item?.owner)},
     responsibilityReason(){if(!this.currentBatch)return'选择批次后确定';if(this.focusedItems.some(item=>!item.refId&&['INTERNSHIP','GRADUATION_DESIGN'].includes(item.item)))return'尚无学生台账，先由本业务学生管理人员建档，再继续指导与归档';if(this.batchAbnormal)return`有 ${this.batchAbnormal} 名学生存在阻断证据`;if(this.tab==='final')return'仅学院初审和系统预审均已通过的学生可办理终审';return'当前阶段需要核对正式证据与责任来源'},
     currentBlocker(){if(!this.currentBatch)return'尚未选择批次';const item=this.focusedItems.find(entry=>entry.result!=='PASS');if(item)return`${this.itemLabel(item.item)}：${this.itemResultLabel(item.result)}`;if(this.batchAbnormal)return`${this.batchAbnormal} 名系统异常`;return'当前无已知阻断'},
-    nextOwner(){if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';if(this.batchAbnormal)return'学院审核岗';return'教务终审岗'},
+    nextOwner(){if(this.currentBatch?.status==='ARCHIVED')return'按权限查阅；更正须走受控纠错';if(this.batchTotal&&this.unconcludedCount===0)return'教务结果复核岗，按终审结论衔接后续事项';if(this.batchAbnormal)return'对应证据责任岗，补齐后重新预审';if(this.tab==='final')return'证书管理岗';if(this.tab==='archive')return'受控纠错岗';return'教务终审岗'},
     currentBatch() { return this.batches.find((b) => String(b.batchId) === String(this.batchId)) || null },
     returnToResult() { const path=String(this.$route.query.returnTo||'');const match=path.match(/^\/admin\/academic-affairs\/graduation\/(\d+)\/results(?:\?termId=\d+)?$/);return match?.[1]===String(this.batchId)?path:'' },
     currentBatchTermLabel(){const row=this.currentBatch;if(!row)return '选择批次后读取正式学期';if(row.termId==null)return '历史批次，所属学期待核对';return exactId(row.termId)?(row.termName||'所属学期名称待核对'):'所属学期标识待核对'},
@@ -483,6 +499,8 @@ export default {
     batchConcluded() { return Number(this.currentBatch?.concluded || 0) },
     batchArchived() { return Number(this.currentBatch?.archived || 0) },
     unconcludedCount() { return Math.max(this.batchTotal - this.batchConcluded, 0) },
+    finalComplete() { return this.currentBatch?.status === 'ARCHIVED' || (this.batchTotal > 0 && this.unconcludedCount === 0) },
+    detailHasLegacyItems() { return (this.detail.row?.items || []).some(item => Object.hasOwn(LEGACY_ITEM_LABEL, item.item)) },
     finalProgressPct() {
       if (!this.batchTotal) return 0
       return Math.max(0, Math.min(100, Math.round(this.batchConcluded / this.batchTotal * 100)))
@@ -490,6 +508,7 @@ export default {
     batchHealthLabel() {
       if (!this.currentBatch) return ''
       if (!this.batchTotal) return '等待预审结果'
+      if (!this.unconcludedCount) return this.batchAbnormal > 0 ? '终审已完成，预审异常待核对' : '终审结论已形成'
       if (this.batchAbnormal > 0) return '存在系统异常'
       if (this.unconcludedCount > 0) return '审核进行中'
       return '终审结论已形成'
@@ -503,6 +522,7 @@ export default {
     batchHealthDescription() {
       if (!this.currentBatch) return ''
       if (!this.batchTotal) return '当前批次尚无可核验结果；先回到审核批次执行预审。'
+      if (!this.unconcludedCount && this.batchAbnormal > 0) return `本批次已形成 ${this.batchConcluded} 人终审结论，仍保留 ${this.batchAbnormal} 人预审异常记录；请结合具体终审结论核对，不自动重开审批或改变毕业决定。`
       if (this.batchAbnormal > 0) {
         return `当前有 ${this.batchAbnormal} 名系统异常，另有 ${this.unconcludedCount} 名尚未形成终审结论；应先核对异常证据和责任模块。`
       }
@@ -512,7 +532,9 @@ export default {
       return `本批次 ${this.batchTotal} 名学生均已形成终审结论；已归档 ${this.batchArchived} 人。延毕等结论按既有规则不强制进入本次归档。`
     },
     batchNextAction() {
-      if (!this.currentBatch || !this.batchTotal) return '返回审核批次执行预审'
+      if (!this.currentBatch) return this.error ? '返回审核批次列表核对原对象' : '选择审核批次后查看办理进度'
+      if (!this.batchTotal) return '返回审核批次执行预审'
+      if (!this.unconcludedCount) return this.batchAbnormal > 0 ? '查看学生终审结论及异常证据，核对后续处理范围' : '复核结论名单与归档范围'
       if (this.batchAbnormal > 0) return '先处理系统异常与责任模块证据'
       if (this.unconcludedCount > 0) return '继续学院初审与教务终审'
       return '复核结论名单与归档范围'
@@ -548,8 +570,7 @@ export default {
     const q = this.$route && this.$route.query
     if (q && q.tab && TAB_CONFIG[q.tab]) this.tab = q.tab
     await this.loadBatches()
-    if (q && q.batchId && this.batches.some((b) => String(b.batchId) === String(q.batchId))) this.batchId = String(q.batchId)
-    else if (this.batches.length) this.batchId = (this.batches.find((b) => b.status !== 'ARCHIVED') || this.batches[0]).batchId
+    if (!await this.selectRouteBatch()) return
     await this.loadTab()
     if (q && q.resultId) {
       const requested=exactId(q.resultId);if(!requested){toast.error('指定毕业审核结果标识无效');return}
@@ -566,12 +587,41 @@ export default {
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity&&c.route===this.$route.fullPath&&this.readSeq[c.kind]===c.seq},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
     invalidatePrivate(){this.scope++;this.readSeq={};this.batches=[];this.batchId='';this.rows=[];this.courseRequiredRows=[];this.courseElectiveRows=[];this.rosterData=null;this.reasonRows={SYSTEM_ABNORMAL:[],REJECTED:[],DELAYED:[]};this.detail={visible:false,row:null};this.focusedResultId='';this.actionReceipt=null;this.pendingWrite=null;this.loading=false;this.loadingBatches=false;this.detailBusy=false;this.archiving=false;this.feeBusy=false;this.finalDlg={visible:false,submitting:false};this.archiveDlg={visible:false};this.collegeRejectDlg={visible:false}},
-    async reloadForIdentity(){this.invalidatePrivate();await this.loadBatches();if(!this.alive)return;this.batchId=String((this.batches.find((b)=>b.status!=='ARCHIVED')||this.batches[0])?.batchId||'');await this.loadTab()},
+    async reloadForIdentity(){this.invalidatePrivate();await this.loadBatches();if(!this.alive || !await this.selectRouteBatch())return;await this.loadTab()},
+    async selectRouteBatch() {
+      const c = this.token('routeBatch'), raw = this.$route.query?.batchId
+      try {
+        let row
+        if (raw != null) {
+          const id = exactId(raw)
+          if (!/^[1-9]\d*$/.test(id)) throw { code: 409001, message: '毕业审核批次标识无效，请返回原批次列表重新进入。' }
+          row = this.batches.find(batch => String(batch.batchId) === id) || await this.readGradBatch(id)
+          if (!this.current(c)) return false
+          if (!row) throw { code: 409001, message: '未能读取指定毕业审核批次，请核对原入口及当前权限；不会自动改为其他批次。' }
+          if (!this.batches.some(batch => String(batch.batchId) === id)) this.batches.push(row)
+        } else row = this.batches.find(batch => batch.status !== 'ARCHIVED') || this.batches[0]
+        if (!this.current(c)) return false
+        this.batchId = String(row?.batchId || '')
+        return true
+      } catch (error) {
+        if (this.current(c)) { this.batchId = ''; this.rows = []; this.error = this.fail(error, '指定毕业审核批次读取失败，请返回原批次列表核对。') }
+        return false
+      }
+    },
     fail(err,fallback){if(this.denied(err))this.invalidatePrivate();return gradeError(err,fallback)},
     gradItemColor, overallColor,
-    itemLabel(i) { return GRAD_ITEM_LABEL[i] || i },
-    itemResultLabel(r) { return GRAD_ITEM_RESULT[r] || r },
-    overallLabel(o) { return OVERALL_LABEL[o] || o || '—' },
+    itemLabel(i) { return GRAD_ITEM_LABEL[i] || LEGACY_ITEM_LABEL[i] || '审核项目待核对' },
+    itemResultLabel(r) { return GRAD_ITEM_RESULT[r] || '结果待核对' },
+    overallLabel(o) { return OVERALL_LABEL[o] || (o ? '预审结果待核对' : '—') },
+    detailItemResult(item) {
+      return Object.hasOwn(LEGACY_ITEM_LABEL, item.item) ? `历史结论：${this.itemResultLabel(item.result || item.status)}` : this.itemResultLabel(item.result)
+    },
+    detailItemEvidence(item) {
+      if (!Object.hasOwn(LEGACY_ITEM_LABEL, item.item)) return this.evidenceText(item.evidence, item.item)
+      if (item.evidence) return `历史依据：${this.evidenceText(item.evidence, item.item)}`
+      if (item.item === 'credits' && typeof item.obtained === 'number' && Number.isFinite(item.obtained) && typeof item.required === 'number' && Number.isFinite(item.required)) return `历史预审记录：已得 ${item.obtained}/${item.required} 学分；当前正式供数尚未核实`
+      return item.reason ? `历史说明：${item.reason}；当前正式供数尚未核实` : '仅保留历史结论，当前正式证据未提供'
+    },
     statusLabel(s) { return GRAD_STATUS_LABEL[s] || (s ? '状态待确认' : '') },
     evidenceText(value, item) {
       let text = String(value || '当前正式证据未提供').replace(/student_status=([A-Z_]+)/g, (_all, code) => `学籍状态：${({NORMAL:'正常在籍',REGISTERED:'已注册',RETAINED:'留级',GRADUATED:'已毕业',COMPLETED:'已结业',SUSPENDED:'休学',DROPPED:'退学'})[code] || '待核对'}`)
@@ -588,7 +638,7 @@ export default {
       }
       return text
     },
-    conclusionLabel(c) { return CONCLUSION_LABEL[c] || c },
+    conclusionLabel(c) { return CONCLUSION_LABEL[c] || '结论待核对' },
     ownerLabel(owner){return {AA_STAFF:'教务审核岗',COLLEGE_STAFF:'学院审核岗',COUNSELOR:'辅导员/学工责任岗',GD_MENTOR:'毕业设计责任岗',INTERN_MENTOR:'岗位实习责任岗',FINANCE:'财务供数岗'}[owner]||'证据责任岗'},
     focusResult(row){if(!row||this.pendingWrite)return;this.focusedResultId=String(row.resultId||'')},
     itemOf(row, key) {
@@ -645,22 +695,34 @@ export default {
       const ok=await this.performResultWrite('fee',row,()=>academicAffairsApi.markFeeClearance(batchId,payload),fresh=>(fresh.items||[]).some(item=>item.item==='FEE'&&item.result===expected),{title:'已核对正式费用证据',result:`费用状态：${label}`,next:'费用证据变化后应重新执行完整十一项预审'})
       this.feeBusy=false;if(ok){toast.success('已重新读取费用依据');await this.loadTab()}
     },
-    switchTab(k) {
+    async switchTab(k) {
       if (this.loading || this.detailBusy || this.finalDlg.submitting || this.archiving || this.pendingWrite) return
       this.scope++;this.detail={visible:false,row:null};this.actionReceipt=null;this.focusedResultId=''
       this.tab = k
-      this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => {})
+      const scope = this.scope
+      this.loading = true
+      const failure = await this.$router.replace({ query: { ...this.$route.query, tab: k } }).catch(() => true)
+      if (!this.alive || scope !== this.scope) return
+      if (failure) { this.loading = false; this.error = '页面切换未完成，请重新选择办理页签。'; return }
       this.pagination.page = 1
       this.resetSpecialPagination()
-      this.loadTab()
+      await this.loadTab()
     },
-    onBatchChange() {
+    async onBatchChange() {
       if(this.pendingWrite)return
       this.scope++;this.detail={visible:false,row:null};this.actionReceipt=null;this.focusedResultId='';this.rows=[];this.courseRequiredRows=[];this.courseElectiveRows=[];this.rosterData=null
-      this.$router.replace({ query: { ...this.$route.query, batchId: this.batchId } }).catch(() => {})
+      const scope = this.scope
+      this.loading = true
+      const query={...this.$route.query,batchId:this.batchId}
+      delete query.resultId
+      const termId=exactId(this.currentBatch?.termId)
+      if(termId)query.termId=termId;else delete query.termId
+      const failure = await this.$router.replace({ query }).catch(() => true)
+      if (!this.alive || scope !== this.scope) return
+      if (failure) { this.loading = false; this.error = '批次页面切换未完成，请重新选择审核批次。'; return }
       this.pagination.page = 1
       this.resetSpecialPagination()
-      this.loadTab()
+      await this.loadTab()
     },
     onPageChange(p) { this.pagination.page = p; this.loadTab() },
     onCourseRequiredPageChange(p) { this.courseRequiredPagination.page = p; this.loadCourseTab() },
@@ -710,7 +772,7 @@ export default {
         const cfg = TAB_CONFIG[this.tab] || {}
         const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
         if (cfg.item) params.item = cfg.item
-        if (cfg.status) params.status = cfg.status
+        if (cfg.status && !(this.tab === 'archive' && this.currentBatch?.status === 'ARCHIVED')) params.status = cfg.status
         const res = await academicAffairsApi.getGradResults(c.batchId, params)
         if(!this.current(c)||c.batchId!==String(this.batchId)||c.tab!==this.tab)return
         if(res.code!==0)throw res;if(!Array.isArray(res.data?.list)||res.data.list.some(row=>String(row.batchId)!==c.batchId))throw {code:503}
@@ -920,12 +982,12 @@ export default {
       finally{if(this.current(c)){this.finalDlg.submitting=false;this.detailBusy=false}}
     },
     confirmArchive() {
-      if (!this.canManagePermission || !this.batchId || this.archiving || this.pendingWrite) return
+      if (!this.canManagePermission || !this.batchId || this.archiving || this.pendingWrite || this.currentBatch?.status === 'ARCHIVED') return
       this.archiveDlg.command={batchId:String(this.batchId),scope:this.scope,identity:this.identity,route:this.$route.fullPath}
       this.archiveDlg.visible = true
     },
     async doArchive() {
-      if (!this.batchId || this.archiving) return
+      if (!this.batchId || this.archiving || this.currentBatch?.status === 'ARCHIVED') return
       if (!this.canManagePermission || this.pendingWrite) return
       const command=this.archiveDlg.command
       if(!command||command.batchId!==String(this.batchId)||command.scope!==this.scope||command.identity!==this.identity||command.route!==this.$route.fullPath){this.archiveDlg.visible=false;toast.error('归档批次已变化，请重新确认');return}
@@ -933,6 +995,7 @@ export default {
       const batch=this.currentBatch,c=this.token('archiveWrite');this.archiving=true
       try {
         const before=await this.readGradBatch(batchId);if(!this.current(c))return;if(!before||String(before.batchId)!==batchId)throw {code:409}
+        if(before.status==='ARCHIVED'){this.archiveDlg.visible=false;await this.loadBatches();await this.loadTab();return}
         this.pendingWrite={kind:'archive',batchId}
         let res;try{res=await academicAffairsApi.archiveGradBatch(batchId)}catch(err){res=err}if(!this.current(c))return
         if(res?.code!==0&&/403|404|409|422|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingWrite=null;throw res}

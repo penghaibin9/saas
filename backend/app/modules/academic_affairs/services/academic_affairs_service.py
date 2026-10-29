@@ -1760,7 +1760,8 @@ def create_registration_batch(body, user) -> dict:
 def list_registration_batches(user, status=None, page=1, page_size=20, register_type=None):
     """注册批次列表。register_type 传 ENROLL/ANNUAL 时收窄为「入学注册」/「学年注册」两个三级叶子视图，
     不传时为原「注册批次」通栏视图（两者共用同一批次引擎，不建重复表）。"""
-    from app.models import AaRegistrationBatch
+    from app.models import AaRegistrationBatch, AaRegistration, AaTerm, StudentProfile
+    from .academic_affairs_registration_read_guard import _scope_condition
     with session() as db:
         conds = [AaRegistrationBatch.tenant_id == _tid(), AaRegistrationBatch.is_deleted.is_(False)]
         if status:
@@ -1769,8 +1770,25 @@ def list_registration_batches(user, status=None, page=1, page_size=20, register_
             conds.append(AaRegistrationBatch.register_type == register_type)
         rows = db.scalars(select(AaRegistrationBatch).where(*conds).order_by(
             AaRegistrationBatch.id.desc())).all()
+        counts = {}
+        if rows:
+            records = select(AaRegistration.batch_id, AaRegistration.status, func.count(AaRegistration.id)).join(
+                StudentProfile, and_(StudentProfile.id == AaRegistration.student_id,
+                    StudentProfile.tenant_id == AaRegistration.tenant_id, StudentProfile.is_deleted.is_(False))
+            ).where(AaRegistration.tenant_id == _tid(), AaRegistration.is_deleted.is_(False), AaRegistration.batch_id.in_([b.id for b in rows]))
+            scope_filter = _scope_condition(build_affairs_context(user, db), db, StudentProfile)
+            if scope_filter is not None:
+                records = records.where(scope_filter)
+            for batch_id, record_status, count in db.execute(records.group_by(AaRegistration.batch_id, AaRegistration.status)):
+                summary = counts.setdefault(batch_id, {"registrationCount": 0, "registeredCount": 0})
+                summary["registrationCount"] += count
+                if record_status == "REGISTERED":
+                    summary["registeredCount"] += count
+        term_ids = {b.term_id for b in rows if b.term_id is not None}
+        terms = {t.id: t.term_name for t in db.scalars(select(AaTerm).where(AaTerm.tenant_id == _tid(), AaTerm.id.in_(term_ids), AaTerm.is_deleted.is_(False))).all()} if term_ids else {}
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "registerType": b.register_type,
-                "status": b.status} for b in rows]
+                "status": b.status, "termId": str(b.term_id) if b.term_id is not None else None,
+                "termName": terms.get(b.term_id), **counts.get(b.id, {"registrationCount": 0, "registeredCount": 0})} for b in rows]
         return out[(max(1, page) - 1) * page_size:(max(1, page) - 1) * page_size + page_size], len(out)
 
 

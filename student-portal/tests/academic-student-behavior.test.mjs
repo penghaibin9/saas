@@ -43,6 +43,32 @@ function mount(name, api = {}, query = {}, meta = {}, browser = {}) {
 }
 const deferred = () => { let resolve, reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no }); return { promise, resolve, reject } }
 
+test('已注册学生显示完整办结结果，不再被过期窗口误催办', async () => {
+  const batch = { batchId: '7', registrationStatus: 'REGISTERED', eligibilityStatus: 'ELIGIBLE', canRegister: false, canDefer: false, blockReason: '注册窗口已结束，请联系老师处理' }
+  const page = mount('Registration', { academicRegistration: async () => ({ batches: [batch] }) })
+  await page.load()
+  assert.equal(page.registrationStep.value, 4)
+  assert.equal(page.registrationNotice(batch), '本批次注册已完成，无需再次确认或申请暂缓。')
+  assert.equal(page.registrationNotice({ ...batch, registrationStatus: 'PENDING_REGISTER' }), batch.blockReason)
+  assert.equal(page.registrationStatusText('UNKNOWN_INTERNAL'), '待确认')
+  assert.equal(page.eligibilityText('UNKNOWN_INTERNAL'), '待核验')
+  assert.equal(page.deferralText({ status: 'UNKNOWN_INTERNAL' }), '待处理')
+  page.dispose()
+})
+
+test('学生选课与注册窗口复用公共时间转换，不截断服务器时区', () => {
+  const instant = '2026-09-12T23:59:59Z'
+  const expected = uiHelpers.formatDateTime(instant)
+  const selection = mount('Selection')
+  const registration = mount('Registration')
+  assert.equal(selection.dateText(instant), expected)
+  assert.equal(registration.dateText(instant), expected)
+  assert.match(expected, /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/)
+  assert.equal(selection.dateText('invalid'), '—')
+  assert.equal(registration.dateText(null), '待定')
+  selection.dispose(); registration.dispose()
+})
+
 for (const outcome of ['confirmed', 'unmatched', 'network', 'new-draft']) {
   test(`recheck workspace protection follows the real draft after ${outcome}, including submission and owner release`, async () => {
     const layoutSource = readFileSync(new URL('../src/layouts/PortalLayout.vue', import.meta.url), 'utf8')
@@ -621,7 +647,7 @@ test('registration progress never marks an absent or pending eligibility check a
   page.data.value = { batches: [{ eligibilityStatus: 'ELIGIBLE' }] }
   assert.equal(page.registrationStep.value, 2)
   page.data.value = { batches: [{ registrationStatus: 'REGISTERED' }] }
-  assert.equal(page.registrationStep.value, 3)
+  assert.equal(page.registrationStep.value, 4, '正式已注册时四个步骤全部完成')
 })
 
 test('makeup uses stable grade/course identities and displays both formal record lists', async () => {
@@ -642,6 +668,21 @@ test('makeup uses stable grade/course identities and displays both formal record
   assert.equal(page.canApplyExemption({ courseName: '只有名称' }), false)
   page.retakeReasons['101'] = '重修说明'
   assert.equal(page.canApplyRetake({ ...option, identityDebt: true }), false)
+})
+
+test('makeup displays application states and blocks an existing in-flight retake only', () => {
+  const page = mount('Makeup')
+  const option = { gradeId: '101', courseId: '21' }
+  page.overview.value = { retakes: [{ originGradeId: '101', status: 'SUBMITTED' }] }
+  assert.equal(page.recordStatusText(page.overviewRows.value[0]), '已提交')
+  assert.match(page.optionBlockReason(option, 'retake'), /已有在途重修申请/)
+  assert.equal(page.optionBlockReason({ gradeId: '102', courseId: '22' }, 'retake'), '')
+  page.overview.value.retakes[0].courseId = '21'
+  assert.match(page.optionBlockReason({ gradeId: '103', courseId: '21' }, 'retake'), /已有在途重修申请/)
+  page.overview.value.retakes[0].status = 'REJECTED'
+  assert.equal(page.optionBlockReason(option, 'retake'), '')
+  assert.equal(page.recordStatusText({ recordType: '重修', status: 'ENROLLED' }), '已编入教学班')
+  assert.equal(page.recordStatusText({ recordType: '重修', status: 'UNKNOWN_INTERNAL' }), '申请状态待核对')
 })
 
 test('status reads changes and submits a server-listed toMajorId only', async () => {

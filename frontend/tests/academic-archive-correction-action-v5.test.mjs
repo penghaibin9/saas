@@ -244,3 +244,33 @@ test('归档记录使用中文备注，完整性异常保留，纠错说明只�
   assert.doesNotMatch(html, /BLOCKER|HARD|归档后纠错 · 独立流程/)
   assert.match(html, /实施人员使用：完整性校验值/)
 })
+
+test('已应用但正式事实未核实的纠错仍可查原证据，不展示成功结论或二审按钮', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue', import.meta.url), 'utf8')
+  const render = new Function('Vue', compile(source.match(/<template>([\s\S]*?)<\/template>\s*<script>/)[1], { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const { state } = instance()
+  assert.equal(state.targetLabel({ businessType: 'GRADE', targetRef: 'acadGrade:9007199254740997' }), '成绩记录 9007199254740997')
+  assert.equal(state.targetLabel({ businessType: 'GRADE', targetRef: 'unknown:1' }), '原记录待核对')
+  state.detail = detail({ businessType: 'GRADE', status: 'APPLIED', correctionNo: '2', resultingOfficialFact: null, resultingFactError: '历史关联尚未核实，原纠错单仍保留', reviewAction: { allowed: false, reason: '已应用，不得重复审批' } })
+  delete state.$route; delete state.$router; delete state.$emit
+  const app = Vue.createSSRApp({ render, setup: () => state, components: {
+    AppButton: { setup: (_, { slots }) => () => Vue.h('button', slots.default?.()) },
+    AppInlineAlert: { props: ['description'], setup: p => () => Vue.h('p', p.description) },
+    AppDrawer: { props: ['visible'], setup: (p, { slots }) => () => p.visible ? Vue.h('section', [slots.default?.(), slots.footer?.()]) : null },
+    AppConfirmDialog: { render: () => null }, LoadingState: { render: () => null }, EmptyState: { render: () => null }, DataTable: { render: () => null }, StatusTag: { render: () => null }
+  } })
+  const html = await renderToString(app)
+  assert.match(html, /历史关联尚未核实/)
+  assert.match(html, /纠错编号 2/); assert.match(html, /成绩：59/)
+  assert.doesNotMatch(html, /已核实成绩正式记录|已形成成绩正式记录|<button[^>]*>二审通过|<button[^>]*>驳回/)
+})
+
+test('版本链读取失败或校验中不提示归档资料缺失', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/components/AaArchiveCorrectionWorkspace.vue', import.meta.url), 'utf8')
+  const template = source.match(/<EmptyState v-if="[^"]*manifestVersions\.length"[^>]*\/>/)[0]
+  const render = new Function('Vue', compile(template, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  for (const [loadError, verifyBusy, empty] of [['读取失败', false, false], ['', true, false], ['', false, true]]) {
+    const html = await renderToString(Vue.createSSRApp({ render, data: () => ({ loadError, verifyBusy, manifestVersions: [] }), components: { EmptyState: { props: ['title'], setup: p => () => Vue.h('p', p.title) } } }))
+    assert.equal(html.includes('尚未取得归档清单'), empty)
+  }
+})

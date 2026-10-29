@@ -38,6 +38,8 @@ def _target_id(value) -> int | None:
 
 def _fact_snapshot(db, business_type: str, fact_id) -> dict | None:
     """Read one immutable/current formal fact under the active tenant scope."""
+    if business_type == "GRADE" and str(fact_id).startswith("acadGrade:"):
+        fact_id = str(fact_id).removeprefix("acadGrade:")
     target_id = _target_id(fact_id)
     if target_id is None:
         return None
@@ -125,14 +127,30 @@ def get_correction_case(user, case_id) -> dict:
         original = _fact_snapshot(db, case.business_type, case.target_ref)
         correction = base.get("correction") if isinstance(base, dict) else None
         resulting = None
-        if case.status == "APPLIED" and case.official_fact_id is not None:
-            resulting = _fact_snapshot(db, case.business_type, case.official_fact_id)
-            if resulting is None:
-                raise AppException(
-                    "DATA_CONFLICT",
-                    "已应用纠错单引用的正式事实不存在或不在当前租户，证据链不完整",
-                    http_status=409,
-                )
+        resulting_error = ""
+        if case.status == "APPLIED":
+            expected_type = {"GRADE": "ACADEMIC_GRADE", "GRADUATION": "GRADUATION_DECISION"}.get(case.business_type)
+            if case.business_type == "GRADE" and case.official_fact_type == "AA_GRADE_CORRECTION":
+                legacy_grade = immutable_service._legacy_grade_fact(db, case)
+                if legacy_grade is not None:
+                    resulting = _fact_snapshot(db, "GRADE", legacy_grade.id)
+                else:
+                    resulting_error = "历史成绩更正关联尚未形成可核对的完整证据链，不能认作本单的新正式记录。请核对原申请、成绩及归档版本，不要重复审批或覆盖历史。"
+            elif not expected_type or case.official_fact_type != expected_type:
+                resulting_error = "历史纠错单使用旧式或无法识别的正式记录关联，尚不能确认为本单的新正式记录。请核对原申请、证据和归档版本链，不要重复审批或覆盖历史。"
+            else:
+                resulting = _fact_snapshot(db, case.business_type, case.official_fact_id)
+                if resulting is None:
+                    resulting_error = "已应用纠错单引用的正式记录缺失或不在当前学校范围，证据链不完整；原纠错单仍保留供核对。"
+                elif (
+                    case.business_type == "GRADE"
+                    and (resulting.get("sourceBizType") != "POST_ARCHIVE" or resulting.get("sourceBizId") != str(case.id))
+                ) or (
+                    case.business_type == "GRADUATION"
+                    and resulting.get("correctionCaseId") != str(case.id)
+                ):
+                    resulting = None
+                    resulting_error = "所引用正式记录的来源与本纠错单不一致，不能作为本单的新正式记录；请由归档责任人员核对关联依据。"
 
         base.update({
             "rejectedBy": str(case.rejected_by) if case.rejected_by is not None else None,
@@ -141,6 +159,7 @@ def get_correction_case(user, case_id) -> dict:
             "originalOfficialFact": original,
             "proposedOfficialFact": _proposed_fact_snapshot(original, correction) if case.status == _PENDING else None,
             "resultingOfficialFact": resulting,
+            "resultingFactError": resulting_error,
         })
         base["reviewAction"] = {"allowed": False, "reason": "当前纠错单不在待二次复核阶段"}
         if case.status == _PENDING:

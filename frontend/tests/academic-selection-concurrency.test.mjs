@@ -12,6 +12,13 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const batch = id => ({ batchId: id, batchName: `批次${id}`, status: 'DRAFT' })
 const ok = data => ({ code: 0, data })
 
+test('课程供给状态不冒充批次开放，未知状态不误报取消', () => {
+  const {state}=mount()
+  assert.equal(state.courseSupplyLabel('OPEN'),'供给有效')
+  assert.equal(state.courseSupplyLabel('CANCELLED'),'已取消')
+  assert.equal(state.courseSupplyLabel('UNKNOWN_STATUS'),'供给状态待核对')
+})
+
 test('switching batches clears previous courses before the new formal header returns', async () => {
   const response = deferred()
   const { state } = mount(undefined, { getBatch: () => response.promise })
@@ -425,7 +432,11 @@ test('selection confirmation rechecks permissions immediately before its command
   const writes = []
   const { state } = mount(undefined, { publishBatch: async () => { writes.push('publish'); return ok({}) }, openRound: async () => { writes.push('round'); return ok({}) }, cancelCourse: async () => { writes.push('cancel'); return ok({}) } })
   state.current = batch('B')
-  for (const prepare of [() => state.lifecycle('publishBatch', '发布'), () => state.roundAction({ roundId: 'R' }, 'openRound', '开启'), () => state.cancelCourse({ selectionCourseId: 'C' })]) {
+  for (const prepare of [
+    () => state.lifecycle('publishBatch', '发布'),
+    () => { state.current.status = 'OPEN'; state.current.windowState = 'OPEN'; return state.roundAction({ roundId: 'R', status: 'DRAFT' }, 'openRound', '开启') },
+    () => { state.current.status = 'CLOSED'; return state.cancelCourse({ selectionCourseId: 'C' }) }
+  ]) {
     state.ctx.permissionPatterns = ['academicAffairs.selection.*']; await prepare()
     assert.equal(state.confirmVisible, true)
     state.ctx.permissionPatterns = ['academicAffairs.selection.view']; await state.onConfirm()
@@ -444,4 +455,31 @@ test('selection rule reader and permission revoked during formal read cannot sav
   const pending = state.saveRule(); state.ctx.permissionPatterns = ['academicAffairs.selection.view']
   response.resolve(ok(state.batch)); await pending
   assert.equal(writes, 0); assert.equal(state.saving, false)
+})
+
+
+test('切换选课批次记录页码，错误深链不回退到另一个可办理批次', async () => {
+  const routes=[],{state}=mount(undefined,{listBatches:async()=>ok({list:[batch('12')],total:1})})
+  state.rows=[batch('12')];state.pagination.page=2;state.$route={query:{termId:'52'}}
+  state.$router={replace:async route=>routes.push(route)}
+  await state.pickBatch('12')
+  assert.equal(routes[0].query.batchId,'12');assert.equal(routes[0].query.page,'2');assert.equal(routes[0].query.termId,'52')
+  state.$route.query={batchId:'13'};state.current=null;await state.load()
+  assert.equal(state.current,null);assert.match(state.error,/未找到指定选课批次/)
+  state.$route.query={page:'3'};assert.equal(state.routeBatchPage(),3)
+})
+
+
+test('选课可选时间窗按本地时间转协调世界时，错误顺序保留表单且不提交',async()=>{
+  const writes=[]
+  const {state}=mount(undefined,{createBatch:async body=>{writes.push(body);return ok(batch('new'))}})
+  Object.assign(state.form,{batchName:'时间窗验收',termId:'52',classIds:['4666'],selectStartAt:'2026-10-29T14:00',selectEndAt:'2026-10-29T15:00'})
+  await state.submitCreate()
+  assert.equal(writes[0].selectStartAt,new Date('2026-10-29T14:00').toISOString())
+  assert.equal(writes[0].selectEndAt,new Date('2026-10-29T15:00').toISOString())
+  for(const end of ['2026-10-29T13:00','2026-10-29T14:00','invalid']){
+    state.form.selectEndAt=end;await state.submitCreate();assert.equal(writes.length,1);assert.equal(state.form.selectEndAt,end);assert.ok(state.formError)
+  }
+  state.form.selectStartAt='';state.form.selectEndAt='';await state.submitCreate()
+  assert.equal(writes[1].selectStartAt,undefined);assert.equal(writes[1].selectEndAt,undefined)
 })

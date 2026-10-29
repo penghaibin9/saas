@@ -76,7 +76,8 @@
               <div class="is-wide"><dt>申请理由</dt><dd>{{ activeApplication.reason || '未填写' }}</dd></div>
               <template v-if="tab === 'retake'">
                 <div><dt>原成绩</dt><dd>{{ gradeResult(activeApplication.originGrade) }}<small>{{ stateMeta(activeApplication.sourceGradeState).label }}</small></dd></div>
-                <div><dt>当前成绩</dt><dd>{{ gradeResult(activeApplication.currentGrade) }}</dd></div>
+                <div><dt>原成绩当前版本</dt><dd>{{ gradeResult(activeApplication.currentGrade) }}</dd></div>
+                <div><dt>本次重修成绩</dt><dd>{{ activeApplication.retakeGrade ? gradeResult(activeApplication.retakeGrade) : '尚未取得可核对的正式重修成绩' }}</dd></div>
                 <div><dt>新修读</dt><dd>{{ enrollmentLabel(activeApplication) }}<small v-if="activeApplication.enrollment?.teachingTaskId || activeApplication.teachingTaskId">已编入教学任务</small></dd></div>
               </template>
               <template v-else>
@@ -204,9 +205,13 @@
       />
 
       <h4 class="aamk-sub">已纳入名单（{{ mkPagination.total }}）</h4>
-      <AppInlineAlert v-if="detailError" type="danger" :description="detailError" /><LoadingState v-if="mkLoading" />
-      <EmptyState v-if="!mkLoading && !mkRows.length" title="尚未纳入学生" description="从下方候选名单选择不及格成绩纳入本批次" />
-      <DataTable v-else :columns="mkColumns" :rows="mkRows" :pagination="mkPagination" @page-change="page => !saving && !pendingWrite && loadMakeupRecords(page)" row-key="makeupId">
+      <p class="aamk-muted">下表为补考考试录入分。{{ mkBatch?.scoreRule === 'CAP60' ? '本批次及格后按60分记入正式成绩。' : '正式成绩按学校配置的计分规则回写。' }}请以正式成绩单为准。</p>
+      <p v-if="$route.query.batchId && $route.query.originGradeId" class="aamk-muted">已从挂科清单定位指定原成绩，仅显示与该成绩关联的补考记录。</p>
+      <AppInlineAlert v-if="detailError && !mkReadError" type="danger" :description="detailError" />
+      <ErrorState v-if="mkReadError" :description="mkReadError" @retry="loadMakeupRecords()" />
+      <LoadingState v-else-if="mkLoading" />
+      <EmptyState v-else-if="!mkRows.length" title="尚未纳入学生" description="从下方候选名单选择不及格成绩纳入本批次" />
+      <DataTable v-else class="aamk-record-table" :columns="mkColumns" :rows="mkRows" :pagination="mkPagination" @page-change="page => !saving && !pendingWrite && loadMakeupRecords(page)" row-key="makeupId">
         <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）</template>
         <template #cell-course="{ row }">{{ row.courseName }}<span class="mp-cell-sub">（原 {{ row.originScore != null ? row.originScore : '—' }} 分）</span></template>
         <template #cell-score="{ row }">
@@ -221,18 +226,21 @@
         <template #cell-ops="{ row }">
           <button v-if="row.status !== 'SCORED' && row.status !== 'FINISHED' && canScoreMakeup"
                   class="mp-link" @click="submitMakeupScore(row)">录分</button>
+          <button v-if="row.status === 'FINISHED' && row.studentId && canViewGradeTranscript" class="mp-link" @click="viewMakeupTranscript(row)">查看正式成绩单</button>
         </template>
       </DataTable>
 
       <template v-if="canEnroll">
         <h4 class="aamk-sub">候选名单 · 当前有效不及格成绩</h4>
+        <div class="aamk-bar"><span>原成绩学期</span><AppTermCodePicker v-model="candidateTerm" placeholder="全部原成绩学期" :disabled="saving || !!pendingWrite" @update:model-value="loadMakeupCandidates(1)" /><span class="aamk-muted">原成绩学期与本次补考办理学期分别筛选。</span></div>
         <AppInlineAlert
           v-if="mkDebtCount"
           type="warning"
           :title="`${mkDebtCount} 条候选暂不可纳入`"
           description="这些记录缺少完整的课程和修读信息，需先由教务处核对。"
         />
-        <LoadingState v-if="candidateLoading" /><EmptyState v-if="!candidateLoading && !mkCandidates.length" title="暂无候选" description="成绩发布后不及格的学生会出现在这里" />
+        <ErrorState v-if="candidateError" :description="candidateError" @retry="loadMakeupCandidates()" />
+        <LoadingState v-else-if="candidateLoading" /><EmptyState v-else-if="!mkCandidates.length" title="暂无候选" description="当前所选原成绩学期没有符合条件的有效不及格成绩" />
         <DataTable v-else :columns="mkCandColumns" :rows="mkCandidates" :pagination="candidatePagination" @page-change="page => !saving && !pendingWrite && loadMakeupCandidates(page)" row-key="gradeId">
           <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）<span class="mp-cell-sub">{{ row.className || '' }}</span></template>
           <template #cell-course="{ row }">
@@ -297,7 +305,7 @@ export default {
     return {
       activeApplication: null,
       retakeVisible: false, retakeRow: null, teachingTaskRef: '',
-      mkLoading: false, crLoading: false, candidateLoading: false, detailError: '',
+      mkLoading: false, crLoading: false, candidateLoading: false, detailError: '', mkReadError: '', candidateError: '', candidateTerm: '',
       mkPagination: {page:1,pageSize:20,total:0}, crPagination: {page:1,pageSize:20,total:0}, candidatePagination: {page:1,pageSize:20,total:0},
       pendingWrite: null, writeReceipt: null, checkingWrite: false,
       alive: true, scopeSeq: 0, readSeq: 0, mkSeq: 0, crSeq: 0, candidateSeq: 0,
@@ -325,6 +333,7 @@ export default {
     }
   },
   computed: {
+    canViewGradeTranscript() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.grade.view') },
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.makeup.manage') },
     canReviewRetake() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.retake.review') },
     canReviewExemption() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exemption.review') },
@@ -368,10 +377,17 @@ export default {
   },
   watch: {
     identityKey() { this.resetScope(); this.pagination.page = 1; this.reload() },
+    '$route.query.applyId'() { if (this.tab === 'retake') { this.resetScope(); this.pagination.page = 1; this.reload() } },
+    '$route.query.batchId'() { if (this.tab === 'makeup') { this.resetScope(); this.pagination.page = 1; this.reload() } },
+    '$route.query.originGradeId'() { if (this.tab === 'makeup') { this.resetScope(); this.pagination.page = 1; this.reload() } },
     '$route.query.tab'(value) { if (value !== this.tab && this.tabs.some(t => t.key === value)) this.switchTab(value, false) }
   },
   beforeUnmount() { this.alive = false; this.resetScope() },
   methods: {
+    viewMakeupTranscript(row) {
+      if(!this.canViewGradeTranscript || !/^[1-9]\d*$/.test(String(row?.studentId)))return
+      this.$router.push({path:'/admin/academic-affairs/transcript',query:{studentId:String(row.studentId),name:row.studentName||''}})
+    },
     stateMeta, formatMoment, shortHash, gradeIdentity, gradeResult, gradeSource, evidenceVersion,
     formalEvidenceFiles(row) { return evidenceFiles(row) },
     formalActions(row) { return Array.isArray(row?.allowedActions) ? row.allowedActions.map(value => String(value || '').toUpperCase()).filter(Boolean) : [] },
@@ -391,6 +407,7 @@ export default {
       return Array.isArray(source)?source.filter(Boolean):[]
     },
     actionText(row) {
+      if (this.tab === 'retake' && row?.status === 'ENROLLED') return row.retakeGrade ? '新修读成绩已正式发布，可核对原成绩与重修结果' : '已完成编班，等待新修读成绩正式发布'
       const labels={APPROVE:'通过本节点',REJECT:'驳回',RETURN:'退回补充材料',ENROLL:'编入正式教学任务'}
       const actions=this.formalActions(row)
       return actions.length?`系统允许：${actions.map(action=>labels[action]||action).join('、')}`:'当前操作未获授权'
@@ -545,7 +562,7 @@ export default {
     captureScope() { return { identity: this.identityKey, seq: this.scopeSeq, tab: this.tab } },
     currentScope(c) { return this.alive && c.identity === this.identityKey && c.seq === this.scopeSeq && c.tab === this.tab },
     resetScope() {
-      this.activeApplication=null;this.retakeVisible=false;this.retakeRow=null;this.teachingTaskRef='';this.mkLoading=false;this.crLoading=false;this.candidateLoading=false;this.detailError=''
+      this.activeApplication=null;this.retakeVisible=false;this.retakeRow=null;this.teachingTaskRef='';this.mkLoading=false;this.crLoading=false;this.candidateLoading=false;this.detailError='';this.mkReadError='';this.candidateError='';this.candidateTerm=''
       for(const key of ['mkPagination','crPagination','candidatePagination'])this[key]={page:1,pageSize:20,total:0}
       this.batchForm={batchName:'',termCode:''};this.clearanceForm={batchName:'',grades:'',termCode:''};this.formError='';this.clearanceError=''
       this.pendingWrite=null;this.writeReceipt=null;this.checkingWrite=false
@@ -563,17 +580,30 @@ export default {
     changePage(page) { if(this.saving || this.pendingWrite)return;this.pagination.page=page;this.reload() },
     async readTab(tab, page=this.pagination.page) {
       const params={page,pageSize:this.pagination.pageSize}
-      if(tab==='makeup')return api.listBatches({...params,kind:'MAKEUP'})
+      if(tab==='makeup') {
+        const {batchId,originGradeId}=this.$route.query
+        if([batchId,originGradeId].some(value=>value!=null&&!/^[1-9]\d*$/.test(String(value)))||(originGradeId&&!batchId))throw {code:400,message:'补考来源编号无效，请返回挂科清单重新进入。'}
+        return api.listBatches({...params,kind:'MAKEUP',...(batchId?{batchId:String(batchId),page:1}:{})})
+      }
       if(tab==='clearance')return api.listBatches({...params,kind:'CLEARANCE'})
-      if(tab==='retake')return api.retakeApplies(params)
+      if(tab==='retake') {
+        const applyId = this.$route.query.applyId
+        if (applyId != null && !/^[1-9]\d*$/.test(String(applyId))) throw new Error('重修申请编号无效，请返回挂科清单重新进入。')
+        return api.retakeApplies({ ...params, ...(applyId ? { applyId: String(applyId), page: 1 } : {}) })
+      }
       if(tab==='exemption')return api.exemptionApplies(params)
       return api.deferredPool(params)
     },
     async reload() {
-      const c=this.captureScope(),seq=++this.readSeq,selectedId=this.activeApplication?.applyId||this.activeApplication?.exemptionId,selectedProcessKey=this.activeProcessKey
+      const c=this.captureScope(),seq=++this.readSeq,selectedId=(this.tab==='retake' && this.$route.query.applyId)||this.activeApplication?.applyId||this.activeApplication?.exemptionId,selectedProcessKey=this.activeProcessKey
       const valid=()=>this.currentScope(c)&&seq===this.readSeq
       this.loading=true;this.error='';this.rows=[];this.activeApplication=null;this.pagination.total=0
-      try { const res=await this.readTab(c.tab);if(!valid())return;if(res.code!==0)throw res;this.rows=res.data?.list||[];this.pagination.total=res.data?.total??this.rows.length;const active=this.rows.find(row=>String(row.applyId||row.exemptionId)===String(selectedId));this.activeApplication=active?this.freezeApplication(active):null;this.activeProcessKey=this.rows.some(row=>this.processKey(row)===selectedProcessKey)?selectedProcessKey:this.processKey(this.rows[0]) }
+      try { const res=await this.readTab(c.tab);if(!valid())return;if(res.code!==0)throw res;this.rows=res.data?.list||[];this.pagination.total=res.data?.total??this.rows.length;const active=this.rows.find(row=>String(row.applyId||row.exemptionId)===String(selectedId));this.activeApplication=active?this.freezeApplication(active):null;this.activeProcessKey=this.rows.some(row=>this.processKey(row)===selectedProcessKey)?selectedProcessKey:this.processKey(this.rows[0]);if(c.tab==='retake'&&this.$route.query.applyId&&!active)this.error='未找到指定重修申请，可能已移除或不在当前岗位范围。请返回原清单核对。'
+        if(c.tab==='makeup'&&this.$route.query.batchId){
+          if(this.rows.length!==1||String(this.rows[0].batchId)!==String(this.$route.query.batchId))throw {code:409,message:'未找到指定补考批次，可能已移除或不在当前岗位范围。请返回原清单核对。'}
+          if(!this.mkVisible)await this.openMakeupRecords(this.rows[0])
+        }
+      }
       catch(err) { if(valid())this.readError(err) }
       finally { if(valid())this.loading=false }
     },
@@ -740,7 +770,7 @@ export default {
       if(this.saving||this.pendingWrite)return
       this.cancelConfirmation()
       const c=this.captureScope()
-      this.mkBatch={...row};this.mkScores={};this.mkCandidates=[];this.mkDebtCount=0;this.mkRows=[];this.mkPagination.page=1;this.candidatePagination.page=1;this.mkVisible=true
+      this.mkBatch={...row};this.mkScores={};this.mkCandidates=[];this.mkDebtCount=0;this.mkRows=[];this.mkPagination.page=1;this.candidatePagination.page=1;this.mkVisible=true;this.candidateTerm='';this.candidateError='';this.candidateLoading=this.canEnroll
       await this.loadMakeupRecords()
       if(this.currentScope(c)&&String(this.mkBatch?.batchId)===String(row.batchId)&&this.canEnroll)await this.loadMakeupCandidates()
     },
@@ -748,17 +778,17 @@ export default {
       if(!this.mkBatch)return
       const c=this.captureScope(),seq=++this.mkSeq,bid=this.mkBatch.batchId
       const valid=()=>this.currentScope(c)&&seq===this.mkSeq&&String(this.mkBatch?.batchId)===String(bid)
-      this.mkPagination.page=page;this.mkLoading=true;this.detailError='';this.mkRows=[]
-      try{const res=await api.batchRecords(bid,{page,pageSize:20});if(!valid())return;if(res?.code!==0)throw res;this.mkRows=res.data?.list||[];this.mkPagination.total=res.data?.total??this.mkRows.length}
-      catch(err){if(valid()){this.detailError=gradeError(err);this.readError(err)}}finally{if(valid())this.mkLoading=false}
+      this.mkPagination.page=page;this.mkLoading=true;this.detailError='';this.mkReadError='';this.mkRows=[]
+      try{const originGradeId=String(this.$route.query.batchId||'')===String(bid)?this.$route.query.originGradeId:undefined;const res=await api.batchRecords(bid,{page,pageSize:20,...(originGradeId?{originGradeId:String(originGradeId)}:{})});if(!valid())return;if(res?.code!==0)throw res;this.mkRows=res.data?.list||[];this.mkPagination.total=res.data?.total??this.mkRows.length;if(originGradeId&&!this.mkRows.length)this.mkReadError='指定原成绩在本批次中没有关联记录，请返回挂科清单核对。'}
+      catch(err){if(valid()){this.mkReadError=gradeError(err);if(/403|NO_PERMISSION|FORBIDDEN/.test(String(err?.bizCode||err?.code||'')))this.readError(err)}}finally{if(valid())this.mkLoading=false}
     },
     async loadMakeupCandidates(page=this.candidatePagination.page) {
       if(!this.mkBatch)return
       const c=this.captureScope(),seq=++this.candidateSeq,bid=this.mkBatch.batchId
       const valid=()=>this.currentScope(c)&&seq===this.candidateSeq&&String(this.mkBatch?.batchId)===String(bid)
-      this.candidatePagination.page=page;this.candidateLoading=true;this.mkCandidates=[];this.mkDebtCount=0
-      try{const res=await api.makeupPending({termCode:this.mkBatch.termCode||undefined,page,pageSize:20});if(!valid())return;if(res?.code!==0)throw res;this.mkCandidates=res.data?.list||[];this.mkDebtCount=this.mkCandidates.filter(r=>!r.identityReady).length;this.candidatePagination.total=res.data?.total??this.mkCandidates.length}
-      catch(err){if(valid()){this.detailError=gradeError(err);this.readError(err)}}finally{if(valid())this.candidateLoading=false}
+      this.candidatePagination.page=page;this.candidateLoading=true;this.candidateError='';this.mkCandidates=[];this.mkDebtCount=0
+      try{const res=await api.makeupPending({termCode:this.candidateTerm||undefined,page,pageSize:20});if(!valid())return;if(res?.code!==0)throw res;this.mkCandidates=res.data?.list||[];this.mkDebtCount=this.mkCandidates.filter(r=>!r.identityReady).length;this.candidatePagination.total=res.data?.total??this.mkCandidates.length}
+      catch(err){if(valid()){this.candidateError=gradeError(err);if(/403|NO_PERMISSION|FORBIDDEN/.test(String(err?.bizCode||err?.code||'')))this.readError(err)}}finally{if(valid())this.candidateLoading=false}
     },
     enrollCandidate(row) {
       if(!this.canEnroll||!row.identityReady||!row.gradeId||!row.acadStudentId||this.enrolledGradeIds.has(String(row.gradeId))||this.saving||this.pendingWrite)return
@@ -837,6 +867,9 @@ export default {
 .aamk-evidence footer,.aamk-paging { display:flex;gap:12px;align-items:center;padding:16px; }
 @media(max-width:1180px){.aamk-stage{grid-template-columns:1fr;gap:8px}.aamk-stage li:not(:last-child)::after{display:none}.aamk-process__facts{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:1000px){.aamk-review{grid-template-columns:220px minmax(0,1fr)}.aamk-facts{grid-template-columns:1fr}.aamk-process__stages{grid-template-columns:1fr;gap:8px}.aamk-process__stages li:not(:last-child)::after{display:none}}
+.aamk-record-table :deep(.dt__table){min-width:640px}
+.aamk-record-table :deep(.mp-link){white-space:nowrap}
+@media(max-width:700px){.aamk-review{grid-template-columns:minmax(0,1fr)}.aamk-evidence__head{flex-wrap:wrap}.aamk-facts dd{overflow-wrap:anywhere}}
 
 .aamk-receipt { margin-bottom:16px;padding:16px;border:1px solid var(--border-200, #e1e7ef);border-radius:10px;background:var(--bg-white, #fff); }
 .aamk-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-color, #e5e7eb); margin-bottom: 16px; }

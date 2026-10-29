@@ -173,3 +173,38 @@ def test_review_sources_and_selection_writes_fail_closed(db_mode):
             _call(college, svc.review_batch_advance, old_id, "APPROVE")
     with get_sessionmaker()() as db:
         assert all(db.get(AaTextbookReviewBatch, old_id).status == "DRAFT" for old_id in old_ids)
+
+
+def test_selection_officer_uses_unique_same_tenant_account_even_when_names_match(db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaTextbookSelection, User
+    ids, users = _review_scene(db_mode)
+    school = users["tb_school"]
+    with get_sessionmaker()() as db:
+        first = db.query(User).filter_by(tenant_id=TID, login_name="tb_college_a").one()
+        second = db.query(User).filter_by(tenant_id=TID, login_name="tb_college_b").one()
+        first.real_name = second.real_name = "同名老师"
+        first_id = first.id
+        db.get(AaTextbookSelection, ids["own_selection"]).officer_key = str(first.id)
+        db.get(AaTextbookSelection, ids["other_selection"]).officer_key = str(second.id)
+        db.commit()
+    def read():
+        rows, _ = _call(school, svc.list_selections)
+        return {row["selectionId"]: row for row in rows}
+    rows = read()
+    assert rows[str(ids["own_selection"])]["officerName"] == "同名老师"
+    assert rows[str(ids["own_selection"])]["officerLoginName"] == "tb_college_a"
+    assert rows[str(ids["other_selection"])]["officerLoginName"] == "tb_college_b"
+    with get_sessionmaker()() as db:
+        collision = User(tenant_id=TID, login_name=str(first_id), real_name="同名老师", user_type="TEACHER", password_hash="x", status="ACTIVE")
+        db.add(collision); db.commit(); collision_id = collision.id
+    ambiguous = read()[str(ids["own_selection"])]
+    assert ambiguous["officerName"] is None and ambiguous["officerLoginName"] is None
+    with get_sessionmaker()() as db:
+        db.get(User, collision_id).tenant_id = TID + 1
+        db.get(AaTextbookSelection, ids["other_selection"]).officer_key = "missing-account"
+        db.commit()
+    rows = read()
+    assert rows[str(ids["own_selection"])]["officerLoginName"] == "tb_college_a"
+    assert rows[str(ids["other_selection"])]["officerName"] is None
+    assert rows[str(ids["other_selection"])]["officerLoginName"] is None

@@ -71,6 +71,7 @@ const STATUS_MAP = {
   PENDING_CONFIRM: { label: '待确认', type: 'warning' },
   REMOVED: { label: '已移除', type: 'default' },
   ACTIVE: { label: '有效', type: 'success' },
+  EFFECTIVE: { label: '已生效', type: 'success' },
   PRESENT: { label: '到考', type: 'success' },
   ABSENT: { label: '缺考', type: 'danger' },
   LATE: { label: '迟到', type: 'warning' },

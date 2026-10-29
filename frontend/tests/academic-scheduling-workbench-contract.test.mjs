@@ -12,7 +12,7 @@ test('scheduling opens on one end-to-end workbench instead of isolated feature t
   const stageRail = read('src/modules/academicAffairs/components/AaScheduleStageRail.vue')
 
   assert.match(source, /tab: 'workbench'/)
-  assert.match(source, /<AaScheduleStageRail mode="scheduling" :active-index="pageMeta\.stage"/)
+  assert.match(source, /<AaScheduleStageRail\b[^>]*mode="scheduling" :active-index="pageMeta\.stage"/)
   for (const label of ['准备教学任务', '排课要求', '试排课程', '处理冲突', '发布课表']) {
     assert.ok(stageRail.includes(label), `missing workflow stage: ${label}`)
   }

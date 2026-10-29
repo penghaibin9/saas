@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import { toRaw } from 'vue'
+import { formatDateTime } from '../src/utils/dateUtils.js'
 
 // Execute the page's actual Options API methods, with only its I/O imports replaced.
 export function page(name, dependencies = {}, props = {}) {
@@ -9,7 +11,7 @@ export function page(name, dependencies = {}, props = {}) {
       const value = binding.trim().replace(/\s+as\s+/g, ': ')
       return `const ${value} = dependencies${value.startsWith('{') ? '' : '.' + value}`
     }).replace('export default', 'component =')
-  const sandbox = { dependencies: { currentUserFromToken: () => ({ userId: 'teacher-a' }), toast: { success() {}, error() {} }, ...dependencies } }
+  const sandbox = { dependencies: { toRaw, formatDateTime, currentUserFromToken: () => ({ userId: 'teacher-a' }), toast: { success() {}, error() {} }, ...dependencies } }
   vm.runInNewContext(script, sandbox)
   const definition = sandbox.component
   const state = { $route: { query: {}, params: {} }, $router: { replace: async () => {}, push: async () => {} }, ...props }

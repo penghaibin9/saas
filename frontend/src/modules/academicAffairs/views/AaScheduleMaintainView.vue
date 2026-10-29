@@ -34,7 +34,7 @@
       <div class="aa-filter">
         <label class="aa-filter__item">班级<AppClassPicker v-model="classId" placeholder="选择班级" @change="onClassPicked" /></label>
         <AppButton @click="loadClass">载入课表</AppButton>
-        <span class="mp-note">{{ scheduleBatch?.status === 'DRAFT' ? '仅可安排同学期已就绪的教学任务，选班后查看可排课程。' : '此批次仅供查看，请选择班级载入课表。' }}</span>
+        <span class="mp-note">{{ ['DRAFT', 'PRE_PUBLISHED'].includes(scheduleBatch?.status) ? (scheduleBatch?.status === 'PRE_PUBLISHED' ? '修改预发布课表后将回到草稿，须重新检查并预发布。' : '仅可安排同学期已就绪的教学任务，选班后查看可排课程。') : '此批次仅供查看，请选择班级载入课表。' }}</span>
       </div>
 
       <AppInlineAlert v-if="lastConflict" type="error" :message="lastConflict" />
@@ -237,7 +237,7 @@ export default {
     batchId() { return this.routeBatchId },
     identityKey() { return JSON.stringify([this.academicFlow?.identity?.(), this.ctx?.currentRole, this.ctx?.dataScope, this.ctx?.ctxKey, this.ctx?.permissionVersion]) },
     canEditBatch() {
-      return this.scheduleBatch?.status === 'DRAFT' && !this.taskLoadError &&
+      return ['DRAFT', 'PRE_PUBLISHED'].includes(this.scheduleBatch?.status) && !this.taskLoadError &&
         String(this.$route.query.classId || '') === String(this.classId || '') &&
         (!this.focusItemId || !!this.focusedItem) && !this.pendingWrite && !this.moving
     },
@@ -402,8 +402,11 @@ export default {
       if (!this.disposed && context === this.contextKey() && (this.classId || this.preferredTask) && !this.taskLoadError) await this.loadClass()
     },
     returnToQueue() {
-      return this.academicFlow?.back(this.$route.query.returnToken, '/admin/academic-affairs/scheduling')
-        || this.$router.push('/admin/academic-affairs/scheduling')
+      const fallback = this.batchId
+        ? `/admin/academic-affairs/scheduling?batchId=${encodeURIComponent(this.batchId)}`
+        : '/admin/academic-affairs/scheduling'
+      return this.academicFlow?.back(this.$route.query.returnToken, fallback)
+        || this.$router.push(fallback)
     },
     async loadReadyTasks() {
       const current = this.taskGate.begin()
@@ -421,7 +424,7 @@ export default {
         if (!scheduleBatch.termId) throw new Error('当前课表批次缺少学期信息，请联系教务处核对')
         this.scheduleBatch = scheduleBatch
 
-        if (scheduleBatch.status !== 'DRAFT') {
+        if (!['DRAFT', 'PRE_PUBLISHED'].includes(scheduleBatch.status)) {
           this.readyTasks = []
           this.taskBatchIds = new Set()
           return
@@ -733,8 +736,8 @@ export default {
 .aa-batch-truth__grid strong { color: var(--text-900, #1f2329); font-size: 13px; overflow-wrap: anywhere; }
 .aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-input { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
-.aa-assign-form { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.aa-assign-form label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
+.aa-assign-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.aa-assign-form label { display: flex; min-width: 0; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-assign-form__wide { grid-column: 1 / -1; }
 .aa-task-echo { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 10px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; background: var(--bg-100, #f7f8fa); }
 .aa-task-echo > div { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
@@ -769,7 +772,7 @@ export default {
   .aa-batch-truth__head { flex-direction: column; }
   .aa-batch-truth__grid, .aa-focused-item__grid { grid-template-columns: 1fr; }
   .aa-focused-item__head { flex-direction: column; }
-  .aa-assign-form { grid-template-columns: 1fr; }
+  .aa-assign-form { grid-template-columns: minmax(0, 1fr); }
   .aa-assign-form__wide, .aa-task-echo { grid-column: 1; }
   .aa-task-echo { grid-template-columns: 1fr; }
 }

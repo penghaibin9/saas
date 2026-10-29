@@ -16,7 +16,7 @@
         <template v-else-if="data">
           <div class="aa-transcript-summary">
             <span>已获学分 <strong>{{ data.earnedCredits ?? data.totalCredits ?? '待核对' }}</strong></span>
-            <span>累计 GPA <strong>{{ data.gpa ?? '待核对' }}</strong></span>
+            <span>累计平均绩点 <strong>{{ data.gpa ?? '待核对' }}</strong></span>
             <span>挂科门次 <strong>{{ data.failCount ?? '待核对' }}</strong></span>
           </div>
           <AppSectionCard class="aa-transcript-paper" :title="`${name || '学生'} 的${exportMode ? '成绩导出' : '成绩单'}`">
@@ -45,7 +45,7 @@
             </table>
 </div>
             <div v-if="pagination.total" class="aa-page-controls"><AppButton variant="ghost" :disabled="pagination.page <= 1 || loading" @click="changePage(pagination.page - 1)">上一页</AppButton><span>第 {{ pagination.page }} / {{ pageCount }} 页 · 共 {{ pagination.total }} 条</span><AppButton variant="ghost" :disabled="pagination.page >= pageCount || loading" @click="changePage(pagination.page + 1)">下一页</AppButton></div>
-            <p class="mp-note">{{ identityCoverageNote }} 累计学分、GPA 与挂科门次来自服务器全成绩单汇总，不按当前页重算。</p>
+            <p class="mp-note">{{ identityCoverageNote }} 累计学分、平均绩点与挂科门次来自服务器全成绩单汇总，不按当前页重算。</p>
           </AppSectionCard>
         </template>
       </template>
@@ -63,6 +63,7 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 import { gradeError } from './parallel-c/grade-review'
+import { ACADEMIC_STUDENT_STATUS_LABELS } from '../config/academicStudentLabels'
 
 export default {
   name: 'AaTranscriptView',
@@ -93,7 +94,7 @@ export default {
     passLabel(status) { return status === 'PASSED' ? '及格' : ['FAIL', 'FAILED'].includes(status) ? '不及格' : '结果待核对' },
     passType(status) { return status === 'PASSED' ? 'success' : ['FAIL', 'FAILED'].includes(status) ? 'danger' : 'info' },
     sourceLabel(source) { return ({ NORMAL: '正常修读', REGULAR: '正常修读', PUBLISH: '正常发布', MAKEUP: '补考', RETAKE: '重修', CHANGE: '成绩更正', RECHECK: '复查更正', RECOGNITION: '成绩认定', EXEMPTION: '免修', LEGACY: '历史记录' })[source] || '来源待核对' },
-    identityLabel(identity) { if (identity?.status === 'RESOLVED') return `当期学籍已解析${identity.grade ? ` · ${identity.grade}` : ''}${identity.studentStatus ? ` · ${identity.studentStatus}` : ''}`; return `当期学籍未解析${identity?.reason ? ` · ${identity.reason}` : ''}` },
+    identityLabel(identity) { if (identity?.status === 'RESOLVED') return `当期学籍已解析${identity.grade ? ` · ${identity.grade}` : ''}${identity.studentStatus ? ` · ${ACADEMIC_STUDENT_STATUS_LABELS[identity.studentStatus] || '学籍状态待核对'}` : ''}`; return `当期学籍未解析${identity?.reason ? ` · ${identity.reason}` : ''}` },
     invalidate() { this.readSeq++; this.exportSeq++; this.data = null; this.error = ''; this.loading = false; this.exporting = false; this.exportPurpose = ''; this.exportPanel = false; this.pagination = { page: 1, pageSize: 30, total: 0 } },
     forbidden(err) { return /403|NO_DATA_SCOPE|FORBIDDEN|NO_PERMISSION/.test([err?.code, err?.bizCode].join(' ')) },
     routeStudentId(value) { return typeof value === 'string' && /^[1-9]\d*$/.test(value) ? value : '' },

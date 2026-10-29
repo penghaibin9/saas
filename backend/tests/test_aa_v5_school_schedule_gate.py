@@ -13,6 +13,24 @@ import pytest
 from tests.test_aa_schedule import BASE, TID, _hdr, _item
 
 
+def _school_headers():
+    from app.core.security import create_access_token
+    from app.db.session import get_engine, get_sessionmaker
+    from app.services.auth_service_db import _claims, _role_contexts
+    from tests.support_academic_review_identity import _ensure_review_account
+
+    assert "test" in (get_engine().url.database or "").lower()
+    with get_sessionmaker()() as db:
+        user = _ensure_review_account(db, login_name="school_admin01", real_name="陈校",
+            role_code="ACADEMIC_ADMIN", permissions=("academicAffairs.term.manage",
+                "academicAffairs.schedule.view", "academicAffairs.schedule.edit"))
+        db.commit()
+        contexts = _role_contexts(db, user)
+        context = next(item for item in contexts if item["roleCode"] == "ACADEMIC_ADMIN")
+        token = create_access_token(_claims(db, user, context, contexts, "PC"))
+    return {"Authorization": "Bearer " + token}
+
+
 def _facts(client, *, mode="OFFERING_UNIT", shared_teacher=False):
     from app.db.session import get_sessionmaker
     from app.models import (
@@ -23,7 +41,7 @@ def _facts(client, *, mode="OFFERING_UNIT", shared_teacher=False):
     from tests.support_academic_review_identity import _ensure_permission, seed_college_review_scope
     from tests.support_schedule_change_identity import seed_schedule_change_identity
 
-    headers = _hdr(client, "school_admin01")
+    headers = _school_headers()
     response = client.post(f"{BASE}/terms", headers=headers, json={
         "yearCode": "2041-2042", "termNo": 1, "termName": "学校发布门禁学期",
         "startDate": "2041-09-01", "endDate": "2042-01-31", "teachingWeeks": 18,
@@ -97,7 +115,7 @@ def _facts(client, *, mode="OFFERING_UNIT", shared_teacher=False):
                 "classId": str(clazz.id), "courseName": course.course_name, "className": clazz.class_name,
                 "teacherKey": teacher.login_name, "teacherName": teacher.real_name})
         db.commit()
-    facts["school"] = _hdr(client, "school_admin01")
+    facts["school"] = _school_headers()
     facts["college"] = _hdr(client, "college_admin01")
     _assert_task_reconciliation(facts)
     return facts
@@ -959,4 +977,31 @@ def test_concurrent_opening_source_change_rejects_http_publish_and_preserves_for
     assert changed == [True], "必须真实发生一次外部事务写入"
     assert response.status_code == 409, response.text
     assert "应开课程来源已变化" in response.json()["message"]
+    assert _snapshot(facts) == before
+
+
+def test_school_gate_source_gaps_expose_current_objects_without_changing_gate(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgram, AaProgramBinding, AaTeachingTask
+
+    facts = _facts(client)
+    candidate = _candidate(client, facts, 0)
+    other = facts["tasks"][1]
+    with get_sessionmaker()() as db:
+        task = db.get(AaTeachingTask, int(other["taskId"]))
+        batch_id = str(task.batch_id)
+        binding = db.query(AaProgramBinding).filter_by(tenant_id=TID, class_id=int(other["classId"])).one()
+        binding.status = "SUPERSEDED"
+        db.get(AaProgram, binding.program_id).status = "DRAFT"
+        db.commit()
+    summary = _summary(client, facts, candidate)
+    assert summary["schoolGate"]["ready"] is False
+    evidence = summary["schoolGate"]["teachingTaskReconciliation"]["evidence"]
+    unresolved = next(item for item in evidence if item["type"] == "PROGRAM_UNRESOLVED")
+    assert unresolved["className"] == other["className"]
+    extra = next(item for item in evidence if item["type"] == "OVER_OPENED")
+    assert extra["taskBatches"] == [{"batchId": batch_id, "courseName": other["courseName"], "className": other["className"]}]
+    before = _snapshot(facts)
+    result = client.post(f"{BASE}/schedule-batches/{candidate}/publish", headers=facts["school"])
+    assert result.status_code == 409
     assert _snapshot(facts) == before

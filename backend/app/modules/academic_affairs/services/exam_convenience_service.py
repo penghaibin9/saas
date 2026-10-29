@@ -439,11 +439,15 @@ def batch_readiness(batch_id, user) -> dict:
             blockers.append(f"仍有 {room_shortage_count} 门课程考场容量不足或无考场")
         if invigilator_gap_count:
             blockers.append(f"仍有 {invigilator_gap_count} 个考场未配足有效监考教师")
-        if str(batch.status or "").upper() not in {"COURSE_CONFIRMED", "ARRANGED"}:
+        batch_status = str(batch.status or "").upper()
+        publish_stage = batch_status in {"COURSE_CONFIRMED", "ARRANGED"}
+        post_publish = batch_status in {"PUBLISHED", "FINISHED", "ARCHIVED"}
+        if not publish_stage and not post_publish:
             blockers.append("考试批次尚未进入可发布阶段")
         if not confirmed:
             blockers.append("当前没有已确认考试课程")
-        if not blockers:
+        # Historical publication must not hide current roster or source defects.
+        if not blockers or (post_publish and confirmed):
             _courses, exact_problems = exam_svc._check_arrangement_complete(db, int(batch.id), batch=batch)
             blockers.extend(exact_problems)
             if not blockers:
@@ -455,6 +459,6 @@ def batch_readiness(batch_id, user) -> dict:
             "pendingCandidateCount": int(pending_candidate_count), "confirmedCourseCount": len(confirmed),
             "pendingConfirmCount": len(pending_confirm), "arrangedCourseCount": int(arranged_count),
             "missedCourseCount": int(missed_count), "invigilatorGapCount": int(invigilator_gap_count),
-            "roomShortageCount": int(room_shortage_count), "canPublish": not blockers,
+            "roomShortageCount": int(room_shortage_count), "canPublish": publish_stage and not blockers,
             "blockingReasons": blockers[:10],
         }

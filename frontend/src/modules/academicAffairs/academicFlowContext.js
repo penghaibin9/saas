@@ -48,7 +48,7 @@ const RETURN_KEY = 'academic-return-positions-v1'
 const RETURN_TTL = 30 * 60 * 1000
 const RETURN_QUERY_KEYS = new Set(['tab', 'panel', 'category', 'wall', 'termId', 'batchId', 'taskId', 'classId', 'studentId',
   'teacherKey', 'warningId', 'resultId', 'collegeId', 'status', 'keyword', 'type', 'date', 'dateFrom', 'dateTo', 'term', 'itemId',
-  'year', 'week', 'resourceKind', 'resourcePage', 'page', 'pageSize', '_workspace', 'returnToken'])
+  'year', 'week', 'resourceKind', 'resourcePage', 'page', 'pageSize', 'candidateKeyword', 'candidatePage', 'detail', 'detailPage', '_workspace', 'returnToken'])
 
 export function academicReturnPath(route) {
   const path = route?.path

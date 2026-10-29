@@ -1,4 +1,6 @@
 from pathlib import Path
+import ast
+from types import SimpleNamespace
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,4 +31,12 @@ def test_workbench_queue_is_bounded_and_does_not_expose_raw_ids_for_entry():
 
     assert "queue_source[:100]" in source
     assert '"taskQueueTotal": len(queue_source)' in source
-    assert '"canSchedule": not invalid and not duplicate and batch.status == "DRAFT"' in source
+    tree = ast.parse(source)
+    decision = next(value for node in ast.walk(tree) if isinstance(node, ast.Dict)
+                    for key, value in zip(node.keys, node.values)
+                    if isinstance(key, ast.Constant) and key.value == 'canSchedule')
+    expression = compile(ast.Expression(decision), str(PUBLIC_SERVICE), 'eval')
+    for status in ['DRAFT', 'PRE_PUBLISHED', 'PUBLISHED', 'ARCHIVED', 'SUPERSEDED']:
+        for invalid, duplicate in [(False, False), (True, False), (False, True)]:
+            result = eval(expression, {}, {'invalid': invalid, 'duplicate': duplicate, 'batch': SimpleNamespace(status=status)})
+            assert result is (status in {'DRAFT', 'PRE_PUBLISHED'} and not invalid and not duplicate)

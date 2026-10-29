@@ -21,6 +21,14 @@ function page(api = {}, catalog = {}) {
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
 
+test('保存楼层必须回读同楼栋同楼层，不能仅凭容量与用途相同报成功', () => {
+  const { state } = page()
+  const requested={buildingId:'9007199254740999',floorNo:2,examSeats:30,allowSchedule:true,allowExam:true,allowBorrow:false}
+  assert.equal(state.rulesMatch({...requested},requested),true)
+  assert.equal(state.rulesMatch({...requested,floorNo:null},requested),false)
+  assert.equal(state.rulesMatch({...requested,buildingId:'9007199254740998'},requested),false)
+})
+
 test('building and explicit unknown-floor filters survive refresh; reset keeps the selected building', async () => {
   const { state } = page()
   state.$route.query = { buildingId: '9007199254740999', floorNo: '0', page: '3', keyword: '0101' }

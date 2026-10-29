@@ -18,6 +18,17 @@ function mount(api={},runtime=testRuntime()){
  return vm
 }
 const retakeFacts={applicationVersion:0,sourceGradeState:'RESOLVED',sourceEvidenceHash:'a'.repeat(64),allowedActions:['ENROLL','APPROVE','REJECT']}
+test('补考结束后用学生档案编号进入正式成绩单，权限不足不跳转',()=>{
+ const page=mount(),routes=[];page.$router.push=value=>routes.push(value)
+ page.viewMakeupTranscript({studentId:'123',acadStudentId:'456',studentName:'虚构学生'})
+ assert.equal(routes[0].query.studentId,'123')
+ page.ctx.permissionPatterns=[];page.viewMakeupTranscript({studentId:'123'});assert.equal(routes.length,1)
+})
+test('重修编班后的待出分与已出分使用业务提示，不误报缺权限',()=>{
+ const page=mount();page.tab='retake'
+ assert.match(page.actionText({status:'ENROLLED'}),/等待新修读成绩正式发布/)
+ assert.match(page.actionText({status:'ENROLLED',retakeGrade:{score:80}}),/新修读成绩已正式发布/)
+})
 const exemptionFacts={exemptionVersion:0,evidenceState:'VALID',evidenceFiles:[],resultGradeState:'NOT_GENERATED',allowedActions:['APPROVE','RETURN','REJECT']}
 const batch={batchId:'101',batchName:'补考批次',status:'PUBLISHED'}
 const record={makeupId:'M1',acadStudentId:'S1',originGradeId:'G1',studentName:'学生甲',courseName:'课程甲',status:'PENDING_EXAM',finalScore:null}
@@ -76,8 +87,17 @@ test('没有管理权限即使手动调用也不能录分或建批次',async()=>
 })
 test('名单和候选只请求当前分页，旧候选返回不影响新页',async()=>{
  const a=deferred();const calls=[];const vm=mount({makeupPending:p=>{calls.push(p);return p.page===1?a.promise:Promise.resolve(list({gradeId:'new',identityReady:true}))}})
- vm.mkBatch={...batch,termCode:'2026-1'};const old=vm.loadMakeupCandidates(1);await vm.loadMakeupCandidates(2);a.resolve(list({gradeId:'old'}));await old
- assert.equal(vm.mkCandidates[0].gradeId,'new');assert.equal(vm.candidatePagination.page,2);assert.ok(calls.every(p=>p.pageSize===20&&p.termCode==='2026-1'))
+ vm.mkBatch={...batch,termCode:'2026-1'};vm.candidateTerm='2025-2';const old=vm.loadMakeupCandidates(1);await vm.loadMakeupCandidates(2);a.resolve(list({gradeId:'old'}));await old
+ assert.equal(vm.mkCandidates[0].gradeId,'new');assert.equal(vm.candidatePagination.page,2);assert.ok(calls.every(p=>p.pageSize===20&&p.termCode==='2025-2'))
+})
+
+test('补考候选默认跨原成绩学期，读取失败保留筛选并可重试',async()=>{
+ let fail=true;const calls=[];const vm=mount({makeupPending:async p=>{calls.push(p);if(fail)throw new Error('network');return list({gradeId:'g',identityReady:true})},batchRecords:async()=>{if(fail)throw new Error('network');return list(record)}})
+ vm.mkBatch={...batch,termCode:'2026-1'}
+ await vm.loadMakeupCandidates(3);assert.equal(calls[0].termCode,undefined);assert.ok(vm.candidateError);assert.equal(vm.candidatePagination.page,3)
+ await vm.loadMakeupRecords(2);assert.ok(vm.mkReadError);assert.equal(vm.mkPagination.page,2)
+ fail=false;await vm.loadMakeupCandidates();await vm.loadMakeupRecords()
+ assert.equal(vm.candidateError,'');assert.equal(vm.mkReadError,'');assert.equal(vm.mkCandidates[0].gradeId,'g');assert.equal(calls[1].page,3)
 })
 
 test('超时后当前评分变化仍不能证明上次提交成功，保留草稿与未决引用',async()=>{
@@ -147,4 +167,12 @@ test('刷新后错误对象的上次提交回执不能解锁重修操作',async(
  const restored=mount({commandReceipt:async(commandKey,operation)=>({code:0,data:{commandKey,operation,state:'SUCCESS',result:{...before,applyId:'502',status:'APPROVED',applicationVersion:1}}})},runtime)
  restored.tab='retake';restored.restoreWrite();await restored.verifyWrite()
  assert.ok(restored.pendingWrite);assert.equal(restored.writeReceipt.verified,false);assert.match(restored.error,/待核实/);assert.equal(restored.pendingWrite.acknowledged,false)
+})
+
+
+test('从挂科清单精确打开补考批次与原成绩，错误批次不回退到其他对象',async()=>{
+ const calls=[];const vm=mount({listBatches:async p=>{calls.push(p);return list({...batch,status:'PUBLISHED'})},batchRecords:async (id,p)=>{calls.push({id,...p});return list({...record,originGradeId:'31'})}})
+ vm.tab='makeup';vm.$route.query={tab:'makeup',batchId:'101',originGradeId:'31'}
+ await vm.reload();assert.equal(vm.mkVisible,true);assert.equal(calls[0].batchId,'101');assert.equal(calls[1].originGradeId,'31');assert.equal(vm.mkRows[0].originGradeId,'31')
+ vm.mkVisible=false;vm.$route.query.batchId='102';await vm.reload();assert.match(vm.error,/指定补考批次/);assert.equal(vm.mkVisible,false)
 })

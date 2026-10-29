@@ -18,12 +18,12 @@
         <StateBlock v-if="!batches.length" type="empty" :text="data.note || '暂无开放中的注册批次'" />
         <div v-for="batch in batches" :key="batch.batchId" class="grid2" :class="{ 'is-target': String(batch.batchId) === focusBatchId }">
           <section class="card"><header class="card-head"><h2>{{ batch.batchName || '学期注册' }}</h2></header><div class="card-body">
-            <div class="row between"><span class="tag" :class="batch.registrationStatus === 'REGISTERED' ? 'green' : 'amber'">{{ registrationStatusText(batch.registrationStatus) }}</span><small>开放至 {{ dateText(batch.windowEnd) }}</small></div>
-            <dl class="definition"><dt>学籍身份</dt><dd>{{ studentStatusText(data.studentStatus) }} · {{ data.className || data.studentNo || '本人' }}</dd><dt>当前批次</dt><dd>{{ batch.batchName || '学校已建立的注册批次' }}</dd><dt>资格核验</dt><dd><span class="tag" :class="batch.eligibilityStatus === 'ELIGIBLE' ? 'green' : 'amber'">{{ eligibilityText(batch.eligibilityStatus) }}</span></dd><dt>提交后</dt><dd>以服务器返回的登记状态为准</dd></dl>
-            <div v-if="batch.blockReason" class="notice amber">{{ batch.blockReason }}</div>
-            <div class="form-foot"><button class="btn" :disabled="!batch.canDefer || !!actingId" @click="deferBatchId = String(batch.batchId)">申请暂缓</button><button class="btn primary" :disabled="batch.canRegister !== true || !!actingId || !!uncertainRegistrations[String(batch.batchId)]" @click="openRegisterConfirm(batch)">确认本人注册</button></div>
+            <div class="row between"><span class="tag" :class="batch.registrationStatus === 'REGISTERED' ? 'green' : 'amber'">{{ registrationStatusText(batch.registrationStatus) }}</span><small>注册截止 {{ dateText(batch.windowEnd) }}</small></div>
+            <dl class="definition"><dt>学籍身份</dt><dd>{{ studentStatusText(data.studentStatus) }} · {{ data.className || data.studentNo || '本人' }}</dd><dt>当前批次</dt><dd>{{ batch.batchName || '学校已建立的注册批次' }}</dd><dt>资格核验</dt><dd><span class="tag" :class="batch.eligibilityStatus === 'ELIGIBLE' ? 'green' : 'amber'">{{ eligibilityText(batch.eligibilityStatus) }}</span></dd><dt>{{ batch.registrationStatus === 'REGISTERED' ? '办理结果' : '提交后' }}</dt><dd>{{ batch.registrationStatus === 'REGISTERED' ? '学校已登记本批次注册结果' : '以服务器返回的登记状态为准' }}</dd></dl>
+            <div v-if="registrationNotice(batch)" class="notice" :class="batch.registrationStatus === 'REGISTERED' ? 'green' : 'amber'">{{ registrationNotice(batch) }}</div>
+            <div v-if="batch.registrationStatus !== 'REGISTERED'" class="form-foot"><button class="btn" :disabled="!batch.canDefer || !!actingId" @click="deferBatchId = String(batch.batchId)">申请暂缓</button><button class="btn primary" :disabled="batch.canRegister !== true || !!actingId || !!uncertainRegistrations[String(batch.batchId)]" @click="openRegisterConfirm(batch)">确认本人注册</button></div>
           </div></section>
-          <section class="card"><header class="card-head"><h2>我发起的申请</h2></header><div class="card-body"><p class="muted">{{ batch.deferral ? deferralText(batch.deferral) : '暂无本批次暂缓申请。' }}</p><div class="divider"></div><h3>无法按期完成？</h3><p class="muted">提交暂缓事由和申请期限，由学校受理；不等于自动注册成功。</p><div class="form-notice"><RouterLink class="btn link" to="/academic/status">查看当前学籍</RouterLink></div></div></section>
+          <section class="card"><header class="card-head"><h2>我发起的申请</h2></header><div class="card-body"><p class="muted">{{ batch.deferral ? deferralText(batch.deferral) : '暂无本批次暂缓申请。' }}</p><div class="divider"></div><template v-if="batch.registrationStatus === 'REGISTERED'"><h3>注册已完成</h3><p class="muted">可继续核对本学期课表与当前学籍，原申请记录保留供查询。</p><RouterLink class="btn link" to="/academic/schedule">查看本学期课表</RouterLink></template><template v-else><h3>无法按期完成？</h3><p class="muted">提交暂缓事由和申请期限，由学校受理；不等于自动注册成功。</p></template><div class="form-notice"><RouterLink class="btn link" to="/academic/status">查看当前学籍</RouterLink></div></div></section>
         </div>
       </template>
     </div>
@@ -51,7 +51,7 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, reactive, ref } from 'vue'
 import { useRoute } from 'vue-router'
-import { academicErrorKind, academicErrorMessage, markStudentAcademicFormClean } from '../../components/academic/studentAcademicUi'
+import { academicErrorKind, academicErrorMessage, markStudentAcademicFormClean, formatDateTime } from '../../components/academic/studentAcademicUi'
 import StateBlock from '../../components/StateBlock.vue'
 import AppDatePicker from '../../components/AppDatePicker.vue'
 import AcademicPrototypeHeader from '../../components/academic/AcademicPrototypeHeader.vue'
@@ -85,10 +85,14 @@ const uncertainDeferralKeys = ref([])
 const uncertainRegistrations = ref({})
 
 const batches = computed(() => Array.isArray(data.value.batches) ? data.value.batches : [])
-const registrationStep = computed(() => !batches.value.length ? 0 : batches.value.every(batch => batch.registrationStatus === 'REGISTERED') ? 3 : batches.value.every(batch => batch.eligibilityStatus === 'ELIGIBLE') ? 2 : 1)
+const registrationStep = computed(() => !batches.value.length ? 0 : batches.value.every(batch => batch.registrationStatus === 'REGISTERED') ? 4 : batches.value.every(batch => batch.eligibilityStatus === 'ELIGIBLE') ? 2 : 1)
+
+function registrationNotice(batch) {
+  return batch.registrationStatus === 'REGISTERED' ? '本批次注册已完成，无需再次确认或申请暂缓。' : batch.blockReason || ''
+}
 
 function dateText(value) {
-  return String(value || '').slice(0, 10) || '待定'
+  return formatDateTime(value, '待定')
 }
 function studentStatusText(status) {
   return localizeVisibleEnumText(status || '待确认')
@@ -98,16 +102,16 @@ function registrationStatusText(status) {
     PENDING: '待注册', PENDING_REGISTER: '待注册', UNREGISTERED: '未注册', REGISTERED: '已注册', DEFERRED: '已暂缓',
     EXEMPTED: '免注册', CLOSED: '已关闭', BLOCKED: '暂不可办'
   }
-  return map[String(status || '').toUpperCase()] || status || '待确认'
+  return map[String(status || '').toUpperCase()] || '待确认'
 }
 function eligibilityText(status) {
   const map = { ELIGIBLE: '符合', INELIGIBLE: '不符合', PENDING: '待核验' }
-  return map[String(status || '').toUpperCase()] || status || '待核验'
+  return map[String(status || '').toUpperCase()] || '待核验'
 }
 function deferralText(deferral) {
   const status = String(deferral.status || '').toUpperCase()
   const map = { PENDING: '审核中', APPROVED: '已批准', RETURNED: '已退回', REJECTED: '未通过' }
-  return `${map[status] || deferral.status || '待处理'}${deferral.reason ? ` · ${deferral.reason}` : ''}`
+  return `${map[status] || '待处理'}${deferral.reason ? ` · ${deferral.reason}` : ''}`
 }
 function canDefer(batch) {
   return !uncertainDeferralKeys.value.includes(String(batch.batchId)) && String(deferReasons[batch.batchId] || '').trim().length >= 2

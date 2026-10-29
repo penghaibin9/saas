@@ -13,9 +13,19 @@ TID = 1000000000000000001
 
 
 def _hdr(client, login_name):
-    data = client.post("/api/v1/auth/mock-login",
-                       json={"loginName": login_name, "password": "any"}).json()["data"]
-    return {"Authorization": f"Bearer {data['accessToken']}"}
+    from app.core.security import create_access_token
+    from app.db.session import get_engine, get_sessionmaker
+    from app.services.auth_service_db import _claims, _role_contexts
+    from tests.support_academic_review_identity import _ensure_review_account
+    assert "test" in (get_engine().url.database or "").lower()
+    with get_sessionmaker()() as db:
+        user = _ensure_review_account(db, login_name=login_name, real_name="证书验证教务员",
+            role_code="ACADEMIC_ADMIN", permissions=("academicAffairs.graduationCert.view", "academicAffairs.graduationCert.manage"))
+        db.commit()
+        contexts = _role_contexts(db, user)
+        context = next(item for item in contexts if item["roleCode"] == "ACADEMIC_ADMIN")
+        token = create_access_token(_claims(db, user, context, contexts, "PC"))
+    return {"Authorization": "Bearer " + token}
 
 
 def _stu_token(real_name, student_no):
@@ -57,6 +67,32 @@ def _seed(db_mode):
 
 
 _GEN = {"prefix": "13899", "year": "2025", "eRegPrefix": "E", "issueDate": "2025-06-30"}
+
+
+def test_certificate_pages_keep_exact_tenant_batch_source(client, db_mode):
+    from app.db.session import get_sessionmaker
+    from app.models import AaGraduationCertificate, AaGraduationAuditBatch
+    ids = _seed(db_mode)
+    with get_sessionmaker()() as db:
+        foreign = AaGraduationAuditBatch(tenant_id=TID + 1, batch_name="不得泄漏的其他学校批次", status="FINALIZED")
+        db.add(foreign); db.flush()
+        for suffix, batch_id in [("A", ids["batch"]), ("B", foreign.id)]:
+            db.add(AaGraduationCertificate(tenant_id=TID, student_id=ids["sids"]["ZS2201"], cert_type="GRADUATION", cert_no="TRACE-"+suffix, audit_batch_id=batch_id, status="GENERATED"))
+        db.commit()
+    admin = _hdr(client, "school_admin01")
+    for params in ({"page": 0}, {"page": -1}, {"pageSize": -1}, {"pageSize": 0}, {"pageSize": 201}):
+        invalid = client.get(f"{BASE}/graduation-certificates", headers=admin, params=params)
+        assert invalid.status_code == 400, invalid.text
+        assert invalid.json()["bizCode"] == "VALIDATION_ERROR"
+    results = []
+    for page in [1, 2]:
+        response = client.get(f"{BASE}/graduation-certificates", headers=admin, params={"keyword":"TRACE-", "page":page, "pageSize":1})
+        assert response.status_code == 200, response.text
+        result = response.json()["data"]
+        assert result["total"] == 2 and len(result["items"]) == 1
+        results.extend(result["items"])
+    assert results[0]["certNo"] == "TRACE-B" and results[0]["auditBatchName"] is None
+    assert results[1]["certNo"] == "TRACE-A" and results[1]["auditBatchName"] == "2022届终审"
 
 
 def test_generate_by_conclusion(client, db_mode):

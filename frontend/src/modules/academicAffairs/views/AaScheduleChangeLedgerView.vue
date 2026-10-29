@@ -77,6 +77,7 @@ export default {
   name: 'AaScheduleChangeLedgerView',
   components: { ModulePageShell, AdvancedFilter, DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppConfirmDialog, ScheduleChangeEvidence, AppTermEntityPicker },
   props: { ctx: { type: Object, default: () => ({}) } },
+  inject: { academicFlow: { default: null } },
   data() {
     return {
       loading: true, error: '', submitting: false,
@@ -98,7 +99,7 @@ export default {
     selectedId() { return typeof this.$route.query.changeId === 'string' && /^[1-9]\d*$/.test(this.$route.query.changeId) ? this.$route.query.changeId : '' },
     routeTermId() { return typeof this.$route.query.termId === 'string' && /^[1-9]\d*$/.test(this.$route.query.termId) ? this.$route.query.termId : '' },
     routeError() { return ['termId', 'changeId'].some(key => this.$route.query[key] != null && (typeof this.$route.query[key] !== 'string' || !/^[1-9]\d*$/.test(this.$route.query[key]))) ? '学期或调停课申请参数无效，请返回原责任事项重新进入。' : '' },
-    routeKey() { return JSON.stringify([this.$route.query.termId, this.$route.query.changeId, this.$route.query.history]) },
+    routeKey() { return JSON.stringify([this.$route.query.termId, this.$route.query.changeId, this.$route.query.history, this.$route.query.page, this.$route.query.status, this.$route.query.type]) },
     detailKey() { return JSON.stringify([this.identityKey, this.routeKey]) },
     roleName() { return this.ctx?.currentRole?.roleName || '教务' },
     scopeName() { return this.ctx?.dataScope?.scopeName || '按授权范围' },
@@ -132,6 +133,10 @@ export default {
       this.loadSeq++; this.termSeq++; this.actionSeq++; this.confirm.visible = false; this.submitting = false
       this.rows = []; this.total = 0; this.detailError = ''; this.page = 1
       this.filters.termId = this.routeTermId
+      const page = Number(this.$route.query.page || 1)
+      this.page = Number.isSafeInteger(page) && page > 0 ? page : 1
+      this.filters.status = typeof this.$route.query.status === 'string' ? this.$route.query.status : ''
+      this.filters.changeType = typeof this.$route.query.type === 'string' ? this.$route.query.type : ''
       this.showHistory = Boolean(this.routeTermId) || this.$route.query.history === '1'
       return this.load()
     },
@@ -200,8 +205,12 @@ export default {
     },
     turnPage(p) { this.page = p; this.load() },
     goApply() { if (this.canApply) this.$router.push(this.isAcademicTeacher ? '/admin/academic-affairs/schedule/teacher' : '/admin/academic-affairs/schedule-change/apply') },
-    goApproval() { this.$router.push('/admin/academic-affairs/schedule-change/approval') },
-    goDetail(row) { this.$router.push({ path: this.$route.path, query: { ...this.$route.query, termId: this.filters.termId || undefined, changeId: String(row.changeId) } }) },
+    goApproval() {
+      if (!this.canReview || this.routeError || this.detailError) return
+      const returnToken = this.academicFlow?.captureReturn?.() || this.$route.query.returnToken
+      this.$router.push({ path: '/admin/academic-affairs/schedule-change/approval', query: { ...this.$route.query, changeId: this.selectedId || undefined, termId: this.filters.termId || undefined, returnToken } })
+    },
+    goDetail(row) { this.$router.push({ path: this.$route.path, query: { ...this.$route.query, termId: this.filters.termId || undefined, status: this.filters.status || undefined, type: this.filters.changeType || undefined, page: String(this.page), changeId: String(row.changeId) } }) },
     closeDetail() { const query = { ...this.$route.query }; delete query.changeId; this.$router.replace({ path: this.$route.path, query }) },
     goNotice(row) { this.$router.push(`/admin/academic-affairs/print/schedule-change/${row.changeId}/notice`) },
     askCancel(row) {

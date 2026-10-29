@@ -26,6 +26,48 @@ function exam(api, convenienceApi) {
   return result.state
 }
 
+test('考场读取错误可重试，同课程迟到失败不能覆盖新结果', async () => {
+  const old = deferred(); let calls = 0
+  const state = exam({ listRooms: () => ++calls === 1 ? old.promise : Promise.resolve({ code: 0, data: { items: [{ examRoomId: 'r1' }] } }), listInvigilators: async () => ({ code: 0, data: { items: [] } }) })
+  state.arrangeCourse = { examCourseId: 'course-a' }; state.arrangeVisible = true
+  const first = state.readArrangeRooms()
+  assert.equal(state.arrangeLoading, true)
+  await state.readArrangeRooms()
+  old.resolve({ code: 409, message: '旧响应读取失败' }); await first
+  assert.equal(state.arrangeRooms.length, 1); assert.equal(state.arrangeError, ''); assert.equal(state.arrangeLoading, false)
+})
+
+test('考场与监考畸形回执显示错误，不冒充空名单；已发布不再催推进', async () => {
+  for (const kind of ['room-error', 'room-shape', 'invigilator-shape']) {
+    const state = exam({ listRooms: async () => kind === 'room-error' ? { code: 409, message: '课程责任关联待核对' } : { code: 0, data: kind === 'room-shape' ? {} : { items: [{ examRoomId: 'r1' }] } }, listInvigilators: async () => ({ code: 0, data: {} }) })
+    state.current.status = 'PUBLISHED'; state.arrangeCourse = { examCourseId: 'course-a' }; state.arrangeVisible = true
+    await state.readArrangeRooms()
+    assert.ok(state.arrangeError); assert.equal(state.arrangeRooms.length, 0); assert.equal(state.arrangeLoading, false)
+    assert.match(state.arrangeReadonlyReason, /仅供查阅/); assert.doesNotMatch(state.arrangeReadonlyReason, /先完成课程确认/)
+  }
+})
+
+test('考试批次选择写入地址，刷新精确读取原批次且拒绝跨学期深链', async () => {
+  const routes = [], reads = []
+  const { state } = page('AaExamConsoleView', { matchPermission,
+    academicAffairsExamApi: {
+      listBatches: async () => ({ code: 0, data: { list: [{ batchId: '12' }], total: 1 } }),
+      getBatch: async id => { reads.push(id); return { code: 0, data: { batchId: id, termId: '52', status: 'PUBLISHED' } } },
+      listCourses: async () => ({ code: 0, data: { list: [], total: 0 } }), batchStats: async () => ({ code: 0, data: {} })
+    }, academicAffairsExamConvenienceApi: { getReadiness: async () => ({ code: 0, data: {} }) }
+  }, { $router: { replace: async route => routes.push(route) } })
+  state.ctx.dataScope = { scope: 'SCHOOL' }
+  state.$route.query = { termId: '52' }
+  await state.select({ batchId: '13' })
+  assert.equal(routes[0].query.batchId, '13'); assert.equal(routes[0].query.termId, '52')
+  state.$route.query = routes[0].query; await state.load()
+  assert.deepEqual(reads, ['13']); assert.equal(state.current.batchId, '13')
+  state.$route.query.termId = '51'; await state.load()
+  assert.match(state.readinessError, /不属于当前学期/); assert.equal(state.current.status, null)
+  state.$route.query.batchId = 'invalid'; await state.load()
+  assert.equal(state.current, null); assert.match(state.error, /批次参数无效/)
+})
+
 test('teacher exam entry reads only own assignment and discards a late identity response', async () => {
   const pending = deferred()
   let calls = 0
@@ -128,6 +170,7 @@ test('college confirmation reads its courses without requesting school-only read
     academicAffairsExamConvenienceApi: { getReadiness: async () => { readinessCalls++; return { code: 403 } } }
   })
   state.ctx.dataScope = { scope: 'COLLEGE' }
+  state.$route.query.batchId = 'a'
   await state.select({ batchId: 'a' })
   assert.equal(readinessCalls, 0)
   assert.equal(state.courses.length, 1)
@@ -201,6 +244,7 @@ test('selection watcher does not invalidate the new batch detail request', async
     academicAffairsExamApi: { getBatch: async batchId => ({ code: 0, data: { batchId } }), listCourses: () => old.promise, batchStats: async () => ({ code: 0, data: {} }) },
     academicAffairsExamConvenienceApi: { getReadiness: async () => ({ code: 0, data: { invigilatorGapCount: 1 } }) }
   })
+  state.$route.query.batchId = 'b'
   const pending = state.select({ batchId: 'b' })
   definition.watch['current.batchId'].call(state)
   old.resolve({ code: 0, data: { list: [{ examCourseId: 'b-course' }] } })

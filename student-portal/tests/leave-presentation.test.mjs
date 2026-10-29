@@ -8,6 +8,7 @@ const root = path.resolve(here, '../..')
 const labels = JSON.parse(fs.readFileSync(path.join(root, 'shared/contracts/leave-presentation.json'), 'utf8'))
 const relative = "student-portal/src/services/leavePresentation.js"
 const source = fs.readFileSync(path.join(root, relative), 'utf8').replace(/^import labels[^\n]+/m, 'const labels = ' + JSON.stringify(labels))
+  .replace("'./dateUtils.js'", JSON.stringify(new URL('../src/services/dateUtils.js', import.meta.url).href))
 const { presentLeave, leaveError, leaveDate } = await import('data:text/javascript;base64,' + Buffer.from(source).toString('base64'))
 process.env.TZ = 'Asia/Shanghai'
 test('unknown leave enums never leak machine values, user text remains intact', () => {

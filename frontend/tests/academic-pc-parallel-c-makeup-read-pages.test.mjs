@@ -5,6 +5,10 @@ import {readFileSync} from 'node:fs'
 import {parse,compileTemplate} from '@vue/compiler-sfc'
 import {gradeError} from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
 const names=['AaExemptionArchiveView','AaMakeupPrintView','AaMakeupStatsView']
+test('成绩结果使用中文且不泄露未知内部状态',()=>{
+ assert.equal(makeupEvidence.gradeResult({gradeId:'1',score:55,passStatus:'FAILED',recordStatus:'ACTIVE'}),'55分 · 未通过 · 有效记录')
+ assert.equal(makeupEvidence.gradeResult({gradeId:'1',score:0,passStatus:'NEW_INTERNAL',recordStatus:'NEW_INTERNAL'}),'0分 · 通过状态待核对 · 记录状态待核对')
+})
 const sources=Object.fromEntries(names.map(n=>[n,readFileSync(new URL(`../src/modules/academicAffairs/views/${n}.vue`,import.meta.url),'utf8')]))
 const list=(...rows)=>({code:0,data:{list:rows,total:rows.length}})
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b});return {promise,resolve,reject}}

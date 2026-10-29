@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
+import { normalizeUiError } from '../src/utils/presentationSafety.js'
 
 const source = readFileSync(new URL('../src/services/http/client.js', import.meta.url), 'utf8')
 const transport = source.slice(source.indexOf('function transportFailure('), source.indexOf('function markOffline('))
@@ -28,4 +29,19 @@ for (const [method, code, message] of [
   assert.equal(calls, 1)
   assert.equal(sent.headers['Idempotency-Key'], 'original-request')
   assert.equal(sent.body, JSON.stringify({ value: 7 }))
+})
+
+test('登录拒绝显示安全的凭据或验证码原因，仍保留认证失败属性且不重复提交', async () => {
+  const code = source.slice(source.indexOf('export async function loginWithPassword('), source.indexOf('export async function request(')).replace('export ', '')
+  for (const [bizCode, message] of [['UNAUTHORIZED', '账号、学校编码或密码不正确'], ['CAPTCHA_REQUIRED', '请输入图形验证码后继续']]) {
+    let calls = 0
+    const error = Object.assign(new Error('登录已失效，请重新登录'), { code: 401001, httpStatus: 401, bizCode, rawDeveloperDetail: message })
+    const env = { clearOfflineState() {}, browserSessionHeaders: () => ({}), normalizeUiError,
+      rawRequest: async () => { calls++; throw error }, _advanceSession: () => assert.fail('失败不得建立会话') }
+    const login = new Function(...Object.keys(env), code + '; return loginWithPassword')(...Object.values(env))
+    await assert.rejects(login('virtual', 'unused'), result => {
+      assert.equal(result.message, message); assert.equal(result.httpStatus, 401); assert.equal(result.bizCode, bizCode); return true
+    })
+    assert.equal(calls, 1)
+  }
 })

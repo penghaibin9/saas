@@ -185,7 +185,7 @@
         </template>
 
         <!-- 通用下钻明细面板（除总览/工作量/导出外的 11 个 Tab 共用） -->
-        <div v-if="detail.open" class="aa-drill">
+        <div v-if="detail.open" class="aa-drill"><p v-if="tab === 'teachingTask'">本专题按教师确认时间是否已记录统计；缺少确认时间的历史任务仍可能显示“已就绪”。请核对确认依据，不据此重复要求教师确认或补写时间。</p>
           <div class="aa-drill__head">
             <strong>{{ detail.title }}</strong>
             <button class="mp-link" @click="closeDetail">收起</button>
@@ -194,7 +194,7 @@
           <ErrorState v-else-if="detail.error" :description="detail.error" @retry="loadDetail" />
           <EmptyState v-else-if="!detail.rows.length" title="无明细数据" description="当前范围内没有可查看的记录" />
           <DataTable v-else :columns="detail.columns" :rows="detail.rows" row-key="rowKey" :pagination="detail.pagination" @page-change="onDetailPage">
-            <template #cell-abnormalItems="{ row }">{{ (row.abnormalItems || []).join('、') }}</template>
+            <template #cell-taskSource="{ row }"><AppButton v-if="canOpenTaskSource(row)" size="small" @click="openTaskSource(row)">核对原任务</AppButton><span v-else>请由教学任务管理岗核对</span></template><template #cell-abnormalItems="{ row }">{{ (row.abnormalItems || []).join('、') }}</template>
             <template #cell-courses="{ row }">{{ (row.courses || []).map((c) => c.courseName).join('、') }}</template>
           </DataTable>
         </div>
@@ -252,7 +252,7 @@ const STATS_PAGE_META = {
   statusChange: { id: 'AA-243', title: '学籍统计', subtitle: '按正式生效结果核对学籍异动，不把申请量当作异动结果', primary: '下钻学籍明细' },
   registration: { id: 'AA-244', aliases: ['AA-258'], title: '学籍与注册', subtitle: '明确注册类型、学期和当前授权范围', primary: '下钻注册明细' },
   course: { id: 'AA-245', title: '开课与教学运行', subtitle: '按课程供给和启用状态核对本期教学运行', primary: '下钻教学任务' },
-  teachingTask: { id: 'AA-246', title: '教学任务统计', subtitle: '区分已确认任务与尚未就绪任务', primary: '查看未就绪任务' },
+  teachingTask: { id: 'AA-246', title: '教学任务统计', subtitle: '核对教师确认时间记录与任务业务状态', primary: '核对确认依据' },
   schedule: { id: 'AA-247', title: '课表统计', subtitle: '依据正式课表批次核对发布覆盖与冲突', primary: '查看课表版本' },
   courseSelection: { id: 'AA-249', title: '选课统计', subtitle: '按批次核对容量、报名与名单状态', primary: '查看名单状态' },
   exam: { id: 'AA-250', title: '考试与成绩', subtitle: '核对考试课程编排完成度与正式异常记录', primary: '下钻考务明细' },
@@ -295,7 +295,7 @@ function metricCards(tab, summary, scopeLabel, updatedAt) {
     statusChange: [scope, { label: '已生效异动', value: finite(summary.total), note: '只计正式生效结果' }, { label: '异动类型', value: (summary.byType || []).length, note: '正式分类数' }, time],
     registration: [scope, { label: '应注册', value: finite(summary.expected), note: '当前口径内应注册学生' }, { label: '未注册', value: pending(summary.expected, summary.registered), note: '应注册减已注册', tone: 'warning' }, { label: '完成比例', value: percent(summary.rate), note: `${finite(summary.registered)} / ${finite(summary.expected)}` }],
     course: [scope, { label: '启用课程', value: finite(summary.total), note: '当前范围启用课程' }, { label: '课程类别', value: (summary.byCategory || []).length, note: '正式类别' }, { label: '覆盖学院', value: (summary.byCollege || []).length, note: '当前口径有课程的学院' }],
-    teachingTask: [scope, { label: '教学任务', value: finite(summary.expected), note: '当前范围任务总量' }, { label: '未确认', value: pending(summary.expected, summary.confirmed), note: '总任务减已确认任务', tone: 'warning' }, { label: '确认比例', value: percent(summary.rate), note: `${finite(summary.confirmed)} / ${finite(summary.expected)}` }],
+    teachingTask: [scope, { label: '教学任务', value: finite(summary.expected), note: '当前范围任务总量' }, { label: '缺少确认时间', value: pending(summary.expected, summary.confirmed), note: '总任务减已记录教师确认时间任务', tone: 'warning' }, { label: '确认时间记录比例', value: percent(summary.rate), note: `${finite(summary.confirmed)} / ${finite(summary.expected)}` }],
     schedule: [scope, { label: '课表批次', value: finite(summary.totalBatches), note: '当前范围批次总量' }, { label: '未解决冲突', value: finite(summary.unresolvedConflicts), note: '正式冲突检测结果', tone: 'warning' }, { label: '发布覆盖', value: percent(summary.publishedRate), note: `${finite(summary.published)} / ${finite(summary.totalBatches)}` }],
     courseSelection: [scope, { label: '容量', value: finite(summary.totalCapacity ?? summary.capacity), note: '当前批次供给容量' }, { label: '低人数课程', value: finite(summary.lowEnrollCount), note: '低于正式开课下限', tone: 'warning' }, { label: '填充比例', value: percent(summary.fillRate), note: `${finite(summary.totalSelected ?? summary.selected)} / ${finite(summary.totalCapacity ?? summary.capacity)}` }],
     exam: [scope, { label: '应考课程', value: finite(summary.courseTotal ?? summary.confirmedCourses), note: '当前范围考试课程' }, { label: '缺考与违纪', value: finite(summary.absentCount) + finite(summary.violationCount), note: '只计正式异常记录', tone: 'warning' }, { label: '编排完成', value: percent(summary.confirmRate ?? summary.rate), note: `${finite(summary.confirmedCount ?? summary.arranged)} / ${finite(summary.courseTotal ?? summary.confirmedCourses)}` }],
@@ -372,10 +372,10 @@ const TAB_META = {
   },
   teachingTask: {
     summary: (api, p) => api.getStatsTeachingTask(p),
-    detailTitle: '未确认教学任务',
+    detailTitle: '缺少确认时间的教学任务',
     detailColumns: [
       { key: 'courseName', title: '课程' }, { key: 'teachingClassName', title: '教学班' },
-      { key: 'teacherName', title: '教师' }, { key: 'status', title: '状态' }
+      { key: 'teacherName', title: '教师' }, { key: 'status', title: '业务状态' }, { key: 'confirmationEvidence', title: '确认依据' }, { key: 'taskSource', title: '来源核对' }
     ],
     detailFetch: (api, p) => api.getStatsTeachingTaskPending(p)
   },
@@ -454,6 +454,7 @@ const EXPORT_DOMAINS = [
 ]
 
 export default {
+  inject: { academicFlow: { default: null } },
   name: 'AaStatsOverviewView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton,
@@ -812,6 +813,17 @@ export default {
     onDetailPage(p) {
       this.detailRoute({ ...(this.workloadTeacherKey ? { teacherKey: this.workloadTeacherKey } : { detail: '1' }), detailPage: String(p) })
     },
+    canOpenTaskSource(row) {
+      return this.tab === 'teachingTask' && !this.detail.loading && !this.detail.error && this.detail.rows.includes(row) &&
+        matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.view') &&
+        /^[1-9]\d*$/.test(String(row?.batchId)) && /^[1-9]\d*$/.test(String(row?.taskId))
+    },
+    openTaskSource(row) {
+      if (!this.canOpenTaskSource(row)) return
+      const returnToken = this.academicFlow?.captureReturn()
+      this.$router.push({ path: `/admin/academic-affairs/teaching-tasks/${row.batchId}`,
+        query: { teachingTaskId: String(row.taskId), ...(returnToken ? { returnToken } : {}) } })
+    },
     async loadDetail() {
       const meta = this.tab === 'workload' && this.workloadTeacherKey
         ? { detailFetch: (api, params) => api.getStatsWorkloadDetail({ ...params, teacherKey: this.workloadTeacherKey }) }
@@ -835,7 +847,7 @@ export default {
       if (request !== this.detailRequestId || identity !== this.identity()) return
       if (res.code === 0) {
         if (!Array.isArray(res.data?.list) || !Number.isSafeInteger(res.data.total) || res.data.total < 0) throw new Error('明细分页回执不完整，请重试')
-        this.detail.rows = (res.data.list || []).map((r, i) => ({ ...r, rowKey: `${this.tab}-${i}-${r.studentNo || r.courseId || r.taskId || r.gradeId || r.resultId || r.incidentId || r.bookingId || ''}` }))
+        this.detail.rows = (res.data.list || []).map((r, i) => ({ ...r, ...(this.tab === 'teachingTask' ? { confirmationEvidence: '缺少教师确认时间，请核对原任务确认记录' } : {}), rowKey: `${this.tab}-${i}-${r.studentNo || r.courseId || r.taskId || r.gradeId || r.resultId || r.incidentId || r.bookingId || ''}` }))
         this.detail.pagination.total = res.data.total || 0
       } else {
         this.detail.error = res.message || '明细读取失败，请重试'

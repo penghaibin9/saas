@@ -1,3 +1,11 @@
+import { portalDate } from '../../services/dateUtils.js'
+
+// Keep the student bundle independent while reusing its existing local-time formatter.
+export function formatDateTime(value, fallback = '未设置') {
+  const formatted = portalDate(value, true)
+  return formatted === '—' ? fallback : formatted
+}
+
 export function academicErrorKind(error) {
   const status = Number(error?.status || 0)
   const codes = [error?.bizCode, error?.code].map((value) => String(value || '').toUpperCase())

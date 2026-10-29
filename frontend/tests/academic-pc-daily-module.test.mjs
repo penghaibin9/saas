@@ -2,13 +2,14 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import { formatDateTime } from '../src/utils/dateUtils.js'
 
 function mount(file, deps = {}, initial = {}) {
   const source = readFileSync(new URL(`../src/modules/academicAffairs/${file}`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/^import (.*?) from .*$/gm, (_, binding) => `const ${binding} = dependencies${binding.startsWith('{') ? '' : '.' + binding}`)
     .replace('export default', 'component =')
-  const sandbox = { dependencies: { currentUserFromToken: () => ({ tenantId: '1', userId: '2' }), CHANGE_STATUS: [], CHANGE_TYPES: [], ...deps } }
+  const sandbox = { dependencies: { formatDateTime, currentUserFromToken: () => ({ tenantId: '1', userId: '2' }), CHANGE_STATUS: [], CHANGE_TYPES: [], ...deps } }
   vm.runInNewContext(script, sandbox)
   const definition = sandbox.component
   const base = { ctx: { currentRole: {}, dataScope: {}, permissionPatterns: [] }, $route: { query: {} }, $router: { push() {}, replace() {} }, ...initial }
@@ -43,6 +44,8 @@ test('applied schedule-change evidence never claims notification delivery withou
   const receipt = state.evidenceCards.find(item => item.title === '生效与通知回执')
   assert.equal(receipt.status, '课表已生效，送达待核对')
   assert.match(receipt.description, /通知送达数量未随详情返回/)
+  assert.ok(receipt.description.includes(formatDateTime('2026-09-09T09:00:00Z')))
+  assert.doesNotMatch(receipt.description, /T09:00:00Z/)
 })
 
 test('cancelled schedule-change evidence ends the flow while retaining the source and historical node', () => {

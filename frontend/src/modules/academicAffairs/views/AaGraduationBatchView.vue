@@ -11,13 +11,14 @@
       <AppButton v-if="batch" variant="primary" :disabled="busy" @click="enterAudit(batch, 'results')">进入审核工作台</AppButton>
     </template>
     <div class="mp-stack">
-      <GraduationStageRail v-if="batch" :active="batch.status === 'ARCHIVED' ? 5 : (batch.status === 'PRECHECKED' ? 2 : 1)" />
+      <p v-if="batchGuidance.finished" class="mp-note" role="status">{{ batchGuidance.action }}</p>
+      <GraduationStageRail v-else-if="batch" :active="batchGuidance.stage" />
 
       <section v-if="batch" class="grad-object" aria-label="当前毕业审核对象">
         <div><span>当前批次</span><strong>{{ batch.batchName }}</strong><small>{{ batchTermLabel(batch) }}</small></div>
         <div><span>当前状态</span><strong>{{ academicStatusLabel(batch.status) }}</strong><small>应审 {{ batch.total || 0 }} 人 · 系统异常 {{ batch.abnormal || 0 }} 人</small></div>
-        <div><span>当前责任</span><strong>{{ Number(batch.abnormal || 0) ? '证据责任岗' : '学院审核岗' }}</strong><small>{{ Number(batch.abnormal || 0) ? '先治理阻断项并重新预审' : '核对十一项正式证据' }}</small></div>
-        <div><span>下一岗位</span><strong>{{ Number(batch.abnormal || 0) ? '学院审核岗' : '教务终审岗' }}</strong><small>完成当前阶段后自动进入下一队列</small></div>
+        <div><span>当前责任</span><strong>{{ batchGuidance.owner }}</strong><small>{{ batchGuidance.action }}</small></div>
+        <div><span>下一岗位</span><strong>{{ batchGuidance.next }}</strong><small>以正式预审结果和审核记录为准，不自动通过后续审核</small></div>
       </section>
 
       <AppSectionCard v-if="!batch && showCreate" title="新建审核批次">
@@ -122,6 +123,16 @@ export default {
     }
   },
   computed:{
+    batchGuidance(){
+      const b=this.batch||{}, total=Number(b.total||0), concluded=Number(b.concluded||0)
+      if(b.status==='ARCHIVED')return{finished:true,owner:'历史结果查阅',action:'批次已归档，原结果和证据保留，不重复办理。',next:'更正须走受控纠错'}
+      if(total>0&&concluded>=total)return{finished:true,owner:'教务结果复核岗',action:'终审结论已形成，按毕业、结业、延毕分别核对后续事项；不等于已发证或已归档。',next:'按正式结论衔接后续事项'}
+      if(b.status==='DRAFT')return{stage:1,owner:'教务预审岗',action:'先按本批次专业和年级圈定应审学生',next:'教务预审岗，执行十一项检查'}
+      if(b.status==='GENERATED')return{stage:2,owner:'教务预审岗',action:'学生已圈定，尚需执行十一项正式预审',next:'根据正式预审结果分流'}
+      if(Number(b.abnormal||0)>0)return{stage:2,owner:'证据责任岗',action:'先处理阻断证据，再重新预审',next:'系统预审通过后由学院审核'}
+      if(['PRECHECKED','REVIEWING'].includes(b.status))return{stage:3,owner:'学院审核与教务终审岗',action:'按学生实际审核阶段逐项办理，不按批次状态推定全员通过',next:'学院通过后进入教务终审'}
+      return{stage:0,owner:'责任待核对',action:'请重新读取批次正式状态',next:'核对后确定'}
+    },
     identity(){const u=currentUserFromToken()||{};return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns])},
     canManage(){return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.graduation.manage')},
     isBatchList(){return this.$route.query.tab==='batches'},
@@ -131,6 +142,7 @@ export default {
   },
   watch:{
     identity(){this.clearPrivate();this.draft={batchName:'',gradeYear:'',majorId:'',termId:''};this.creating=false;this.busy=false;this.loadDraftTerm();this.loadBatches()},
+    '$route.query.batchId'(){if(!this.busy&&!this.pendingCommand)this.loadBatches()},
     '$route.query.termId'(){const id=exactId(this.$route.query.termId);if(!id||id!==this.draft.termId)this.loadDraftTerm()}
   },
   created() { const page=Number(this.$route.query.page);this.batchPagination.page=Number.isSafeInteger(page)&&page>0&&page<=1000000?page:1;this.loadDraftTerm();this.loadBatches() },
@@ -161,13 +173,14 @@ export default {
       }catch(err){if(valid())this.termError=this.fail(err,'所属学期加载失败，请重新选择正式学期')}
       finally{if(this.current(c)&&c.seq===this.termSeq)this.termLoading=false}
     },
-    chooseBatch(row){if(this.busy||this.pendingCommand)return;this.batch={...row};this.genInfo='';this.preInfo=''},
+    chooseBatch(row){if(this.busy||this.pendingCommand)return;const id=exactId(row?.batchId);if(!id)return;this.batch={...row};this.genInfo='';this.preInfo='';const query={...this.$route.query,batchId:id};if(exactId(row.termId))query.termId=exactId(row.termId);else delete query.termId;this.$router.replace({path:this.$route.path,query})},
     enterAudit(row,tab){const id=exactId(row?.batchId);if(!id)return;const termId=exactId(row.termId),returnToken=this.academicFlow?.captureReturn?.();this.$router.push({path:'/admin/academic-affairs/graduation/audit-console',query:{batchId:id,tab,...(termId?{termId}:{}),...(returnToken?{returnToken}:{})}})},
     current(c){return this.alive&&c.scope===this.scope&&c.identity===this.identity},
     denied(err){return /403|NO_DATA_SCOPE|NO_PERMISSION|FORBIDDEN/.test([err?.code,err?.bizCode].join(' '))},
     clearPrivate(){this.scope++;this.listSeq++;this.termSeq++;this.termLoading=false;this.draft.termId='';this.batch=null;this.batches=[];this.pendingCommand=null;this.genInfo='';this.preInfo=''},
     fail(err,fallback){if(this.denied(err))this.clearPrivate();return gradeError(err,fallback)},
     async loadBatches() {
+      const requested=this.$route.query.batchId
       const c={scope:this.scope,identity:this.identity,seq:++this.listSeq,page:this.batchPagination.page};this.loadingList = true;this.listError='';this.batches=[]
       try {
         const res = await academicAffairsApi.listGradBatches({
@@ -177,8 +190,18 @@ export default {
         if(!this.current(c)||c.seq!==this.listSeq||c.page!==this.batchPagination.page)return
         if(res.code!==0)throw res;if(!Array.isArray(res.data?.list))throw {code:503}
         this.batches=res.data.list;this.batchPagination.total = res.data.total
+        if(requested!==undefined){
+          const id=exactId(requested)
+          if(!id)throw {message:'指定审核批次无效，请返回队列重新选择'}
+          const fresh=this.batches.find(row=>exactId(row.batchId)===id)||await this.readBatch(id)
+          if(!this.current(c)||c.seq!==this.listSeq||requested!==this.$route.query.batchId)return
+          if(!fresh)throw {message:'指定审核批次不存在或当前身份无权读取，请返回队列核对'}
+          const term=exactId(this.$route.query.termId)
+          if(term&&fresh.termId!=null&&exactId(fresh.termId)!==term)throw {message:'指定审核批次与链接学期不一致，请返回队列核对'}
+          this.batch=fresh
+        }else if(!this.pendingCommand)this.batch=null
       } catch (e) {
-        if(this.current(c)){this.listError=this.fail(e,'审核批次加载失败');this.batches=[]}
+        if(this.current(c)&&c.seq===this.listSeq){this.listError=this.fail(e,'审核批次加载失败');this.batches=[];this.batch=null}
       } finally {
         if(this.current(c)&&c.seq===this.listSeq)this.loadingList=false
       }
@@ -203,7 +226,7 @@ export default {
         const createdId=exactId(res?.data?.batchId)
         if(res?.code===0&&createdId){const fresh=await this.readBatch(createdId);if(!valid())return;if(!fresh||exactId(fresh.termId)!==body.termId||fresh.batchName!==body.batchName||String(fresh.gradeYear||'')!==String(body.gradeYear||'')||String(fresh.majorId||'')!==String(body.majorId||'')){toast.error('创建结果待核实，请勿重复创建');return}
           this.batch=fresh;this.pendingCommand=null;toast.success('已核对正式审核批次')
-          await this.$router.replace({path:this.$route.path,query:{...this.$route.query,termId:body.termId}})
+          await this.$router.replace({path:this.$route.path,query:{...this.$route.query,termId:body.termId,batchId:createdId,page:'1'}})
           this.batchPagination.page = 1
           await this.loadBatches()
         } else if(this.denied(res)||/409|422|CONFLICT|VALIDATION/.test([res?.code,res?.bizCode].join(' '))){this.pendingCommand=null;throw res}else toast.error('创建结果待核实，请勿重复创建')
@@ -219,6 +242,7 @@ export default {
       this.genInfo = ''
       this.preInfo = ''
       this.draft = { batchName: '', gradeYear: '', majorId: '', termId: this.draft.termId }
+      const query={...this.$route.query};delete query.batchId;this.$router.replace({path:this.$route.path,query})
     },
     async generate() {
       if (!this.canManage || this.busy || this.pendingCommand || !this.batch) return

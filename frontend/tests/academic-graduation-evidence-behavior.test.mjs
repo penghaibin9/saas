@@ -4,11 +4,12 @@ import fs from 'node:fs'
 import { reactive } from 'vue'
 import * as graduation from '../src/modules/academicAffairs/constants/grade-graduation.js'
 import { academicStatusLabel } from '../src/modules/academicAffairs/constants/academic-display.constants.js'
+import { gradeError } from '../src/modules/academicAffairs/views/parallel-c/grade-review.js'
 
 function definition(name, overrides = {}) {
   const source = fs.readFileSync(new URL(`../src/modules/academicAffairs/views/${name}.vue`,import.meta.url),'utf8').match(/<script>([\s\S]*?)<\/script>/)[1]
   const bindings=[...source.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm)].flatMap(([,binding])=>binding.trim().startsWith('{')?binding.replace(/[{}]/g,'').split(',').map(s=>s.trim()).filter(Boolean):[binding.trim()])
-  const deps={...graduation,academicStatusLabel,currentUserFromToken:()=>({}),...overrides}
+  const deps={...graduation,academicStatusLabel,gradeError,currentUserFromToken:()=>({}),...overrides}
   return new Function(...bindings,source.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return'))(...bindings.map(key=>deps[key]??{}))
 }
 
@@ -21,6 +22,87 @@ function instance(overrides = {}) {
   vm.batchId='12';vm.batches=[{batchId:'12',batchName:'验收批次',status:'PRECHECKED',total:2,passed:0,abnormal:2,concluded:0,archived:0}]
   return vm
 }
+
+test('已终审和已归档空队列不催重复学院初审，未知总数不冒充完成', () => {
+  const vm=instance()
+  assert.equal(vm.finalComplete,false)
+  vm.batches[0].concluded=2;assert.equal(vm.finalComplete,true)
+  vm.batches[0].total=0;vm.batches[0].concluded=0;assert.equal(vm.finalComplete,false)
+  vm.batches[0].status='ARCHIVED';assert.equal(vm.finalComplete,true)
+})
+
+test('已终审与已归档责任不随当前页签误报成待办理岗位', () => {
+  const vm=instance()
+  vm.tab='final';assert.equal(vm.currentOwner,'教务终审岗')
+  vm.batches[0].concluded=2;assert.equal(vm.currentOwner,'教务结果复核岗')
+  vm.tab='archive';assert.equal(vm.currentOwner,'教务结果复核岗')
+  vm.batches[0].status='ARCHIVED';assert.equal(vm.currentOwner,'历史结果查阅')
+})
+
+test('切换毕业批次清除上个学生详情和历史批次的错误学期',async()=>{
+  const vm=instance()
+  vm.$route.query={batchId:'14',termId:'52',resultId:'81',tab:'results'}
+  vm.$router.replace=async({query})=>{vm.$route.query=query}
+  vm.loadTab=async()=>{}
+  await vm.onBatchChange()
+  assert.equal(vm.$route.query.batchId,'12');assert.equal(vm.$route.query.resultId,undefined);assert.equal(vm.$route.query.termId,undefined)
+  vm.batches[0].termId='51';await vm.onBatchChange();assert.equal(vm.$route.query.termId,'51')
+})
+
+test('无权或不存在的毕业批次深链不替换成可见批次，分页外目标按精确编号回读', async () => {
+  const vm=instance(),reads=[]
+  vm.$route.query={batchId:'10'}
+  vm.readGradBatch=async id=>{reads.push(id);return null}
+  assert.equal(await vm.selectRouteBatch(),false)
+  assert.equal(vm.batchId,'');assert.match(vm.error,/指定毕业审核批次/)
+  vm.$route.query={batchId:'9007199254740997'}
+  vm.readGradBatch=async id=>({batchId:id,status:'PRECHECKED'})
+  assert.equal(await vm.selectRouteBatch(),true)
+  assert.equal(vm.batchId,'9007199254740997')
+  assert.deepEqual(reads,['10'])
+  vm.$route.query={batchId:'bad'};assert.equal(await vm.selectRouteBatch(),false);assert.equal(vm.batchId,'')
+})
+
+test('精确批次回读期间身份范围变化不回填旧对象', async () => {
+  const vm=instance();let finish
+  vm.$route.query={batchId:'13'}
+  vm.readGradBatch=()=>new Promise(resolve=>{finish=resolve})
+  const pending=vm.selectRouteBatch();vm.scope++
+  finish({batchId:'13',status:'PRECHECKED'})
+  assert.equal(await pending,false)
+  assert.equal(vm.batches.some(row=>row.batchId==='13'),false)
+  assert.equal(vm.batchId,'12')
+})
+
+test('旧预审项目按中文展示历史结论，不冒充当前十一项证据或改写载荷', () => {
+  const vm=instance(),item={item:'credits',status:'FAIL',obtained:0,required:140}
+  const before=JSON.stringify(item)
+  vm.detail={row:{items:[item]}}
+  assert.equal(vm.detailHasLegacyItems,true)
+  assert.equal(vm.itemLabel(item.item),'学分达成')
+  assert.equal(vm.detailItemResult(item),'历史结论：不通过')
+  assert.match(vm.detailItemEvidence(item),/已得 0\/140 学分；当前正式供数尚未核实/)
+  assert.equal(vm.itemLabel('physical'),'体测（历史项目）')
+  assert.equal(vm.itemLabel('FUTURE_ITEM'),'审核项目待核对')
+  assert.equal(vm.detailItemResult({item:'CREDIT',result:'PASS'}),'通过')
+  assert.equal(JSON.stringify(item),before)
+})
+
+test('已归档批次读取保留的毕业结论，页面和方法都不重复归档', async () => {
+  const requests=[];let writes=0
+  const vm=instance({academicAffairsApi:{getGradResults:async(id,q)=>{requests.push(q);return{code:0,data:{list:[{batchId:id,status:'GRADUATED',conclusion:'GRADUATED'}],total:1}}},archiveGradBatch:async()=>{writes++}}})
+  vm.batches[0].status='ARCHIVED';vm.tab='archive';vm.ctx.permissionPatterns=['academicAffairs.graduation.manage']
+  await vm.loadTab()
+  assert.equal(requests[0].status,undefined);assert.equal(vm.rows[0].conclusion,'GRADUATED')
+  assert.equal(vm.canManagePermission,true)
+  vm.confirmArchive();await vm.doArchive()
+  assert.equal(vm.archiveDlg.visible,false);assert.equal(writes,0)
+  vm.batches[0].status='REVIEWING';await vm.loadTab();assert.equal(requests[1].status,'ARCHIVED')
+  vm.confirmArchive();assert.equal(vm.archiveDlg.visible,true)
+  vm.readGradBatch=async()=>({batchId:'12',status:'ARCHIVED'})
+  vm.loadBatches=async()=>{vm.batches[0].status='ARCHIVED'}
+  await vm.doArchive();assert.equal(writes,0);assert.equal(vm.archiveDlg.visible,false)
+})
 
 test('缺上游记录时按学号进入责任名单，已有记录仍直达详情并保留审核对象',()=>{
   const vm=instance();vm.ctx.permissionPatterns=['internship.student.view','graduationDesign.student.view']
@@ -124,6 +206,30 @@ test('浏览结果或归档页不会把未完成的学院审核和终审打勾',
   vm.batches[0].status='ARCHIVED';assert.equal(vm.stageIndex,6)
 })
 
+test('已形成延毕等终审结论时，保留预审异常但不指向重新学院审核',()=>{
+  const vm=instance()
+  vm.batches[0].concluded=2
+  assert.equal(vm.batchHealthLabel,'终审已完成，预审异常待核对')
+  assert.match(vm.batchHealthDescription,/不自动重开审批或改变毕业决定/)
+  assert.match(vm.batchNextAction,/终审结论及异常证据/)
+  assert.match(vm.nextOwner,/结果复核/)
+  vm.batches[0].concluded=0
+  assert.match(vm.nextOwner,/证据责任岗/)
+  vm.batches[0].status='ARCHIVED'
+  assert.match(vm.nextOwner,/受控纠错/)
+})
+
+test('切换毕业批次等待网址生效后读取，避免正常结果被旧网址令牌丢弃',async()=>{
+  const vm=instance()
+  let finishNavigation, reads=0, capturedRoute
+  vm.$router.replace=()=>new Promise(resolve=>{finishNavigation=()=>{vm.$route.fullPath='new-batch-route';resolve()}})
+  vm.loadTab=async()=>{reads++;capturedRoute=vm.$route.fullPath}
+  const switching=vm.onBatchChange()
+  assert.equal(reads,0)
+  finishNavigation();await switching
+  assert.equal(reads,1);assert.equal(capturedRoute,'new-batch-route')
+})
+
 function batchInstance(api = {}, query = {}, canManage = true) {
   const errors=[],successes=[],writes=[]
   const component=definition('AaGraduationBatchView',{
@@ -138,6 +244,30 @@ function batchInstance(api = {}, query = {}, canManage = true) {
   for(const [key,fn] of Object.entries(component.computed))Object.defineProperty(page,key,{get:()=>fn.call(page)})
   return {page,component,errors,successes,writes}
 }
+
+test('预审批次责任按圈定、检查、正式结论区分，不自动跳到学院或发证',()=>{
+  const {page}=batchInstance()
+  page.batch={status:'DRAFT',total:0};assert.equal(page.batchGuidance.owner,'教务预审岗');assert.equal(page.batchGuidance.stage,1)
+  page.batch={status:'GENERATED',total:2};assert.equal(page.batchGuidance.stage,2);assert.match(page.batchGuidance.action,/尚需执行/)
+  page.batch={status:'PRECHECKED',total:2,abnormal:2};assert.equal(page.batchGuidance.owner,'证据责任岗')
+  page.batch={status:'REVIEWING',total:2,concluded:2,abnormal:1};assert.equal(page.batchGuidance.finished,true);assert.equal(page.batchGuidance.owner,'教务结果复核岗')
+  page.batch={status:'ARCHIVED',total:2};assert.equal(page.batchGuidance.owner,'历史结果查阅')
+  page.batch={status:'UNRECOGNIZED',total:2};assert.equal(page.batchGuidance.owner,'责任待核对')
+})
+
+test('预审选择批次与直接刷新保持同一对象，分页外精确回读且无权时不替换',async()=>{
+  const fresh={batchId:'13',termId:'52',batchName:'虚构预审',status:'PRECHECKED',total:2}
+  const {page,writes}=batchInstance()
+  page.chooseBatch(fresh);assert.equal(writes[0].query.batchId,'13')
+  const calls=[]
+  const restored=batchInstance({listGradBatches:async args=>{calls.push(args);return{code:0,data:{list:args.batchId?[fresh]:[{batchId:'12'}],total:1}}}},writes[0].query)
+  await restored.page.loadBatches();assert.equal(restored.page.batch.batchId,'13');assert.equal(calls[1].batchId,'13')
+  const denied=batchInstance({listGradBatches:async()=>({code:0,data:{list:[{batchId:'12'}],total:1}})},writes[0].query)
+  await denied.page.loadBatches();assert.equal(denied.page.batch,null);assert.ok(denied.page.listError)
+  const mismatch=batchInstance({listGradBatches:async()=>({code:0,data:{list:[fresh],total:1}})},{batchId:'13',termId:'51'})
+  await mismatch.page.loadBatches();assert.equal(mismatch.page.batch,null);assert.ok(mismatch.page.listError)
+  restored.page.resetBatch();assert.equal(restored.page.$route.query.batchId,undefined)
+})
 
 test('只读毕业账号展示批次正式学期，不额外要求创建页学期查询权限',async()=>{
   const {page}=batchInstance({getCurrentTerm:()=>assert.fail('只读账号不初始化创建表单')},{},false)

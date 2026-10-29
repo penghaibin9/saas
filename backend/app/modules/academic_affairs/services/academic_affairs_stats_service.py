@@ -256,20 +256,8 @@ def _i_course(db, scope, college_id) -> dict:
 
 
 def _i_teaching_task(db, scope, college_id, term_id) -> dict:
-    from app.models import AaTeachingTask
-    class_ids = _class_ids_scope(db, scope, college_id)
-    q = select(AaTeachingTask.confirm_at).where(
-        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False))
-    if class_ids is not None:
-        if not class_ids:
-            return _ind("teachingTask", "教学任务完成率", numerator=0, denominator=0, rate=None,
-                        unit="%", drill="teaching-task")
-        q = q.where(AaTeachingTask.class_id.in_(class_ids))
-    rows = db.scalars(q).all()
-    den = len(rows)
-    num = sum(1 for c in rows if c is not None)   # 已确认=有确认时间（confirm_at）
-    return _ind("teachingTask", "教学任务完成率", numerator=num, denominator=den, rate=_rate(num, den),
-                unit="%", drill="teaching-task")
+    from .academic_affairs_stats_scale_guard import _i_teaching_task as aggregate
+    return aggregate(db, scope, college_id, term_id)
 
 
 def _i_schedule(db, scope, college_id, term_id) -> dict:
@@ -892,7 +880,7 @@ def teaching_task_stats(user, college_id=None, term_id=None) -> dict:
 
 def teaching_task_pending(user, college_id=None, term_id=None, page=1, page_size=20) -> tuple[list[dict], int]:
     """教学任务统计下钻（05 卡）：未确认（`confirm_at IS NULL`）任务清单。"""
-    from app.models import AaTeachingTask
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
     with session() as db:
         scope = _resolve_scope(user, db)
         _validate_college_param(scope, college_id)
@@ -900,6 +888,12 @@ def teaching_task_pending(user, college_id=None, term_id=None, page=1, page_size
         q = select(AaTeachingTask).where(
             AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
             AaTeachingTask.confirm_at.is_(None))
+        if term_id:
+            batch_ids = select(AaTeachingTaskBatch.id).where(
+                AaTeachingTaskBatch.tenant_id == _tid(),
+                AaTeachingTaskBatch.term_id == int(term_id),
+                AaTeachingTaskBatch.is_deleted.is_(False))
+            q = q.where(AaTeachingTask.batch_id.in_(batch_ids))
         if class_ids is not None:
             if not class_ids:
                 return [], 0
@@ -907,7 +901,7 @@ def teaching_task_pending(user, college_id=None, term_id=None, page=1, page_size
         total = int(db.scalar(select(func.count()).select_from(q.subquery())) or 0)
         rows = db.scalars(q.order_by(AaTeachingTask.id.desc())
                           .offset((page - 1) * page_size).limit(page_size)).all()
-        items = [{"taskId": str(t.id), "courseName": t.course_name,
+        items = [{"taskId": str(t.id), "batchId": str(t.batch_id), "courseName": t.course_name,
                  "teachingClassName": t.teaching_class_name, "teacherName": t.teacher_name,
                  "status": t.status} for t in rows]
         return items, total

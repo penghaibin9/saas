@@ -337,9 +337,43 @@ def test_g6_fail_list_no_n_plus_one(client, db_mode):
     event.listen(engine, "before_cursor_execute", _rec)
     try:
         fl = client.get(f"{BASE}/grade-views/fail-list?pageSize=50", headers=hdr).json()["data"]
+        full_hits = len(hits)
+        hits.clear()
+        single = client.get(f"{BASE}/grade-views/fail-list?pageSize=1", headers=hdr).json()["data"]
     finally:
         event.remove(engine, "before_cursor_execute", _rec)
-    assert fl["total"] >= 6 and len(hits) <= 2, f"疑似 N+1：命中 t_acad_student {len(hits)} 次"
+    # 有效成绩身份探测增加固定查询；行数增长不能增加学生查询次数。
+    assert fl["total"] >= 6 and single["total"] == fl["total"] and len(single["items"]) == 1
+    assert full_hits == len(hits) and full_hits <= 6, f"疑似 N+1：单行{len(hits)}次、整页{full_hits}次"
+
+
+def test_grade_summary_scope_denies_unassigned_staff_and_keeps_exact_student_scope(db_mode, monkeypatch):
+    import pytest
+    from types import SimpleNamespace
+    from app.core.context import set_current_user, set_tenant
+    from app.core.exceptions import AppException
+    from app.core import affairs_security
+    from app.db.session import get_sessionmaker
+    from app.models import AcademicStudent
+    from app.modules.academic_affairs.services import academic_affairs_grade_service as service
+    sids = _seed(db_mode, 2)
+    teacher = {"tenantId": str(TID), "userId": "unassigned-grade-reader", "loginName": "unassigned-grade-reader", "currentRoleCode": "ACADEMIC_TEACHER", "userType": "TEACHER"}
+    set_tenant({"tenantId": str(TID)}); set_current_user(teacher)
+    with get_sessionmaker()() as db:
+        db.add_all([AcademicStudent(tenant_id=TID, student_id=sid, name=f"范围验收{index}") for index, sid in enumerate(sids)])
+        db.commit()
+        with pytest.raises(AppException) as denied:
+            service._scoped_academic_student_query(db, teacher)
+        assert denied.value.code == "NO_DATA_SCOPE"
+        for context in (
+            SimpleNamespace(scope_type="SELF", self_student_id=sids[0]),
+            SimpleNamespace(scope_type="STUDENT", student_ids={sids[0]}, psychology_student_ids=set()),
+        ):
+            with monkeypatch.context() as patch:
+                patch.setattr(affairs_security, "build_affairs_context", lambda *_args: context)
+                scoped = service._scoped_academic_student_query(db, teacher).subquery()
+                found = db.query(AcademicStudent.student_id).filter(AcademicStudent.id.in_(db.query(scoped.c.id))).all()
+                assert [row[0] for row in found] == [sids[0]]
 
 
 def test_g7_publish_without_review_409(client, db_mode):

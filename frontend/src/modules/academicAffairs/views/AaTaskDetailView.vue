@@ -153,7 +153,8 @@
               @click="openVoidDraft(row)"
             >作废草稿任务</button>
             <span v-else-if="row.status === 'ASSIGNED'" class="mp-cell-sub">等待教师本人确认</span>
-            <span v-else class="mp-cell-sub">—</span>
+            <span v-else-if="!row.teachingClassCode" class="mp-cell-sub">—</span>
+            <button v-if="row.teachingClassCode" class="mp-link" :disabled="acting || Boolean(pendingResult)" @click="openTeachingClass(row)">教学班名单</button>
           </template>
         </DataTable>
       </template>
@@ -281,7 +282,7 @@ export default {
       return [
         { label: '任务总数', value: this.workbench.taskTotal ?? 0, note: '不含已并入合班任务' },
         { label: '分配完成率', value: `${this.workbench.assignedRate ?? 0}%`, note: `未分配 ${this.workbench.unassignedCount ?? 0} 条` },
-        { label: '教师确认率', value: `${this.workbench.teacherConfirmRate ?? 0}%`, note: `待本人确认 ${this.workbench.waitingTeacherCount ?? 0} 条` },
+        { label: '教师确认进度（按状态）', value: `${this.workbench.teacherConfirmRate ?? 0}%`, note: `待本人确认 ${this.workbench.waitingTeacherCount ?? 0} 条；已就绪计入完成，不代表历史确认时间齐全` },
         { label: '教师退回', value: this.workbench.teacherRejectedCount ?? 0, note: '需学院重新分配' },
         { label: '可排课任务', value: this.workbench.readyCount ?? 0, note: '教务终审后进入就绪' }
       ]
@@ -303,6 +304,12 @@ export default {
   methods: {
     academicFlowOwner, academicFlowNextOwner,
     taskColor,
+    openTeachingClass(row) {
+      if (!row?.teachingClassCode || !this.workbench.termId || this.acting || this.pendingResult) return
+      this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: {
+        view: 'classes', termId: String(this.workbench.termId), keyword: String(row.teachingClassCode), returnTo: this.$route.fullPath
+      } })
+    },
     openSchedule() {
       if (!this.canViewSchedule || this.workbench.nextAction?.code !== 'READY' || !this.workbench.termId) return
       const returnToken = this.academicFlow?.captureReturn?.()
@@ -327,6 +334,7 @@ export default {
       this.pendingResult = null
     },
     returnToSource() {
+      if (this.$route.query.returnToken && this.academicFlow) return this.academicFlow.back(this.$route.query.returnToken, '/admin/academic-affairs/teaching-tasks')
       const target = this.$route.query.returnTo
       if (systemRelationshipReturnTo(target)) return this.$router.push(systemRelationshipReturnTo(target))
       this.$router.push(typeof target === 'string' && /^\/admin\/academic-affairs\/teaching-tasks(?:[/?]|$)/.test(target) ? target : '/admin/academic-affairs/teaching-tasks')

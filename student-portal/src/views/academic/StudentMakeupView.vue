@@ -19,7 +19,7 @@
           <article v-for="option in retakeOptions" :key="retakeKey(option)" class="course-block" :class="{ 'is-target': retakeKey(option) === focusOptionId }"><h2>{{ option.courseName }}</h2><p class="muted">{{ option.termCode || '学期待提供' }} · {{ scoreLabel(option) }} · {{ option.credit ?? '学分待确认' }} 学分</p><dl class="definition"><dt>补考安排</dt><dd>{{ option.examDate || option.arrangement || '学校尚未提供本课程补考时间' }}</dd><dt>重修申请</dt><dd>{{ optionBlockReason(option, 'retake') || '当前可发起申请，是否受理以学校规则为准' }}</dd><dt>来源身份</dt><dd>{{ option.courseCode || '本人正式成绩' }} · {{ retakeKey(option) || '身份待补全' }}</dd></dl><footer class="form-foot"><RouterLink class="btn" to="/academic/grades">查看原成绩</RouterLink><button class="btn primary" :disabled="!!optionBlockReason(option, 'retake')" @click="activeOptionId = retakeKey(option); tab = 'retake'">申请重修</button></footer></article>
         </div></section>
         <section v-if="exemptionOptions.length" class="card"><header class="card-head"><h2>可申请免修的课程</h2></header><div class="card-body"><div v-for="option in exemptionOptions" :key="exemptionKey(option)" class="taskline"><div class="grow"><strong>{{ option.courseName }}</strong><small>{{ optionBlockReason(option, 'exemption') || option.courseCode }}</small></div><button class="btn small" :disabled="!!optionBlockReason(option, 'exemption')" @click="activeOptionId = exemptionKey(option); tab = 'exemption'">申请免修</button></div></div></section>
-        <section class="card"><header class="card-head"><h2>本人办理记录</h2></header><div class="card-body"><p v-if="!overviewRows.length" class="muted">暂无本人补考、重修或免修办理记录。</p><div v-for="row in overviewRows" :key="recordKey(row)" class="taskline"><div class="grow"><strong>{{ row.courseName || '本人课程' }} · {{ row.recordType || '课程补救' }}</strong><small>{{ row.reason || row.remark || '正式结果在成绩页核对' }}</small></div><span class="tag" :class="recordStatusTone(row) === 'success' ? 'green' : recordStatusTone(row) === 'danger' ? 'red' : 'amber'">{{ recordStatusText(row) }}</span></div></div></section>
+        <section class="card"><header class="card-head"><h2>本人办理记录</h2></header><div class="card-body"><p v-if="!overviewRows.length" class="muted">暂无本人补考、重修或免修办理记录。</p><div v-for="row in overviewRows" :key="recordKey(row)" class="taskline"><div class="grow"><strong>{{ row.courseName || '本人课程' }} · {{ row.recordType || '课程补救' }}</strong><small>{{ row.reason || row.remark || '正式结果在成绩页核对' }}</small><small v-if="row.retakeGrade">重修正式成绩：{{ row.retakeGrade.score == null ? '无数值分' : `${row.retakeGrade.score}分` }} · {{ courseStatusText(row.retakeGrade.passStatus) }}</small></div><span class="tag" :class="recordStatusTone(row) === 'success' ? 'green' : recordStatusTone(row) === 'danger' ? 'red' : 'amber'">{{ recordStatusText(row) }}</span></div></div></section>
       </template>
     </div>
   </div>
@@ -90,15 +90,15 @@ function scoreLabel(option) {
 }
 function courseStatusText(value) {
   const map = { PENDING: '待处理', ELIGIBLE: '符合条件', SCHEDULED: '已安排', COMPLETED: '已完成', PASSED: '已通过', FAILED: '未通过' }
-  return map[String(value || '').toUpperCase()] || value || '待确认'
+  return map[String(value || '').toUpperCase()] || '状态待核对'
 }
 function applicationStatusText(value) {
-  const map = { PENDING: '审核中', SUBMITTED: '已提交', APPROVED: '已通过', REJECTED: '未通过', RETURNED: '已退回', CANCELLED: '已取消' }
-  return map[String(value || '').toUpperCase()] || value || '暂无申请'
+  const map = { PENDING: '审核中', SUBMITTED: '已提交', ACADEMIC_REVIEW: '教务审核中', APPROVED: '已通过', ENROLLED: '已编入教学班', REJECTED: '未通过', RETURNED: '已退回', CANCELLED: '已取消' }
+  return value ? map[String(value).toUpperCase()] || '申请状态待核对' : '暂无申请'
 }
 function recordStatusText(row) {
-  return applicationStatusText(row.applyStatus) !== '暂无申请'
-    ? applicationStatusText(row.applyStatus)
+  return row.applyStatus || ['重修', '免修'].includes(row.recordType)
+    ? applicationStatusText(row.applyStatus || row.status)
     : courseStatusText(row.status)
 }
 function recordStatusTone(row) {
@@ -115,6 +115,12 @@ function canApplyExemption(option) {
 }
 function optionBlockReason(option, type) {
   if (option.identityDebt === true || option.identityReady === false || !(type === 'retake' ? retakeKey(option) : exemptionKey(option))) return '课程身份资料尚未完整，暂不能在线申请。请联系教务老师补全后刷新。'
+  if (type === 'retake' && overviewRows.value.some(row => row.recordType === '重修'
+    && ['SUBMITTED', 'ACADEMIC_REVIEW', 'APPROVED'].includes(String(row.applyStatus || row.status || '').toUpperCase())
+    && (String(row.originGradeId || '') === retakeKey(option)
+      || (option.courseId && String(row.course?.courseId || row.courseId || '') === String(option.courseId))))) {
+    return '本课程已有在途重修申请，请在下方办理记录查看进度，无需重复申请。'
+  }
   return ''
 }
 function persistentCommandCleared(reference) {

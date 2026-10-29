@@ -403,7 +403,7 @@ def _task_row(t: WorkflowTask, inst: WorkflowInstance | None) -> dict:
         "assigneeId": str(t.assignee_id), "version": int(t.version or 0),
         "title": (inst.title if inst else "") or "", "sourceModule": inst.source_module if inst else "",
         "sourceBizType": inst.source_biz_type if inst else "",
-        "applicantName": (inst.remark or "") if inst else "",
+        "applicantName": "",
         "nodeCode": t.node_code or "", "nodeName": t.remark or t.node_code or "",
         "status": t.status, "submittedAt": _iso(t.created_at),
         "actedAt": _iso(t.acted_at), "actionReason": t.action_reason or "",
@@ -523,6 +523,12 @@ def get_task(task_id, user: dict | None = None) -> dict:
                              "at": _iso(t.created_at)}]}
 
 
+def require_generic_approval_source(instance) -> None:
+    # Schedule decisions also change formal lessons and notices in their own transaction.
+    if instance.source_biz_type == "AA_SCHEDULE_CHANGE":
+        raise AppException("DATA_CONFLICT", "请进入调停课审批办理，系统须同时核验并更新正式课表与通知。", http_status=409)
+
+
 def act_task(task_id, action: str, reason: str | None = None, target: str | None = None,
              user: dict | None = None, version=None, *, enforce_context_gate: bool = False,
              expected_source_version=None) -> dict:
@@ -553,6 +559,7 @@ def act_task(task_id, action: str, reason: str | None = None, target: str | None
         ).with_for_update()).first()
         if not inst:
             raise not_found("审批实例不存在")
+        require_generic_approval_source(inst)
         from app.services.approval_business_context_service import assert_domain_action_entry
         assert_domain_action_entry(inst)
         if enforce_context_gate:

@@ -107,7 +107,7 @@
       <AppInlineAlert v-if="rectPartial" type="warning" :description="rectPartial" />
       <div class="aaql-bar"><AppSelect v-model="rectStatusFilter" :options="rectStatusOptions" placeholder="未关闭任务" @change="searchRectifications" /></div>
       <ErrorState v-if="panelError" :description="panelError" @retry="loadRectifications" /><LoadingState v-else-if="rectLoading" /><EmptyState v-else-if="!displayRectRows.length" title="本页暂无待跟进整改任务" description="可翻页继续查找，或指定状态筛选待整改、整改中和待复核任务" />
-      <section v-else class="aaql-follow-layout"><aside class="aaql-panel aaql-follow-queue"><header><h3>责任队列</h3><span>{{ displayRectRows.length }} 项</span></header><button v-for="row in displayRectRows" :key="row.rectId" :class="['aaql-follow-item',{ 'is-active': String(rectCurrent?.rectId) === String(row.rectId) }]" @click="selectRect(row)"><strong>{{ row.title }}</strong><span>{{ rectSourceText(row.sourceTitle) }}</span><StatusTag :type="rectStatusType(row)" :label="rectStatusLabel(row)" /></button></aside><main class="aaql-follow-main"><LoadingState v-if="detailLoading" /><ErrorState v-else-if="detailError" :description="detailError" @retry="reloadRectCurrent" /><EmptyState v-else-if="!rectCurrent" title="选择一项整改任务" description="核对来源证据后追加当前对象的整改进度" /><template v-else><section class="aaql-object-context"><div><span>当前整改对象</span><h3>{{ rectCurrent.title }}</h3><p>来源：{{ rectSourceText(rectCurrent.sourceTitle) }}</p></div><div><small>当前责任</small><strong>{{ rectCurrent.responsibleName || '整改责任人待明确' }}</strong></div><div><small>下一责任</small><strong>{{ rectCurrent.status === 'SUBMITTED' ? '质量复核岗' : '整改责任人 → 质量复核岗' }}</strong></div></section><section class="aaql-panel"><header><h3>来源证据与最近跟进</h3><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" /></header><AppTimeline :items="rectTimelineItems" /><footer class="aaql-detail-actions"><AppButton variant="ghost" @click="returnToRectify(rectCurrent)">返回整改看板</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" :disabled="writeLocked" @click="openProgress(rectCurrent)">追加进度</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" variant="primary" :disabled="writeLocked" @click="openSubmitRect(rectCurrent)">提交复核</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED'" variant="primary" :disabled="writeLocked" @click="openReview(rectCurrent,'APPROVE')">复核通过并关闭</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED'" variant="danger" :disabled="writeLocked" @click="openReview(rectCurrent,'REJECT')">驳回整改</AppButton></footer></section></template></main></section>
+      <section v-else class="aaql-follow-layout"><aside class="aaql-panel aaql-follow-queue"><header><h3>责任队列</h3><span>{{ displayRectRows.length }} 项</span></header><button v-for="row in displayRectRows" :key="row.rectId" :class="['aaql-follow-item',{ 'is-active': String(rectCurrent?.rectId) === String(row.rectId) }]" @click="selectRect(row)"><strong>{{ row.title }}</strong><span>{{ rectSourceText(row.sourceTitle) }}</span><StatusTag :type="rectStatusType(row)" :label="rectStatusLabel(row)" /></button></aside><main class="aaql-follow-main"><LoadingState v-if="detailLoading" /><ErrorState v-else-if="detailError" :description="detailError" @retry="reloadRectCurrent" /><EmptyState v-else-if="!rectCurrent" title="选择一项整改任务" description="核对来源证据后追加当前对象的整改进度" /><template v-else><section class="aaql-object-context"><div><span>当前整改对象</span><h3>{{ rectCurrent.title }}</h3><p>来源：{{ rectSourceText(rectCurrent.sourceTitle) }}</p></div><div><small>当前责任</small><strong>{{ rectCurrent.responsibleName || '整改责任人待明确' }}</strong></div><div><small>下一责任</small><strong>{{ rectCurrent.status === 'SUBMITTED' ? '质量复核岗' : '整改责任人 → 质量复核岗' }}</strong></div></section><section class="aaql-panel"><header><h3>来源证据与最近跟进</h3><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" /></header><AppTimeline :items="rectTimelineItems" /><footer class="aaql-detail-actions"><AppButton variant="ghost" @click="returnToRectify(rectCurrent)">返回整改看板</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" :disabled="writeLocked" @click="openProgress(rectCurrent)">追加进度</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" variant="primary" :disabled="writeLocked" @click="openSubmitRect(rectCurrent)">提交复核</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED' && rectCurrent.reviewAllowed === true" variant="primary" :disabled="writeLocked" @click="openReview(rectCurrent,'APPROVE')">复核通过并关闭</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED' && rectCurrent.reviewAllowed === true" variant="danger" :disabled="writeLocked" @click="openReview(rectCurrent,'REJECT')">驳回整改</AppButton></footer></section></template></main></section>
     </div>
 
     <!-- AA-233：真实闭环记录与聚合统计。 -->
@@ -128,7 +128,7 @@
 
     <!-- 报告导出 -->
     <template v-if="isRecordTab || isRectTab">
-      <p v-if="tab === 'followUp' && !rectStatusFilter" class="mp-note">分页总数包含已关闭任务；当前页仅展示未关闭任务，页内优先显示逾期项。</p>
+      <p v-if="tab === 'followUp' && !rectStatusFilter" class="mp-note">当前按未关闭任务分页，页内优先显示逾期项。</p>
       <AppPagination v-if="!panelError" :total="queuePagination.total" :page="queuePagination.page" :page-size="queuePagination.pageSize" :show-size-changer="false" @change="onQueuePageChange" />
     </template>
 
@@ -235,6 +235,8 @@ import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi, academicAffairsQualityApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
+import { toRaw } from 'vue'
+import { formatDateTime } from '@/utils/dateUtils'
 
 const _REC_TYPE_META = {
   supervision: { type: 'SUPERVISION', label: '督导听课', primaryLabel: '新增听课记录', titleLabel: '课次', titlePlaceholder: '填写正式课次', teacherLabel: '教师', courseLabel: '课程', occurredLabel: '听课时间', descriptionLabel: '观察情况', descriptionPlaceholder: '如实记录课堂观察情况', conclusionLabel: '改进意见', conclusionPlaceholder: '填写具体改进意见', showTeacher: true, showCourse: true, showCollege: false, showLocation: true, showCategory: false },
@@ -295,7 +297,7 @@ export default {
       recDetailVisible: false, recCurrent: null, recConfirmVisible: false, recConfirmKind: '', recConfirmTarget: null, recConfirmTitle: '', recConfirmMessage: '',
       // 整改任务（05/06）
       rectLoading: false, rectRows: [], rectStatusFilter: '', rectPartial: '', rectPagination: { page: 1, pageSize: 20, total: 0 },
-      rectStatusOptions: [{ label: '全部状态', value: '' }, { label: '待整改', value: 'PENDING' }, { label: '整改中', value: 'IN_PROGRESS' }, { label: '待复核', value: 'SUBMITTED' }, { label: '已关闭', value: 'CLOSED' }],
+      rectStatusOptions: [{ label: '全部状态', value: 'ALL' }, { label: '未关闭任务', value: 'NOT_CLOSED' }, { label: '待整改', value: 'PENDING' }, { label: '整改中', value: 'IN_PROGRESS' }, { label: '待复核', value: 'SUBMITTED' }, { label: '已关闭', value: 'CLOSED' }],
       rectColumns: [{ key: 'title', title: '标题' }, { key: 'sourceTitle', title: '来源' }, { key: 'responsibleName', title: '责任人' },
                    { key: 'deadline', title: '期限' }, { key: 'status', title: '状态' }, { key: 'ops', title: '操作' }],
       rectCreateVisible: false, rectForm: {}, rectFormError: '', rectSaving: false, rectSourceRecord: null, rectSourceRecordId: '', rectSourceRecords: [],
@@ -348,12 +350,10 @@ export default {
       ]
     },
     rectSourceOptions() { return this.rectSourceRecords.map(row => ({ value: String(row.recordId), label: `${this.recTypeLabel(row.recordType)} · ${row.title}` })) },
-    /** 跟进视角（06）未显式选状态时默认隐藏已关闭，并把逾期任务排到最前；发起视角（05）显示全部。 */
+    /** 服务端先按状态分页；当前页将逾期任务排到最前，不再二次过滤改变页数口径。 */
     displayRectRows() {
       let rows = this.rectRows
-      if (this.tab === 'followUp' && !this.rectStatusFilter) {
-        rows = rows.filter((r) => r.status !== 'CLOSED')
-      }
+
       if (this.tab === 'followUp') {
         rows = [...rows].sort((a, b) => (b.overdue === a.overdue ? 0 : b.overdue ? 1 : -1))
       }
@@ -465,7 +465,8 @@ export default {
       const actionLabel = { CREATE: '发起整改', RECEIVE: '认领整改', ACCEPT: '认领整改', PROGRESS: '记录跟进', UPDATE: '更新进度', SUBMIT: '提交复核', APPROVE: '复核通过', REJECT: '复核驳回', CLOSE: '关闭整改', REOPEN: '重新打开' }
       const actionType = { CREATE: 'primary', RECEIVE: 'primary', ACCEPT: 'primary', UPDATE: 'processing', PROGRESS: 'processing', SUBMIT: 'warning', APPROVE: 'success', REJECT: 'danger' }
       return (Array.isArray(log) ? log : []).map((item) => ({
-        time: item.time ? String(item.time).replace('T', ' ').slice(0, 19) : '',
+        // 进度日志由服务端 utcnow 写入；兼容旧日志未带时区的值。
+        time: item.time ? formatDateTime(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(String(item.time)) ? `${item.time}Z` : item.time, '') : '',
         title: actionLabel[item.action] || '过程记录',
         operator: item.operator || '操作人待核对',
         description: item.note || '未提供说明',
@@ -485,6 +486,8 @@ export default {
     afterTabLoad(tabChanged = false) {
       const page = Number(this.$route?.query?.page || 1)
       this.recPagination.page = this.rectPagination.page = Number.isSafeInteger(page) && page > 0 ? page : 1
+      const rectStatus = String(this.$route?.query?.rectStatus || '')
+      this.rectStatusFilter = ['', 'ALL', 'NOT_CLOSED', 'PENDING', 'IN_PROGRESS', 'SUBMITTED', 'CLOSED'].includes(rectStatus) ? rectStatus : ''
       this.panelSeq++; this.detailSeq++; this.panelError = ''; this.detailError = ''; this.recDetailVisible = false; this.rectDetailVisible = false
       if (tabChanged) { this.pendingWrite = null; this.actionNotice = ''; this.actionReceipt = null; this.recConfirmVisible = false; this.recConfirmTarget = null; this.rectCurrent = null; this.recCurrent = null }
       if (this.tab === 'dashboard') this.load()
@@ -550,8 +553,8 @@ export default {
     searchRectifications() { this.onQueuePageChange({ page: 1 }) },
     onQueuePageChange({ page }) {
       if (this.writeLocked || !Number.isSafeInteger(page) || page < 1) return
-      const query = this.routeQuery({ page: String(page) }, ['recordId', 'rectId'])
-      if (String(this.$route.query.page || 1) === String(page) && !this.$route.query.recordId && !this.$route.query.rectId) this.afterTabLoad()
+      const query = this.routeQuery({ page: String(page), ...(this.isRectTab ? { rectStatus: this.rectStatusFilter || undefined } : {}) }, ['recordId', 'rectId'])
+      if (String(this.$route.query.page || 1) === String(page) && (!this.isRectTab || String(this.$route.query.rectStatus || '') === this.rectStatusFilter) && !this.$route.query.recordId && !this.$route.query.rectId) this.afterTabLoad()
       else this.$router.replace({ query })
     },
     async loadRecords() {
@@ -640,7 +643,16 @@ export default {
       const completed = kind === 'confirm' ? await this.confirmRec(target) : kind === 'close' ? await this.closeRec(target) : await this.cancelRec(target)
       if (completed) { this.recConfirmVisible = false; this.recConfirmTarget = null }
     },
-    currentWrite(command) { return this.alive && this.pendingWrite === command && command.identity === this.identityKey && command.tab === this.tab },
+    currentWrite(command) { return this.alive && toRaw(this.pendingWrite) === toRaw(command) && command.identity === this.identityKey && command.tab === this.tab },
+    async refreshRectQueueAfterWrite(row) {
+      const status = this.rectStatusFilter === 'ALL' ? '' : this.rectStatusFilter || (this.tab === 'followUp' ? 'NOT_CLOSED' : '')
+      const remains = !status || (status === 'NOT_CLOSED' ? row.status !== 'CLOSED' : row.status === status)
+      if(!remains && String(this.$route.query.rectId || '') === String(row.rectId)) {
+        this.actionNotice += ' 该任务已移出当前筛选队列，历史记录保留。'
+        await this.$router.replace({path:this.$route.path,query:this.routeQuery({},['rectId'])})
+      }
+      await this.loadRectifications()
+    },
     async runRecordTransition(kind, row, beforeStatus, afterStatus, send) {
       if (this.pendingWrite || this.recSaving) return false
       const snapshot = Object.freeze({ ...row }), id = this.safeId(snapshot.recordId)
@@ -701,7 +713,7 @@ export default {
         if (!verified) { this.actionNotice = res?.code === 0 ? '刷新查看仍未找到与原操作一致的正式状态；请勿重复提交。' : this.failureText(res, '刷新查看失败，请稍后再次核对。'); return }
         this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${res.data?.title || command.snapshot?.title || '质量对象'} · #${command.objectId}`, next }; this.actionNotice = `已刷新查看正式状态：${isRecord ? this.recStatusLabel(res.data.status) : this.rectStatusLabel(res.data)}。`; toast.success('已核对原操作，无重复提交')
         if (this.isRecordTab) await this.loadRecords()
-        else if (this.isRectTab) await this.loadRectifications()
+        else if (this.isRectTab) await this.refreshRectQueueAfterWrite(res.data)
       } catch (error) { if (this.currentWrite(command)) this.actionNotice = this.failureText(error, '刷新查看失败，原操作不会自动重复提交。') }
       finally { if (this.alive && command.identity === this.identityKey) { this.recSaving = false; this.rectSaving = false } }
     },
@@ -710,9 +722,10 @@ export default {
       const seq = ++this.panelSeq, identity = this.identityKey, tab = this.tab, status = this.rectStatusFilter, page = this.rectPagination.page
       const current = () => this.alive && seq === this.panelSeq && identity === this.identityKey && tab === this.tab && status === this.rectStatusFilter && page === this.rectPagination.page
       this.rectLoading = true; this.panelError = ''; this.rectPartial = ''; this.rectRows = []; this.rectSourceRecords = []
+      this.detailSeq++; this.rectCurrent = null; this.rectDetailVisible = false; this.detailError = ''
       try {
         const settled = await Promise.allSettled([
-          api.listRectifications({ status: status || undefined, page, pageSize: this.rectPagination.pageSize }),
+          api.listRectifications({ status: status === 'ALL' ? undefined : status || (tab === 'followUp' ? 'NOT_CLOSED' : undefined), page, pageSize: this.rectPagination.pageSize }),
           api.listRecords({ status: 'CONFIRMED', page: 1, pageSize: 100 })
         ])
         if (!current()) return
@@ -720,8 +733,15 @@ export default {
         const denied = [rectResult, sourceResult].find(result => this.denied(result))
         if (denied) { this.rectRows = []; this.rectSourceRecords = []; throw denied }
         if (rectResult?.code !== 0 || !Array.isArray(rectResult.data?.list) || !Number.isSafeInteger(rectResult.data.total) || rectResult.data.total < 0) throw rectResult?.code !== 0 ? rectResult : { code: 503001, message: '整改任务分页回执不完整，不能按空列表办理。' }
-        this.rectRows = rectResult.data.list
         this.rectPagination.total = rectResult.data.total
+        const requestedStatus = status === 'ALL' ? '' : status || (tab === 'followUp' ? 'NOT_CLOSED' : '')
+        if(requestedStatus && rectResult.data.list.some(row => requestedStatus === 'NOT_CLOSED' ? row.status === 'CLOSED' : row.status !== requestedStatus))throw {code:409,message:'整改队列状态与筛选条件不一致，请刷新后核对。'}
+        this.rectRows = rectResult.data.list
+        const lastPage = Math.max(1, Math.ceil(rectResult.data.total / this.rectPagination.pageSize))
+        if (page > lastPage && !this.$route?.query?.rectId) {
+          await this.$router.replace({ query: this.routeQuery({ page: String(lastPage) }, ['recordId', 'rectId']) })
+          return
+        }
         if (sourceResult?.code === 0 && Array.isArray(sourceResult.data?.list)) this.rectSourceRecords = sourceResult.data.list
         else if (tab === 'rectify') this.rectPartial = `整改任务已读取，但来源问题暂不可选：${this.failureText(sourceResult, '来源问题读取失败')}。`
         const routeId = this.safeId(this.$route?.query?.rectId)
@@ -856,12 +876,12 @@ export default {
       } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改操作尚未确认，请保留说明并刷新查看。') } }
       finally { if (this.alive && command.identity === this.identityKey) this.rectSaving = false }
     },
-    openReview(row, action) { const snapshot = Object.freeze({ ...row }); this.reviewAction = action; this.reviewTargetId = String(snapshot.rectId || ''); this.reviewTargetSnapshot = snapshot; this.reviewReason = ''; this.rectFormError = ''; this.reviewVisible = true },
+    openReview(row, action) { if(row?.reviewAllowed !== true)return; const snapshot = Object.freeze({ ...row }); this.reviewAction = action; this.reviewTargetId = String(snapshot.rectId || ''); this.reviewTargetSnapshot = snapshot; this.reviewReason = ''; this.rectFormError = ''; this.reviewVisible = true },
     async submitReview() {
       if (this.pendingWrite || this.rectSaving) return
       if (this.reviewAction === 'REJECT' && (!this.reviewReason || this.reviewReason.trim().length < 5)) { this.rectFormError = '驳回原因必填且不少于5字'; return }
       const snapshot = this.reviewTargetSnapshot, id = this.safeId(snapshot?.rectId), action = this.reviewAction, reason = this.reviewReason.trim()
-      if (!id || String(id) !== String(this.reviewTargetId) || snapshot.status !== 'SUBMITTED') { this.rectFormError = '当前复核对象或状态已变化，请关闭弹窗后重新选择。'; return }
+      if (!id || String(id) !== String(this.reviewTargetId) || snapshot.status !== 'SUBMITTED' || snapshot.reviewAllowed !== true) { this.rectFormError = '当前复核对象或状态已变化，请关闭弹窗后重新选择。'; return }
       const expectedAfter = action === 'APPROVE' ? 'CLOSED' : 'IN_PROGRESS'
       const command = { kind: action === 'APPROVE' ? 'rect-approve' : 'rect-reject', identity: this.identityKey, tab: this.tab, objectId: id, snapshot, reason, action, expectedAfter, sent: false }
       this.rectSaving = true; this.rectFormError = ''; this.actionReceipt = null; this.actionNotice = '正在核对并复核当前整改对象；未核对前请勿重复提交。'
@@ -869,6 +889,7 @@ export default {
         const before = await api.getRectification(id)
         if (!this.alive || command.identity !== this.identityKey || command.tab !== this.tab) return
         if (before?.code !== 0 || before.data?.status !== 'SUBMITTED' || this.rectSignature(before.data) !== this.rectSignature(snapshot)) throw before?.code !== 0 ? before : { code: 409 }
+        if(before.data.reviewAllowed !== true)throw {code:403,message:'当前身份无权复核关闭此任务。'}
         this.pendingWrite = command
         let res
         try { command.sent = true; res = await api.reviewRectification(id, action, reason) } catch (error) { res = error }

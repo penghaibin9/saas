@@ -1,4 +1,5 @@
 import labels from '../../../shared/contracts/leave-presentation.json'
+import { portalDate } from './dateUtils.js'
 
 const lookup = (dict, value, fallback) => Object.prototype.hasOwnProperty.call(dict, String(value || '')) ? dict[value] : fallback
 export const leaveTypes = Object.entries(labels.types).map(([value, label]) => ({ value, label }))
@@ -6,13 +7,7 @@ export const leaveStatuses = Object.entries(labels.statuses).map(([value, label]
 export const leaveStatusText = (value) => lookup(labels.statuses, value, '状态待确认')
 export const leaveOperationText = (value) => lookup(labels.operations, value, '状态待确认')
 export function leaveDate(value, withTime = false) {
-  if (!value) return '—'
-  const raw = String(value).trim()
-  const d = new Date(/^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw + 'T00:00:00' : raw.replace(' ', 'T'))
-  if (Number.isNaN(d.getTime())) return '—'
-  const pad = (v) => String(v).padStart(2, '0')
-  const date = d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate())
-  return withTime ? date + ' ' + pad(d.getHours()) + ':' + pad(d.getMinutes()) : date
+  return portalDate(value, withTime)
 }
 export function leaveError(error, fallback = '操作未完成，请重试') {
   const code = String(error?.bizCode || error?.code || '')

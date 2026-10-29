@@ -57,6 +57,24 @@ test('return references are bounded, expire, isolate identity and reject externa
   assert.equal(returns.remember({ path: '/admin/system' }, 'identity-a'), '')
 })
 
+test('registration qualification return preserves candidate filters and the parent return reference', () => {
+  let raw = ''
+  const storage = { getItem: () => raw, setItem: (_, value) => { raw = value } }
+  const returns = flow.createAcademicReturnStore(storage, { token: () => 'qualification-return' })
+  const route = { path: '/admin/academic-affairs/registration/40', query: { candidateKeyword: '2026', candidatePage: '2', returnToken: 'batch-list-return' } }
+  const token = returns.remember(route, 'school-role', 500)
+  assert.equal(returns.resolve(token, 'school-role').path, '/admin/academic-affairs/registration/40?candidateKeyword=2026&candidatePage=2&returnToken=batch-list-return')
+  assert.equal(returns.resolve(token, 'another-role'), null)
+})
+
+test('task statistics source retains applied term and drilldown page on return', () => {
+  assert.equal(flow.academicReturnPath({ path: '/admin/academic-affairs/stats', query: { tab: 'teachingTask', termId: '51', detail: '1', detailPage: '2' } }), '/admin/academic-affairs/stats?tab=teachingTask&termId=51&detail=1&detailPage=2')
+  const component = page('AaTaskDetailView'), calls = []
+  const s = state(component, { $route: { query: { returnToken: 'stats-source' } }, academicFlow: { back: (...args) => calls.push(args) } })
+  s.returnToSource()
+  assert.deepEqual(calls, [['stats-source', '/admin/academic-affairs/teaching-tasks']])
+})
+
 test('same component query navigation loads exactly the requested grade task and hides archived commands by row status', async () => {
   const pendingA = deferred(), calls = []
   const component = page('AaGradePublishView', { academicAffairsApi: { getGradeTasks: query => {

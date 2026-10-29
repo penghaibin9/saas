@@ -68,15 +68,13 @@ import AppDescriptionList from '@/components/common/display/AppDescriptionList.v
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
 import { systemRelationshipReturnTo } from '@/utils/systemRelationshipNavigation'
+import { formatDateTime } from '@/utils/dateUtils'
+import { ACADEMIC_STUDENT_STATUS_LABELS as STATUS_LABEL, ACADEMIC_STATUS_CHANGE_LABELS as CHANGE_TYPE_LABEL } from '../config/academicStudentLabels'
 
-const STATUS_LABEL = {
-  NORMAL: '正常', MERGED: '已合并', RECYCLED: '已回收', PENDING_REGISTER: '待注册',
-  REGISTERED: '在籍注册', UNREGISTERED: '未注册', SUSPENDED: '休学', RETAINED: '留级',
-  WITHDRAWN: '退学', TRANSFER_SCHOOL: '转学', GRADUATED: '毕业', COMPLETED: '结业', INCOMPLETE: '肄业'
-}
-const CHANGE_TYPE_LABEL = {
-  ENROLL_REGISTER: '入学注册', ANNUAL_REGISTER: '学年注册', SEMESTER_REGISTER: '学期注册',
-  SUSPEND: '休学', WITHDRAW: '退学', RESUME: '复学', RETAIN: '留级', TRANSFER_MAJOR: '转专业'
+const STAGE_LABEL = {
+  ADMITTED: '新生阶段·已录取', PRE_STUDENT_VERIFIED: '新生阶段·预报到已核验',
+  REGISTERED_PENDING_ENROLLMENT: '新生阶段·已报到待注册', ENROLLED: '在读阶段',
+  GRADUATING: '毕业阶段', INTERN: '岗位实习阶段', GRADUATED: '已毕业', ALUMNI: '校友'
 }
 
 export default {
@@ -108,9 +106,9 @@ export default {
         { label: '专业', value: d.majorName || '—' },
         { label: '班级', value: d.className || '—' },
         { label: '年级', value: d.grade || '—' },
-        { label: '学籍状态', value: STATUS_LABEL[d.studentStatus] || d.studentStatus },
+        { label: '学籍状态', value: STATUS_LABEL[d.studentStatus] || '状态待确认' },
         { label: '是否在籍', value: d.enrolled ? '在籍' : '非在籍' },
-        { label: '当前阶段', value: d.currentStage || '—' },
+        { label: '当前阶段', value: STAGE_LABEL[d.currentStage] || (d.currentStage ? '阶段待确认' : '—') },
         { label: '入学日期', value: d.enrollDate || '—' },
         { label: '备注', value: d.remark || '—' }
       ]
@@ -118,10 +116,10 @@ export default {
     historyItems() {
       return (this.detail?.statusHistory || []).map((h) => ({
         id: h.changeId,
-        title: `${CHANGE_TYPE_LABEL[h.changeType] || h.changeType}：${h.fromStatus || '—'} → ${h.toStatus || '—'}`,
-        time: h.effectiveDate || '',
+        title: `${CHANGE_TYPE_LABEL[h.changeType] || '学籍变更'}：${STATUS_LABEL[h.fromStatus] || '状态待确认'} → ${STATUS_LABEL[h.toStatus] || '状态待确认'}`,
+        time: formatDateTime(h.effectiveDate, '生效时间未提供'),
         status: h.status,
-        description: h.reason || '',
+        description: ({ ENROLL注册: '入学注册', ANNUAL注册: '学年注册', SEMESTER注册: '学期注册' })[h.reason] || h.reason || '',
         type: h.status === 'EFFECTIVE' ? 'success' : h.status === 'REJECTED' ? 'danger' : 'default'
       }))
     }

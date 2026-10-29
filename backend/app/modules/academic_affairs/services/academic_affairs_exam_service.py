@@ -144,6 +144,14 @@ def _check_course_scope(db, ctx, course):
     return college_id
 
 
+def _check_course_read_scope(db, ctx, course):
+    batch = _get_batch(db, course.batch_id)
+    # School auditors can inspect legacy gaps without granting any write access.
+    if _is_school(ctx) and batch.status in (_B_PUBLISHED, _B_FINISHED, _B_ARCHIVED):
+        return
+    _check_course_scope(db, ctx, course)
+
+
 def _require_responsible_actor(db, user, ctx, owner, permission, *, cache=None):
     from app.core.permissions import _match
     from .academic_affairs_grade_correction_command import _current_user_id
@@ -561,7 +569,8 @@ def list_rooms(user, cid):
     from app.models import AaExamRoom
     with session() as db:
         ctx = _ctx(user, db)
-        _check_course_scope(db, ctx, _get_course(db, cid))
+        course = _get_course(db, cid)
+        _check_course_read_scope(db, ctx, course)
         rows = db.query(AaExamRoom).filter(AaExamRoom.exam_course_id == cid, AaExamRoom.tenant_id == _tid(),
                                            AaExamRoom.is_deleted.is_(False)).order_by(AaExamRoom.room_seq).all()
         return [_room_dto(r) for r in rows]
@@ -682,7 +691,7 @@ def list_invigilators(user, room_id):
                                          AaExamRoom.is_deleted.is_(False)).first()
         if not room:
             raise not_found("考场不存在")
-        _check_course_scope(db, ctx, _get_course(db, room.exam_course_id))
+        _check_course_read_scope(db, ctx, _get_course(db, room.exam_course_id))
         rows = db.query(AaExamInvigilator).filter(AaExamInvigilator.exam_room_id == room_id,
                                                   AaExamInvigilator.tenant_id == _tid(),
                                                   AaExamInvigilator.is_deleted.is_(False)).all()

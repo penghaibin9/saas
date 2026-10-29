@@ -451,6 +451,7 @@ def return_for_revision(task_id: str, reason: str, user: dict | None = None,
         if not inst:
             raise not_found("审批实例不存在")
 
+        db_service.require_generic_approval_source(inst)
         atomic_versioned_update(
             db, WorkflowTask, entity_id=int(task_id), tenant_id=db_service._tid(),
             expected_version=version,

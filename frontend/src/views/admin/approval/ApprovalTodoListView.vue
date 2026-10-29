@@ -341,6 +341,10 @@ export default {
     },
     async onBatch(key) {
       if (!this.can(key)) return
+      if (this.rows.some(row => row.bizType === 'AA_SCHEDULE_CHANGE' && this.selected.map(String).includes(String(row.taskId)))) {
+        toast.info('所选任务包含调停课，请打开对应事项并进入调停课审批，核对正式课位后逐单办理。')
+        return
+      }
       if (key === 'batchApprove') this.approveDialog = true
       if (key === 'batchReturn') this.returnDialog = true
       if (key === 'batchTransfer') {

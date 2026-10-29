@@ -135,6 +135,36 @@ def test_tier1_teaching_task_ok(client, db_mode):
     assert d["code"] == 0 and d["data"]["total"] == 1
 
 
+def test_teaching_task_term_summary_and_pending_match(client, db_mode):
+    from datetime import datetime
+    from app.db.session import get_sessionmaker
+    from app.models import AaTeachingTask, AaTeachingTaskBatch
+    _seed(db_mode)
+    with get_sessionmaker()() as db:
+        current = AaTeachingTaskBatch(tenant_id=TID, term_id=901, batch_name="本期", status="APPROVED")
+        old = AaTeachingTaskBatch(tenant_id=TID, term_id=902, batch_name="上期", status="APPROVED")
+        deleted = AaTeachingTaskBatch(tenant_id=TID, term_id=901, batch_name="已删除批次", is_deleted=True)
+        foreign = AaTeachingTaskBatch(tenant_id=TID + 1, term_id=901, batch_name="其他学校")
+        db.add_all([current, old, deleted, foreign]); db.flush()
+        pending = AaTeachingTask(tenant_id=TID, batch_id=current.id, course_id=1, status="READY")
+        db.add_all([pending,
+            AaTeachingTask(tenant_id=TID, batch_id=current.id, course_id=2, status="READY", confirm_at=datetime(2026, 1, 1)),
+            AaTeachingTask(tenant_id=TID, batch_id=old.id, course_id=3, status="READY"),
+            AaTeachingTask(tenant_id=TID, batch_id=deleted.id, course_id=4, status="READY"),
+            AaTeachingTask(tenant_id=TID, batch_id=foreign.id, course_id=5, status="READY"),
+            AaTeachingTask(tenant_id=TID + 1, batch_id=foreign.id, course_id=6, status="READY")])
+        db.flush(); task_id, batch_id = str(pending.id), str(current.id); db.commit()
+    hdr = _hdr(client, "school_admin01")
+    summary = client.get(f"{BASE}/stats/teaching-task?termId=901", headers=hdr).json()
+    assert summary["code"] == 0
+    assert (summary["data"]["expected"], summary["data"]["confirmed"]) == (2, 1)
+    detail = client.get(f"{BASE}/stats/teaching-task/pending?termId=901&page=1&pageSize=1", headers=hdr).json()
+    assert detail["code"] == 0 and detail["data"]["total"] == 1
+    assert [(r["taskId"], r["batchId"], r["status"]) for r in detail["data"]["items"]] == [(task_id, batch_id, "READY")]
+    empty = client.get(f"{BASE}/stats/teaching-task/pending?termId=903", headers=hdr).json()
+    assert empty["code"] == 0 and empty["data"]["total"] == 0
+
+
 def test_tier1_schedule_conflict_ok(client, db_mode):
     _seed_tier1(db_mode)
     hdr = _hdr(client, "school_admin01")

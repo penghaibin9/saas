@@ -3,7 +3,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, Path
+from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
@@ -36,7 +36,7 @@ def cert_generate(body: CertGenerateBody, batchId: int = Path(...),
 @router.get("/graduation-certificates", summary="证书台账")
 def cert_list(status: Optional[str] = None, certType: Optional[str] = None,
               batchId: Optional[str] = None, keyword: Optional[str] = None,
-              page: int = 1, pageSize: int = 50,
+              page: int = Query(1, ge=1), pageSize: int = Query(50, ge=1, le=200),
               user=Depends(require_permission("academicAffairs.graduationCert.view"))):
     items, total = grad_svc.list_certificates(user, status, certType, batchId, keyword, page, pageSize)
     return success(paginate(items, total, page, pageSize))

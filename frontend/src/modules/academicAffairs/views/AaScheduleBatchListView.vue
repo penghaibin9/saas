@@ -61,13 +61,13 @@
         <template #cell-scope="{ row }">
           {{ Object.prototype.hasOwnProperty.call(row, 'collegeId') ? (row.collegeId ? row.collegeName || '指定学院' : '全校范围') : '范围待核对' }}
         </template>
-        <template #cell-version="{ row }">{{ row.activeTruth?.headVersion != null ? `第${row.activeTruth.headVersion}版` : '版本待核对' }}</template>
+        <template #cell-version="{ row }">{{ row.publishedVersion != null ? `当前正式第${row.publishedVersion}版` : ['DRAFT', 'PRE_PUBLISHED'].includes(row.status) ? '尚未正式发布' : ['SUPERSEDED', 'ARCHIVED', 'VOIDED'].includes(row.status) ? '历史版本，查看记录' : '生效版本待核对' }}</template>
         <template #cell-status="{ row }">
           <AppStatusTag :type="scheduleBatchColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
           <div class="aa-actions">
-            <button class="mp-link" @click="openBatch(row)">{{ ['DRAFT', 'PRE_PUBLISHED'].includes(row.status) ? '继续排课' : ['PUBLISHED', 'ARCHIVED'].includes(row.status) ? '查看已发布课表' : '查看课表记录' }}</button>
+            <button class="mp-link" @click="openBatch(row)">{{ ['DRAFT', 'PRE_PUBLISHED'].includes(row.status) ? '继续排课' : row.status === 'ARCHIVED' ? '查看归档课表' : row.status === 'PUBLISHED' ? '查看已发布课表' : '查看课表记录' }}</button>
             <button v-if="row.status === 'PUBLISHED'" class="mp-link" @click="openWorkbench(row)">核对进度与补排</button>
             <button v-if="['DRAFT', 'PRE_PUBLISHED'].includes(row.status)" class="mp-link" @click="openBatch(row, 'views')">查看班级、教师与教室课表</button>
             <button v-if="row.status === 'DRAFT'" class="mp-link" :disabled="!!writingId" @click="act(row, 'pre')">预发布</button>
@@ -255,6 +255,9 @@ export default {
 .aa-input, .aa-select { height: 34px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; box-sizing: border-box; }
 .aa-danger { color: var(--danger-600, #f53f3f); }
 .aa-actions { display: flex; flex-wrap: wrap; gap: 6px 12px; align-items: center; }
+.aa-actions button { white-space: nowrap; }
+.aa-schedule-workspace :deep(.dt__table) { min-width: 1040px; }
+.aa-schedule-workspace :deep(.dt__th:first-child), .aa-schedule-workspace :deep(.dt__td:first-child) { min-width: 220px; }
 .aa-archive-toggle { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); margin-right: 12px; }
 .aa-batch-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; }
 .aa-batch-metrics article { display: grid; gap: 7px; padding: 17px 18px; border: 1px solid var(--border-200, #dbe3ed); border-radius: 12px; background: var(--bg-white, #fff); }

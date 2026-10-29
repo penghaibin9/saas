@@ -970,7 +970,8 @@ def generate_certificates(batch_id, user, body) -> dict:
 def list_certificates(user, status=None, cert_type=None, batch_id=None, keyword=None,
                       page=1, page_size=50):
     _require_review_role(user)
-    from app.models import AaGraduationCertificate
+    page, page_size = max(1, int(page or 1)), max(1, min(200, int(page_size or 50)))
+    from app.models import AaGraduationCertificate, AaGraduationAuditBatch
     with session() as db:
         q = db.query(AaGraduationCertificate).filter(
             AaGraduationCertificate.tenant_id == _tid(),
@@ -986,8 +987,13 @@ def list_certificates(user, status=None, cert_type=None, batch_id=None, keyword=
             q = q.filter((AaGraduationCertificate.student_no.like(kw))
                          | (AaGraduationCertificate.student_name.like(kw))
                          | (AaGraduationCertificate.cert_no.like(kw)))
-        rows = q.order_by(AaGraduationCertificate.id.desc()).all()
-        return ([_cert_dto(c) for c in rows[(page - 1) * page_size: page * page_size]], len(rows))
+        total = q.count()
+        rows = q.order_by(AaGraduationCertificate.id.desc()).offset((max(1, page) - 1) * page_size).limit(page_size).all()
+        batch_ids = {c.audit_batch_id for c in rows if c.audit_batch_id}
+        names = dict(db.execute(select(AaGraduationAuditBatch.id, AaGraduationAuditBatch.batch_name).where(
+            AaGraduationAuditBatch.tenant_id == _tid(), AaGraduationAuditBatch.id.in_(batch_ids or {0}),
+            AaGraduationAuditBatch.is_deleted.is_(False))).all())
+        return ([{**_cert_dto(c), "auditBatchName": names.get(c.audit_batch_id)} for c in rows], total)
 
 
 def issue_certificate(cert_id, user) -> dict:

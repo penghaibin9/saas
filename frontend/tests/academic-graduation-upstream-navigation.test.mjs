@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
 import { parse, compileTemplate } from '@vue/compiler-sfc'
+import { systemRelationshipReturnTo } from '../src/utils/systemRelationshipNavigation.js'
 
 function view(file, bindings = {}) {
   const path = new URL(`../src/modules/graduation/views/${file}.vue`, import.meta.url)
@@ -32,7 +33,7 @@ test('毕设学生名单保留毕业审核的学号筛选和安全返回，详�
   list.$route.query.returnTo = 'https://outside.invalid/'
   assert.equal(list.graduationReturnTo, '')
 
-  const detailOptions = view('GraduationStudentDetailView', { graduationMaterialStageLabel: value => value, graduationPlagiarismStatusLabel: value => value })
+  const detailOptions = view('GraduationStudentDetailView', { systemRelationshipReturnTo, graduationMaterialStageLabel: value => value, graduationPlagiarismStatusLabel: value => value })
   const pushes = []
   const detail = bind(detailOptions, { $route: { query: { returnTo } }, $router: { push: target => pushes.push(target) } })
   assert.equal(detail.graduationReturnTo, '')

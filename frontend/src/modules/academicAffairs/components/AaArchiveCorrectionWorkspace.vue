@@ -40,8 +40,12 @@
       <AppInlineAlert
         v-if="manifest && !manifest.ok"
         type="danger"
-        :description="`归档清单版本链校验未通过：${businessText(manifest.reason, '原因待核对')}`"
+        :description="`归档清单版本链校验未通过：${manifestReason(manifest.reason)}`"
       />
+      <div v-if="manifest && !manifest.ok" class="aacw-toolbar">
+        <AppButton v-if="manifestCorrection" size="small" @click="openDetail(manifestCorrection)">查看异常纠错单 {{ manifestCorrection.correctionNo }}</AppButton>
+        <AppButton size="small" variant="ghost" @click="activeTab = 'manifest'">查看归档版本链</AppButton>
+      </div>
       <AppInlineAlert
         v-else-if="manifest?.ok"
         type="success"
@@ -75,6 +79,7 @@
       <EmptyState v-if="!loadError && !corrections.length" title="暂无纠错申请" description="发现归档后错误时从这里发起正式纠错" />
       <DataTable v-else :columns="correctionColumns" :rows="corrections" row-key="caseId">
         <template #cell-businessType="{ row }">{{ businessLabel(row.businessType) }}</template>
+        <template #cell-targetRef="{ row }">{{ targetLabel(row) }}</template>
         <template #cell-status="{ row }"><StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" dot /></template>
         <template #cell-riskLevel="{ row }">{{ riskLabel(row.riskLevel) }}</template>
         <template #cell-actions="{ row }">
@@ -94,10 +99,10 @@
       <AppInlineAlert
         v-if="manifest"
         :type="manifest.ok ? 'success' : 'danger'"
-        :description="manifest.ok ? '当前版本链完整。' : `版本链异常：${businessText(manifest.reason, '原因待核对')}`"
+        :description="manifest.ok ? '当前版本链完整。' : `版本链异常：${manifestReason(manifest.reason)}`"
       />
-      <EmptyState v-if="!manifestVersions.length" title="尚未取得归档清单" description="已归档批次应至少存在归档清单第 1 版，请核对正式数据" />
-      <DataTable v-else :columns="manifestColumns" :rows="manifestVersions" row-key="manifestId">
+      <EmptyState v-if="!loadError && !verifyBusy && !manifestVersions.length" title="尚未取得归档清单" description="已归档批次应至少存在归档清单第 1 版，请核对正式数据" />
+      <DataTable v-else-if="manifestVersions.length" :columns="manifestColumns" :rows="manifestVersions" row-key="manifestId">
         <template #cell-versionNo="{ row }"><strong>第 {{ row.versionNo }} 版</strong></template>
         <template #cell-hash="{ row }"><span class="mono">{{ row.hash }}</span></template>
         <template #cell-supersedesId="{ row }">{{ row.supersedesId || '根版本' }}</template>
@@ -161,7 +166,7 @@
         <div class="aacw-detail-head">
           <div>
             <strong>纠错编号 {{ detail.correctionNo }}</strong>
-            <span class="aacw-muted"> · {{ businessLabel(detail.businessType) }} · 目标 {{ detail.targetRef }}</span>
+            <span class="aacw-muted"> · {{ businessLabel(detail.businessType) }} · {{ detail.originalOfficialFact?.courseName || '原记录详情见下方' }}</span>
           </div>
           <StatusTag :type="statusType(detail.status)" :label="statusLabel(detail.status)" dot />
         </div>
@@ -191,6 +196,7 @@
           <div class="aacw-compare-card"><h4>证据清单</h4><p>{{ evidenceSummary(detail.evidenceManifest) }}</p></div>
         </div>
         <details><summary>实施人员使用：完整记录与依据数据</summary>
+          <p>原目标引用：{{ detail.targetRef }}；原关联记录编号：{{ detail.officialFactId || '未记录' }}</p>
           <p>申请人编号：{{ detail.requestedBy || '未记录' }}；二审通过人编号：{{ detail.secondApprovedBy || '未记录' }}；驳回人编号：{{ detail.rejectedBy || '未记录' }}</p>
           <h4>原正式记录</h4><pre>{{ pretty(detail.originalOfficialFact) }}</pre>
           <h4>新正式记录或拟形成的记录</h4><pre>{{ pretty(detail.status === 'APPLIED' ? detail.resultingOfficialFact : detail.proposedOfficialFact) }}</pre>
@@ -199,9 +205,14 @@
         </details>
 
         <AppInlineAlert
-          v-if="detail.status === 'APPLIED'"
+          v-if="detail.status === 'APPLIED' && detail.resultingOfficialFact && !detail.resultingFactError"
           type="success"
-          :description="`已形成${businessLabel(detail.businessType)}正式记录，编号 ${detail.officialFactId || '待核对'}；新归档清单编号 ${detail.resultingManifestId || '待核对'}。原记录和旧归档清单永久保留。`"
+          :description="`已核实${businessLabel(detail.businessType)}正式记录，编号 ${detail.resultingOfficialFact.factId}；新归档清单编号 ${detail.resultingManifestId || '待核对'}。原记录和旧归档清单永久保留。`"
+        />
+        <AppInlineAlert
+          v-else-if="detail.status === 'APPLIED'"
+          type="danger"
+          :description="businessText(detail.resultingFactError, '历史状态为已应用，但当前正式记录证据尚未核实。请核对原纠错单和归档版本链，不要重复审批。')"
         />
         <AppInlineAlert
           v-else-if="detail.status === 'REJECTED'"
@@ -327,6 +338,10 @@ export default {
       }, { pending: 0, applied: 0, rejected: 0 })
     },
     manifestVersions() { return Array.isArray(this.manifest?.versions) ? this.manifest.versions : [] },
+    manifestCorrection() {
+      const match = String(this.manifest?.reason || '').match(/(?:^|;)CORRECTION#(\d+):/)
+      return match ? this.corrections.find(row => String(row.correctionNo) === match[1]) || null : null
+    },
     latestManifest() { return this.manifestVersions.length ? this.manifestVersions[this.manifestVersions.length - 1] : null }
   },
   watch: {
@@ -354,6 +369,23 @@ export default {
       return () => this.alive && identity === this.identityKey && seq === this.contextSeq
     },
     businessText(value, fallback = '待核对') { return academicFlowText(value, fallback) },
+    manifestReason(value) {
+      const reasons = {
+        MANIFEST_MISSING: '缺少正式归档清单', HASH_MISMATCH: '清单内容与保存的校验值不一致',
+        BAD_CHAIN_ROOT: '首版归档清单的版本或前序关联不正确', BAD_SUPERSEDES: '与上一版归档清单的关联不连续',
+        INTEGRITY_CHECKPOINT_INVALID: '历史版本核验凭据无效', OFFICIAL_FACT_MISSING: '缺少纠错后的正式业务记录',
+        RESULTING_MANIFEST_MISSING: '缺少纠错对应的后续归档清单', GRADE_FACT_LINEAGE_BROKEN: '成绩正式记录与纠错单的关联不完整',
+        GRADUATION_FACT_LINEAGE_BROKEN: '毕业结论与纠错单的关联不完整', UNSUPPORTED_BUSINESS_TYPE: '纠错业务类型无法核验',
+        BATCH_NOT_ARCHIVED: '批次尚未处于正式归档状态'
+      }
+      const messages = String(value || '').split(';').filter(Boolean).map(item => {
+        const match = item.match(/^(?:(V\d+|CORRECTION#\d+):)?([A-Z_]+)$/)
+        if (!match || !reasons[match[2]]) return this.businessText(item, '存在未识别的校验异常，请交实施人员核查')
+        const object = match[1]?.startsWith('V') ? `第 ${match[1].slice(1)} 版：` : match[1] ? `纠错单 ${match[1].slice(11)}：` : ''
+        return object + reasons[match[2]]
+      })
+      return `${messages.join('；') || '校验原因尚未返回'}。请由学校归档责任人员会同实施人员核对原始记录与版本关联，保留原档案，不覆盖或重建。`
+    },
     riskLabel(value) { return ({ HIGH: '高风险', MEDIUM: '中风险', LOW: '低风险' })[value] || '待核对' },
     personLabel(value) { return value ? (/^\d+$/.test(String(value)) ? '已记录身份，姓名待核对' : String(value)) : '未记录' },
     factSummary(value) {
@@ -380,6 +412,10 @@ export default {
       }
     },
     businessLabel(v) { return v === 'GRADE' ? '成绩' : v === 'GRADUATION' ? '毕业结论' : '业务类型待核对' },
+    targetLabel(row) {
+      const ref = String(row?.targetRef || ''), id = row?.businessType === 'GRADE' ? ref.replace(/^acadGrade:/, '') : ref
+      return ['GRADE', 'GRADUATION'].includes(row?.businessType) && /^[1-9]\d*$/.test(id) ? `${this.businessLabel(row.businessType)}记录 ${id}` : '原记录待核对'
+    },
     statusLabel(v) { return STATUS_LABEL[v] || (v ? '待确认' : '—') },
     statusType(v) { return v === 'APPLIED' ? 'success' : v === 'REJECTED' ? 'warning' : 'primary' },
     factState(row) { return String(row?.result || (row?.present ? 'PASS' : 'BLOCKED')).toUpperCase() },
@@ -421,7 +457,7 @@ export default {
         if (!current()) return
         if (res.code === 0) {
           this.manifest = res.data
-          res.data?.ok ? toast.success('归档清单版本链校验通过') : toast.error(`归档清单校验异常：${this.businessText(res.data?.reason, '原因待核对')}`)
+          res.data?.ok ? toast.success('归档清单版本链校验通过') : toast.error(`归档清单校验异常：${this.manifestReason(res.data?.reason)}`)
         } else this.loadError = this.businessText(res.message, '归档清单校验失败')
       } catch (error) { if (current()) this.loadError = this.businessText(error?.message, '归档清单校验失败') }
       finally { if (current()) this.verifyBusy = false }

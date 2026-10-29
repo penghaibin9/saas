@@ -30,7 +30,9 @@
       <AppButton :disabled="loading || applying || previewing || unknownReceipt || !canRegister || !rows.length" @click="toggleCurrentPage">
         {{ allCurrentPageSelected ? '取消本页选择' : '选择本页' }}
       </AppButton>
+      <AppButton v-if="selectedIds.length" :disabled="applying || previewing || !!unknownReceipt" @click="clearSelection">清空已选</AppButton>
     </div>
+    <p v-if="selectedIds.length && canViewEligibility" class="aa-bulk__desc">进入单人资格核验前，请先清空已选学生；当前选择和预览不会自动丢弃。</p>
 
     <div class="aa-bulk__summary" aria-live="polite">
       <div class="aa-bulk__metric"><strong>{{ loading ? '读取中' : error ? '待核对' : total }}</strong><span>当前候选</span></div>
@@ -60,7 +62,7 @@
             <th>班级 / 专业</th>
             <th>当前学籍状态</th>
             <th>注册资格</th>
-            <th>系统说明</th>
+            <th>系统说明</th><th v-if="canViewEligibility">资格办理</th>
           </tr>
         </thead>
         <tbody>
@@ -93,6 +95,7 @@
               </span>
             </td>
             <td class="aa-bulk__reason">{{ row.eligibilityExplanation || '系统将在确认时再次校验' }}</td>
+            <td v-if="canViewEligibility"><button class="aa-bulk__link" :disabled="loading || applying || previewing || !!unknownReceipt || !!selectedIds.length || !row.studentNo" @click="goEligibility(row)">核验资格</button></td>
           </tr>
         </tbody>
       </table>
@@ -185,6 +188,7 @@ import { academicStatusLabel } from '@/modules/academicAffairs/constants/academi
 export default {
   name: 'AaRegistrationBulkPanel',
   components: { AppButton },
+  inject: { academicFlow: { default: null } },
   props: {
     batchId: { type: [String, Number], required: true },
     batchState: { type: String, default: 'UNKNOWN' },
@@ -218,6 +222,7 @@ export default {
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.registration.manage') },
     batchIsOpen() { return !this.disposed && this.batchState === 'OPEN' },
     canRegister() { return this.canManage && this.batchIsOpen },
+    canViewEligibility() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.registration.eligibility.view') },
     batchStateMessage() {
       return { DRAFT: '本批次为草稿，尚未开放注册。当前可查看正式记录。',
         CLOSED: '本批次已关闭，当前查看正式注册记录，不再提供本页的选择、预览或确认注册。',
@@ -231,6 +236,7 @@ export default {
     }
   },
   created() {
+    this.restoreCandidateQuery()
     this.load()
   },
   watch: {
@@ -241,6 +247,26 @@ export default {
   },
   beforeUnmount() { this.disposed = true; this.requestVersion++; this.scopeVersion++ },
   methods: {
+    restoreCandidateQuery() {
+      const query = this.$route?.query || {}, page = Number(query.candidatePage || 1)
+      this.keyword = typeof query.candidateKeyword === 'string' ? query.candidateKeyword.slice(0,200) : ''
+      this.page = Number.isSafeInteger(page) && page > 0 ? page : 1
+    },
+    clearSelection() {
+      if(this.applying || this.previewing || this.unknownReceipt)return
+      this.selectedIds=[];this.invalidatePreview()
+    },
+    async syncCandidateQuery() {
+      const context = this.contextKey, keyword = this.keyword, page = this.page
+      await this.$router.replace({ query: { ...this.$route.query, candidateKeyword: keyword || undefined, candidatePage: String(page) } })
+      return context === this.contextKey && keyword === this.keyword && page === this.page
+    },
+    async goEligibility(row) {
+      if(!this.canViewEligibility || !this.batchIsOpen || this.loading || this.applying || this.previewing || this.unknownReceipt || this.selectedIds.length || !row?.studentNo || !/^[1-9]\d*$/.test(String(row.studentId)))return
+      if(!await this.syncCandidateQuery() || !this.canViewEligibility)return
+      const returnToken=this.academicFlow?.captureReturn()
+      this.$router.push({path:'/admin/academic-affairs/registration/workbench',query:{tab:'eligibility',batchId:String(this.batchId),studentId:String(row.studentId),keyword:row.studentNo,page:'1',...(returnToken?{returnToken}:{})}})
+    },
     academicStatusLabel,
     receiptStudentLabel(item) {
       const name = typeof item.realName === 'string' ? item.realName.trim() : ''
@@ -321,12 +347,12 @@ export default {
     async search() {
       if (!this.batchIsOpen || this.applying) return
       this.page = 1
-      await this.load()
+      if (await this.syncCandidateQuery()) await this.load()
     },
     async changePage(page) {
       if (!this.batchIsOpen || this.applying) return
       this.page = page
-      await this.load()
+      if (await this.syncCandidateQuery()) await this.load()
     },
     async load() {
       if (!this.batchIsOpen) { this.pauseBatchWork(); return }

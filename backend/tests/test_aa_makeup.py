@@ -40,6 +40,7 @@ def _retake_identity(client, headers, apply_id):
     response = client.get(f"{BASE}/retake/applies", headers=headers, params={"applyId": apply_id})
     assert response.status_code == 200, response.text
     row = next(item for item in response.json()["data"]["items"] if item["applyId"] == str(apply_id))
+    assert row["appliedAt"].endswith("Z"), "数据库办理时间必须以带时区的接口时间返回"
     return {"expectedVersion": row["applicationVersion"],
             "expectedSourceEvidenceHash": row["sourceEvidenceHash"]}
 
@@ -101,7 +102,7 @@ def _seed(db_mode):
     return ids
 
 
-def test_m1_makeup_full_flow(client, db_mode):
+def test_m1_makeup_full_flow(client, db_mode, monkeypatch):
     ids = _seed(db_mode)
     admin = _hdr(client, "school_admin01")
     # 补考候选含挂科生，且带出可直接提交的 gradeId
@@ -109,8 +110,21 @@ def test_m1_makeup_full_flow(client, db_mode):
     assert pend["code"] == 0
     row = next(r for r in pend["data"]["items"] if r["courseName"] == "高等数学")
     assert row["gradeId"] == str(ids["failGrade"]) and row["identityReady"] is True
+    assert row["termCode"] == "2024-2025-1"
+    from types import SimpleNamespace
+    from app.modules.academic_affairs.services import academic_affairs_makeup_service as makeup
+    for allowed in (set(), {-1}):
+        with monkeypatch.context() as patch:
+            patch.setattr(makeup._core, "_ctx", lambda *_args: SimpleNamespace(allowed_class_ids=lambda _db: allowed))
+            restricted = client.get(f"{BASE}/makeup/pending", headers=admin).json()["data"]
+            assert restricted["items"] == [] and restricted["total"] == 0
     # 建批次→按 gradeId 纳入→发布
     bid = client.post(f"{BASE}/makeup/batches", headers=admin, json={"batchName": "2024秋补考"}).json()["data"]["batchId"]
+    exact = client.get(f"{BASE}/makeup/batches", headers=admin, params={"batchId": bid, "kind": "MAKEUP"}).json()["data"]
+    assert exact["total"] == 1 and exact["items"][0]["batchId"] == bid
+    for filters in ({"batchId": bid, "kind": "CLEARANCE"}, {"batchId": 999999999999}):
+        missing = client.get(f"{BASE}/makeup/batches", headers=admin, params=filters).json()["data"]
+        assert missing["items"] == [] and missing["total"] == 0
     mk = client.post(f"{BASE}/makeup/batches/{bid}/enroll", headers=admin,
                      json={"gradeId": row["gradeId"], "acadStudentId": str(ids["acad"])}).json()
     assert mk["code"] == 0 and mk["data"]["originGradeId"] == str(ids["failGrade"])
@@ -124,6 +138,8 @@ def test_m1_makeup_full_flow(client, db_mode):
     assert client.post(f"{BASE}/makeup/batches/{bid}/college-review", headers=admin).json()["data"]["status"] == "REVIEWED"
     fin = client.post(f"{BASE}/makeup/batches/{bid}/finish", headers=admin).json()
     assert fin["code"] == 0 and fin["data"]["status"] == "FINISHED"
+    records = client.get(f"{BASE}/makeup/batches/{bid}/records", headers=admin).json()["data"]["items"]
+    assert records[0]["studentId"] == str(ids["student"])
     # 校验回写了 MAKEUP 成绩行（封顶 60 及格），且原挂科行仍在（追加式，不覆盖历史）
     from app.db.session import get_sessionmaker
     from app.models import AcademicGrade
@@ -134,7 +150,14 @@ def test_m1_makeup_full_flow(client, db_mode):
     assert g.course_id == ids["courseMath"] and g.source_biz_id == int(mid)
     origin = db.get(AcademicGrade, ids["failGrade"])
     assert origin is not None and origin.score == 45 and origin.record_status == "ACTIVE"
+    origin.term = "2023-2024-2"
+    db.commit()
     db.close()
+    # 选择原成绩学期也必须看到后续学期补考的覆盖结果，不能重新暴露旧挂科。
+    for endpoint, term_key in (("makeup/pending", "term"), ("grade-views/fail-list", "term")):
+        after = client.get(f"{BASE}/{endpoint}", headers=admin, params={term_key: "2023-2024-2"})
+        assert after.status_code == 200, after.text
+        assert not any(item["gradeId"] == str(ids["failGrade"]) for item in after.json()["data"]["items"])
 
 
 def test_m1b_makeup_enroll_rejects_legacy_course_name_body(client, db_mode):
@@ -190,6 +213,38 @@ def test_m2_retake_apply_and_maxcount(client, db_mode):
     assert enrolled2.status_code == 200, enrolled2.text
     # 第3次：无在途，但已达上限2 → 400（本项目校验错误统一 400）
     assert client.post(f"{BASE}/retake/apply", headers=stu, json={"gradeId": gid}).status_code == 400
+    # 新修读发布后显示它自己的结果，原挂科版本保留；不能按课程名猜配。
+    from app.db.session import get_sessionmaker
+    from app.models import AaGradeTask, AcademicGrade
+    with get_sessionmaker()() as db:
+        original = db.get(AcademicGrade, ids["failGrade"])
+        task = AaGradeTask(tenant_id=TID, teaching_task_id=ids["taskMath"], status="PUBLISHED")
+        db.add(task); db.flush()
+        result = AcademicGrade(tenant_id=TID, acad_student_id=ids["acad"],
+            course_name=original.course_name, course_id=original.course_id,
+            course_code=original.course_code, course_version=original.course_version,
+            attempt_no=2, score=80, pass_status="PASSED", record_status="ACTIVE", source="PUBLISH",
+            grade_task_id=task.id, roster_version_id=int(enrolled["data"]["rosterVersionId"]),
+            effective_attempt_strategy="LATEST_ATTEMPT")
+        db.add(result); db.commit()
+        result_id, task_id, roster_id = result.id, task.id, result.roster_version_id
+    def read_result():
+        response = client.get(f"{BASE}/retake/applies", headers=admin, params={"applyId": aid})
+        assert response.status_code == 200, response.text
+        return response.json()["data"]["items"][0]
+    row = read_result()
+    assert row["retakeGrade"]["gradeId"] == str(result_id)
+    assert row["retakeGrade"]["score"] == 80 and row["originGrade"]["score"] == 45
+    assert row["sourceGradeBlockers"] == [] and row["allowedActions"] == []
+    for field, invalid, valid in [("roster_version_id", None, roster_id), ("tenant_id", TID + 1, TID)]:
+        with get_sessionmaker()() as db:
+            setattr(db.get(AcademicGrade, result_id), field, invalid); db.commit()
+        assert read_result()["retakeGrade"] is None
+        with get_sessionmaker()() as db:
+            setattr(db.get(AcademicGrade, result_id), field, valid); db.commit()
+    with get_sessionmaker()() as db:
+        db.get(AaGradeTask, task_id).status = "INPUTTING"; db.commit()
+    assert read_result()["retakeGrade"] is None
 
 
 def test_m2b_retake_rejects_legacy_body_and_foreign_grade(client, db_mode):

@@ -22,6 +22,14 @@ function page(name, dependencies = {}, globals = {}) {
   return context.component
 }
 
+test('排课任务教室要求使用资源字典中文名称，未知类型不外露内部码', () => {
+  const { methods } = page('AaSchedulingConsoleView')
+  assert.equal(methods.roomRequirementText('MULTIMEDIA'), '教室要求：多媒体教室')
+  assert.equal(methods.roomRequirementText('COMPUTER'), '教室要求：机房')
+  assert.equal(methods.roomRequirementText('FUTURE_ROOM'), '教室要求：类型待核对')
+  assert.equal(methods.roomRequirementText(null), '教室类型不限')
+})
+
 test('排课检查失败不把网络错误说明为已发现冲突', async () => {
   const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleMaintainView.vue', import.meta.url), 'utf8')
   const snippet = source.match(/<div class="aa-preflight__head">[\s\S]*?<\/div>/)[0]
@@ -273,6 +281,14 @@ test('教学任务核对保留权威学期及大编号，切换或清空上下�
   state.openTeachingTasks()
   assert.equal(destination.path, '/admin/academic-affairs/teaching-tasks')
   assert.deepEqual(Object.keys(destination.query), [])
+})
+
+test('单份形成方式核对只接受当前工作台来源，不依赖重复任务组',()=>{
+  const component=page('AaSchedulingConsoleView')
+  const state={...component.methods,formationProofSourceId:'old',sourceReview:{},workbench:{taskQueue:[{taskId:'14945',sourceProgramCourseId:'31195'}]}}
+  state.openFormationProof({taskId:'14945',sourceProgramCourseId:'31195'});assert.equal(state.formationProofSourceId,'31195');assert.equal(state.sourceReview,null)
+  state.openFormationProof({taskId:'14945',sourceProgramCourseId:'31196'});assert.equal(state.formationProofSourceId,'')
+  state.workbench=null;state.openFormationProof({taskId:'14945',sourceProgramCourseId:'31195'});assert.equal(state.formationProofSourceId,'')
 })
 
 test('来源差异入口只使用当前重复组，超过两条交由核对工作区明确选择', () => {
@@ -546,4 +562,51 @@ test('真实父子承接回读后刷新队列，同时保持成功说明和时�
   state.routeContextKey = () => 'school-b:53:48'
   assert.equal(state.visibleHandoffReceipt, null)
   await state.syncRoute(); assert.equal(state.sourceHandoffReceipt, null)
+})
+
+
+test('预发布课表沿已有写入规则允许补排，正式历史及结果待确认仍只读',()=>{
+  const c=page('AaScheduleMaintainView')
+  const state={scheduleBatch:null,taskLoadError:'',$route:{query:{classId:'4671'}},classId:'4671',focusItemId:'',focusedItem:null,pendingWrite:null,moving:false}
+  for(const status of ['DRAFT','PRE_PUBLISHED','PUBLISHED','ARCHIVED','SUPERSEDED','UNKNOWN']){
+    state.scheduleBatch={status};assert.equal(c.computed.canEditBatch.call(state),['DRAFT','PRE_PUBLISHED'].includes(status))
+  }
+  state.scheduleBatch={status:'PRE_PUBLISHED'};state.pendingWrite={};assert.equal(c.computed.canEditBatch.call(state),false)
+  state.pendingWrite=null;state.taskLoadError='来源读取失败';assert.equal(c.computed.canEditBatch.call(state),false)
+})
+
+
+test('排课返回标识失效时仍回到当前批次，无返回服务时保持同一对象',async()=>{
+  const {methods}=page('AaScheduleMaintainView'), destinations=[]
+  const state={batchId:'47',$route:{query:{returnToken:'expired'}},$router:{push:value=>{destinations.push(value);return Promise.resolve()}}}
+  state.academicFlow={back:async(token,fallback)=>{assert.equal(token,'expired');await state.$router.push(fallback)}}
+  await methods.returnToQueue.call(state)
+  assert.deepEqual(destinations,['/admin/academic-affairs/scheduling?batchId=47'])
+  state.academicFlow=null
+  await methods.returnToQueue.call(state)
+  assert.equal(destinations[1],destinations[0])
+  state.batchId='';await methods.returnToQueue.call(state)
+  assert.equal(destinations[2],'/admin/academic-affairs/scheduling')
+})
+
+
+test('被替代和归档课表显示只读状态，当前正式课表仍按原流程办理', () => {
+  const c=page('AaSchedulingConsoleView')
+  const state={workbenchBatchId:'41',workbench:{batchId:'41',batchStatus:'SUPERSEDED',workflow:{steps:[{state:'current',label:'正式发布'}]}},batchStatusLabel:c.methods.batchStatusLabel}
+  Object.defineProperty(state,'historicalWorkbench',{get:()=>c.computed.historicalWorkbench.call(state)})
+  assert.equal(c.computed.currentStageLabel.call(state),'已被新版本替代')
+  state.workbench.batchStatus='ARCHIVED';assert.equal(c.computed.currentStageLabel.call(state),'已归档')
+  state.workbench.batchStatus='PUBLISHED';assert.equal(state.historicalWorkbench,false);assert.equal(c.computed.currentStageLabel.call(state),'正式发布')
+  state.workbench.batchStatus='SUPERSEDED';state.workbenchBatchId='44';assert.equal(state.historicalWorkbench,false)
+})
+
+
+test('工作台历史课表入口复用带返回标识的正式视图入口', () => {
+  const c=page('AaSchedulingConsoleView'), routes=[]
+  const state={workbenchBatchId:'41',academicFlow:{captureReturn:()=> 'historical-workbench'},$router:{push:route=>routes.push(route)}}
+  state.returnQuery=c.methods.returnQuery.bind(state)
+  state.openPublishedSchedule=c.methods.openPublishedSchedule.bind(state)
+  c.methods.runWorkbenchAction.call(state,'VIEW_HISTORY')
+  assert.equal(routes[0].path,'/admin/academic-affairs/schedule/41/views')
+  assert.equal(routes[0].query.returnToken,'historical-workbench')
 })

@@ -3,6 +3,24 @@ import assert from 'node:assert/strict'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import { textbookReturnPath, textbookQueuePage, textbookQueueReturnPath } from '../src/modules/academicAffairs/components/textbooks/textbookNavigation.js'
 
+test('教材目录查询和翻页保留在地址中，刷新可以恢复相同结果范围', async () => {
+  const routes = []
+  const { state, definition } = page('AaTextbookConsoleView', { textbookQueuePage }, { $route: { query: { tab: 'catalog', catalogKeyword: '信息技术', page: '2' } }, $router: { replace: async value => routes.push(value) } })
+  state.restoreCatalogQuery()
+  assert.equal(state.keyword, '信息技术'); assert.equal(state.appliedKeyword, '信息技术'); assert.equal(state.page, 2)
+  assert.equal(state.statusLabel('UNKNOWN_INTERNAL_STATE'), '状态待确认')
+  state.reload = async () => {}
+  state.initialized = true; state.openSelectionFromRoute = () => {}
+  definition.watch.identityKey.call(state)
+  assert.equal(state.appliedKeyword, '信息技术'); assert.equal(state.page, 2)
+  state.keyword = '大学英语'; await state.search()
+  assert.equal(routes[0].query.catalogKeyword, '大学英语'); assert.equal(routes[0].query.page, '1')
+  await state.turnPage(2)
+  assert.equal(routes[1].query.page, '2')
+  await state.clearSearch()
+  assert.equal(routes[2].query.catalogKeyword, undefined)
+})
+
 test('fee receivables exclude waived history while keeping actual collected amounts', () => {
   const { state } = page('AaTextbookConsoleView')
   state.tab = 'fee'; state.rows = [
@@ -326,4 +344,28 @@ test('review buttons and creation use only server actions, and creation selects 
   await state.submitReview()
   assert.deepEqual(Array.from(submitted.selectionIds), ['12'])
   assert.equal(submitted.termId, '52')
+})
+
+
+
+
+
+
+
+
+test('已提交教材选用显示审核岗接手，并保留教师填写的课程名称',()=>{
+  const {state}=page('AaTextbookConsoleView');state.tab='selection';state.rows=[{selectionId:'1',courseName:'PUBLIC_BASIC',status:'SUBMITTED',officerName:'同名教师',officerLoginName:'teacher-a'}]
+  assert.equal(state.normalizedRows[0].primary,'PUBLIC_BASIC')
+  assert.equal(state.normalizedRows[0].currentOwner,'教材选用审核岗')
+  assert.equal(state.normalizedRows[0].nextOwner,'审核通过后交征订岗位')
+  assert.equal(state.normalizedRows[0].officerLoginName,'teacher-a')
+  assert.equal(state.statusLabel('UNKNOWN_INTERNAL'),'状态待确认')
+})
+
+
+test('教材目录筛选总量与本页数量有独立明确口径',()=>{
+  const {state}=page('AaTextbookConsoleView');state.tab='catalog';state.total=196;state.rows=[{status:'ENABLED',unitPrice:40,isbn:'book',publisher:'press'}]
+  assert.equal(state.metricCards[0].label,'目录总数');assert.equal(state.metricCards[0].value,196)
+  assert.equal(state.metricCards[1].label,'本页在用');assert.equal(state.metricCards[1].value,1)
+  state.appliedKeyword='信息技术';state.total=2;assert.equal(state.metricCards[0].label,'筛选结果总数');assert.equal(state.metricCards[0].value,2)
 })

@@ -79,6 +79,15 @@ function page(api) {
   state.readGate = flow.createAcademicRequestGate(() => state.contextKey())
   return { state, notices }
 }
+test('学院审核尚未完成时显示正确责任，且不能提前发布', () => {
+  const { state: s } = page({})
+  assert.equal(s.statusLabel('SUBMITTED'), '待学院审核')
+  assert.match(s.nextResponsibility('SUBMITTED'), /学院成绩审核岗/)
+  assert.equal(s.canGradeAction({ ...task(), status: 'SUBMITTED' }, 'publish'), false)
+  assert.equal(s.nextResponsibility('ACADEMIC_REVIEW'), '教务成绩发布岗')
+  assert.match(s.nextResponsibility('INPUTTING'), /任课教师/)
+})
+
 for (const warningScanOk of [true, false, undefined]) {
   test(`actual page applies ${String(warningScanOk)} scan receipt and never offers publish replay`, async () => {
     let writes = 0

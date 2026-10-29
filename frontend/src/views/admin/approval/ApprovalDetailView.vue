@@ -114,7 +114,11 @@
         <section class="mp-card">
           <div class="mp-card__head"><span class="mp-card__title">办理操作</span></div>
           <div class="mp-card__body">
-            <template v-if="canHandle">
+            <template v-if="sourceBusinessRoute">
+              <p class="mp-note">调停课需在原业务页面核对正式课位、冲突和通知回执。</p>
+              <AppButton variant="primary" @click="openSourceBusiness">进入调停课审批</AppButton>
+            </template>
+            <template v-else-if="canHandle">
               <label class="mp-note dv-label">审批意见（选填）</label>
               <textarea v-model="comment" class="mp-textarea" placeholder="填写审核结论或需补充的内容"></textarea>
               <p v-if="formError" class="mp-form-err">{{ formError }}</p>
@@ -231,6 +235,11 @@ export default {
       return `退回后「${this.task.title}」仍保持流程运行，并给申请人生成修改重提待办。`
     },
     canHandle() { return !!(this.task && !this.businessContext?.domainWorkspace && this.task.status === 'PENDING_REVIEW' && this.task.allowedActions?.length) },
+    sourceBusinessRoute() {
+      const id = String(this.task?.sourceBizId || '')
+      return this.task?.bizType === 'AA_SCHEDULE_CHANGE' && /^[1-9]\d*$/.test(id)
+        ? { path: '/admin/academic-affairs/schedule-change/approval', query: { changeId: id } } : null
+    },
     activeAttachment() {
       return this.detail.attachments.find((item) => String(item.fileId) === String(this.activeAttachmentId)) || null
     },
@@ -257,6 +266,7 @@ export default {
   },
   created() { this.load() },
   methods: {
+    openSourceBusiness() { if (this.sourceBusinessRoute) this.$router.push(this.sourceBusinessRoute) },
     auditActionLabel(row) { return presentAuditRecord(row).displayAction },
     canAction(key, action) {
       const pa = this.ctx.permissionActions[key]

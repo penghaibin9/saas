@@ -98,6 +98,7 @@ def summary(user, batch_id):
             duplicate = source["taskId"] in duplicate_ids
             task_queue.append({
                 "taskId": source["taskId"],
+                "sourceProgramCourseId": str(task.source_program_course_id) if task and task.source_program_course_id else None,
                 "courseCode": getattr(task, "course_code", None),
                 "courseName": source.get("courseName") or getattr(task, "course_name", None),
                 "teacherName": getattr(task, "teacher_name", None),
@@ -117,7 +118,7 @@ def summary(user, batch_id):
                     "weeklyOverloadCount", "scheduledItemCount", "contactHourBasis")},
                 "issueType": "SOURCE_CONFLICT" if duplicate else ("NOT_READY" if invalid else ("UNSCHEDULED" if actual == 0 else "PARTIAL")),
                 "issueLabel": "同课程同班任务重复，先核对开课来源" if duplicate else ("教学任务数据异常" if invalid else ("未排" if actual == 0 else "部分漏排")),
-                "canSchedule": not invalid and not duplicate and batch.status == "DRAFT",
+                "canSchedule": not invalid and not duplicate and batch.status in {"DRAFT", "PRE_PUBLISHED"},
             })
 
         pending_availability_count = db.query(AaTeacherAvailability).filter(

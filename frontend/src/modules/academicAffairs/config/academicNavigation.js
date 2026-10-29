@@ -115,6 +115,9 @@ export function statsTopic(tab) {
 
 // 四级对象继续使用原三级入口的权限、页签和收藏身份，不新增菜单入口。
 export function academicObjectParentPath(pathname, searchParams) {
+  if (pathname === '/admin/academic-affairs/scheduling' && (!searchParams?.get('tab') || searchParams.get('tab') === 'workbench')) {
+    return '/admin/academic-affairs/schedule'
+  }
   if ((pathname === '/admin/academic-affairs/textbooks' && searchParams?.get('tab') === 'distribution')
     || /^\/admin\/academic-affairs\/textbooks\/distributions\/(?:new|[1-9]\d*)\/?$/.test(pathname)) {
     return '/admin/academic-affairs/textbooks?tab=order'
