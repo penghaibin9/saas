@@ -9,7 +9,7 @@ const permissionSource = readFileSync(new URL('../src/config/navPlan.js', import
 const matchPermission = new Function(`${permissionSource.match(/export function matchPermission\(patterns, code\) \{[\s\S]*?\n\}/)[0].replace('export ', '')}; return matchPermission`)()
 
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
-const batch = id => ({ batchId: id, batchName: `批次${id}`, status: 'DRAFT' })
+const batch = id => ({ batchId: id, termId: id, batchName: `批次${id}`, status: 'DRAFT' })
 const ok = data => ({ code: 0, data })
 
 test('课程供给状态不冒充批次开放，未知状态不误报取消', () => {
@@ -17,6 +17,17 @@ test('课程供给状态不冒充批次开放，未知状态不误报取消', ()
   assert.equal(state.courseSupplyLabel('OPEN'),'供给有效')
   assert.equal(state.courseSupplyLabel('CANCELLED'),'已取消')
   assert.equal(state.courseSupplyLabel('UNKNOWN_STATUS'),'供给状态待核对')
+})
+
+test('切换选课批次记录页码，错误深链不回退到另一个可办理批次', async () => {
+  const routes=[],{state}=mount(undefined,{listBatches:async()=>ok({list:[batch('12')],total:1}),getBatch:async()=>({code:403,message:'无权读取指定批次'})})
+  state.rows=[batch('12')];state.pagination.page=2;state.$route={query:{termId:'52'}}
+  state.$router={replace:async route=>routes.push(route)}
+  await state.pickBatch('12')
+  assert.equal(routes[0].query.batchId,'12');assert.equal(routes[0].query.page,'2');assert.equal(routes[0].query.termId,'52')
+  state.$route.query={batchId:'13'};state.current=null;await state.load()
+  assert.equal(state.current,null);assert.match(state.error,/无权读取指定批次/)
+  state.$route.query={page:'3'};assert.equal(state.routeBatchPage(),3)
 })
 
 test('switching batches clears previous courses before the new formal header returns', async () => {
@@ -43,6 +54,8 @@ test('batch creation requires explicit scope and opens its formal result instead
   assert.equal(writes[0].applyScope.classIds[0], '9007199254740993')
   assert.equal(state.current.batchId, 'new')
   assert.equal(state.saving, false)
+  assert.equal(state.$route.query.batchId, 'new')
+  assert.equal(state.$route.query.page, '1')
 })
 
 test('explicit school scope does not retain previously selected classes', async () => {
@@ -53,6 +66,20 @@ test('explicit school scope does not retain previously selected classes', async 
   assert.equal(writes[0].applyScope, undefined)
 })
 
+test('选课可选时间窗按本地时间转协调世界时，错误顺序保留表单且不提交',async()=>{
+  const writes=[]
+  const {state}=mount(undefined,{createBatch:async body=>{writes.push(body);return ok(batch('new'))}})
+  Object.assign(state.form,{batchName:'时间窗验收',termId:'52',classIds:['4666'],selectStartAt:'2026-10-29T14:00',selectEndAt:'2026-10-29T15:00'})
+  await state.submitCreate()
+  assert.equal(writes[0].selectStartAt,new Date('2026-10-29T14:00').toISOString())
+  assert.equal(writes[0].selectEndAt,new Date('2026-10-29T15:00').toISOString())
+  for(const end of ['2026-10-29T13:00','2026-10-29T14:00','invalid']){
+    state.form.selectEndAt=end;await state.submitCreate();assert.equal(writes.length,1);assert.equal(state.form.selectEndAt,end);assert.ok(state.formError)
+  }
+  state.form.selectStartAt='';state.form.selectEndAt='';await state.submitCreate()
+  assert.equal(writes[1].selectStartAt,undefined);assert.equal(writes[1].selectEndAt,undefined)
+})
+
 test('uncertain create result preserves the form and releases submitting', async () => {
   const { state } = mount(undefined, { createBatch: async () => { throw Error('连接中断，请核对批次') } })
   Object.assign(state.form, { batchName: '保留输入', termId: '52', classIds: ['1'] })
@@ -61,25 +88,190 @@ test('uncertain create result preserves the form and releases submitting', async
   assert.equal(state.saving, false)
   assert.match(state.formError, /核对批次/)
 })
-function mount(file = 'AaSelectionConsoleView', overrides = {}) {
+function mount(file = 'AaSelectionConsoleView', overrides = {}, storage = new Map()) {
   const source = readFileSync(new URL(`../src/modules/academicAffairs/${file === 'AaSelectionSpecialWorkspace' ? 'components/parallel-a' : 'views'}/${file}.vue`, import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import (.*?) from .*$/gm,
     (_, binding) => `const ${binding.replace(/ as /g, ': ')} = dependencies`).replace('export default', 'component =')
   const api = { listBatches: async () => ok({ list: [], total: 0 }), listCourses: async id => ok({ list: [{ id }] }),
     batchStats: async id => ok({ batchId: id }), listRounds: async id => ok({ items: [{ id }] }),
     getBatch: async id => ok(batch(id)), batchPreflight: async () => ok({ allowed: true }), ...overrides }
-  const context = { dependencies: { ...flow, academicAffairsApi: api, academicAffairsSelectionApi: api,
+  const context = { sessionStorage: { getItem: key => storage.get(key) || null, setItem: (key,value) => storage.set(key,value), removeItem: key => storage.delete(key) }, dependencies: { ...flow, academicAffairsApi: api, academicAffairsSelectionApi: api,
     isDeniedResult, matchPermission, currentUserFromToken: () => ({}), toast: { success() {}, error() {} } } }
   vm.runInNewContext(script, context)
   const component = context.component
   const state = Object.assign(component.data(), component.methods, { ctx: { permissionPatterns: ['academicAffairs.selection.*'] }, $route: { fullPath: '/selection', query: {} },
     activeTab: 'batch', academicFlow: { identity: () => 'tenant:user:role', restorePosition() {} } })
+  state.$router = { replace: async ({ query }) => { state.$route.query = query } }
   for (const [key, getter] of Object.entries(component.computed || {})) {
     if (key.startsWith('can') || ['ruleWritable', 'ruleChanged'].includes(key)) Object.defineProperty(state, key, { get: () => getter.call(state), configurable: true })
   }
   for (const key of ['listGate', 'detailGate', 'rosterGate']) state[key] = flow.createAcademicRequestGate(() => key === 'listGate' ? state.pageContext() : state.commandContext())
   return { state, component, api }
 }
+
+test('草稿编辑保留其他范围条件，携带版本，冲突保留输入',async()=>{
+  let sent
+  const {state}=mount(undefined,{updateDraft:async(id,body)=>{sent={id,body};return {code:409001,message:'版本已变化'}}})
+  state.current={...batch('13'),version:2,applyScope:{collegeIds:['52'],gradeYears:['2026']}}
+  state.openEditDraft();state.form.batchName='新名称'
+  await state.submitDraft()
+  assert.equal(sent.body.expectedVersion,2)
+  assert.equal(sent.body.applyScope.collegeIds[0],'52')
+  assert.equal(state.form.batchName,'新名称');assert.equal(state.createVisible,true);assert.equal(state.saving,false)
+})
+
+test('人工退课先核对、校验原因、提交后读取正式退课状态',async()=>{
+  let writes=0,done=false
+  const {state}=mount(undefined,{adjustmentDetail:async()=>ok({recordId:'7',status:done?'DROPPED':'LOCKED',canAdjust:!done}),adjustRecord:async()=>{writes++;done=true;return ok({recordId:'7',status:'DROPPED'})}})
+  state.current={...batch('13'),status:'LOCKED'}
+  await state.openAdjustment({recordId:'7',status:'LOCKED'})
+  state.adjustReason='短';await state.submitAdjustment();assert.equal(writes,0)
+  state.adjustReason='经核对办理人工退课';await state.submitAdjustment()
+  assert.equal(writes,1);assert.equal(state.adjustRow.status,'DROPPED');assert.equal(state.adjustPending,false)
+  await state.submitAdjustment();assert.equal(writes,1)
+})
+
+test('人工退课结果未知只可查询，不重复提交',async()=>{
+  let writes=0
+  const {state}=mount(undefined,{adjustmentDetail:async()=>ok({recordId:'7',status:'LOCKED',canAdjust:true}),adjustRecord:async()=>{writes++;throw Error('连接中断')}})
+  state.current={...batch('13'),status:'LOCKED'};await state.openAdjustment({recordId:'7',status:'LOCKED'})
+  state.adjustReason='经核对办理人工退课';await state.submitAdjustment();await state.submitAdjustment()
+  assert.equal(writes,1);assert.equal(state.adjustPending,true);assert.equal(state.saving,false)
+})
+
+test('人工退课结果未知跨页保留，同一记录恢复后只读核对',async()=>{
+  const storage=new Map();let writes=0
+  const overrides={adjustmentDetail:async()=>ok({recordId:'7',status:'LOCKED',canAdjust:true}),adjustRecord:async()=>{writes++;throw Error('连接中断')}}
+  const first=mount(undefined,overrides,storage).state
+  first.current={...batch('13'),status:'LOCKED'};await first.openAdjustment({recordId:'7',status:'LOCKED'})
+  first.adjustReason='具体人工退课原因';await first.submitAdjustment()
+  const second=mount(undefined,overrides,storage).state
+  second.current=first.current;await second.openAdjustment({recordId:'7',status:'LOCKED'});await second.submitAdjustment()
+  assert.equal(writes,1);assert.equal(second.adjustPending,true);assert.equal(second.adjustAllowed,false)
+})
+
+test('补选三个列表分别发送当前页码，拒绝错误分页回执',async()=>{
+  let params
+  const {state}=mount('AaSelectionSpecialWorkspace',{reselectGuide:async(id,p)=>{params=p;return ok({batchId:id,cancelledPagination:{page:1,pageSize:20,total:0},availablePagination:{page:1,pageSize:20,total:0},affectedRecords:{items:[],total:0,page:p.page}})}})
+  state.batch=batch('13');state.batch.status='CLOSED';state.mode='reselect';state.cancelledPage=3;state.availablePage=2
+  await state.load()
+  assert.equal(params.cancelledPage,3);assert.equal(params.availablePage,2);assert.equal(state.reselectGuide,null);assert.match(state.error,/分页/)
+})
+
+test('规则待确认状态跨页面恢复，恢复后只读不重发',async()=>{
+  const storage=new Map();let writes=0
+  const first=mount('AaSelectionSpecialWorkspace',{},storage).state
+  first.batch={...batch('13'),rule:{maxCredits:12}};first.mode='rule';first.$emit=()=>{}
+  first.storePendingRule({batchId:'13',beforeMaxCredits:12,requestedMaxCredits:20})
+  const second=mount('AaSelectionSpecialWorkspace',{getBatch:async()=>ok({...batch('13'),rule:{maxCredits:12}}),saveRule:async()=>{writes++}},storage).state
+  second.batch=first.batch;second.mode='rule';second.$emit=()=>{}
+  second.resetAndLoad();await second.saveRule()
+  assert.equal(writes,0);assert.equal(second.pendingRule.requestedMaxCredits,20)
+})
+
+test('容量调整复用正式接口，低于已选人数不提交，失败保留输入', async () => {
+  const writes = []
+  const { state, api } = mount(undefined, { updateCourse: async (...args) => { writes.push(args); return {code:409001,message:'容量已变化'} } })
+  state.current = batch('13')
+  state.openEditCourse({selectionCourseId:'22',status:'OPEN',capacity:30,minCapacity:5,selectedCount:20})
+  state.courseForm.capacity = 19
+  await state.submitCourse()
+  assert.equal(writes.length,0)
+  state.courseForm.capacity = 25
+  await state.submitCourse()
+  assert.equal(writes[0][0],'22')
+  assert.equal(writes[0][1].capacity,25)
+  assert.equal(state.courseVisible,true)
+  assert.equal(state.saving,false)
+  assert.equal(state.courseForm.capacity,25)
+  api.updateCourse = async () => { throw Error('连接中断') }
+  await state.submitCourse()
+  assert.equal(state.saving,false)
+  assert.match(state.courseError,/待核对/)
+})
+
+test('规则保存发现其他人已修改时保留输入并拒绝覆盖', async () => {
+  let writes = 0
+  const {state} = mount('AaSelectionSpecialWorkspace', {getBatch:async()=>ok({...batch('13'),rule:{maxCredits:18}}),saveRule:async()=>{writes++}})
+  state.batch={...batch('13'),rule:{maxCredits:12}};state.mode='rule';state.$emit=()=>{}
+  state.ruleDraft.maxCredits=20
+  await state.saveRule()
+  assert.equal(writes,0)
+  assert.equal(state.ruleDraft.maxCredits,20)
+  assert.match(state.error,/其他人员修改/)
+})
+
+test('批次链接不受列表分页限制，结果页读取同一批次课程', async () => {
+  const reads = []
+  const { state } = mount(undefined, {
+    listBatches: async () => ok({ list: [batch('12')], total: 80 }),
+    getBatch: async id => { reads.push(id); return ok(batch(id)) }
+  })
+  state.$route.query = { batchId: '9007199254740993', tab: 'result' }
+  state.activeTab = 'result'
+  await state.load()
+  assert.equal(state.current.batchId, '9007199254740993')
+  assert.equal(state.courses[0].id, '9007199254740993')
+  assert.deepEqual(reads, ['9007199254740993'])
+})
+
+test('批次链接必须属于当前学期，读取异常释放加载态', async () => {
+  const { state, api } = mount(undefined, { listBatches: async () => ok({ list: [], total: 0 }) })
+  state.$route.query = { batchId: '13', termId: '52' }
+  await state.load()
+  assert.equal(state.current, null)
+  assert.match(state.error, /不属于当前学期/)
+  assert.equal(state.loading, false)
+  state.$route.query = {}
+  api.listBatches = async () => { throw Error('连接失败') }
+  await state.load()
+  assert.equal(state.loading, false)
+  assert.match(state.error, /连接失败/)
+})
+
+test('切换规则和结果页保留默认选中的批次，保存中不切换', async () => {
+  const { state } = mount()
+  const routes = []
+  state.current = batch('13')
+  state.$router.replace = async route => routes.push(route)
+  await state.switchWorkspace('result')
+  assert.equal(routes[0].query.batchId, '13')
+  assert.equal(routes[0].query.tab, 'result')
+  state.saving = true
+  await state.switchWorkspace('rule')
+  assert.equal(routes.length, 1)
+})
+
+test('归档精确链接跨列表页读取对象，拒绝错批次响应且支持重试', async () => {
+  const { state, api } = mount('AaSelectionArchiveView', {
+    listArchivedBatches: async () => ok({ list: [{ batchId: '12', termId: '52' }], total: 50 }),
+    archiveDetail: async id => ok({ batchId: id, termId: '52' })
+  })
+  state.$route = { fullPath: '/archive?termId=52&batchId=13', query: { termId: '52', batchId: '13' } }
+  await state.syncRoute()
+  assert.equal(state.current.batchId, '13')
+  api.archiveDetail = async () => ok({ batchId: '99', termId: '52' })
+  await state.select({ batchId: '13', termId: '52' })
+  assert.equal(state.current, null)
+  assert.match(state.detailError, /不一致/)
+  api.archiveDetail = async () => { throw Error('网络中断') }
+  await state.reloadCurrent()
+  assert.equal(state.detailLoading, false)
+  assert.match(state.detailError, /读取失败/)
+})
+
+test('规则读取中或学分非法时不发写请求', async () => {
+  let writes = 0
+  const { state } = mount('AaSelectionSpecialWorkspace', { saveRule: async () => { writes++; return ok({}) } })
+  state.batch = { ...batch('13'), rule: { maxCredits: 1 } }; state.mode = 'rule'
+  state.ruleDraft.maxCredits = 2; state.loading = true
+  await state.saveRule()
+  assert.equal(writes, 0)
+  state.loading = false; state.ruleDraft.maxCredits = -1
+  await state.saveRule()
+  assert.equal(writes, 0)
+  assert.match(state.error, /有效数字/)
+})
 
 test('time tick prevents duplicate commands and reports deferred and blocked batches', async () => {
   const response = deferred(); let writes = 0
@@ -232,12 +424,12 @@ test('role identity changes invalidate responses even before context watcher run
 
 test('direct batchId deep link selects the requested batch instead of the default batch', async () => {
   const { state } = mount(undefined, {
-    listBatches: async () => ok({ list: [batch('A'), batch('B')], total: 2 })
+    listBatches: async () => ok({ list: [batch('11'), batch('12')], total: 2 })
   })
-  state.$route = { fullPath: '/selection?tab=rule&batchId=B', query: { tab: 'rule', batchId: 'B' } }
+  state.$route = { fullPath: '/selection?tab=rule&batchId=12', query: { tab: 'rule', batchId: '12' } }
   state.activeTab = 'rule'
   await state.load()
-  assert.equal(state.current.batchId, 'B')
+  assert.equal(state.current.batchId, '12')
 })
 
 test('selection term deep link filters batches, preselects creation term and keeps global time tick out', async () => {
@@ -455,31 +647,4 @@ test('selection rule reader and permission revoked during formal read cannot sav
   const pending = state.saveRule(); state.ctx.permissionPatterns = ['academicAffairs.selection.view']
   response.resolve(ok(state.batch)); await pending
   assert.equal(writes, 0); assert.equal(state.saving, false)
-})
-
-
-test('切换选课批次记录页码，错误深链不回退到另一个可办理批次', async () => {
-  const routes=[],{state}=mount(undefined,{listBatches:async()=>ok({list:[batch('12')],total:1})})
-  state.rows=[batch('12')];state.pagination.page=2;state.$route={query:{termId:'52'}}
-  state.$router={replace:async route=>routes.push(route)}
-  await state.pickBatch('12')
-  assert.equal(routes[0].query.batchId,'12');assert.equal(routes[0].query.page,'2');assert.equal(routes[0].query.termId,'52')
-  state.$route.query={batchId:'13'};state.current=null;await state.load()
-  assert.equal(state.current,null);assert.match(state.error,/未找到指定选课批次/)
-  state.$route.query={page:'3'};assert.equal(state.routeBatchPage(),3)
-})
-
-
-test('选课可选时间窗按本地时间转协调世界时，错误顺序保留表单且不提交',async()=>{
-  const writes=[]
-  const {state}=mount(undefined,{createBatch:async body=>{writes.push(body);return ok(batch('new'))}})
-  Object.assign(state.form,{batchName:'时间窗验收',termId:'52',classIds:['4666'],selectStartAt:'2026-10-29T14:00',selectEndAt:'2026-10-29T15:00'})
-  await state.submitCreate()
-  assert.equal(writes[0].selectStartAt,new Date('2026-10-29T14:00').toISOString())
-  assert.equal(writes[0].selectEndAt,new Date('2026-10-29T15:00').toISOString())
-  for(const end of ['2026-10-29T13:00','2026-10-29T14:00','invalid']){
-    state.form.selectEndAt=end;await state.submitCreate();assert.equal(writes.length,1);assert.equal(state.form.selectEndAt,end);assert.ok(state.formError)
-  }
-  state.form.selectStartAt='';state.form.selectEndAt='';await state.submitCreate()
-  assert.equal(writes[1].selectStartAt,undefined);assert.equal(writes[1].selectEndAt,undefined)
 })

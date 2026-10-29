@@ -229,6 +229,15 @@ def _status_label(status: str) -> str:
     }.get(str(status or "").upper(), str(status or "待确认"))
 
 
+def _pending_reselection_records(records):
+    """Already tenant/student/batch-scoped records, oldest cancelled course first."""
+    return sorted(
+        (row for row in records if row.status == _base._REC_COURSE_CANCELLED
+         and getattr(row, "replacement_record_id", None) is None),
+        key=lambda row: int(row.id),
+    )
+
+
 def _require_open_selection_window(batch, evaluated_at: datetime) -> None:
     """Make the time window a command gate, not merely a scheduler hint."""
     if str(getattr(batch, "status", "") or "").upper() != _base._BATCH_OPEN:
@@ -290,9 +299,9 @@ def _evaluate_student_course(
     record_status = _normalized_record_status(record)
     allow_reselect_closed = (
         str(batch.status or "").upper() == _base._BATCH_CLOSED
-        and any(row.status == _base._REC_COURSE_CANCELLED for row in my_records)
+        and bool(_pending_reselection_records(my_records))
     )
-    lottery_mode = bool(active_round and str(active_round.mode or "").upper() == "LOTTERY")
+    lottery_mode = bool(batch.status == _base._BATCH_OPEN and active_round and str(active_round.mode or "").upper() == "LOTTERY")
     phase = (
         "LOTTERY" if str(batch.status or "").upper() == _base._BATCH_OPEN and lottery_mode
         else "SELECTION" if str(batch.status or "").upper() == _base._BATCH_OPEN
@@ -326,7 +335,7 @@ def _evaluate_student_course(
                 and active_round is None
             ):
                 raise _base._core._invalid("当前没有开放选课轮次")
-            if active_round and not active_round.allow_enroll:
+            if batch.status == _base._BATCH_OPEN and active_round and not active_round.allow_enroll:
                 raise _base._core._invalid("当前轮次不允许选课")
             _base._validate_enroll(
                 db,
@@ -480,9 +489,7 @@ def student_courses(user, batch_id=None):
         for batch in batches:
             bid = int(batch.id)
             batch_records = records_by_batch.get(bid, [])
-            has_reselect = any(
-                row.status == _base._REC_COURSE_CANCELLED for row in batch_records
-            )
+            has_reselect = bool(_pending_reselection_records(batch_records))
             if not batch_id and batch.status == _base._BATCH_CLOSED and not has_reselect:
                 continue
             active_round = _base._active_round(db, bid)
@@ -1036,7 +1043,7 @@ def _student_enroll_guarded(user, body):
             AaSelectionRecord.student_id == student.id,
             AaSelectionRecord.batch_id == batch.id,
             AaSelectionRecord.is_deleted.is_(False),
-        ).all()
+        ).with_for_update().all()
         active_round = _base._active_round(db, batch.id)
         round_configured = bool(_configured_round_batch_ids(db, [batch.id]))
         if (
@@ -1053,7 +1060,7 @@ def _student_enroll_guarded(user, body):
                 evaluated_at=selection_effective_at,
                 rule_code="SELECTION_LOCKED",
             )
-        if active_round and not active_round.allow_enroll:
+        if batch.status == _base._BATCH_OPEN and active_round and not active_round.allow_enroll:
             exc = _base._core._invalid("当前轮次不允许选课")
             raise selection_trace.attach_selection_trace(
                 exc,
@@ -1065,10 +1072,8 @@ def _student_enroll_guarded(user, body):
             )
         _require_open_selection_window(batch, selection_effective_at)
 
-        has_reselect_qualification = any(
-            record.status == _base._REC_COURSE_CANCELLED
-            for record in my_records
-        )
+        pending_reselections = _pending_reselection_records(my_records)
+        has_reselect_qualification = bool(pending_reselections)
         allow_reselect_closed = (
             batch.status == _base._BATCH_CLOSED
             and has_reselect_qualification
@@ -1172,6 +1177,10 @@ def _student_enroll_guarded(user, body):
             db.add(record)
 
         db.flush()
+        replacement_source = pending_reselections[0] if allow_reselect_closed else None
+        if replacement_source is not None:
+            replacement_source.replacement_record_id = record.id
+            db.flush()
         _base._core._audit(
             db,
             record.id,
@@ -1179,6 +1188,7 @@ def _student_enroll_guarded(user, body):
             (
                 f"studentNo={student.student_no} course={course.course_name} "
                 f"status={next_status};reselect={allow_reselect_closed};"
+                f"replacesRecordId={replacement_source.id if replacement_source is not None else ''};"
                 f"academicFactId={academic_fact.id};academicFactVersion={academic_fact.version_no};"
                 f"selectionEffectiveAt={selection_effective_at.isoformat()}"
             ),
@@ -1368,6 +1378,34 @@ def lock_batch(user, batch_id):
         return _base._core._batch_dto(batch)
 
 
+def adjustment_detail(user, record_id):
+    from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
+    from .academic_affairs_roster_consumer_service import consumer_counts
+    from .academic_affairs_task_execution_authority import require_independent_task
+    with _base.selection_readonly_term_guard(), _base._core.session() as db:
+        _base._core._require_manage_scope(_base._core._ctx(user, db))
+        record = db.query(AaSelectionRecord).filter(AaSelectionRecord.id == int(record_id), AaSelectionRecord.tenant_id == _base._core._tid(), AaSelectionRecord.is_deleted.is_(False)).first()
+        if not record:
+            raise not_found("选课记录不存在")
+        course = db.query(AaSelectionCourse).filter(AaSelectionCourse.id == record.selection_course_id, AaSelectionCourse.tenant_id == _base._core._tid(), AaSelectionCourse.is_deleted.is_(False)).first()
+        batch = db.query(AaSelectionBatch).filter(AaSelectionBatch.id == record.batch_id, AaSelectionBatch.tenant_id == _base._core._tid(), AaSelectionBatch.is_deleted.is_(False)).first()
+        reason = ""
+        try:
+            if not course or not batch or course.batch_id != batch.id:
+                raise _base._core._invalid("选课记录关联的课程或批次不完整")
+            if batch.status != _base._BATCH_LOCKED or record.status != _base._REC_LOCKED:
+                raise _base._core._invalid("只有已锁定批次中的锁定记录可人工退课")
+            _base._guard_batch_writable(db, batch)
+            if not course.teaching_task_id:
+                raise _base._core._invalid("课程未关联教学任务，不能调整正式名单")
+            require_independent_task(db, course.teaching_task_id)
+            if int(consumer_counts(db, teaching_task_id=int(course.teaching_task_id)).get("TOTAL") or 0) > 0:
+                raise _base._core._invalid("已产生考勤、考务或成绩名单，不可直接调整")
+        except AppException as exc:
+            reason = exc.message
+        return {**_base._core._record_dto(record), "canAdjust": not bool(reason), "blockedReason": reason}
+
+
 def adjust_record(user, record_id, reason):
     """LOCKED 后人工退课：只改 Selection Final 事实，并在同事务重建 TeachingRoster 版本。"""
     from app.models import AaSelectionBatch, AaSelectionCourse, AaSelectionRecord
@@ -1384,11 +1422,9 @@ def adjust_record(user, record_id, reason):
             AaSelectionRecord.id == int(record_id),
             AaSelectionRecord.tenant_id == _base._core._tid(),
             AaSelectionRecord.is_deleted.is_(False),
-        ).with_for_update().first()
+        ).first()
         if not record:
             raise not_found("选课记录不存在")
-        if record.status != _base._REC_LOCKED:
-            raise _base._core._invalid("仅 LOCKED 记录可人工调整")
 
         course = db.query(AaSelectionCourse).filter(
             AaSelectionCourse.id == int(record.selection_course_id),
@@ -1404,6 +1440,17 @@ def adjust_record(user, record_id, reason):
         ).with_for_update().first()
         if not batch:
             raise not_found("选课批次不存在")
+        # Same order as enrollment: course -> batch -> record. Refresh the
+        # snapshot after acquiring authority locks; a concurrent drop may win.
+        record = db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.id == int(record_id),
+            AaSelectionRecord.tenant_id == _base._core._tid(),
+            AaSelectionRecord.is_deleted.is_(False),
+        ).populate_existing().with_for_update().first()
+        if not record or record.selection_course_id != course.id or record.batch_id != batch.id:
+            raise _base._core._invalid("选课记录关联已变化，请重新核对")
+        if record.status != _base._REC_LOCKED:
+            raise _base._core._invalid("只有已锁定的选课记录可人工调整")
         _base._guard_batch_writable(db, batch)
         if batch.status != _base._BATCH_LOCKED:
             raise _base._core._invalid("仅已锁定选课批次可人工调整正式名单")

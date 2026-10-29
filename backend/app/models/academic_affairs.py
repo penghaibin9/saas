@@ -955,6 +955,7 @@ class AaSelectionRecord(PKMixin, TenantMixin, CommonMixin, Base):
     enrolled_at: Mapped[datetime | None] = mapped_column(DateTime, comment="选课时间")
     dropped_at: Mapped[datetime | None] = mapped_column(DateTime, comment="退课时间")
     adjust_reason: Mapped[str | None] = mapped_column(String(500), comment="LOCKED后教务处人工调整原因")
+    replacement_record_id: Mapped[int | None] = mapped_column(BigInteger, comment="取消课程对应的补选记录；成功后保留，不重复授予补选资格")
     re_enroll: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False, comment="是否复选")
     round_id: Mapped[int | None] = mapped_column(BigInteger, index=True,
                                                  comment="→ t_aa_selection_round 产生本记录的轮次；null=无轮次批次(先到先得)")
@@ -963,7 +964,8 @@ class AaSelectionRecord(PKMixin, TenantMixin, CommonMixin, Base):
                                                 "/PENDING_LOTTERY 抽签志愿待摇号/LOTTERY_LOST 未中签")
 
     __table_args__ = (UniqueConstraint("tenant_id", "batch_id", "selection_course_id", "student_id",
-                                       name="uk_aa_selection_record"),)
+                                       name="uk_aa_selection_record"),
+                      UniqueConstraint("tenant_id", "replacement_record_id", name="uk_aa_selection_replacement"))
 
 
 class AaLevelExam(PKMixin, TenantMixin, CommonMixin, Base):

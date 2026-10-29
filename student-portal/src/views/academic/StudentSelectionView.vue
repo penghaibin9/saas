@@ -64,7 +64,8 @@
           <div class="notice amber"><AcademicPrototypeIcon name="circle-info" /><span>“待抽签”只是报名成功，不计入已获得席位和正式课表。</span></div>
           <section v-if="!records.length && !recordsError" class="empty"><div class="iconbox"><AcademicPrototypeIcon name="book-open" /></div><h2>你还没有选课或报名记录</h2><p>待抽签、已选、未中签、已退课会分别保留。</p><button class="btn primary" @click="tab = 'courses'">查看可办理课程</button></section>
           <article v-for="record in records" :key="record.recordId || record.selectionCourseId + ':' + record.status" class="selection-record">
-            <div class="row between"><strong>{{ record.courseName || '课程名称待补充' }}</strong><span class="tag" :class="['SELECTED', 'LOCKED'].includes(record.status) ? 'green' : 'amber'">{{ recordStatusText(record.status) }}</span></div>
+            <div class="row between"><strong>{{ record.courseName || '课程名称待补充' }}</strong><span class="tag" :class="['SELECTED', 'LOCKED'].includes(record.status) ? 'green' : 'amber'">{{ record.replacementRecordId ? '原课程已补选' : recordStatusText(record.status) }}</span></div>
+            <p v-if="record.replacementRecordId">该取消课程已完成补选，替代课程见本人选课记录。</p>
             <dl class="definition"><dt>办理方式</dt><dd>{{ projectionForRecord(record) ? modeLabel(projectionForRecord(record)) : '以正式记录为准' }}</dd><dt>学分</dt><dd>{{ record.credit ?? '待确认' }}（不是已获学分）</dd><dt>上课安排</dt><dd>{{ scheduleText(projectionForRecord(record)) }}</dd></dl>
             <div class="row between"><small>记录 {{ record.recordId || '编号未提供' }} · {{ dateText(record.enrolledAt) }}</small><button v-if="hasAction(projectionForRecord(record), 'DROP')" class="btn small" :disabled="!dropPreflightAvailable || !!actingId || !!pendingOperation || !!coursesError || !!recordsError" :title="dropPreflightAvailable ? '' : '退课资格核验暂不可用，请向教务老师核对'" @click="drop(record)">{{ record.status === 'PENDING_LOTTERY' ? '撤回报名' : '核对退课' }}</button><button v-else-if="projectionForRecord(record)" class="btn small" @click="detailId = String(record.selectionCourseId)">查看课程</button></div>
           </article>
@@ -198,11 +199,11 @@ function remainText(course) {
   return Number.isFinite(capacity) ? `${value} / ${capacity}` : String(value)
 }
 function courseStatusText(course) {
-  return course?.statusLabel || course?.status || '待确认'
+  return course?.statusLabel || recordStatusText(course?.status)
 }
 function recordStatusText(status) {
   const map = { SELECTED: '已取得名额', DROPPED: '已退', CANCELLED: '已取消', COURSE_CANCELLED: '课程已取消', PENDING: '待抽签', PENDING_LOTTERY: '已报名等待抽签', LOST: '未中签', LOTTERY_LOST: '未中签', LOCKED: '名单已锁定', REJECTED: '未通过' }
-  return map[String(status || '').toUpperCase()] || status || '待确认'
+  return map[String(status || '').toUpperCase()] || '状态待确认'
 }
 const rowsOf = (data) => Array.isArray(data) ? data : (data?.items || data?.list || [])
 function isLottery(course) { return String(course?.mode || course?.lottery?.mode || '').toUpperCase() === 'LOTTERY' }

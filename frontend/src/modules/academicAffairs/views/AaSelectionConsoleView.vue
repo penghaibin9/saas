@@ -17,6 +17,7 @@
           <span>选课批次</span>
           <select class="aa-select" :value="current ? String(current.batchId) : ''" :disabled="saving" aria-label="切换选课批次" @change="pickBatch($event.target.value)">
             <option value="" disabled>请选择批次</option>
+            <option v-if="current && !rows.some(b => String(b.batchId) === String(current.batchId))" :value="String(current.batchId)">{{ current.batchName }}（当前链接批次）</option>
             <option v-for="b in rows" :key="b.batchId" :value="String(b.batchId)">{{ b.batchName }}（{{ batchStatusLabel(b) }}）</option>
           </select>
         </label>
@@ -55,6 +56,7 @@
             </aside>
 
             <div v-if="activeTab === 'batch' && (canManageSelection || canLockSelection)" class="aa-selection-actions" :inert="detailLoading || !!detailError || saving">
+              <AppButton v-if="canManageSelection && current.status === 'DRAFT'" size="small" variant="ghost" @click="openEditDraft">编辑草稿</AppButton>
               <AppButton v-if="canManageSelection && current.status === 'DRAFT'" variant="primary" size="small" @click="lifecycle('publishBatch', '发布')">发布</AppButton>
               <AppButton v-if="canManageSelection && current.status === 'PUBLISHED'" variant="primary" size="small" @click="lifecycle('openBatch', '开选')">开选</AppButton>
               <AppButton v-if="canManageSelection && current.status === 'OPEN'" variant="warning" size="small" @click="lifecycle('closeBatch', '截止')">截止</AppButton>
@@ -75,8 +77,14 @@
           <AppInlineAlert v-if="current.windowNotice" type="warning" :description="current.windowNotice" />
           <AppInlineAlert v-if="tickReceipt" :type="tickReceipt.partial ? 'warning' : 'success'" :description="tickReceipt.message" />
 
+          <nav class="aa-selection-workspaces" aria-label="当前批次办理导航">
+            <AppButton v-for="tab in visibleWorkspaceTabs" :key="tab.key" size="small" :variant="activeTab === tab.key ? 'primary' : 'ghost'" :aria-current="activeTab === tab.key ? 'page' : undefined" :disabled="saving || detailLoading" @click="switchWorkspace(tab.key)">{{ tab.label }}</AppButton>
+            <AppButton v-if="canManageSelection && current.status === 'ARCHIVED'" size="small" variant="ghost" @click="openArchive">查看归档</AppButton>
+          </nav>
+          <LoadingState v-if="detailLoading" />
+          <ErrorState v-else-if="detailError" :description="detailError" @retry="select(current)" />
           <AaSelectionSpecialWorkspace
-            v-if="activeTab !== 'batch'"
+            v-else-if="['rule', 'reselect', 'conflict'].includes(activeTab)"
             :ctx="ctx"
             :mode="activeTab"
             :batch="current"
@@ -104,10 +112,11 @@
               <div><dt>总容量</dt><dd>{{ metricValue('totalCapacity') }}</dd></div>
               <div><dt>已选人次</dt><dd>{{ metricValue('totalSelected') }}</dd></div>
               <div><dt>低人数课程</dt><dd>{{ metricValue('lowEnrollCount') }}</dd></div>
+              <div><dt>待补选资格</dt><dd>{{ metricValue('pendingReselectionCount') }}</dd></div>
             </dl>
           </section>
 
-          <section class="aa-selection-section">
+          <section v-if="activeTab === 'batch'" class="aa-selection-section">
             <header class="aa-selection-section-head">
               <div>
                 <span class="aa-selection-eyebrow">轮次控制</span>
@@ -149,11 +158,11 @@
           <section class="aa-selection-section">
             <header class="aa-selection-section-head">
               <div>
-                <span class="aa-selection-eyebrow">课程供给</span>
-                <h3>可选课程与实时容量</h3>
-                <p>容量、已选与余量来自本批次正式供给。供给有效不代表当前可选，学生能否办理仍以批次窗口和轮次为准。</p>
+                <span class="aa-selection-eyebrow">{{ activeTab === 'result' ? '结果与名单' : '课程供给' }}</span>
+                <h3>{{ activeTab === 'result' ? '课程选课结果' : '可选课程与实时容量' }}</h3>
+                <p>{{ activeTab === 'result' ? '按课程核对已取得名额的学生；锁定前名单可能变化，锁定后供教学班和课表使用。待抽签不计入有效名单。' : '容量、已选与余量来自本批次课程。学生能否办理以批次窗口和轮次为准。' }}</p>
               </div>
-              <AppButton v-if="canManageSelection && ['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
+              <AppButton v-if="activeTab === 'batch' && canManageSelection && ['DRAFT','PUBLISHED'].includes(current.status)" size="small" variant="ghost" @click="openAddCourse">+ 添加课程</AppButton>
             </header>
 
             <EmptyState v-if="!courses.length" title="未配置课程" description="添加至少一门课程后方可发布" />
@@ -174,7 +183,9 @@
                 </template>
                 <template #cell-ops="{ row }">
                   <button class="mp-link" v-if="canReadRoster" @click="openRoster(row)">名单</button>
-                  <button v-if="canManageSelection && current.status === 'CLOSED' && row.status === 'OPEN'" class="mp-link is-danger" @click="cancelCourse(row)">取消开课</button>
+                  <button v-if="activeTab === 'batch' && canManageSelection && !['LOCKED','ARCHIVED'].includes(current.status) && row.status === 'OPEN'" class="mp-link" @click="openEditCourse(row)">调整容量</button>
+                  <span v-if="!canReadRoster" class="mp-cell-sub">学生名单须有查看权限</span>
+                  <button v-if="activeTab === 'batch' && canManageSelection && current.status === 'CLOSED' && row.status === 'OPEN'" class="mp-link is-danger" @click="cancelCourse(row)">取消开课</button>
                 </template>
               </DataTable>
               <AppPagination v-if="coursePagination.total" :total="coursePagination.total" :page="coursePagination.page" :page-size="coursePagination.pageSize" :show-size-changer="false" @change="onCoursePage" />
@@ -186,22 +197,22 @@
       </main>
     </div>
 
-    <AppDrawer :visible="createVisible" title="新建选课批次" mode="modal" size="medium" @close="createVisible = false">
+    <AppDrawer :visible="createVisible" :title="editingBatchId ? '编辑草稿批次' : '新建选课批次'" mode="modal" size="medium" @close="!saving && (createVisible = false)">
       <div class="aa-selection-form">
         <AppFormItem label="批次名称" required>
           <AppTextInput v-model="form.batchName" placeholder="如 2024秋公共选修课选课" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="学期" required>
-          <AppTermEntityPicker v-model="form.termId" placeholder="选择学期" :disabled="saving || routeTerm().scoped" />
+          <AppTermEntityPicker v-model="form.termId" placeholder="选择学期" :disabled="saving || (!!editingBatchId && !!current?.termId) || routeTerm().scoped" />
         </AppFormItem>
-        <AppFormItem label="选课学分上限">
-          <AppNumberInput v-model="form.maxCredits" :min="0" :max="50" :disabled="saving" />
+        <AppFormItem v-if="!editingBatchId" label="选课学分上限">
+          <AppNumberInput v-model="form.maxCredits" :min="0" :disabled="saving" />
         </AppFormItem>
         <AppFormItem label="开选时间"><AppDateTimePicker v-model="form.selectStartAt" placeholder="选填，留空由教务手动开选" :disabled="saving" /></AppFormItem>
         <AppFormItem label="截止时间"><AppDateTimePicker v-model="form.selectEndAt" placeholder="选填，留空由教务手动截止" :disabled="saving" /></AppFormItem>
         <p class="mp-note">按本地时间填写；发布后到达开选时间才允许选课，截止后不能继续办理。留空沿用手动开选与截止。</p>
         <AppFormItem label="适用范围" required>
-          <AppSelect v-model="form.scopeType" :options="[{ label: '指定行政班', value: 'CLASS' }, { label: '全校学生', value: 'SCHOOL' }]" :disabled="saving" />
+          <AppSelect v-model="form.scopeType" :options="[...(editingBatchId ? [{ label: '保持现有适用范围', value: 'KEEP' }] : []), { label: '指定行政班', value: 'CLASS' }, { label: '全校学生', value: 'SCHOOL' }]" :disabled="saving" />
         </AppFormItem>
         <AppFormItem v-if="form.scopeType === 'CLASS'" label="适用班级" required>
           <AppClassPicker v-model="form.classIds" multiple placeholder="选择允许参加本批次的行政班" :disabled="saving" />
@@ -213,18 +224,18 @@
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="createVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="saving" @click="submitCreate">创建</AppButton>
+        <AppButton variant="primary" :loading="saving" @click="submitCreate">{{ editingBatchId ? '保存草稿' : '创建' }}</AppButton>
       </template>
     </AppDrawer>
 
-    <AppDrawer :visible="courseVisible" title="添加可选课程" mode="modal" size="large" @close="courseVisible = false">
+    <AppDrawer :visible="courseVisible" :title="editingCourseId ? '调整课程容量' : '添加可选课程'" mode="modal" size="large" @close="courseVisible = false">
       <div class="aa-selection-form">
         <AppFormItem label="教学任务" required>
           <AppTeachingTaskPicker
             v-model="courseForm.teachingTaskId"
             :remote-search="searchSelectionTasks"
             placeholder="选择当前批次学期的已就绪教学任务"
-            :disabled="saving"
+            :disabled="saving || !!editingCourseId"
             @change="onSelectionTaskChange"
           />
         </AppFormItem>
@@ -243,7 +254,7 @@
       </div>
       <template #footer>
         <AppButton variant="ghost" :disabled="saving" @click="courseVisible = false">取消</AppButton>
-        <AppButton variant="primary" :loading="saving" @click="submitCourse">添加</AppButton>
+        <AppButton variant="primary" :loading="saving" @click="submitCourse">{{ editingCourseId ? '保存容量' : '添加' }}</AppButton>
       </template>
     </AppDrawer>
 
@@ -273,8 +284,20 @@
       <DataTable v-else :columns="rosterColumns" :rows="rosterRows" row-key="recordId">
         <template #cell-student="{ row }">{{ row.studentName }}（{{ row.studentNo }}）</template>
         <template #cell-status="{ row }">{{ selectionRecordLabel(row.status) }}</template>
+        <template #cell-adjust="{ row }"><AppButton v-if="canAdjustSelection && current?.status === 'LOCKED' && row.status === 'LOCKED'" size="small" variant="ghost" @click="openAdjustment(row)">人工退课</AppButton></template>
       </DataTable>
       <AppPagination v-if="rosterPagination.total" :total="rosterPagination.total" :page="rosterPagination.page" :page-size="rosterPagination.pageSize" :show-size-changer="false" @change="onRosterPage" />
+    </AppDrawer>
+
+    <AppDrawer :visible="adjustVisible" title="锁定名单人工退课" mode="modal" size="medium" @close="!saving && !adjustPending && (adjustVisible = false)">
+      <p v-if="adjustRow">{{ adjustRow.studentName }} · {{ adjustRow.courseName }}</p>
+      <AppInlineAlert type="warning" description="办理后将释放名额并更新正式教学班名单；已有考勤、考务或成绩等下游记录时不能直接调整。" />
+      <AppInlineAlert v-if="adjustError" type="warning" :description="adjustError" />
+      <AppFormItem label="调整原因" required><AppTextarea v-model="adjustReason" :disabled="saving || adjustPending" placeholder="请填写不少于5字的具体原因" /></AppFormItem>
+      <template #footer>
+        <AppButton :loading="saving" variant="ghost" @click="checkAdjustment">查询正式记录</AppButton>
+        <AppButton variant="primary" :loading="saving" :disabled="!adjustAllowed || adjustPending" @click="submitAdjustment">确认人工退课</AppButton>
+      </template>
     </AppDrawer>
 
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmTitle" :message="confirmMessage" @confirm="onConfirm" />
@@ -317,12 +340,13 @@ export default {
   data() {
     return {
       loading: true, error: '', rows: [], lastRouteTermKey: null,
-      workspaceTabs: [{ key: 'batch', label: '选课批次' }, { key: 'rule', label: '选课规则' }, { key: 'reselect', label: '补选管理' }, { key: 'conflict', label: '冲突检测' }],
+      workspaceTabs: [{ key: 'batch', label: '选课批次' }, { key: 'rule', label: '选课规则' }, { key: 'reselect', label: '补选管理' }, { key: 'conflict', label: '冲突检测' }, { key: 'result', label: '选课结果' }],
       pagination: { page: 1, pageSize: 50, total: 0 },
       coursePagination: { page: 1, pageSize: 20, total: 0 },
       current: null, courses: [], stats: null, detailLoading: false, detailError: '', disposed: false, selectionVersion: 0, writeSeq: 0,
-      createVisible: false, form: { batchName: '', termId: '', maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [], selectStartAt: '', selectEndAt: '' }, formError: '',
-      courseVisible: false,
+      createVisible: false, editingBatchId: '', draftVersion: 0, draftScope: null, form: { batchName: '', termId: '', maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [], selectStartAt: '', selectEndAt: '' }, formError: '',
+      adjustVisible: false, adjustRow: null, adjustReason: '', adjustError: '', adjustAllowed: false, adjustPending: false,
+      courseVisible: false, editingCourseId: '',
       courseForm: { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 },
       courseError: '',
       rosterVisible: false, rosterCourse: null, rosterRows: [], rosterLoading: false, rosterError: '', rosterPagination: { page: 1, pageSize: 20, total: 0 },
@@ -339,7 +363,7 @@ export default {
         { key: 'course', title: '课程' }, { key: 'fill', title: '选课情况' },
         { key: 'status', title: '供给状态' }, { key: 'ops', title: '操作' }
       ],
-      rosterColumns: [{ key: 'student', title: '学生' }, { key: 'status', title: '状态' }]
+      rosterColumns: [{ key: 'student', title: '学生' }, { key: 'status', title: '状态' }, { key: 'adjust', title: '人工调整' }]
     }
   },
   computed: {
@@ -347,8 +371,10 @@ export default {
     canManageRule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.rule.manage') },
     canLockSelection() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.lock') },
     canReadRoster() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.rosterView') },
-    pageTitle() { return { batch: '选课批次', rule: '选课规则', reselect: '补选管理', conflict: '冲突检测' }[this.activeTab] || '选课管理' },
-    pageSubtitle() { return { batch: '规则、轮次、课程与名单在同一批次办理', rule: '切批次必须重新读取，确认锁定原对象', reselect: '只处理当前窗口和当前范围的对象', conflict: '读取失败时不当作零冲突' }[this.activeTab] || '' },
+    canAdjustSelection() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.selection.adjust') },
+    visibleWorkspaceTabs() { return this.workspaceTabs.filter(tab => tab.key !== 'rule' || this.canManageRule) },
+    pageTitle() { return { batch: '选课批次', rule: '选课规则', reselect: '补选管理', conflict: '冲突检测', result: '选课结果' }[this.activeTab] || '选课管理' },
+    pageSubtitle() { return { batch: '配置课程与轮次，按进度开放、截止和锁定名单', rule: '核对本批次适用范围与学分要求', reselect: '核对取消课程和受影响学生，安排后续补选', conflict: '查询选课冲突记录，核对原因与处理方向', result: '按批次核对课程名额和有效学生名单' }[this.activeTab] || '' },
     activeTab() {
       const tab = String(this.$route?.query?.tab || 'batch')
       return this.workspaceTabs.some(item => item.key === tab) ? tab : 'batch'
@@ -451,11 +477,16 @@ export default {
     commandContext() { return JSON.stringify([this.pageContext(), this.selectionVersion, this.current?.batchId, this.current?.status]) },
     isCurrent(key) { return !this.disposed && key === this.commandContext() },
     switchWorkspace(tab) {
-      if (tab === this.activeTab) return
+      if (tab === this.activeTab || this.saving || this.detailLoading) return
       const query = { ...this.$route.query }
+      if (this.current) query.batchId = String(this.current.batchId)
       if (tab === 'batch') delete query.tab
       else query.tab = tab
       this.$router.replace({ path: this.$route.path, query })
+    },
+    openArchive() {
+      if (!this.canManageSelection || this.current?.status !== 'ARCHIVED') return
+      this.$router.push({ path: '/admin/academic-affairs/selection/archive', query: { batchId: String(this.current.batchId), ...(this.current.termId ? { termId: String(this.current.termId) } : {}) } })
     },
     onSpecialBatchUpdated(batch) {
       if (!batch || !this.current || String(batch.batchId) !== String(this.current.batchId)) return
@@ -472,6 +503,7 @@ export default {
       this.detailGate?.invalidate(); this.rosterGate?.invalidate(); this.preflightRequestSeq += 1
       this.pendingAction = null; this.confirmVisible = false; this.confirmContext = ''
       this.courseVisible = false; this.roundVisible = false; this.rosterVisible = false
+      this.adjustVisible = false; this.adjustRow = null; this.adjustReason = ''; this.adjustError = ''; this.adjustAllowed = false; this.adjustPending = false
       this.preflight = null; this.preflightLoading = false; this.drawResult = null; this.saving = false
     },
     clearSensitiveSelectionData() {
@@ -598,15 +630,19 @@ export default {
       }
       const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
       if (term.scoped) params.termId = term.id
-      const res = await api.listBatches(params)
+      const requestedBatchId = this.$route?.query?.batchId
+      if (requestedBatchId !== undefined && (typeof requestedBatchId !== 'string' || !/^[1-9]\d*$/.test(requestedBatchId))) {
+        this.clearSensitiveSelectionData(); this.error = '选课批次链接无效，请从批次列表重新进入'; this.loading = false; return
+      }
+      let res
+      try { res = await api.listBatches(params) }
+      catch (exception) { res = { code: exception?.status || exception?.code || 503001, message: exception?.message || '选课批次读取失败，请重试' } }
       if (!latest()) return
       if (res.code === 0) {
         this.rows = res.data.list
         this.pagination.total = res.data.total
-        if (!this.current && this.rows.length) {
-          const requestedBatchId = this.$route?.query?.batchId
-          const preferred = requestedBatchId ? this.rows.find((row) => String(row.batchId) === String(requestedBatchId)) : this.rows.find((row) => ['OPEN', 'PUBLISHED', 'CLOSED'].includes(row.status)) || this.rows[0]
-          if (!preferred) { this.current = null; this.error = '当前列表未找到指定选课批次，请返回原队列核对，不会改为办理其他批次。'; this.loading = false; return }
+        if (!this.current && (this.rows.length || requestedBatchId)) {
+          const preferred = requestedBatchId ? this.rows.find((row) => String(row.batchId) === requestedBatchId) || { batchId: requestedBatchId } : this.rows.find((row) => ['OPEN', 'PUBLISHED', 'CLOSED'].includes(row.status)) || this.rows[0]
           await this.select(preferred)
         } else if (this.current) {
           const fresh = this.rows.find((row) => String(row.batchId) === String(this.current.batchId))
@@ -654,8 +690,11 @@ export default {
         return
       }
       if (formal.data?.batchId !== b.batchId) { this.detailLoading = false; this.detailError = '返回的选课批次不一致，请重新选择'; return }
+      if (this.routeTerm().scoped && String(formal.data.termId) !== this.routeTerm().id) {
+        this.clearSensitiveSelectionData(); this.detailLoading = false; this.error = '指定选课批次不属于当前学期，请从原业务入口核对'; return
+      }
       this.current = formal.data
-      if (!['batch', 'rule'].includes(this.activeTab)) { this.detailLoading = false; return }
+      if (!['batch', 'rule', 'result'].includes(this.activeTab)) { this.detailLoading = false; return }
       const context = this.commandContext()
       await this.refreshDetail()
       if (!this.isCurrent(context) || this.detailError) return
@@ -746,14 +785,90 @@ export default {
       }
       this.confirmContext = context; this.confirmVisible = true
     },
+    openEditDraft() {
+      if (!this.canManageSelection || this.saving || this.current?.status !== 'DRAFT') return
+      const b = this.current
+      this.editingBatchId = String(b.batchId); this.draftVersion = b.version; this.draftScope = b.applyScope
+      this.form = { batchName: b.batchName, termId: b.termId, remark: b.remark || '', scopeType: 'KEEP', classIds: [...(b.applyScope?.classIds || [])], selectStartAt: b.selectStartAt || '', selectEndAt: b.selectEndAt || '' }
+      this.formError = ''; this.createVisible = true
+    },
+    async submitDraft() {
+      if (!this.canManageSelection || this.saving || this.current?.status !== 'DRAFT' || String(this.current.batchId) !== this.editingBatchId) return
+      if (!this.form.batchName.trim()) { this.formError = '批次名称必填'; return }
+      if (this.form.scopeType === 'CLASS' && !this.form.classIds.length) { this.formError = '请选择适用班级'; return }
+      const start = this.form.selectStartAt ? new Date(this.form.selectStartAt) : null, end = this.form.selectEndAt ? new Date(this.form.selectEndAt) : null
+      if ((start && !Number.isFinite(start.getTime())) || (end && !Number.isFinite(end.getTime())) || (start && end && end <= start)) { this.formError = '请核对选课时间，截止须晚于开始'; return }
+      const id = this.editingBatchId, context = this.commandContext()
+      if (!this.form.termId) { this.formError = '请选择正式学期'; return }
+      const body = { batchName: this.form.batchName.trim(), termId: String(this.form.termId), selectStartAt: start?.toISOString() || null, selectEndAt: end?.toISOString() || null, remark: this.form.remark, applyScope: this.form.scopeType === 'KEEP' ? this.draftScope : this.form.scopeType === 'CLASS' ? { classIds: this.form.classIds.map(String) } : null, expectedVersion: this.draftVersion }
+      this.saving = true; this.formError = ''
+      try {
+        const result = await api.updateDraft(id, body)
+        if (!this.isCurrent(context)) return
+        if (result.code !== 0) { this.formError = result.message || '保存失败，输入已保留'; return }
+        const formal = await api.getBatch(id)
+        if (!this.isCurrent(context)) return
+        if (formal.code !== 0 || String(formal.data?.batchId) !== id || formal.data.version !== result.data?.version) { this.formError = '保存结果待核对，请保留输入并刷新批次'; return }
+        this.createVisible = false; await this.select(formal.data)
+        toast.success('草稿已保存并重新核对')
+      } catch { if (this.isCurrent(context)) this.formError = '保存结果待核对，输入已保留，请先查询批次再决定后续操作' }
+      finally { if (this.isCurrent(context)) this.saving = false }
+    },
+    adjustmentKey(id) { return `aa-selection-adjustment-pending:${academicIdentity(currentUserFromToken(), this.ctx)}:${this.current.batchId}:${id}` },
+    async openAdjustment(row) {
+      if (!this.canAdjustSelection || this.saving || this.current?.status !== 'LOCKED' || row.status !== 'LOCKED') return
+      this.adjustRow = { ...row }; this.adjustReason = ''; this.adjustError = ''; this.adjustAllowed = false; this.adjustPending = false; this.adjustVisible = true
+      try { this.adjustPending = sessionStorage.getItem(this.adjustmentKey(row.recordId)) !== null }
+      catch { this.adjustPending = true; this.adjustError = '浏览器存储不可用，请恢复存储后查询结果' }
+      await this.checkAdjustment()
+    },
+    async checkAdjustment() {
+      if (!this.canAdjustSelection || !this.adjustRow || this.saving) return
+      const context = this.commandContext(), id = String(this.adjustRow.recordId)
+      this.saving = true; this.adjustAllowed = false
+      try {
+        const result = await api.adjustmentDetail(id)
+        if (!this.isCurrent(context) || String(this.adjustRow?.recordId) !== id) return
+        if (isDeniedResult(result)) { this.adjustRow = null; this.adjustVisible = false; this.adjustError = '当前账号无权办理人工调整'; return }
+        if (result.code !== 0 || String(result.data?.recordId) !== id) { this.adjustError = result.message || '正式记录不匹配，请重试'; return }
+        this.adjustRow = result.data
+        if (result.data.status === 'DROPPED') {
+          sessionStorage.removeItem(this.adjustmentKey(id))
+          this.adjustPending = false; this.adjustError = '正式记录已确认退课，名单与容量正在重新读取'
+          await this.loadRoster(); await this.refreshDetail()
+        } else {
+          this.adjustAllowed = result.data.canAdjust === true && !this.adjustPending
+          this.adjustError = this.adjustPending ? '办理结果尚未确认，请继续查询；系统不会自动重发退课请求' : result.data.blockedReason || ''
+        }
+      } catch { if (this.isCurrent(context)) this.adjustError = '正式记录读取失败，请重试' }
+      finally { if (this.isCurrent(context)) this.saving = false }
+    },
+    async submitAdjustment() {
+      if (!this.canAdjustSelection || this.saving || !this.adjustAllowed || this.adjustPending || !this.adjustRow) return
+      const reason = this.adjustReason.trim()
+      if (reason.length < 5) { this.adjustError = '调整原因必填且不少于5字'; return }
+      const context = this.commandContext(), id = String(this.adjustRow.recordId)
+      try { sessionStorage.setItem(this.adjustmentKey(id), '1') }
+      catch { this.adjustError = '无法保存待确认操作，请恢复浏览器存储后再办理'; return }
+      this.saving = true; this.adjustPending = true; this.adjustAllowed = false
+      try {
+        const result = await api.adjustRecord(id, reason)
+        if (!this.isCurrent(context)) return
+        if (result.code !== 0 && result.bizCode && Number(result.code) !== 503001) { sessionStorage.removeItem(this.adjustmentKey(id)); this.adjustPending = false; this.adjustError = result.message || '本次调整未办理' }
+      } catch { if (this.isCurrent(context)) this.adjustError = '请求结果待确认，请查询正式记录' }
+      finally { if (this.isCurrent(context)) this.saving = false }
+      if (this.isCurrent(context)) await this.checkAdjustment()
+    },
     openCreate() {
       if (!this.canManageSelection) return
+      this.editingBatchId = ''
       const term = this.routeTerm()
       if (term.invalid) return
       this.form = { batchName: '', termId: term.id, maxCredits: 0, remark: '', scopeType: 'CLASS', classIds: [], selectStartAt: '', selectEndAt: '' }
       this.formError = ''; this.createVisible = true
     },
     async submitCreate() {
+      if (this.editingBatchId) return this.submitDraft()
       if (!this.canManageSelection || this.saving) return
       const context = this.pageContext()
       const term = this.routeTerm()
@@ -803,6 +918,7 @@ export default {
       }
       this.confirmTitle = label
       this.confirmMessage = `确认对批次「${batch.batchName}」（${batch.batchId}）执行「${label}」？`
+      if (fn === 'lockBatch' && Number(this.stats?.pendingReselectionCount || 0) > 0) this.confirmMessage += ` 当前仍有 ${this.stats.pendingReselectionCount} 条取消课程记录未关联补选结果，锁定后学生不能继续补选，请先核对处理情况。`
       this.pendingAction = async () => {
         if (fn === 'lockBatch' ? !this.canLockSelection : !this.canManageSelection) return
         const res = await api[fn](batch.batchId)
@@ -822,9 +938,16 @@ export default {
     },
     openAddCourse() {
       if (!this.canManageSelection) return
+      this.editingCourseId = ''
       this.courseForm = { courseId: '', teachingTaskId: '', courseCode: '', courseName: '', teacherName: '', teachingClassName: '', capacity: 30, minCapacity: 1 }
       this.courseError = ''
       this.courseVisible = true
+    },
+    openEditCourse(row) {
+      if (!this.canManageSelection || this.saving || this.detailLoading || this.detailError || !this.current || ['LOCKED', 'ARCHIVED'].includes(this.current.status) || row.status !== 'OPEN') return
+      this.editingCourseId = String(row.selectionCourseId)
+      this.courseForm = { ...row }
+      this.courseError = ''; this.courseVisible = true
     },
     async searchSelectionTasks(keyword = '') {
       const context = this.commandContext()
@@ -858,21 +981,27 @@ export default {
       this.courseError = ''
     },
     async submitCourse() {
-      if (!this.canManageSelection || this.saving || !this.current) return
+      if (!this.canManageSelection || this.saving || !this.current || ['LOCKED', 'ARCHIVED'].includes(this.current.status)) return
       const context = this.commandContext()
-      if (!this.courseForm.teachingTaskId || !this.courseForm.courseId) {
+      const editingId = this.editingCourseId
+      if (!editingId && (!this.courseForm.teachingTaskId || !this.courseForm.courseId)) {
         this.courseError = '请选择当前批次学期的已就绪教学任务'
         return
       }
+      const capacity = Number(this.courseForm.capacity), minCapacity = Number(this.courseForm.minCapacity)
+      if (!Number.isSafeInteger(capacity) || capacity < 0 || !Number.isSafeInteger(minCapacity) || minCapacity < 0 || minCapacity > capacity || capacity < Number(this.courseForm.selectedCount || 0)) {
+        this.courseError = '容量和开课下限须为非负整数，下限不能超过容量，容量不能少于已选人数'; return
+      }
       this.saving = true
-      const res = await api.addCourse(this.current.batchId, {
+      let res
+      try { res = editingId ? await api.updateCourse(editingId, { capacity, minCapacity }) : await api.addCourse(this.current.batchId, {
         courseId: this.courseForm.courseId,
         teachingTaskId: this.courseForm.teachingTaskId,
-        capacity: this.courseForm.capacity, minCapacity: this.courseForm.minCapacity
-      })
+        capacity, minCapacity
+      }) } catch { res = { code: 503001, message: '请求结果待核对，输入已保留；请先刷新课程确认容量，避免重复提交' } }
       if (!this.isCurrent(context)) return
       this.saving = false
-      if (res.code === 0) { toast.success('已添加'); this.courseVisible = false; await this.refreshDetail() }
+      if (res.code === 0) { toast.success(editingId ? '容量已更新' : '已添加'); this.courseVisible = false; await this.refreshDetail() }
       else this.courseError = res.message
     },
     cancelCourse(row) {
@@ -931,6 +1060,7 @@ export default {
 
 <style scoped>
 .aa-selection-layout { display: grid; gap: 12px; }
+.aa-selection-workspaces { display: flex; flex-wrap: wrap; gap: 6px; padding: 8px; border: 1px solid var(--border-color, #dfe7f1); border-radius: 10px; background: var(--bg-card); }
 .aa-selection-switch { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px; padding: 10px 14px; border: 1px solid #dce6f3; border-radius: 10px; background: #fff; }
 .aa-selection-switch__pick { display: flex; align-items: center; gap: 10px; min-width: 0; max-width: 100%; color: #4e6075; font-size: 13px; font-weight: 600; }
 .aa-selection-switch__pick > span { flex-shrink: 0; white-space: nowrap; }
@@ -1025,6 +1155,11 @@ export default {
   .aa-selection-summary { align-items:flex-start; flex-direction:column; }
 }
 @media (max-width: 760px) {
+  .aa-selection-switch__pick { width: 100%; }
+  .aa-selection-switch__pick .aa-select { flex: 1; width: 0; }
+  .aa-selection-hero-topline { flex-wrap: wrap; }
+  .aa-selection-hero h2, .aa-selection-hero-meta span { overflow-wrap: anywhere; }
+  .aa-selection-summary > div { min-width: 0; }
   .aa-selection-hero { grid-template-columns: 1fr; padding: 20px; }
   .aa-selection-actions { grid-column: auto; }
   .aa-selection-batches { grid-template-columns: 1fr; }

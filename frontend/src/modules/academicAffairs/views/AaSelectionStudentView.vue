@@ -37,8 +37,8 @@
         <AppSectionCard v-if="mine.length" title="我的正式选课记录" subtitle="抽签报名、取得名额、名单锁定与未中签分别显示">
           <DataTable :columns="mineColumns" :rows="mine" row-key="recordId">
             <template #cell-course="{ row }"><div class="mp-cell-main">{{ row.courseName }}</div><div class="mp-cell-sub">{{ row.courseCode || '—' }} · {{ row.credit ?? '—' }} 学分</div></template>
-            <template #cell-status="{ row }"><StatusTag :type="courseType(row.status)" :label="mineLabel(row.status)" dot /></template>
-            <template #cell-next="{ row }">{{ nextStep(row.status) }}</template>
+            <template #cell-status="{ row }"><StatusTag :type="courseType(row.status)" :label="row.replacementRecordId ? '原课程已补选' : mineLabel(row.status)" dot /></template>
+            <template #cell-next="{ row }">{{ row.replacementRecordId ? '替代课程已关联，请在本人选课记录核对' : nextStep(row.status) }}</template>
           </DataTable>
         </AppSectionCard>
       </template>

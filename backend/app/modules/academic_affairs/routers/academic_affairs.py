@@ -3244,6 +3244,7 @@ class SelectionBatchBody(BaseModel):
 
 class SelectionRuleBody(BaseModel):
     rule: dict = Field(default_factory=dict)
+    expectedRule: Optional[dict] = None
 
 
 class SelectionCourseBody(BaseModel):

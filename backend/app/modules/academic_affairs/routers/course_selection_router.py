@@ -17,6 +17,7 @@ from __future__ import annotations
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Path, Query
+from pydantic import BaseModel, Field
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -52,6 +53,21 @@ selection_round_svc = legacy.selection_round_svc
 
 
 # ── 批次（发布由 Selection Final owner 持有） ──
+class SelectionDraftUpdate(BaseModel):
+    batchName: str = Field(..., min_length=1, max_length=200)
+    termId: Optional[str] = None
+    selectStartAt: Optional[str] = None
+    selectEndAt: Optional[str] = None
+    applyScope: Optional[dict] = None
+    remark: Optional[str] = None
+    expectedVersion: int = Field(..., ge=0)
+
+
+@router.put("/selection/batches/{batchId}", summary="修改草稿批次基础信息")
+def sel_draft_update(body: SelectionDraftUpdate, batchId: int = Path(...), user=Depends(require_permission(_SEL_MANAGE))):
+    return success(selection_batch_command_svc.update_draft(user, batchId, body), message="草稿已更新")
+
+
 @router.post("/selection/batches", summary="建选课批次")
 def sel_batch_create(body: SelectionBatchBody, user=Depends(require_permission(_SEL_MANAGE))):
     return success(selection_batch_command_svc.create_batch(user, body), message="已创建")
@@ -100,7 +116,7 @@ def sel_rule_save(
     batchId: int = Path(...),
     user=Depends(require_permission(_SEL_RULE)),
 ):
-    return success(selection_batch_command_svc.save_rule(user, batchId, body.rule), message="已保存")
+    return success(selection_batch_command_svc.save_rule(user, batchId, body.rule, expected_rule=body.expectedRule), message="已保存")
 
 
 # ── 课程供给 ──
@@ -156,6 +172,11 @@ def sel_student_my(batchId: Optional[str] = None, user=Depends(_require_student)
 
 
 # ── 教务处调整 / 补选 / 统计 ──
+@router.get("/selection/records/{recordId}", summary="人工调整前核对及正式结果回读")
+def sel_adjustment_detail(recordId: int = Path(...), user=Depends(require_permission(_SEL_ADJUST))):
+    return success(selection_svc.adjustment_detail(user, recordId))
+
+
 @router.post("/selection/records/{recordId}/adjust", summary="LOCKED 后人工调整退课（原因≥5字）")
 def sel_record_adjust(
     body: AdjustBody,
@@ -166,9 +187,10 @@ def sel_record_adjust(
 
 
 @router.get("/selection/batches/{batchId}/reselect-guide", summary="补选指引（CLOSED 批次，教务处视角）")
-def sel_reselect_guide(batchId: int = Path(...), page: int = 1, pageSize: int = 20,
+def sel_reselect_guide(batchId: int = Path(...), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                       cancelledPage: int = Query(1, ge=1), availablePage: int = Query(1, ge=1),
                        user=Depends(require_permission(_SEL_VIEW))):
-    return success(selection_svc.reselect_guide(user, batchId, page, pageSize))
+    return success(selection_svc.reselect_guide(user, batchId, page, pageSize, cancelled_page=cancelledPage, available_page=availablePage))
 
 
 @router.get("/selection/student/reselect-guide", summary="补选指引（学生本人待补选记录+可选课程，06号卡）")

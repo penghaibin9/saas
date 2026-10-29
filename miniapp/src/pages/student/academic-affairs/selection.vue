@@ -100,9 +100,9 @@
                 <text class="sl__course-title">{{ record.courseName || '课程名称待补充' }}</text>
                 <text class="sl__course-meta">{{ record.credit ?? '—' }} 学分 · {{ recordTime(record) }}</text>
               </view>
-              <text class="sl__status" :class="'is-' + statusMeta(record.status).tone">{{ statusMeta(record.status).label }}</text>
+              <text class="sl__status" :class="'is-' + statusMeta(record.status).tone">{{ record.replacementRecordId ? '原课程已补选' : statusMeta(record.status).label }}</text>
             </view>
-            <text class="sl__record-desc">{{ statusMeta(record.status).description }}</text>
+            <text class="sl__record-desc">{{ record.replacementRecordId ? '该取消课程已完成补选，替代课程见本人选课记录。' : statusMeta(record.status).description }}</text>
             <button v-if="unresolvedFor(record)" class="btn btn-ghost sl__record-action" :disabled="recordsState === 'loading'" @click="refreshRecords">结果待核实 · 核对本人记录</button>
             <button v-else-if="recordHasAction(record, 'DROP')" class="btn btn-ghost sl__record-action" :disabled="!!acting || courseStale || recordsStale" @click="drop(record)">{{ normalizeStatus(record.status) === 'PENDING_LOTTERY' ? '撤回抽签报名' : '申请退课' }}</button>
           </view>

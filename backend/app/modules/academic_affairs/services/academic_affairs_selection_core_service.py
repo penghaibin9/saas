@@ -124,6 +124,7 @@ def _batch_dto(b) -> dict:
     elif b.status == _BATCH_OPEN and window == "NOT_STARTED":
         window_notice = "选课窗口尚未开始，学生暂不能选课；请核对开选安排。"
     return {"batchId": str(b.id), "termId": str(b.term_id) if b.term_id else None,
+            "version": getattr(b, "version", 1),
             "batchName": b.batch_name, "selectStartAt": _iso(b.select_start_at),
             "selectEndAt": _iso(b.select_end_at), "status": b.status,
             "applyScope": json.loads(b.apply_scope_json) if b.apply_scope_json else None,
@@ -769,7 +770,8 @@ def _record_dto(r) -> dict:
             "credit": float(r.credit) if r.credit is not None else None,
             "studentId": str(r.student_id), "studentNo": r.student_no, "studentName": r.student_name,
             "enrolledAt": _iso(r.enrolled_at), "status": r.status, "reEnroll": r.re_enroll,
-            "adjustReason": r.adjust_reason}
+            "adjustReason": r.adjust_reason,
+            "replacementRecordId": str(r.replacement_record_id) if getattr(r, "replacement_record_id", None) else None}
 
 
 # ══════════════ 名单（教师授课关系收敛） / 统计 ══════════════
@@ -874,6 +876,7 @@ def student_reselect_guide(user, batch_id=None):
             raise not_found("学生档案不存在")
         rec_q = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _tid(), AaSelectionRecord.student_id == student.id,
+            AaSelectionRecord.replacement_record_id.is_(None),
             AaSelectionRecord.status == _REC_COURSE_CANCELLED, AaSelectionRecord.is_deleted.is_(False))
         if batch_id:
             rec_q = rec_q.filter(AaSelectionRecord.batch_id == int(batch_id))

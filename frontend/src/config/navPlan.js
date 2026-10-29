@@ -460,7 +460,7 @@ export const NAV_PLAN = [
       academicEntry('aa.course-selection.selection.tab.rule', I('选课规则', '/admin/academic-affairs/selection?tab=rule', 'academicAffairs.selection.rule.manage')),
       academicEntry('aa.course-selection.selection.tab.reselect', I('补选管理', '/admin/academic-affairs/selection?tab=reselect', 'academicAffairs.selection.view')),
       academicEntry('aa.course-selection.selection.tab.conflict', I('冲突检测', '/admin/academic-affairs/selection?tab=conflict', 'academicAffairs.selection.view')),
-      academicEntry('aa.course-selection.schedule', I('选课结果（并入学生课表，见课表三视图）', '/admin/academic-affairs/schedule', 'academicAffairs.schedule.view')),
+      academicEntry('aa.course-selection.schedule', I('选课结果', '/admin/academic-affairs/selection?tab=result', 'academicAffairs.selection.view')),
       academicEntry('aa.course-selection.selection.archive', I('选课归档', '/admin/academic-affairs/selection/archive', 'academicAffairs.selection.manage'))
     ]),
     mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [

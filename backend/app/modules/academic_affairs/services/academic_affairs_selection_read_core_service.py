@@ -230,8 +230,8 @@ def student_courses(user, batch_id=None):
         ]
 
 
-def reselect_guide(user, batch_id, page=1, page_size=20):
-    from app.models import AaSelectionRecord
+def reselect_guide(user, batch_id, page=1, page_size=20, *, cancelled_page=1, available_page=1):
+    from app.models import AaSelectionRecord, AaSelectionCourse
 
     safe_page = max(1, int(page or 1))
     safe_size = max(1, min(100, int(page_size or 20)))
@@ -241,21 +241,25 @@ def reselect_guide(user, batch_id, page=1, page_size=20):
         batch = _core._get_batch(db, int(batch_id))
         _require_batch_visible(db, int(batch.id), scoped)
         if batch.status != _core._BATCH_CLOSED:
-            raise _core._invalid("仅 CLOSED 批次有补选指引")
-        courses = _course_query(db, int(batch.id), scoped).all()
-        cancelled = [_core._course_dto(row) for row in courses if row.status == _core._COURSE_CANCELLED]
-        available = [
-            _core._course_dto(row) for row in courses
-            if row.status == _core._COURSE_OPEN and int(row.selected_count or 0) < int(row.capacity or 0)
-        ]
+            raise _core._invalid("只有已截止的批次可以查看补选办理指引")
+        def course_page(query, page_no):
+            page_no = max(1, int(page_no))
+            total = query.count()
+            items = query.order_by(AaSelectionCourse.id).offset((page_no - 1) * safe_size).limit(safe_size).all()
+            return [_core._course_dto(row) for row in items], {"page": page_no, "pageSize": safe_size, "total": total}
+        cancelled, cancelled_pagination = course_page(_course_query(db, int(batch.id), scoped, status=_core._COURSE_CANCELLED), cancelled_page)
+        available, available_pagination = course_page(_course_query(db, int(batch.id), scoped, status=_core._COURSE_OPEN).filter(AaSelectionCourse.selected_count < AaSelectionCourse.capacity), available_page)
         # Student identities follow the same course authority as course_roster, never
         # the broader catalog visibility of an ordinary teacher's batch selector.
         keys = _core._derive_keys(user)
         manageable = ctx.scope_type in ("COLLEGE", "TENANT_ALL")
-        course_ids = [row.id for row in courses if manageable or row.teacher_key in keys]
+        visible_courses = _course_query(db, int(batch.id), scoped)
+        if not manageable:
+            visible_courses = visible_courses.filter(AaSelectionCourse.teacher_key.in_(keys or ["__none__"]))
+        course_ids = visible_courses.with_entities(AaSelectionCourse.id)
         affected_query = db.query(AaSelectionRecord).filter(
             AaSelectionRecord.tenant_id == _core._tid(), AaSelectionRecord.batch_id == batch.id,
-            AaSelectionRecord.selection_course_id.in_(course_ids or [-1]),
+            AaSelectionRecord.selection_course_id.in_(course_ids),
             AaSelectionRecord.status == _core._REC_COURSE_CANCELLED,
             AaSelectionRecord.is_deleted.is_(False),
         )
@@ -263,13 +267,23 @@ def reselect_guide(user, batch_id, page=1, page_size=20):
         affected = affected_query.order_by(AaSelectionRecord.id).offset(
             (safe_page - 1) * safe_size,
         ).limit(safe_size).all()
+        replacement_ids = [row.replacement_record_id for row in affected if row.replacement_record_id]
+        replacements = {row.id: row for row in db.query(AaSelectionRecord).filter(
+            AaSelectionRecord.tenant_id == _core._tid(), AaSelectionRecord.batch_id == batch.id,
+            AaSelectionRecord.id.in_(replacement_ids), AaSelectionRecord.is_deleted.is_(False),
+        ).all()} if replacement_ids else {}
+        def replacement_name(row):
+            replacement = replacements.get(row.replacement_record_id)
+            return replacement.course_name if replacement and replacement.student_id == row.student_id else None
         return {
             "batchId": str(batch.id), "cancelledCourses": cancelled, "availableCourses": available,
+            "cancelledPagination": cancelled_pagination, "availablePagination": available_pagination,
             "affectedRecords": {
                 "items": [{**_core._record_dto(row), "allowedActions": ["VIEW"],
-                           "resolutionStatus": "UNVERIFIED", "replacementRecordId": None,
-                           "nextOwner": "学生本人 / 选课管理岗",
-                           "note": "取消课程为正式受影响事实；尚无原记录到替代记录的正式关联，补选完成情况待核对。"}
+                           "resolutionStatus": "REPLACED" if row.replacement_record_id else "PENDING",
+                           "replacementCourseName": replacement_name(row),
+                           "nextOwner": "选课管理岗" if row.replacement_record_id else "学生本人 / 选课管理岗",
+                           "note": "已关联替代选课记录，本次补选资格已使用。" if row.replacement_record_id else "每取消一门可补选一门；历史补选未关联的记录须先核对，不能推算为已完成。"}
                           for row in affected],
                 "total": total, "page": safe_page, "pageSize": safe_size,
             },
@@ -297,7 +311,15 @@ def batch_stats(user, batch_id):
             if int(row.capacity or 0) > 0 and int(row.selected_count or 0) >= int(row.capacity or 0)
         ]
         record_count = 0
+        pending_reselection_count = 0
         if course_ids:
+            pending_reselection_count = int(db.query(func.count(AaSelectionRecord.id)).filter(
+                AaSelectionRecord.tenant_id == _core._tid(),
+                AaSelectionRecord.selection_course_id.in_(course_ids),
+                AaSelectionRecord.status == _core._REC_COURSE_CANCELLED,
+                AaSelectionRecord.replacement_record_id.is_(None),
+                AaSelectionRecord.is_deleted.is_(False),
+            ).scalar() or 0)
             record_count = int(db.query(func.count(AaSelectionRecord.id)).filter(
                 AaSelectionRecord.tenant_id == _core._tid(),
                 AaSelectionRecord.selection_course_id.in_(course_ids),
@@ -309,6 +331,7 @@ def batch_stats(user, batch_id):
             "courseCount": len(courses), "totalCapacity": total_cap, "totalSelected": total_sel,
             "fillRate": round(total_sel / total_cap, 4) if total_cap else 0,
             "lowEnrollCount": len(low), "fullCount": len(full), "recordCount": record_count,
+            "pendingReselectionCount": pending_reselection_count,
             "lowEnrollCourses": [_core._course_dto(row) for row in low],
         }
 

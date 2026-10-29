@@ -5,7 +5,7 @@
     "frontend/src/config/navPlan.js#NAV_PLAN",
     "frontend/src/config/navPlan.js#PLATFORM_PLAN"
   ],
-  "digest": "19df8929e64bb4553934a95048b23e30e5c5b503650c85544b91233b7a4ecba2",
+  "digest": "00529b1b88040cb5b1e134a008fe061d5d4faad9f6a2674f1cca18c432af9aad",
   "counts": {
     "total": 578,
     "production": 578,
@@ -6822,15 +6822,15 @@
         "aa-course-selection:选课结果",
         "aa-course-selection:选课结果（并入学生课表，见课表三视图）",
         "aa-course-selection:5",
-        "/admin/academic-affairs/schedule"
+        "/admin/academic-affairs/selection?tab=result"
       ],
       "label": "选课结果",
-      "path": "/admin/academic-affairs/schedule",
-      "permissionKey": "academicAffairs.schedule.view",
+      "path": "/admin/academic-affairs/selection?tab=result",
+      "permissionKey": "academicAffairs.selection.view",
       "permissionAny": [],
       "permissionAll": [],
       "permissionCodes": [
-        "academicAffairs.schedule.view"
+        "academicAffairs.selection.view"
       ],
       "entryType": "CONFIG_VIEW",
       "status": "implemented",

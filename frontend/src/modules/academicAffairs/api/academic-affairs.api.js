@@ -1067,13 +1067,14 @@ export const academicAffairsSelectionApi = {
   listBatches(params = {}) { return callList(`${BASE}/selection/batches`, params) },
   getBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}`)) },
   createBatch(body) { return call(() => request(`${BASE}/selection/batches`, { method: 'POST', body })) },
+  updateDraft(id, body) { return call(() => request(`${BASE}/selection/batches/${id}`, { method: 'PUT', body })) },
   batchPreflight(id, action) { return call(() => request(`${BASE}/selection/batches/${id}/preflight`, { params: { action } })) },
   publishBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/publish`, { method: 'POST' })) },
   openBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/open`, { method: 'POST' })) },
   closeBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/close`, { method: 'POST' })) },
-  lockBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/lock`, { method: 'POST' })) },
-  archiveBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/archive`, { method: 'POST' })) },
-  saveRule(id, rule) { return call(() => request(`${BASE}/selection/batches/${id}/rule`, { method: 'PUT', body: { rule } })) },
+  lockBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/lock`, { method: 'POST', timeoutMs: 120000 })) },
+  archiveBatch(id) { return call(() => request(`${BASE}/selection/batches/${id}/archive`, { method: 'POST', timeoutMs: 120000 })) },
+  saveRule(id, rule, expectedRule) { return call(() => request(`${BASE}/selection/batches/${id}/rule`, { method: 'PUT', body: { rule, ...(expectedRule === undefined ? {} : { expectedRule }) } })) },
   // ── 课程供给 ──
   listCourses(id, params = {}) { return callList(`${BASE}/selection/batches/${id}/courses`, params) },
   addCourse(id, body) { return call(() => request(`${BASE}/selection/batches/${id}/courses`, { method: 'POST', body })) },
@@ -1087,16 +1088,17 @@ export const academicAffairsSelectionApi = {
   mySelections(batchId) { return call(() => request(`${BASE}/selection/student/my`, { params: batchId ? { batchId } : {} })) },
   // ── 教务处调整 / 补选 / 统计 ──
   adjustRecord(recordId, reason) { return call(() => request(`${BASE}/selection/records/${recordId}/adjust`, { method: 'POST', body: { reason } })) },
+  adjustmentDetail(recordId) { return call(() => request(`${BASE}/selection/records/${recordId}`)) },
   reselectGuide(id, params = {}) { return call(() => request(`${BASE}/selection/batches/${id}/reselect-guide`, { params })) },
   /** 学生本人补选指引（06号卡）：待补选记录 + 该批次仍有余量课程；batchId 可选。 */
   studentReselectGuide(batchId) { return call(() => request(`${BASE}/selection/student/reselect-guide`, { params: batchId ? { batchId } : {} })) },
   batchStats(id) { return call(() => request(`${BASE}/selection/batches/${id}/stats`)) },
-  timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST' })) },
+  timeTick() { return call(() => request(`${BASE}/selection/time-tick`, { method: 'POST', timeoutMs: 120000 })) },
   // ── 冲突检测（09号卡） ──
   conflictReport(id, studentNo, params = {}) { return call(() => request(`${BASE}/selection/batches/${id}/conflict-report`, { params: { ...params, ...(studentNo ? { studentNo } : {}) } })) },
   async exportConflictReport(id, purpose) {
     try {
-      const blob = await requestBlob(`${BASE}/selection/batches/${id}/conflict-report/export`, { method: 'POST', body: { purpose } })
+      const blob = await requestBlob(`${BASE}/selection/batches/${id}/conflict-report/export`, { method: 'POST', body: { purpose }, timeoutMs: 120000 })
       return ok(blob)
     } catch (e) { return toErr(e) }
   },
@@ -1105,7 +1107,7 @@ export const academicAffairsSelectionApi = {
   archiveDetail(id) { return call(() => request(`${BASE}/selection/archive/${id}`)) },
   async exportArchive(id, purpose) {
     try {
-      const blob = await requestBlob(`${BASE}/selection/archive/${id}/export`, { method: 'POST', body: { purpose } })
+      const blob = await requestBlob(`${BASE}/selection/archive/${id}/export`, { method: 'POST', body: { purpose }, timeoutMs: 120000 })
       return ok(blob)
     } catch (e) { return toErr(e) }
   },
@@ -1114,7 +1116,7 @@ export const academicAffairsSelectionApi = {
   createRound(batchId, body) { return call(() => request(`${BASE}/selection/batches/${batchId}/rounds`, { method: 'POST', body })) },
   openRound(roundId) { return call(() => request(`${BASE}/selection/rounds/${roundId}/open`, { method: 'POST' })) },
   closeRound(roundId) { return call(() => request(`${BASE}/selection/rounds/${roundId}/close`, { method: 'POST' })) },
-  drawRound(roundId) { return call(() => request(`${BASE}/selection/rounds/${roundId}/draw`, { method: 'POST' })) }
+  drawRound(roundId) { return call(() => request(`${BASE}/selection/rounds/${roundId}/draw`, { method: 'POST', timeoutMs: 120000 })) }
 }
 
 /* ═══════════ 等级考务（/academic-affairs/level-exams/*） ═══════════ */

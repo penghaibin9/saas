@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton variant="ghost" @click="$router.push('/admin/academic-affairs/selection')">查看锁定名单</AppButton>
+      <AppButton variant="ghost" @click="$router.push({ path: '/admin/academic-affairs/selection', query: { tab: 'result', ...(current ? { batchId: String(current.batchId) } : {}), ...(termId ? { termId } : {}) } })">查看选课结果</AppButton>
     </template>
 
 
@@ -18,13 +18,13 @@
         <EmptyState v-else-if="!rows.length" title="暂无已归档批次" description="批次名单已锁定后，在选课管理控制台点「归档」即可在此查询" />
         <DataTable v-else :columns="columns" :rows="rows" row-key="batchId">
           <template #cell-batchName="{ row }">
-            <button class="mp-link" @click="select(row)">{{ row.batchName }}</button>
+            <button class="mp-link" @click="pickArchive(row)">{{ row.batchName }}</button>
           </template>
           <template #cell-term="{ row }">{{ row.termName || '—' }}</template>
           <template #cell-lockedAt="{ row }">{{ timeText(row.lockedAt) }}</template>
           <template #cell-count="{ row }">{{ row.studentCount ?? row.selectedCount ?? '—' }}</template>
           <template #cell-status><span class="aasar-status">已归档</span></template>
-          <template #cell-ops="{ row }"><button class="mp-link" @click="select(row)">查看封存凭证</button></template>
+          <template #cell-ops="{ row }"><button class="mp-link" @click="pickArchive(row)">查看归档详情</button></template>
         </DataTable>
         <AppPagination v-if="pagination.total" :total="pagination.total" :page="pagination.page" :page-size="pagination.pageSize" :show-size-changer="false" @change="onPage" />
       </div>
@@ -72,7 +72,7 @@ export default {
       current: null, selectedBatchId: '', detailLoading: false, detailError: '', exportPurpose: '', exporting: false,
       columns: [
         { key: 'batchName', title: '批次' }, { key: 'term', title: '学期' },
-        { key: 'lockedAt', title: '锁定日期' }, { key: 'count', title: '人数' },
+        { key: 'lockedAt', title: '锁定日期' }, { key: 'count', title: '有效选课人次' },
         { key: 'status', title: '归档状态' }, { key: 'ops', title: '办理入口' }
       ]
     }
@@ -92,7 +92,8 @@ export default {
     syncRoute() {
       if (this.disposed) return
       this.listSeq++; this.detailSeq++
-      this.rows = []; this.current = null; this.selectedBatchId = ''; this.pagination.page = 1; this.pagination.total = 0
+      const page = Number(this.$route.query?.page)
+      this.rows = []; this.current = null; this.selectedBatchId = ''; this.pagination.page = Number.isSafeInteger(page) && page > 0 ? page : 1; this.pagination.total = 0
       this.exportPurpose = ''; this.exporting = false; this.detailLoading = false; this.detailError = ''
       this.termId = this.routeTermId()
       if (this.invalidRouteTerm()) { this.loading = false; this.error = '学期参数无效，请从正式学期入口重新进入选课归档。'; return }
@@ -108,7 +109,11 @@ export default {
       const seq = ++this.listSeq, route = this.$route.fullPath, termId = this.routeTermId()
       this.loading = true; this.error = ''
       if (this.invalidRouteTerm()) { this.rows = []; this.current = null; this.pagination.total = 0; this.loading = false; this.error = '学期参数无效，请从正式学期入口重新进入选课归档。'; return }
-      const res = await api.listArchivedBatches({ ...(termId ? { termId } : {}), page: this.pagination.page, pageSize: this.pagination.pageSize })
+      const requestedBatchId = this.$route.query?.batchId
+      if (requestedBatchId !== undefined && (typeof requestedBatchId !== 'string' || !/^[1-9]\d*$/.test(requestedBatchId))) { this.loading = false; this.error = '归档批次链接无效，请从选课归档列表重新进入。'; return }
+      let res
+      try { res = await api.listArchivedBatches({ ...(termId ? { termId } : {}), page: this.pagination.page, pageSize: this.pagination.pageSize }) }
+      catch { res = { code: 503001, message: '归档列表读取失败，请重试' } }
       if (this.disposed || seq !== this.listSeq || route !== this.$route.fullPath) return
       if (res.code === 0) {
         if (termId && res.data.list.some(row => String(row.termId) !== termId)) { this.rows = []; this.current = null; this.pagination.total = 0; this.error = '返回的归档批次与当前学期不一致，请重新查询。'; this.loading = false; return }
@@ -116,9 +121,11 @@ export default {
         if (this.selectedBatchId && !this.rows.some(row => String(row.batchId) === String(this.selectedBatchId))) {
           this.current = null; this.selectedBatchId = ''; this.exportPurpose = ''
         }
-        if (!this.current && this.rows.length) this.select(this.rows[0])
+        if (!this.current && requestedBatchId) await this.select({ batchId: requestedBatchId, ...(termId ? { termId } : {}) })
+        else if (!this.current && this.rows.length) await this.select(this.rows[0])
       } else if (isDeniedResult(res)) return this.clearSensitive(res.message)
-      else { this.rows = []; this.pagination.total = 0; this.error = res.message || '选课归档读取失败，请重试' }
+      else { this.rows = []; this.pagination.total = 0; this.current = null; this.selectedBatchId = ''; this.detailSeq++; this.detailLoading = false; this.error = res.message || '选课归档读取失败，请重试' }
+      if (this.disposed || seq !== this.listSeq || route !== this.$route.fullPath) return
       this.loading = false
     },
     async applyFilter() {
@@ -127,36 +134,49 @@ export default {
       if (termId === this.routeTermId() && !this.invalidRouteTerm()) { this.syncRoute(); return }
       this.listSeq++; this.detailSeq++; this.rows = []; this.current = null; this.selectedBatchId = ''; this.pagination.total = 0; this.exportPurpose = ''; this.detailLoading = false; this.loading = true
       const query = { ...this.$route.query }
+      delete query.batchId
+      delete query.page
       if (termId) query.termId = termId
       else delete query.termId
       try { await this.$router.replace({ path: this.$route.path, query }) }
       catch { this.loading = false; this.error = '学期切换未完成，请重新查询。' }
     },
-    onPage({ page }) { this.pagination.page = page; this.load() },
+    onPage({ page }) {
+      return this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, batchId: undefined, page: String(page) } })
+    },
+    pickArchive(row) {
+      if (String(this.$route.query?.batchId) === String(row.batchId)) return this.select(row)
+      return this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, batchId: String(row.batchId), page: String(this.pagination.page) } })
+    },
     async select(row) {
       const seq = ++this.detailSeq, batchId = row.batchId, route = this.$route.fullPath, termId = this.routeTermId()
       this.current = null; this.selectedBatchId = batchId; this.exportPurpose = ''; this.detailError = ''; this.detailLoading = true
       if (this.invalidRouteTerm() || (termId && String(row.termId) !== termId)) { this.detailLoading = false; this.detailError = '所选归档批次不属于当前学期，请返回本学期列表。'; return }
-      const res = await api.archiveDetail(row.batchId)
+      let res
+      try { res = await api.archiveDetail(row.batchId) }
+      catch { res = { code: 503001, message: '归档详情读取失败，请重试' } }
       if (this.disposed || seq !== this.detailSeq || route !== this.$route.fullPath || String(batchId) !== String(this.selectedBatchId)) return
       this.detailLoading = false
-      if (res.code === 0 && (!termId || String(res.data?.termId) === termId)) this.current = res.data
+      if (res.code === 0 && String(res.data?.batchId) !== String(batchId)) this.detailError = '返回的归档批次与所选对象不一致，请重新查询。'
+      else if (res.code === 0 && (!termId || String(res.data?.termId) === termId)) this.current = res.data
       else if (res.code === 0) this.detailError = '返回的归档批次不属于当前学期，请重新选择。'
       else if (isDeniedResult(res)) this.clearSensitive(res.message)
       else this.detailError = res.message || '归档详情读取失败，请重试'
     },
     reloadCurrent() {
-      const row = this.rows.find(item => String(item.batchId) === String(this.selectedBatchId))
-      if (row) this.select(row)
+      const row = this.rows.find(item => String(item.batchId) === String(this.selectedBatchId)) || (this.selectedBatchId ? { batchId: this.selectedBatchId, termId: this.routeTermId() } : null)
+      if (row) return this.select(row)
     },
     async exportArchive() {
-      if (!this.current) return
+      if (!this.current || this.exporting) return
       if (!this.exportPurpose || this.exportPurpose.trim().length < 5) {
         toast.error('导出用途必填且不少于 5 个字'); return
       }
       const batchId = this.current.batchId, seq = this.detailSeq, route = this.$route.fullPath
       this.exporting = true
-      const res = await api.exportArchive(batchId, this.exportPurpose.trim())
+      let res
+      try { res = await api.exportArchive(batchId, this.exportPurpose.trim()) }
+      catch { res = { code: 503001, message: '导出失败，请稍后重试' } }
       if (this.disposed || seq !== this.detailSeq || route !== this.$route.fullPath || String(this.current?.batchId) !== String(batchId)) return
       this.exporting = false
       if (isDeniedResult(res)) { this.clearSensitive(res.message); return }

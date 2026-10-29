@@ -16,11 +16,14 @@ already due, one tick may advance PUBLISHED -> OPEN -> CLOSED under one row lock
 from __future__ import annotations
 
 import json
+import math
+import re
 from datetime import datetime
 
 from sqlalchemy import and_, or_, select
 
 from app.core.exceptions import AppException, not_found
+from app.core.timeutil import to_utc_naive
 
 from . import academic_affairs_selection_core_service as _core
 from .academic_affairs_selection_preflight_service import require_batch_action
@@ -31,6 +34,36 @@ from .academic_affairs_selection_service import (
 
 
 _TICK_BATCH_LIMIT = 100
+
+
+def _selection_datetime(value, label):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = datetime.fromisoformat(str(value).strip().replace("Z", "+00:00"))
+        return to_utc_naive(parsed)
+    except (TypeError, ValueError, OverflowError) as exc:
+        raise AppException("VALIDATION_ERROR", f"{label}格式无效，请重新选择日期和时间") from exc
+
+
+def _validate_rule(rule):
+    if rule is None:
+        return
+    if not isinstance(rule, dict):
+        raise AppException("VALIDATION_ERROR", "选课规则格式无效")
+    if "maxCredits" not in rule:
+        return
+    value = rule["maxCredits"]
+    # Keep other established rule fields unchanged; reject non-numeric limits
+    # before they can silently disable the credit comparison during enrollment.
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise AppException("VALIDATION_ERROR", "选课学分上限须为不小于零的有效数字")
+    try:
+        valid = math.isfinite(value) and value >= 0
+    except OverflowError:
+        valid = False
+    if not valid:
+        raise AppException("VALIDATION_ERROR", "选课学分上限须为不小于零的有效数字")
 
 
 def _lock_batch(db, batch_id):
@@ -126,6 +159,12 @@ def create_batch(user, body) -> dict:
         if not name:
             raise AppException("VALIDATION_ERROR", "批次名称必填")
 
+        starts_at = _selection_datetime(getattr(body, "selectStartAt", None), "开选时间")
+        ends_at = _selection_datetime(getattr(body, "selectEndAt", None), "截止时间")
+        if starts_at is not None and ends_at is not None and ends_at <= starts_at:
+            raise AppException("VALIDATION_ERROR", "截止时间须晚于开选时间")
+        _validate_rule(getattr(body, "rule", None))
+
         raw_term_id = getattr(body, "termId", None)
         term_id = None
         if raw_term_id not in (None, ""):
@@ -136,8 +175,8 @@ def create_batch(user, body) -> dict:
             tenant_id=_core._tid(),
             batch_name=name,
             term_id=term_id,
-            select_start_at=_core._parse_dt(getattr(body, "selectStartAt", None)),
-            select_end_at=_core._parse_dt(getattr(body, "selectEndAt", None)),
+            select_start_at=starts_at,
+            select_end_at=ends_at,
             apply_scope_json=(
                 json.dumps(body.applyScope, ensure_ascii=False)
                 if getattr(body, "applyScope", None)
@@ -158,14 +197,74 @@ def create_batch(user, body) -> dict:
         return _core._batch_dto(batch)
 
 
-def save_rule(user, batch_id, rule) -> dict:
+def update_draft(user, batch_id, body):
+    with _core.session() as db:
+        _core._require_manage_scope(_core._ctx(user, db))
+        batch = _lock_batch(db, batch_id)
+        if batch.status != _core._BATCH_DRAFT:
+            raise _core._invalid("只有草稿批次可以修改基础信息")
+        term_id = getattr(batch, "term_id", None)
+        supplied_term = getattr(body, "termId", None)
+        if term_id:
+            _guard_batch_writable(db, batch)
+            if supplied_term is not None and str(supplied_term) != str(term_id):
+                raise _core._invalid("已绑定学期的批次不能更换学期")
+        else:
+            term_id = _require_term_reference_writable(db, supplied_term, required=True).id
+        if int(batch.version) != body.expectedVersion:
+            raise _core._invalid("批次已被其他人员修改，请刷新核对；本次输入请保留")
+        name = body.batchName.strip()
+        if not name:
+            raise AppException("VALIDATION_ERROR", "批次名称必填")
+        start = _selection_datetime(body.selectStartAt, "开选时间")
+        end = _selection_datetime(body.selectEndAt, "截止时间")
+        if start is not None and end is not None and end <= start:
+            raise AppException("VALIDATION_ERROR", "截止时间须晚于开选时间")
+        scope = body.applyScope
+        if scope:
+            from app.models import College, Major, SchoolClass
+            models = {"classIds": SchoolClass, "collegeIds": College, "majorIds": Major}
+            for key in ("classIds", "collegeIds", "majorIds"):
+                values = scope.get(key)
+                if values is not None and (not isinstance(values, list) or not values or any(isinstance(v, bool) or not re.fullmatch(r"[1-9][0-9]*", str(v)) for v in values)):
+                    raise AppException("VALIDATION_ERROR", "适用范围须为有效的学校组织对象")
+                if values:
+                    model = models[key]
+                    expected_ids = {int(v) for v in values}
+                    actual_ids = {int(row[0]) for row in db.query(model.id).filter(model.tenant_id == _core._tid(), model.is_deleted.is_(False), model.id.in_(expected_ids)).all()}
+                    if actual_ids != expected_ids:
+                        raise AppException("VALIDATION_ERROR", "适用范围包含其他学校或已失效的组织对象")
+            if "gradeYears" in scope and (not isinstance(scope["gradeYears"], list) or any(not isinstance(v, str) or not v.strip() for v in scope["gradeYears"])):
+                raise AppException("VALIDATION_ERROR", "适用年级范围无效")
+        before = _core._batch_dto(batch)
+        batch.term_id = term_id
+        batch.batch_name = name
+        batch.select_start_at = start
+        batch.select_end_at = end
+        batch.apply_scope_json = json.dumps(scope, ensure_ascii=False) if scope else None
+        batch.remark = body.remark
+        batch.version += 1
+        _core._audit(db, batch.id, "SELECTION_BATCH_UPDATE", "修改草稿基础信息", json.dumps(before, ensure_ascii=False), json.dumps(_core._batch_dto(batch), ensure_ascii=False))
+        db.commit()
+        return _core._batch_dto(batch)
+
+
+def save_rule(user, batch_id, rule, *, expected_rule=None) -> dict:
     """Persist rule config only while the locked batch is still DRAFT/PUBLISHED."""
     with _core.session() as db:
         _core._require_manage_scope(_core._ctx(user, db))
         batch = _lock_batch(db, batch_id)
         _guard_batch_writable(db, batch)
         if batch.status not in (_core._BATCH_DRAFT, _core._BATCH_PUBLISHED):
-            raise _core._invalid("仅 DRAFT/PUBLISHED 批次可改规则")
+            raise _core._invalid("只有草稿或已发布且尚未开选的批次可以修改规则")
+        if expected_rule is not None:
+            try:
+                current_rule = json.loads(batch.rule_json) if batch.rule_json else {}
+            except (TypeError, ValueError) as exc:
+                raise _core._invalid("当前选课规则无法读取，请联系教务核对") from exc
+            if current_rule != expected_rule:
+                raise _core._invalid("选课规则已被其他人员修改，请核对最新规则后重新提交")
+        _validate_rule(rule)
         batch.rule_json = json.dumps(rule, ensure_ascii=False) if rule else None
         _core._audit(db, batch.id, "SELECTION_RULE_UPDATE", "保存选课规则")
         db.commit()
