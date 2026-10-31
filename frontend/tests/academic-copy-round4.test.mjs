@@ -16,6 +16,8 @@ test('确认队列不预设当前审核阶段，保留真实批次状态和详�
   const wrapper = { setup: (_, { slots }) => () => Vue.h('section', slots.default?.()) }
   const components = {
     ModulePageShell: wrapper,
+    AppButton: { setup: (_, { slots }) => () => Vue.h('button', slots.default?.()) },
+    AppTermEntityPicker: { render: () => Vue.h('input') },
     AppStatusTag: { props: ['label'], setup: p => () => Vue.h('span', p.label) },
     AaTeachingTaskStageRail: { render: () => Vue.h('p', '固定预设阶段') },
     AaTaskDetailView: { props: ['selectedBatchId'], setup: p => () => Vue.h('section', { 'data-batch': p.selectedBatchId }, '批次详情') },
@@ -23,8 +25,8 @@ test('确认队列不预设当前审核阶段，保留真实批次状态和详�
   }
   for (const selectedBatchId of ['', rows[0].batchId]) {
     const html = await renderToString(Vue.createSSRApp({
-      data: () => ({ ctx: { currentRole: {}, dataScope: {} }, rows, selectedBatchId, loading: false, error: '', page: 1, total: 1 }),
-      methods: { taskBatchColor: () => 'success', statusLabel: () => '已通过', selectBatch() {}, changePage() {} },
+      data: () => ({ ctx: { currentRole: {}, dataScope: {} }, rows, selectedBatchId, loading: false, error: '', page: 1, total: 1, termId: '', status: '', keyword: '' }),
+      methods: { taskBatchColor: () => 'success', statusLabel: () => '已通过', selectBatch() {}, changePage() {}, query() {}, load() {} },
       render: compileRender(parse(read('AaTaskConfirmView')).descriptor.template.content), components
     }))
     assert.match(html, /秋季教学任务/)
@@ -35,12 +37,15 @@ test('确认队列不预设当前审核阶段，保留真实批次状态和详�
   }
 })
 
-test('调整规则默认折叠，但换人确认、重审和已排课限制仍完整可读', async () => {
-  const template = read('AaTaskAdjustView').match(/<details class="mp-note">[\s\S]*?<\/details>/)?.[0]
+test('选任务时调整规则默认折叠，进入调整后隐藏总则，换人确认、重审和已排课限制保留', async () => {
+  const template = read('AaTaskAdjustView').match(/<details v-if="!adjust.visible" class="mp-note">[\s\S]*?<\/details>/)?.[0]
   assert.ok(template)
-  const html = await renderToString(Vue.createSSRApp({ render: compileRender(template) }))
+  const show = visible => renderToString(Vue.createSSRApp({ render: compileRender(template), data: () => ({ adjust: { visible } }) }))
+  const html = await show(false)
+  assert.match(html, /<details class="mp-note">/)
   assert.doesNotMatch(html, /<details[^>]*\sopen/)
   for (const rule of ['新教师本人确认', '学校终审也须重新办理', '已有课表请走排课变更', '已并入合班']) assert.ok(html.includes(rule))
+  assert.doesNotMatch(await show(true), /<details|哪些调整需要重新确认/)
 })
 
 test('精简合班说明后仍要求同批次同课程版本，学校只读范围不增加权限', () => {

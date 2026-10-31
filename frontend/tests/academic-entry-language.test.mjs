@@ -50,9 +50,20 @@ test('课表批次范围和版本未知时保持待核对，学院编号不出�
   const render = new Function('Vue', compile(`<div>${scope}${version}</div>`, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
   const show = row => renderToString(Vue.createSSRApp({ render, data: () => ({ row }) }))
   assert.match(await show({}), /范围待核对[\s\S]*版本待核对/)
-  const college = await show({ collegeId: '987654321012345678', activeTruth: { headVersion: 2 } })
-  assert.match(college, /指定学院[\s\S]*第2版/)
+  const college = await show({ collegeId: '987654321012345678', status: 'PUBLISHED', publishedVersion: 2 })
+  assert.match(college, /指定学院[\s\S]*当前正式第2版/)
   assert.doesNotMatch(college, /987654321012345678|全校范围/)
+  const unverified = await show({ status: 'PUBLISHED', activeTruth: { headVersion: 2 } })
+  assert.match(unverified, /生效版本待核对/)
+  assert.doesNotMatch(unverified, /第2版/)
+  for (const status of ['DRAFT', 'PRE_PUBLISHED']) {
+    assert.match(await show({ status, publishedVersion: null }), /尚未正式发布/)
+  }
+  for (const status of ['SUPERSEDED', 'ARCHIVED', 'VOIDED']) {
+    const history = await show({ status, publishedVersion: null, activeTruth: { headVersion: 2 } })
+    assert.match(history, /历史版本，查看记录/)
+    assert.doesNotMatch(history, /第2版/)
+  }
   assert.match(await show({ collegeId: null }), /全校范围/)
 })
 

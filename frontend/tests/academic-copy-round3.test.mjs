@@ -25,13 +25,16 @@ test('跨批次分配队列不把首行当作当前任务，指定批次仍能�
 test('行内分配保留允许状态，无权限和已确认任务不出现分配动作', async () => {
   const content = source('AaTeacherAssignConsoleView')
   const template = content.match(/<template #cell-actions="\{ row \}">([\s\S]*?)<\/template>/)[1]
-  for (const [patterns, status, allowed] of [
-    [['academicAffairs.teachingTask.assign'], 'PENDING_ASSIGN', true],
-    [['academicAffairs.teachingTask.assign'], 'ASSIGNED', true],
-    [['academicAffairs.teachingTask.assign'], 'TEACHER_CONFIRMED', false],
-    [['academicAffairs.teachingTask.view'], 'PENDING_ASSIGN', false]
+  for (const [patterns, scope, status, allowed] of [
+    [['academicAffairs.teachingTask.assign'], 'COLLEGE', 'PENDING_ASSIGN', true],
+    [['academicAffairs.teachingTask.assign'], 'COLLEGE', 'ASSIGNED', true],
+    [['academicAffairs.teachingTask.assign'], 'COLLEGE', 'REJECTED_BY_TEACHER', true],
+    [['academicAffairs.teachingTask.assign'], 'COLLEGE', 'TEACHER_CONFIRMED', false],
+    [['academicAffairs.teachingTask.view'], 'COLLEGE', 'PENDING_ASSIGN', false],
+    [['academicAffairs.teachingTask.assign'], 'TENANT_ALL', 'PENDING_ASSIGN', false],
+    [['academicAffairs.teachingTask.assign'], undefined, 'PENDING_ASSIGN', false]
   ]) {
-    const { state } = page('AaTeacherAssignConsoleView', { matchPermission }, { ctx: { permissionPatterns: patterns } })
+    const { state } = page('AaTeacherAssignConsoleView', { matchPermission }, { ctx: { permissionPatterns: patterns, dataScope: { scope } } })
     const html = await render(template, { row: { status, teacherKey: '' }, assign: { submitting: false }, canAssign: row => state.canAssign(row), openAssign() {} })
     assert.equal(/<button[^>]*>分配<\/button>/.test(html), allowed)
   }

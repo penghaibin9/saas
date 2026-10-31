@@ -17,7 +17,8 @@ const course = loadView('AaCourseConsoleView')
 
 function state(component, role, permissions, status = 'DRAFT') {
   const vm = { ctx: { currentRole: { roleCode: role }, permissionPatterns: permissions },
-    selectedProgram: { status }, confirmDlg: { visible: false }, materialVoidConfirm: { visible: false } }
+    selectedProgram: { status }, confirmDlg: { visible: false }, materialVoidConfirm: { visible: false },
+    materialPanel: { visible: true, course: { courseId: 'course-1' }, items: [{ id: '1', name: '课程大纲' }] } }
   vm.hasPermission = code => matchPermission(permissions, code)
   for (const name of ['isEditable', 'canDeleteItems', 'canVoidMaterial']) {
     if (component.computed[name]) Object.defineProperty(vm, name, { get: () => component.computed[name].call(vm) })
@@ -55,6 +56,14 @@ test('学院教务不显示材料作废，其他有课程维护权限岗位保�
     assert.equal(allowed.canVoidMaterial, true)
     course.component.methods.confirmVoidMaterial.call(allowed, { id: '1', name: '课程大纲' })
     assert.equal(allowed.materialVoidConfirm.visible, true)
+    assert.equal(allowed.materialVoidConfirm.courseId, 'course-1')
+    assert.equal(allowed.materialVoidConfirm.id, '1')
+    for (const panel of [{ ...allowed.materialPanel, visible: false }, { ...allowed.materialPanel, items: [] }]) {
+      allowed.materialPanel = panel
+      allowed.materialVoidConfirm.visible = false
+      course.component.methods.confirmVoidMaterial.call(allowed, { id: '1', name: '课程大纲' })
+      assert.equal(allowed.materialVoidConfirm.visible, false)
+    }
     assert.equal(state(course.component, role, []).canVoidMaterial, false)
   }
 })
