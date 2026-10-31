@@ -193,7 +193,7 @@ from app.models.academic_affairs import (AaArchiveBatch,  # noqa: F401
                                          AaTeachingTaskBatch, AaTerm,
                                          AaTextbook, AaTextbookDistributionBatch,
                                          AaTextbookDistributionRecord,
-                                         AaTextbookFeeLedger, AaTextbookOrderBatch,
+                                           AaTextbookFeeLedger, AaTextbookRefund, AaTextbookOrderBatch,
                                          AaTextbookOrderItem, AaTextbookReviewBatch,
                                          AaTextbookReviewBatchItem,
                                          AaTextbookSelection, AaTimeSlot)
@@ -257,3 +257,20 @@ from app.modules.platform.document_lifecycle.models import (  # noqa: F401
 )
 
 from app.models import academic_affairs_optimizer as _academic_affairs_optimizer  # noqa: F401
+
+from app.models.internship import (InternshipCheckinExemption, InternshipEmergencyNoticeReceipt, InternshipSupportSession, InternshipPlanAssignment)  # noqa: F401
+from app.models.internship_application_material_snapshot import (InternshipApplicationMaterialSnapshot)  # noqa: F401
+from app.models.internship_enterprise_application_decision import (InternshipEnterpriseApplicationDecision)  # noqa: F401
+from app.models.internship_enterprise_scope import (InternshipEnterpriseCollegeScope)  # noqa: F401
+from app.models.internship_formal_document import (InternshipFormalDocument)  # noqa: F401
+from app.models.internship_material_requirement import (InternshipMaterialRequirement, InternshipMaterialTemplateVersion, InternshipMaterialSubmission, InternshipMaterialSubmissionFile)  # noqa: F401
+from app.models.internship_placement_snapshot import (InternshipPlacementSnapshot)  # noqa: F401
+from app.models.internship_regulatory_reporting import (InternshipRegulatoryTemplateVersion, InternshipRegulatoryTask, InternshipRegulatoryTaskRow)  # noqa: F401
+from app.models.internship_report_quality import (InternshipReportRuleConfig, InternshipReportVersion, InternshipReportReview)  # noqa: F401
+from app.models.internship_rotation_payroll import (InternshipRotation, InternshipRotationProject, InternshipPayrollStatement, InternshipPayrollVersion)  # noqa: F401
+from app.models.internship_score_appeal import (InternshipScoreAppeal)  # noqa: F401
+from app.models.internship_student_profile import (StudentInternshipProfile, StudentInternshipProfileItem)  # noqa: F401
+from app.models.internship_teacher_activity import (InternshipTeacherCheckin, InternshipTeacherMakeup, InternshipTeacherWorkReport, InternshipTeacherPeriodReport, InternshipEmergencyNoticeTeacherReceipt, InternshipEmergencyNotice)  # noqa: F401
+from app.models.internship_volunteer_group import (InternshipVolunteerGroup)  # noqa: F401
+
+from app.models.internship_employment_registration import (InternshipEmploymentRegistration, InternshipEmploymentSubmission, InternshipEmploymentReview)  # noqa: F401

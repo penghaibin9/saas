@@ -8,6 +8,24 @@ from tests.support_grade_review_identity import _ensure_college_assignment
 from tests.support_schedule_change_identity import seed_schedule_change_identity
 
 
+def task_reader_headers():
+    """查询回归使用真实数据库角色会话，不依赖演示登录开关。"""
+    from app.db.session import get_engine, get_sessionmaker
+    from app.core.security import create_access_token
+    from app.services.auth_service_db import _claims, _role_contexts
+    from tests.support_academic_review_identity import _ensure_review_account
+
+    assert "test" in (get_engine().url.database or "").lower()
+    with get_sessionmaker()() as db:
+        user = _ensure_review_account(db, login_name="task_read_query", real_name="查询验证教务员",
+            role_code="ACADEMIC_ADMIN", permissions=("academicAffairs.teachingTask.view",))
+        db.commit()
+        contexts = _role_contexts(db, user)
+        context = next(item for item in contexts if item["roleCode"] == "ACADEMIC_ADMIN")
+        token = create_access_token(_claims(db, user, context, contexts, "PC"))
+    return {"Authorization": "Bearer " + token}
+
+
 def ensure_task_review_identity(college_id):
     from app.db.session import get_sessionmaker
     from app.models import College, Role, RolePermission, StaffAssignment, User, UserRole

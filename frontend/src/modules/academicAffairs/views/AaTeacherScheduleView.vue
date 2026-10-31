@@ -76,14 +76,14 @@
             <span>周次：{{ selectedItem.startWeek }}–{{ selectedItem.endWeek }}周（{{ parityLabel(selectedItem.weekParity) }}）</span>
             <span>教室：{{ selectedItem.classroom || '待定' }}</span>
           </div>
-          <div v-if="isSelfView" class="aa-item-detail__actions">
+          <div v-if="canStartChange" class="aa-item-detail__actions">
             <AppButton variant="primary" @click="applyChange('ADJUST')">申请调课</AppButton>
             <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('STOP')">申请停课</AppButton>
             <AppButton :disabled="!selectedOccurrenceWeek" @click="applyChange('MAKEUP')">申请补课</AppButton>
           </div>
-          <p v-if="isSelfView && !selectedOccurrenceWeek" class="mp-note">停课或补课须先选周次，调课可在下一步选择单次或周期调整。</p>
-          <p v-else-if="isSelfView" class="mp-note">第{{ selectedOccurrenceWeek }}教学周的申请先交学院审核，教务处终审通过后更新课表。</p>
-          <p v-else class="mp-note">仅任课教师本人可申请调课、停课或补课。</p>
+          <p v-if="canStartChange && !selectedOccurrenceWeek" class="mp-note">停课或补课须先选周次，调课可在下一步选择单次或周期调整。</p>
+          <p v-else-if="canStartChange" class="mp-note">第{{ selectedOccurrenceWeek }}教学周的申请先交学院审核，教务处终审通过后更新课表。</p>
+          <p v-else class="mp-note">当前为只读查询。任课教师本人或获授权的学院教务可发起范围内的调停课申请。</p>
         </AppSectionCard>
       </template>
     </div>
@@ -104,6 +104,7 @@ import AaScheduleGrid from '@/modules/academicAffairs/components/AaScheduleGrid.
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 import AaScheduleObjectBar from '../components/AaScheduleObjectBar.vue'
 
 export default {
@@ -133,6 +134,11 @@ export default {
       return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
     },
     isSelfView() { return this.isSameTeacherKey(this.teacherKey) },
+    canStartChange() {
+      const role = this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType
+      return (this.isSelfView || role === 'COLLEGE_ACADEMIC')
+        && matchPermission(this.ctx?.permissionPatterns || [], 'academicAffairs.scheduleChange.apply')
+    },
     selectedOccurrenceWeek() {
       const week = Number(this.week || this.selectedItem?.weekNo || 0)
       return Number.isInteger(week) && week > 0 ? week : null
@@ -169,6 +175,10 @@ export default {
     weekdayLabel(value) { return `周${'一二三四五六日'[Number(value) - 1] || (value ? '待确认' : '')}` },
     parityLabel(value) { return { ALL: '全周', ODD: '单周', EVEN: '双周' }[value] || '全周' },
     applyChange(changeType) {
+      if (!this.canStartChange) {
+        toast.error('当前身份不能从此课位发起调停课')
+        return
+      }
       const originItemId = this.selectedItem?.itemId || this.selectedItem?.scheduleItemId
       if (!originItemId) {
         toast.error('无法确认原课程安排，请刷新课表后重试')

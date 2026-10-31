@@ -10,6 +10,7 @@ TENANT_ALL(教务处/学校管理员)。成绩发布/退回/归档超高危动�
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from datetime import datetime
 
 from sqlalchemy import and_, func, select
@@ -122,7 +123,7 @@ def _user_keys(user) -> set[str]:
 def _check_course_scope(task, user):
     """任课教师仅能操作本人 teacher_key 归属的录入任务；TENANT_ALL/COLLEGE 角色不受此收敛（另有各自校验）。"""
     role = (user.get("currentRoleCode") or "").upper()
-    if role in _REVIEW_ROLES or role == "COLLEGE_ADMIN":
+    if role in _REVIEW_ROLES or role in COLLEGE_ACADEMIC_ROLES:
         return
     if not task.teacher_key:
         # 无归属键时 fail-closed：避免任意教师越权改他人任务（历史未回填请教务处代录）
@@ -446,16 +447,16 @@ def create_grade_task_in_session(db, body, user) -> dict:
     role = (user.get("currentRoleCode") or "").upper()
     is_platform = user.get("userType") == "PLATFORM_SUPER_ADMIN"
     can_with_task = (
-        role in _REVIEW_ROLES or role == "COLLEGE_ADMIN" or is_platform
+        role in _REVIEW_ROLES or role in COLLEGE_ACADEMIC_ROLES or is_platform
     )
     can_supplement = role in _SUPPLEMENT_ROLES or is_platform
     teaching_task_id = int(body.teachingTaskId) if getattr(body, "teachingTaskId", None) else None
     supplement = (getattr(body, "adminSupplementReason", None) or "").strip()
     if not teaching_task_id and not can_supplement:
-        if role == "COLLEGE_ADMIN":
+        if role in COLLEGE_ACADEMIC_ROLES:
             raise AppException(
                 "NO_PERMISSION",
-                "学院管理员不可脱离教学任务创建成绩任务",
+                "学院岗位不可脱离教学任务创建成绩任务",
                 http_status=403,
             )
         raise AppException("VALIDATION_ERROR", "普通教师必须关联真实教学任务创建成绩任务")
@@ -475,7 +476,7 @@ def create_grade_task_in_session(db, body, user) -> dict:
         tt = db.get(AaTeachingTask, teaching_task_id)
         if not tt or tt.is_deleted or tt.tenant_id != _tid():
             raise not_found("教学任务不存在或不在当前数据范围内")
-        if role == "COLLEGE_ADMIN":
+        if role in COLLEGE_ACADEMIC_ROLES:
             from app.core.affairs_security import build_affairs_context
             ctx = build_affairs_context(user, db)
             allowed = ctx.allowed_class_ids(db)
@@ -578,7 +579,7 @@ def list_tasks(user, status=None, page=1, page_size=20):
         role = (user.get("currentRoleCode") or "").upper()
         if role in _REVIEW_ROLES or user.get("userType") == "PLATFORM_SUPER_ADMIN":
             pass
-        elif role == "COLLEGE_ADMIN":
+        elif role in COLLEGE_ACADEMIC_ROLES:
             from app.core.affairs_security import build_affairs_context
             ctx = build_affairs_context(user, db)
             allowed = ctx.allowed_class_ids(db)
@@ -1484,7 +1485,7 @@ def fail_list(user, term=None, page=1, page_size=50):
         if term:
             conds.append(AcademicGrade.term == term)
         role = (user.get("currentRoleCode") or "").upper()
-        if role == "COLLEGE_ADMIN":
+        if role in COLLEGE_ACADEMIC_ROLES:
             from app.core.affairs_security import build_affairs_context
             ctx = build_affairs_context(user, db)
             allowed = ctx.allowed_class_ids(db)

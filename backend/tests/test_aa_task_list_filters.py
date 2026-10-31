@@ -59,24 +59,6 @@ def test_task_list_projects_batch_status_without_n_plus_one():
     assert 'item["batchStatus"] = batch_status.get' in source
 
 
-def _task_reader_headers():
-    """查询回归使用真实数据库角色会话，不依赖演示登录开关。"""
-    from app.db.session import get_engine, get_sessionmaker
-    from app.core.security import create_access_token
-    from app.services.auth_service_db import _claims, _role_contexts
-    from tests.support_academic_review_identity import _ensure_review_account
-
-    assert "test" in (get_engine().url.database or "").lower()
-    with get_sessionmaker()() as db:
-        user = _ensure_review_account(db, login_name="task_read_query", real_name="查询验证教务员",
-            role_code="ACADEMIC_ADMIN", permissions=("academicAffairs.teachingTask.view",))
-        db.commit()
-        contexts = _role_contexts(db, user)
-        context = next(item for item in contexts if item["roleCode"] == "ACADEMIC_ADMIN")
-        token = create_access_token(_claims(db, user, context, contexts, "PC"))
-    return {"Authorization": "Bearer " + token}
-
-
 def test_task_search_matches_class_and_teacher_keys_before_paging_without_foreign_class_names(client, db_mode):
     from app.db.session import get_sessionmaker
     from app.models import AaTerm, AaTeachingTaskBatch, AaTeachingTask, SchoolClass
@@ -96,7 +78,8 @@ def test_task_search_matches_class_and_teacher_keys_before_paging_without_foreig
         db.add(AaTeachingTask(tenant_id=tid, batch_id=batch.id, course_id=1, course_name='普通课程', class_id=foreign.id, status='READY'))
         db.commit()
         term_id, batch_id, expected_id = term.id, batch.id, str(tasks[1].id)
-    headers = _task_reader_headers()
+    from tests.support_task_review_identity import task_reader_headers
+    headers = task_reader_headers()
     base = '/api/v1/academic-affairs'
     for endpoint in [f'{base}/teaching-tasks', f'{base}/teaching-task-batches/{batch_id}/tasks']:
         response = client.get(endpoint, headers=headers, params={'termId': term_id, 'keyword': '50%_', 'page': 2, 'pageSize': 1}).json()

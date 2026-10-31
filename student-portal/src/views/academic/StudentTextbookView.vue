@@ -21,7 +21,7 @@
           <dl class="definition"><dt>领取地点</dt><dd>{{ record.location || record.pickupLocation || '以学校发放通知为准' }}</dd><dt>签收状态</dt><dd><span class="tag" :class="canSign(record) ? 'amber' : ['SIGNED', 'RECEIVED'].includes(rawStatus(record)) ? 'green' : 'gray'">{{ statusText(record) }}</span></dd><dt v-if="record.receivedAt || record.signedAt">签收时间</dt><dd v-if="record.receivedAt || record.signedAt">{{ dateTime(record.receivedAt || record.signedAt) }}</dd><dt>费用状态</dt><dd>以学校费用台账为准，当前不提供线上付款</dd></dl>
           <footer v-if="canSign(record)" class="form-foot"><button class="btn primary" @click="signRecordId = recordKey(record); received = false">核对并签收</button></footer>
         </div></section></div>
-        <section v-if="Object.keys(fees).length" class="card pad"><div class="row wrap"><small>学校教材费用台账</small><span>应收 {{ amountText(fees.totalDue) }}</span><span>已付 {{ amountText(fees.totalPaid) }}</span><span>未付 {{ amountText(fees.unpaid) }}</span></div></section>
+        <section v-if="Object.keys(fees).length" class="card pad"><div class="row wrap"><small>学校教材费用台账</small><span>应收 {{ amountText(fees.totalDue) }}</span><span>净缴 {{ amountText(fees.totalPaid) }}</span><span>已退 {{ amountText(fees.totalRefunded) }}</span><span>未付 {{ amountText(fees.unpaid) }}</span></div></section>
       </template>
     </div>
   </div>

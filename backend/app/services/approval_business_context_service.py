@@ -125,6 +125,29 @@ def _leave_context(db, instance, *, for_update: bool = False) -> dict:
     }
 
 
+def _internship_leave_context(db, instance, *, for_update: bool = False) -> dict:
+    from app.core.context import get_current_user_ctx
+    from app.core.permissions import enforce_permission
+    from app.models import InternshipLeave
+    from app.modules.internship.services.internship_scope import assert_internship_record_scope
+    from app.modules.internship.services.internship_leave_service import TYPE_LABEL, STATUS_LABEL
+
+    actor = get_current_user_ctx() or {}
+    enforce_permission(actor, 'internship.leave.view')
+    row = _source_row(db, InternshipLeave, instance.source_biz_id, for_update=for_update)
+    if not row:
+        return {'completeness': MISSING, 'summary': '实习请假记录不存在或已删除'}
+    record = assert_internship_record_scope(db, row.internship_id, actor, '查看实习请假审批')
+    fields = [_field('请假类型', TYPE_LABEL.get(row.leave_type, '其他请假')),
+              _field('开始时间', row.start_date), _field('结束时间', row.end_date),
+              _field('天数', row.days), _field('事由', row.reason),
+              _field('当前状态', STATUS_LABEL.get(row.status, '状态待确认'))]
+    return {'completeness': FULL, 'summary': '实习请假审批', 'sourceVersion': int(row.version or 0),
+            'sections': [_section('实习请假', fields)], 'attachments': [],
+            'domainWorkspace': {'path': '/admin/internship/leaves',
+                                'query': {'batchId': str(record.batch_id), 'leaveId': str(row.id)}}}
+
+
 def _status_change_context(db, instance, *, for_update: bool = False) -> dict:
     from app.models import AaStatusChange
 
@@ -459,11 +482,24 @@ def _employment_destination_context(db, instance, *, for_update: bool = False) -
         _field("说明", row.remark),
         _field("当前状态", row.status),
     ]
+    from app.core.context import get_current_user_ctx
+    from app.modules.internship.services.internship_employment_service import formal_review_context
+    pre_review = formal_review_context(db, row.id, get_current_user_ctx() or {})
+    sections = [_section("登记信息", fields)]
+    attachments = []
+    if pre_review:
+        sections.append(_section('实习预审资料', [
+            _field(label, pre_review['fields'].get(key))
+            for key, label in pre_review['fieldLabels'].items()
+        ] + [_field('预审人', pre_review['reviewerName']),
+             _field('预审时间', pre_review['reviewedAt']),
+             _field('办理说明', pre_review['notice'])]))
+        attachments = pre_review['attachments']
     return {
         "completeness": _completeness(fields, ["去向类型"]),
         "summary": f"就业去向登记 · {dest_label}",
-        "sections": [_section("登记信息", fields)],
-        "attachments": [],
+        "sections": sections,
+        "attachments": attachments,
         "sourceVersion": int(row.version or 0),
     }
 
@@ -558,7 +594,8 @@ def resolve_context(db, instance, *, for_update: bool = False) -> dict:
             target_id = removal.case_id if removal else None
         if target_id:
             base["domainWorkspace"] = {"path": path, "query": {key: str(target_id)}}
-    adapter = _ADAPTERS.get(biz_type)
+    adapter = (_internship_leave_context if str(instance.source_module or '').lower() == 'internship'
+               and biz_type == 'LEAVE' else _ADAPTERS.get(biz_type))
     if not adapter:
         if biz_type in _NON_PRODUCTION_CONTEXT_EXEMPTIONS:
             base["note"] = (

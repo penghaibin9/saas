@@ -1757,7 +1757,7 @@ def create_registration_batch(body, user) -> dict:
                 "status": b.status}
 
 
-def list_registration_batches(user, status=None, page=1, page_size=20, register_type=None):
+def list_registration_batches(user, status=None, page=1, page_size=20, register_type=None, *, keyword=None):
     """注册批次列表。register_type 传 ENROLL/ANNUAL 时收窄为「入学注册」/「学年注册」两个三级叶子视图，
     不传时为原「注册批次」通栏视图（两者共用同一批次引擎，不建重复表）。"""
     from app.models import AaRegistrationBatch, AaRegistration, AaTerm, StudentProfile
@@ -1768,8 +1768,16 @@ def list_registration_batches(user, status=None, page=1, page_size=20, register_
             conds.append(AaRegistrationBatch.status == status)
         if register_type:
             conds.append(AaRegistrationBatch.register_type == register_type)
+        query = str(keyword or "").strip()
+        if query:
+            matches = [AaRegistrationBatch.batch_name.contains(query, autoescape=True)]
+            if query.isascii() and query.isdecimal() and len(query) <= 19 and int(query) <= 9223372036854775807:
+                matches.append(AaRegistrationBatch.id == int(query))
+            conds.append(or_(*matches))
+        size = max(1, int(page_size))
+        total = int(db.scalar(select(func.count(AaRegistrationBatch.id)).where(*conds)) or 0)
         rows = db.scalars(select(AaRegistrationBatch).where(*conds).order_by(
-            AaRegistrationBatch.id.desc())).all()
+            AaRegistrationBatch.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size)).all()
         counts = {}
         if rows:
             records = select(AaRegistration.batch_id, AaRegistration.status, func.count(AaRegistration.id)).join(
@@ -1789,7 +1797,7 @@ def list_registration_batches(user, status=None, page=1, page_size=20, register_
         out = [{"batchId": str(b.id), "batchName": b.batch_name, "registerType": b.register_type,
                 "status": b.status, "termId": str(b.term_id) if b.term_id is not None else None,
                 "termName": terms.get(b.term_id), **counts.get(b.id, {"registrationCount": 0, "registeredCount": 0})} for b in rows]
-        return out[(max(1, page) - 1) * page_size:(max(1, page) - 1) * page_size + page_size], len(out)
+        return out, total
 
 
 def _precheck(db, student_id) -> dict:

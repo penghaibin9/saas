@@ -196,3 +196,53 @@ test('自动时间安排返回后撤销编排权限不能继续第二次写请�
   pending.resolve(ok({})); await running
   assert.equal(writes, 0); assert.equal(state.autoArranging, false)
 })
+
+
+test('缓考只有正式节点许可才显示审核，辅导员使用首审接口并携带版本', async () => {
+  const calls=[]
+  const {state}=instance({deferCounselorReview:async(...args)=>{calls.push(args);return ok({deferId:'71',version:4,status:'TEACHER_CONFIRM'})},deferList:async()=>ok({list:[calls.length?{deferId:'71',version:4,status:'TEACHER_CONFIRM'}:{deferId:'71',version:3,status:'COUNSELOR_REVIEW',allowedActions:['APPROVE']}],total:1})})
+  state.$route.query.tab='defer'
+  const row={deferId:'71',status:'COUNSELOR_REVIEW',version:3,allowedActions:['APPROVE','RETURN','REJECT']}
+  assert.equal(state.canReviewDefer({...row,allowedActions:[]}),false)
+  assert.equal(state.canReviewDefer({...row,version:undefined}),false)
+  state.openDeferDecision(row,'APPROVE');await state.submitDeferDecision()
+  assert.equal(calls.length,1);assert.equal(calls[0][3],3)
+})
+
+test('缓考确认窗口没有当前节点许可，不提交学校代办请求', async () => {
+  let writes=0
+  const {state}=instance({deferReview:async()=>{writes++}})
+  state.deferDecisionRow={deferId:'71',status:'COLLEGE_REVIEW',version:1,allowedActions:[]}
+  state.deferDecisionAction='APPROVE';await state.submitDeferDecision()
+  assert.equal(writes,0)
+})
+
+
+test('缓考审批回读错对象不报成功、不关闭确认窗口', async()=>{
+ let writes=0
+ const row={deferId:'71',version:1,status:'COLLEGE_REVIEW',allowedActions:['APPROVE']}
+ const {state}=instance({deferReview:async()=>{writes++;return ok({...row,version:2,status:'ACADEMIC_FINAL'})},deferList:async()=>ok({list:[writes?{...row,deferId:'72'}:row],total:1})})
+ state.$route.query.tab='defer';state.openDeferDecision(row,'APPROVE');await state.submitDeferDecision()
+ assert.equal(writes,1);assert.equal(state.deferConfirmVisible,true);assert.equal(state.saving,false)
+})
+
+test('缓考原版本已变化时，前端回读阻止提交', async()=>{
+ let writes=0
+ const row={deferId:'71',version:1,status:'COLLEGE_REVIEW',allowedActions:['APPROVE']}
+ const {state}=instance({deferReview:async()=>{writes++},deferList:async()=>ok({list:[{...row,version:2}],total:1})})
+ state.$route.query.tab='defer';state.openDeferDecision(row,'APPROVE');await state.submitDeferDecision()
+ assert.equal(writes,0);assert.equal(state.deferConfirmVisible,true)
+})
+
+
+test('考务切换身份清掉旧提交忙状态，迟到审批不锁住新岗位',async()=>{
+ const pending=deferred()
+ const row={deferId:'71',version:1,status:'COLLEGE_REVIEW',allowedActions:['APPROVE']}
+ const {state}=instance({deferReview:()=>pending.promise,deferList:async()=>ok({list:[row],total:1})})
+ state.$route.query.tab='defer';state.openDeferDecision(row,'APPROVE');const writing=state.submitDeferDecision()
+ await new Promise(resolve=>setImmediate(resolve));assert.equal(state.saving,true)
+ state.ctx={...state.ctx,currentRole:{roleCode:'OTHER'}};state.resetModeAndLoad()
+ assert.equal(state.saving,false);assert.equal(state.deferDecisionRow,null)
+ pending.resolve(ok({...row,version:2,status:'ACADEMIC_FINAL'}));await writing
+ assert.equal(state.saving,false);assert.equal(state.deferConfirmVisible,false)
+})

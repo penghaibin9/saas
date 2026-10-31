@@ -164,6 +164,48 @@ def _program(program_id):
         db.close()
 
 
+def test_program_detail_major_name_matches_authorized_major(db_mode):
+    ids = _seed(status="DRAFT")
+    for user in (SCHOOL_USER, COLLEGE_USER):
+        result = svc.get_program(ids["own"], user)
+        assert result["majorName"] == "R3 方案专业 A"
+        assert result["majorId"]
+    with pytest.raises(AppException) as denied:
+        svc.get_program(ids["other"], COLLEGE_USER)
+    assert denied.value.code == "NO_DATA_SCOPE"
+
+
+@pytest.mark.parametrize("relation", ["unset", "deleted", "other_tenant"])
+def test_program_detail_major_name_does_not_expose_unavailable_major(db_mode, relation):
+    from app.db.session import get_sessionmaker
+    from app.models import AaProgram, College, Major, Tenant
+
+    ids = _seed(status="DRAFT")
+    with get_sessionmaker()() as db:
+        program = db.get(AaProgram, ids["own"])
+        if relation == "unset":
+            program.major_id = None
+        elif relation == "deleted":
+            db.get(Major, program.major_id).is_deleted = True
+        else:
+            foreign_tid = TID + 1
+            db.add(Tenant(id=foreign_tid, tenant_code="program-name-foreign", school_name="另一测试学校",
+                          deploy_mode="SAAS", db_mode="SHARED", status="ACTIVE"))
+            db.flush()
+            college = College(tenant_id=foreign_tid, college_name="另一学校学院", code="FOREIGN-C")
+            db.add(college)
+            db.flush()
+            major = Major(tenant_id=foreign_tid, college_id=college.id, major_name="不得泄露的外校专业", code="FOREIGN-M")
+            db.add(major)
+            db.flush()
+            program.major_id = major.id
+        expected_id = str(program.major_id or "")
+        db.commit()
+    result = svc.get_program(ids["own"], SCHOOL_USER)
+    assert result["majorName"] == ""
+    assert result["majorId"] == expected_id
+
+
 def test_program_course_formation_survives_formal_write_and_read(db_mode, monkeypatch):
     from types import SimpleNamespace
 

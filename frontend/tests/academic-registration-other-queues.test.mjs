@@ -2,6 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
+import { academicRouteState } from '../src/modules/academicAffairs/academicFlowContext.js'
 
 const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue', import.meta.url), 'utf8')
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
@@ -9,7 +10,7 @@ const result = id => ({ code: 0, data: { list: [{ batchId: id, marker: id }], to
 function page(api) {
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
     .replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?$/gm, '').replace('export default', 'component =')
-  const sandbox = { academicAffairsApi: api }
+  const sandbox = { academicAffairsApi: api, academicRouteState }
   for (const name of source.match(/components:\s*{([\s\S]*?)}/)[1].split(',').map(x => x.trim()).filter(Boolean)) sandbox[name] = {}
   vm.runInNewContext(script, sandbox)
   const component = sandbox.component
@@ -23,6 +24,40 @@ const queues = [
   ['exc', 'loadExceptions', 'getRegistrationExceptions'],
   ['archive', 'loadArchive', 'getArchivedRegistrationBatches'],
 ]
+
+test('未注册学生按已提交关键词跨页查询，迟到结果不能覆盖新搜索', async () => {
+  const old = deferred(), calls = []
+  const { state } = page({ getUnregisteredStudents: p => { calls.push(p); return p.keyword === '旧词' ? old.promise : Promise.resolve(result('新结果')) } })
+  state.tab = 'unregistered'; state.unreg.pagination.page = 3
+  state.unreg.keyword = '旧词'; const pending = state.searchUnregistered()
+  assert.equal(calls[0].keyword, '旧词'); assert.equal(calls[0].page, 1)
+  state.unreg.keyword = '新词'; await state.searchUnregistered()
+  old.resolve(result('旧结果')); await pending
+  assert.equal(state.unreg.rows[0].marker, '新结果')
+  state.unreg.keyword = '尚未查询'; await state.onUnregPage(2)
+  assert.equal(calls.at(-1).keyword, '新词'); assert.equal(calls.at(-1).page, 2)
+  state.unreg.keyword = ''; await state.searchUnregistered()
+  assert.equal(calls.at(-1).keyword, undefined); assert.equal(calls.at(-1).page, 1)
+})
+
+test('未注册页面刷新恢复关键词与分页，不混入资格核验的学生定位', async () => {
+  const calls = []
+  const { state, component } = page({ getContext: async () => ({ code: 0, data: { userId: 'teacher' } }),
+    getRegistrationBatches: async () => result('1'), getUnregisteredStudents: p => { calls.push(p); return Promise.resolve(result('found')) } })
+  state.$route = { path: '/admin/academic-affairs/registration/workbench', query: { tab: 'unregistered', batchId: '1', keyword: '学生甲', page: '2', pageSize: '20' } }
+  await component.created.call(state)
+  assert.equal(state.unreg.appliedKeyword, '学生甲'); assert.equal(state.unreg.pagination.page, 2)
+  assert.equal(calls[0].keyword, '学生甲'); assert.equal(calls[0].page, 2)
+  const query = state.eligibilityRouteQuery()
+  assert.equal(query.keyword, '学生甲'); assert.equal(query.page, '2'); assert.equal(query.studentId, undefined)
+})
+
+test('未注册导出明确保持批次完整范围，不暗示只导出搜索结果', () => {
+  const { state } = page({})
+  state.unreg.appliedKeyword = '目标学生'; state.openExport()
+  assert.match(state.exportDialog.message, /所选批次/)
+  assert.match(state.exportDialog.message, /不按姓名或学号搜索词筛选/)
+})
 for (const [key, method, endpoint] of queues) {
   test(`${key}: slower old page cannot replace a newer queue or release its loading state`, async () => {
     const old = deferred(), fresh = deferred()

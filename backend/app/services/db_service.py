@@ -524,6 +524,11 @@ def get_task(task_id, user: dict | None = None) -> dict:
 
 
 def require_generic_approval_source(instance) -> None:
+    if instance.source_module == "internship" and instance.source_biz_type == "LEAVE":
+        raise AppException(
+            "DATA_CONFLICT", "请进入实习请假审批办理，系统须同时核验当前审批节点、请假状态和返岗记录。",
+            http_status=409,
+        )
     # Schedule decisions also change formal lessons and notices in their own transaction.
     if instance.source_biz_type == "AA_SCHEDULE_CHANGE":
         raise AppException("DATA_CONFLICT", "请进入调停课审批办理，系统须同时核验并更新正式课表与通知。", http_status=409)

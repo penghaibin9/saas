@@ -5,6 +5,7 @@ correction command writes decisions; a read-back is never a command receipt.
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from sqlalchemy import and_, false, func, or_, select
 
 from app.core.affairs_security import build_affairs_context
@@ -64,7 +65,7 @@ def _scope(db, user, access):
         # Scope-admin writers additionally use the actual data scope, not role
         # text alone. Teacher task scope remains the canonical relation scope.
         role = str((user or {}).get("currentRoleCode") or "").upper()
-        if role in core._REVIEW_ROLES or role == "COLLEGE_ADMIN":
+        if role in core._REVIEW_ROLES or role in COLLEGE_ACADEMIC_ROLES:
             if ctx.scope_type != "TENANT_ALL":
                 ids = ids.where(task_read.college_scope_condition(ctx.college_ids if ctx.scope_type == "COLLEGE" else set()))
         branches.append(AaGradeTask.id.in_(ids.correlate(None)))

@@ -4,7 +4,7 @@
       <AppButton v-if="isGenerating" variant="ghost" :disabled="genDlg.submitting" @click="backToList">返回协议列表</AppButton>
       <template v-else>
         <AppButton v-if="workspaceReturnTo" variant="ghost" @click="$router.push(workspaceReturnTo)">{{ workspaceReturnTo.startsWith('/admin/internship/students/') ? '返回学生上岗核验' : '返回归档核验' }}</AppButton>
-        <AppPermissionButton code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')" variant="primary" @click="openGenerate">生成协议</AppPermissionButton>
+        <AppPermissionButton mode="hide" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')" variant="primary" @click="openGenerate">生成协议</AppPermissionButton>
         <AppButton v-if="canBtn('internship.agreement.template.manage')" variant="ghost" @click="goTemplates">协议模板</AppButton>
         <AppExportButton v-if="canBtn('internship.agreement.export')" :export-fn="exportFn" @exported="onExported">导出台账</AppExportButton>
       </template>
@@ -23,7 +23,7 @@
         <p v-if="generationError" class="ag-error" role="alert">{{ generationError }}</p>
         <p class="ag-note">生成后为草稿，依次完成学生、企业和学校确认后生效。</p>
         <div class="ag-form-actions">
-          <AppPermissionButton code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')" variant="primary" :disabled="!generationReady" :loading="genDlg.submitting" @click="submitGenerate">生成草稿</AppPermissionButton>
+          <AppPermissionButton mode="hide" code="internship.agreement.manage" :allowed="canBtn('internship.agreement.manage')" variant="primary" :disabled="!generationReady" :loading="genDlg.submitting" @click="submitGenerate">生成草稿</AppPermissionButton>
           <AppButton variant="ghost" :disabled="genDlg.submitting" @click="backToList">取消</AppButton>
         </div>
       </section>

@@ -166,7 +166,7 @@ for (const action of ['textbook', 'level-register', 'level-cancel', 'exam', 'rec
         invoke = () => action === 'level-cancel' ? page.cancel(exam) : page.register(exam)
       } else if (action === 'exam') {
         page = mount('Exam', { academicExamDeferApply: write }, {}, {}, browser)
-        const exam = { examCourseId: '84', courseName: '数学' }
+        const exam = { examCourseId: '84', courseName: '数学', canApply: true, hasActiveDefer: false }
         page.ensureDraft(exam)
         page.drafts[page.deferOptionKey(exam)].reason = '请核对本人的缓考申请'
         invoke = () => page.applyDefer(exam)

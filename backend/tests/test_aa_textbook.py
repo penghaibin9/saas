@@ -65,7 +65,7 @@ def test_t1_full_chain(client, db_mode):
     rbid = client.post(f"{BASE}/textbooks/review-batches", headers=admin,
                        json={"batchName": "2024秋审核", "termId": str(ids["term"]),
                              "selectionIds": [str(sid)]}).json()["data"]["reviewBatchId"]
-    for headers in [_hdr(client, "college_admin01")] * 2 + [admin] * 2:
+    for headers in [_hdr(client, "college_admin01"), admin]:
         assert client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=headers, json={"action": "APPROVE"}).status_code == 200
     client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=admin, json={"action": "APPROVE"})
     sels = client.get(f"{BASE}/textbooks/selections", headers=admin, params={"status": "APPROVED"}).json()["data"]["items"]
@@ -131,7 +131,7 @@ def test_t6_partial_fee_and_stock(client, db_mode):
     client.post(f"{BASE}/textbooks/selections/{sid}/submit", headers=admin)
     rbid = client.post(f"{BASE}/textbooks/review-batches", headers=admin,
                        json={"termId": str(ids["term"]), "selectionIds": [str(sid)]}).json()["data"]["reviewBatchId"]
-    for headers in [_hdr(client, "college_admin01")] * 2 + [admin] * 2:
+    for headers in [_hdr(client, "college_admin01"), admin]:
         assert client.post(f"{BASE}/textbooks/review-batches/{rbid}/advance", headers=headers, json={"action": "APPROVE"}).status_code == 200
     obid = client.post(f"{BASE}/textbooks/order-batches", headers=admin,
                        json={"batchName": "征订", "termId": str(ids["term"])}).json()["data"]["orderBatchId"]

@@ -2,7 +2,6 @@
   <ModulePageShell
     class="aarw-registration"
     :title="tabs.find(item => item.key === tab)?.label || '注册工作台'"
-    subtitle="注册资格核验 · 未注册学生处理 · 暂缓注册审批 · 注册异常处理 · 注册归档"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
@@ -61,9 +60,9 @@
         <section class="aarw-object-summary" aria-label="当前注册对象">
           <div v-if="selectedEligRow" class="aarw-object-summary__identity">
             <h2>{{ selectedEligRow.realName || '未命名学生' }}</h2>
-            <p>{{ selectedEligRow.studentNo || '学号待核实' }} · {{ selectedBatchLabel }}</p>
+            <p>{{ selectedEligRow.studentNo || '学号待核实' }} · {{ selectedEligRow.className || '班级信息未提供' }}</p>
+            <p>{{ selectedBatchLabel }}</p>
             <div class="aarw-object-summary__status">
-              <span>来源：本批次资格候选名单</span>
               <StatusTag :type="eligStatusType(selectedEligRow.eligibilityStatus)" :label="objectStatusText(selectedEligRow)" />
             </div>
           </div>
@@ -74,12 +73,15 @@
           </dl>
         </section>
 
+        <details class="aarw-flow-summary">
+        <summary>查看注册流程</summary>
         <ol class="aarw-progress" aria-label="注册办理流程">
           <li v-for="(step, index) in registrationSteps" :key="step.title" :class="{ 'is-current': index === 2, 'is-complete': step.complete }" :aria-current="index === 2 ? 'step' : undefined">
             <span class="aarw-progress__number" aria-hidden="true">{{ step.complete ? '✓' : index + 1 }}</span>
             <div><strong>{{ step.title }}</strong><small>{{ step.detail }}</small></div>
           </li>
         </ol>
+        </details>
 
         <div class="aarw-elig-layout">
         <aside class="aarw-elig-queue" aria-label="注册资格核验候选队列">
@@ -117,7 +119,8 @@
         </aside>
 
         <div class="aarw-elig-workspace">
-          <AppSectionCard class="aarw-object-card" title="当前对象 · 核验证据">
+          <AppSectionCard class="aarw-object-card" title="核验依据">
+            <template #header-extra><AppButton v-if="selectedEligRow && canViewRegistrationList" :disabled="eligSubmitting" variant="ghost" @click="goRegistrationList">注册名单</AppButton></template>
             <div v-if="selectedEligRow" class="aarw-evidence-grid">
               <section v-for="evidence in registrationEvidence" :key="evidence.title" class="aarw-evidence-item">
                 <div class="aarw-evidence-item__head">
@@ -126,13 +129,12 @@
                 </div>
                 <p>{{ evidence.fact }}</p>
                 <p class="aarw-evidence-item__note">{{ evidence.note }}</p>
-                <button v-if="evidence.source && canViewRegistrationList" type="button" class="mp-link" :disabled="eligSubmitting" @click="goRegistrationList">查看本批次注册名单</button>
               </section>
             </div>
-            <p v-else class="aarw-object-empty">请从左侧候选队列选一个对象后办理。</p>
+            <p v-else class="aarw-object-empty">请选择候选学生。</p>
           </AppSectionCard>
 
-          <AppSectionCard title="对象办理操作">
+          <AppSectionCard title="核验处理">
             <AppInlineAlert v-if="eligCommandError" type="danger">{{ eligCommandError }}</AppInlineAlert>
             <AppInlineAlert v-if="eligUnknown" type="warning">批次 {{ eligUnknown.batchId }}、学生 {{ eligUnknown.studentId }} 的核验请求结果待确认，已暂停重复提交。请先查询正式核验记录和注册异常。</AppInlineAlert>
             <AppInlineAlert v-if="eligReceipt && String(eligReceipt.studentId) === String(selectedEligId)" type="success">学生 {{ eligReceipt.studentId }}：{{ eligStatusLabel(eligReceipt.eligibilityStatus) }}。核验记录 {{ eligReceipt.registrationId }}<template v-if="eligReceipt.exceptionId">，已生成注册异常 {{ eligReceipt.exceptionId }}</template>。资格核验不会代替正式注册。</AppInlineAlert>
@@ -160,7 +162,7 @@
               <p v-if="!knownEligibilityState(selectedEligRow)" class="mp-note">资格状态待确认，暂不能提交核验。</p>
               <p v-if="!canVerifyEligibility" class="mp-note">核验需具有注册资格核验权限，且批次处于开放状态。</p>
             </div>
-            <p v-else class="mp-note">先选中左侧队列中的对象，或返回该批次“注册名单”核查队列范围。</p>
+            <p v-else class="mp-note">请选择候选学生，或到注册名单核对。</p>
           </AppSectionCard>
         </div>
         </div>
@@ -169,12 +171,12 @@
 
     <!-- 未注册学生 -->
     <div v-else-if="tab === 'unregistered'" class="mp-stack">
-      <AppInlineAlert type="info">先核对所属批次、注册记录与暂缓申请。有效暂缓应按正式期限判断，未注册记录本身不能证明材料不合格或学生已被退学。</AppInlineAlert>
+      <AppInlineAlert type="info">未注册不等于材料不合格或退学。请先核对批次、注册记录和暂缓期限。</AppInlineAlert>
       <div class="aarw-toolbar">
         <AppButton variant="ghost" size="small" :disabled="!canScanUnregistered" @click="askScan">
           {{ scanning ? '扫描中…' : '扫描本批次逾期未注册' }}
         </AppButton>
-        <AppButton variant="ghost" size="small" @click="openExport">导出名单</AppButton>
+        <AppButton variant="ghost" size="small" @click="openExport">{{ batchId ? '导出本批次名单' : '导出全部可见名单' }}</AppButton>
       </div>
       <p class="mp-note">扫描范围为本批次全校候选，包含当前页外学生；跳过有效暂缓批准。入学注册可改变学籍主档，学年/学期注册只标记本批次记录。</p>
       <AppInlineAlert v-if="scanOperation.pending && !scanning" type="warning">存在结果尚未核对的到期扫描请求，已暂停重复扫描。请在原身份、原批次核查正式队列；查询队列不会自动解除未知结果。</AppInlineAlert>
@@ -187,15 +189,15 @@
       <AppConfirmDialog v-model:visible="scanConfirm.visible" title="确认扫描逾期未注册" type="warning"
         :message="scanConfirm.message" :submitting="scanning" :confirm-disabled="!canScanUnregistered || !scanTargetCurrent(scanConfirm.target)"
         confirm-text="确认扫描本批次全校候选" @confirm="doScan" />
-      <AppSectionCard title="未注册学生 · 责任队列">
+      <AppSectionCard title="未注册名单">
       <div class="aarw-toolbar">
-        <AppTextInput v-model="unreg.keyword" placeholder="检索本页学生姓名 / 学号" clearable />
-        <AppButton variant="ghost" :disabled="unreg.loading" @click="loadUnregistered">刷新本页</AppButton>
-        <span class="mp-note">正式队列共 {{ unreg.pagination.total }} 条；姓名检索仅筛选已读取的本页。</span>
+        <AppTextInput v-model="unreg.keyword" placeholder="按姓名或学号搜索" :maxlength="200" clearable @keyup.enter="searchUnregistered" @clear="searchUnregistered" />
+        <AppButton variant="ghost" :disabled="unreg.loading" @click="searchUnregistered">查询</AppButton>
+        <span class="mp-note">共 {{ unreg.pagination.total }} 条</span>
       </div>
       <ErrorState v-if="unreg.error" :description="unreg.error" @retry="loadUnregistered" />
       <LoadingState v-else-if="unreg.loading" />
-      <EmptyState v-else-if="!unreg.rows.length" title="暂无未注册学生" description="选择批次后可执行「扫描本批次逾期未注册」，或查看全部批次汇总" />
+      <EmptyState v-else-if="!unreg.rows.length" :title="unreg.appliedKeyword ? '没有匹配的未注册记录' : '暂无未注册学生'" :description="unreg.appliedKeyword ? '可调整姓名或学号，或清空搜索重试。' : '可选择其他批次查看；逾期处理请核对批次条件后操作。'" />
       <DataTable v-else :columns="unregColumns" :rows="unregisteredRows" row-key="queueKey" :pagination="unreg.pagination" @page-change="onUnregPage">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.realName }}</div>
@@ -214,7 +216,6 @@
         </template>
         <template #cell-actions="{ row }"><AppButton variant="ghost" size="small" @click="openUnregisteredReason(row)">查看原因</AppButton></template>
       </DataTable>
-      <p v-if="unreg.rows.length && !unregisteredRows.length" class="mp-note">本页没有匹配学生；这不代表其它页没有记录。</p>
       </AppSectionCard>
       <p class="mp-note">
         「未注册」表示本批次记录已标记为未注册；学年、学期记录不代表学籍主档退回未注册。「逾期待扫描」表示本批次已截止且尚未完成注册，仍须由正式扫描判定。
@@ -231,7 +232,7 @@
       <ErrorState v-if="defer.error" :description="defer.error" @retry="loadDeferrals" />
       <LoadingState v-else-if="defer.loading" />
       <EmptyState v-else-if="!defer.rows.length" title="暂无暂缓注册申请" description="学生材料未齐/特殊原因时可代其提交暂缓注册申请" />
-      <DataTable v-else :columns="deferColumns" :rows="defer.rows" row-key="deferralId" :pagination="defer.pagination" @page-change="onDeferPage">
+      <DataTable v-else class="aarw-long-text-table" :columns="deferColumns" :rows="defer.rows" row-key="deferralId" :pagination="defer.pagination" @page-change="onDeferPage">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.realName }}</div>
           <div class="mp-cell-sub">{{ row.studentNo }}</div>
@@ -239,6 +240,7 @@
         <template #cell-status="{ row }">
           <StatusTag :type="deferStatusType(row.status)" :label="deferStatusLabel(row.status)" dot />
         </template>
+        <template #cell-requestedUntil="{ row }">{{ registrationTime(row.requestedUntil) }}</template>
         <template #cell-actions="{ row }">
           <template v-if="row.status === 'PENDING'">
             <button class="mp-link" :disabled="!canRunRegistrationAction('deferral.approve')" @click="askDeferralReview(row, 'APPROVE')">通过</button>
@@ -278,7 +280,7 @@
       <ErrorState v-if="exc.error" :description="exc.error" @retry="loadExceptions" />
       <LoadingState v-else-if="exc.loading" />
       <EmptyState v-else-if="!exc.rows.length" title="暂无注册异常" description="核验不合格会自动转入本清单；也可直接标记" />
-      <DataTable v-else :columns="excColumns" :rows="exc.rows" row-key="exceptionId" :pagination="exc.pagination" @page-change="onExcPage">
+      <DataTable v-else class="aarw-long-text-table" :columns="excColumns" :rows="exc.rows" row-key="exceptionId" :pagination="exc.pagination" @page-change="onExcPage">
         <template #cell-student="{ row }">
           <div class="mp-cell-main">{{ row.realName }}</div>
           <div class="mp-cell-sub">{{ row.studentNo }}</div>
@@ -299,9 +301,10 @@
     <div v-else class="mp-stack">
       <ErrorState v-if="archive.error" :description="archive.error" @retry="loadArchive" />
       <LoadingState v-else-if="archive.loading" />
-      <EmptyState v-else-if="!archive.rows.length" title="暂无已归档批次" description="批次在「注册批次」列表关闭后再归档，在此核对正式归档标记并查阅名单" />
-      <DataTable v-else :columns="archiveColumns" :rows="archive.rows" row-key="batchId" :pagination="archive.pagination" @page-change="onArchivePage">
+      <EmptyState v-else-if="!archive.rows.length" title="暂无已归档批次" description="批次关闭并归档后，可在这里查看名单。" />
+      <DataTable v-else class="aarw-long-text-table" :columns="archiveColumns" :rows="archive.rows" row-key="batchId" :pagination="archive.pagination" @page-change="onArchivePage">
         <template #cell-registerType="{ row }">{{ regTypeLabel(row.registerType) }}</template>
+        <template #cell-archivedAt="{ row }">{{ registrationTime(row.archivedAt) }}</template>
         <template #cell-completion="{ row }">{{ row.detailError || (row.registered === null ? '—' : `${row.registered} / ${row.total}`) }}</template>
         <template #cell-actions="{ row }">
           <button class="mp-link" @click="goArchiveDetail(row)">查看名单</button>
@@ -403,7 +406,7 @@
     <!-- 导出用途（未注册名单 / 注册归档共用；用途写入审计与文件水印） -->
     <AppConfirmDialog
       v-model:visible="exportDialog.visible" :title="exportDialog.title" type="warning"
-      message="导出文件带水印，用途将写入审计留痕。"
+      :message="exportDialog.message || '导出文件带水印，用途将写入审计记录。'"
       confirm-text="确认导出" require-reason phrase-scene-key="common.exportPurpose"
       reason-label="导出用途（≥5 字）" :submitting="exportDialog.submitting" @confirm="onExportConfirm"
     />
@@ -541,7 +544,7 @@ export default {
         { key: 'actions', title: '操作', width: '140px' }
       ],
       elig: { keyword: '', status: '', rows: [], loading: false, error: '', pagination: emptyPage() },
-      unreg: { rows: [], loading: false, error: '', keyword: '', pagination: emptyPage() },
+      unreg: { rows: [], loading: false, error: '', keyword: '', appliedKeyword: '', pagination: emptyPage() },
       unregReason: { visible: false, row: null, loading: false, error: '', deferrals: [], exhausted: false, version: 0 },
       defer: { status: '', rows: [], loading: false, error: '', pagination: emptyPage() },
       exc: { status: '', rows: [], loading: false, error: '', pagination: emptyPage() },
@@ -576,23 +579,21 @@ export default {
   },
   computed: {
     unregisteredRows() {
-      const keyword = this.unreg.keyword.trim().toLocaleLowerCase()
-      return this.unreg.rows.filter(row => !keyword || `${row.realName || ''} ${row.studentNo || ''}`.toLocaleLowerCase().includes(keyword))
-        .map(row => ({ ...row, queueKey: `${row.batchId}:${row.studentId}` }))
+      return this.unreg.rows.map(row => ({ ...row, queueKey: `${row.batchId}:${row.studentId}` }))
     },
     batchOptions() {
       return this.batches.map((b) => ({
-        label: `${b.batchName}（${REG_TYPE_SHORT[b.registerType] || b.registerType}·${this.batchStatusCn(b.status)}）`, value: b.batchId
+        label: `${b.batchName || '批次名称未提供'}（${REG_TYPE_SHORT[b.registerType] || '类型待确认'}·${this.batchStatusCn(b.status)}）`, value: b.batchId
       }))
     },
     batchHint() {
-      if (this.tab === 'eligibility') return '资格核验、暂缓注册、标记异常均需先选择具体批次'
-      return '未注册/异常/暂缓列表默认显示全部批次；选择批次可收窄'
+      if (this.tab === 'eligibility') return '选择批次后核验资格'
+      return this.batchId ? '仅显示当前批次' : '全部可见批次；可选择批次筛选'
     },
     selectedBatchLabel() {
       const batch = this.batches.find((b) => String(b.batchId) === String(this.batchId))
       if (!batch) return '未选择批次'
-      return `${batch.batchName || '未命名批次'}（${REG_TYPE_SHORT[batch.registerType] || batch.registerType || '未知类型'}）`
+      return `${batch.batchName || '批次名称未提供'}（${REG_TYPE_SHORT[batch.registerType] || '类型待确认'}）`
     },
     currentRoleName() {
       return this.ctx?.currentRole?.roleName || '当前岗位'
@@ -615,24 +616,18 @@ export default {
       const row = this.selectedEligRow
       if (!row) return []
       return [
-        { title: '来源对象与身份', type: 'default', label: '正式候选', source: true,
-          fact: `${row.realName || '姓名待核实'} · ${row.studentNo || '学号待核实'} · ${row.className || '班级待核实'}`,
-          note: `学生 ID：${row.studentId}；批次 ID：${this.batchId}` },
-        { title: '当前名单版本', type: 'warning', label: '待核实',
+        { title: '名单信息', type: 'warning', label: '版本未提供',
           fact: `当前筛选共 ${this.elig.pagination.total} 人，第 ${this.elig.pagination.page} 页。`,
           note: '当前名单未提供版本信息，候选人数不能证明名单已冻结。' },
         { title: '材料与依据', type: 'warning', label: '材料待核实',
           fact: row.eligibilityNote ? `核验说明：${row.eligibilityNote}` : '尚无核验说明。',
-          note: '本页尚无可核对的材料清单；核验说明不能代替材料原件。' },
-        { title: '当前办理节点', type: 'default', label: '资格核验',
-          fact: this.objectReasonText(row),
-          note: `操作身份：${this.currentRoleName}；具体受理人尚待确认。` },
-        { title: '状态与可用动作', type: this.eligStatusType(row.eligibilityStatus), label: this.eligStatusLabel(row.eligibilityStatus),
+          note: '材料清单未提供，请核对原件。' },
+        { title: '核验状态', type: this.eligStatusType(row.eligibilityStatus), label: this.eligStatusLabel(row.eligibilityStatus),
           fact: this.objectBlockText(row),
-          note: `${this.objectOutcomeText(row)}；${this.canVerifyEligibility ? this.objectActionText(row) : '当前身份或批次不允许核验。'}` },
-        { title: '数据时效', type: 'warning', label: '待核实',
+          note: this.objectReasonText(row) },
+        { title: '最近核验', type: 'warning', label: '待核实',
           fact: row.eligibilityCheckedAt ? `最近核验时间：${formatDateTime(row.eligibilityCheckedAt, '时间待核实')}（本地时间）` : '尚无核验记录。',
-          note: '最近核验时间不代表材料、名单在本次提交前未发生变化。' }
+          note: '提交前请确认材料和名单是否变化。' }
       ]
     },
     eligibilityContextKey() {
@@ -662,15 +657,26 @@ export default {
     this.tab = route.tab
     this.batchId = route.batchId
     await this.loadBatches()
-    this.selectedEligId = route.studentId
-    this.elig.pagination.page = route.page
-    this.elig.pagination.pageSize = route.pageSize
-    if (typeof this.$route.query.status === 'string') this.elig.status = this.$route.query.status
-    if (typeof this.$route.query.keyword === 'string') this.elig.keyword = this.$route.query.keyword
+    if (this.tab === 'unregistered') {
+      this.unreg.keyword = typeof this.$route.query.keyword === 'string' ? this.$route.query.keyword.trim().slice(0, 200) : ''
+      this.unreg.appliedKeyword = this.unreg.keyword
+      this.unreg.pagination.page = route.page
+      this.unreg.pagination.pageSize = route.pageSize
+    } else {
+      this.selectedEligId = route.studentId
+      this.elig.pagination.page = route.page
+      this.elig.pagination.pageSize = route.pageSize
+      if (typeof this.$route.query.status === 'string') this.elig.status = this.$route.query.status
+      if (typeof this.$route.query.keyword === 'string') this.elig.keyword = this.$route.query.keyword
+    }
     this.loadCurrentTab()
   },
   methods: {
     eligibilityRouteQuery() {
+      if (this.tab === 'unregistered') return { ...this.$route?.query, tab: this.tab,
+        batchId: String(this.batchId || '') || undefined, keyword: this.unreg.appliedKeyword || undefined,
+        page: String(this.unreg.pagination.page), pageSize: String(this.unreg.pagination.pageSize),
+        studentId: undefined, status: undefined }
       return { ...this.$route?.query, tab: this.tab, batchId: String(this.batchId || '') || undefined,
         studentId: String(this.selectedEligId || '') || undefined,
         keyword: this.elig.keyword || undefined, status: this.elig.status || undefined,
@@ -898,7 +904,7 @@ export default {
       if (!this.knownEligibilityState(row)) return '资格状态尚未确认，请重新核对正式记录'
       if (row.eligibilityStatus === 'INELIGIBLE') return '核验不通过，需查看核验说明与注册异常，按实际原因处理'
       if (row.eligibilityStatus === 'ELIGIBLE') return '核验已完成，进入名单办理后续'
-      return `当前批次[${this.selectedBatchLabel}]待教务处岗位完成核验`
+      return '请完成该学生的资格核验'
     },
     objectBlockText(row) {
       if (!row) return '—'
@@ -907,21 +913,6 @@ export default {
       if (row.eligibilityStatus === 'INELIGIBLE') return '核验不合格；是否已修复需查注册异常'
       if (row.eligibilityStatus === 'ELIGIBLE') return '资格已通过；正式注册仍需核对暂缓、异常及批次条件'
       return '尚未完成资格核验'
-    },
-    objectActionText(row) {
-      if (!row) return '—'
-      if (row.registrationStatus === 'REGISTERED') return '仅支持查看'
-      if (!this.knownEligibilityState(row)) return '重新查询资格状态'
-      if (row.eligibilityStatus === 'INELIGIBLE') return '提交异常说明并转异常列表'
-      if (row.eligibilityStatus === 'ELIGIBLE') return '建议返回注册名单继续下一步'
-      return '核验通过 / 标记不合格'
-    },
-    objectOutcomeText(row) {
-      if (!row) return '—'
-      if (row.registrationStatus === 'REGISTERED') return '注册结果：已完成'
-      if (row.eligibilityStatus === 'INELIGIBLE') return '结果：待修正'
-      if (row.eligibilityStatus === 'ELIGIBLE') return '结果：核验通过'
-      return '结果：尚未确认'
     },
     nextRoleText(row) {
       if (!row) return '—'
@@ -1047,7 +1038,7 @@ export default {
       const queue = this[key]
       const version = ++this.queueVersions[key]
       const contextKey = this.eligibilityContextKey
-      const queryKey = () => JSON.stringify([queue.status, queue.pagination.page, queue.pagination.pageSize])
+      const queryKey = () => JSON.stringify([queue.status, queue.appliedKeyword, queue.pagination.page, queue.pagination.pageSize])
       const requestedQuery = queryKey()
       const current = () => !this.eligDisposed && version === this.queueVersions[key] &&
         contextKey === this.eligibilityContextKey && requestedQuery === queryKey()
@@ -1064,10 +1055,19 @@ export default {
         if (current()) queue.loading = false
       }
     },
-    onUnregPage(page) { this.unreg.pagination.page = page; this.loadUnregistered() },
+    searchUnregistered() {
+      if (this.eligDisposed) return
+      this.unreg.appliedKeyword = this.unreg.keyword.trim().slice(0, 200)
+      this.unreg.keyword = this.unreg.appliedKeyword
+      this.unreg.pagination.page = 1
+      this.syncEligibilityRoute()
+      return this.loadUnregistered()
+    },
+    onUnregPage(page) { this.unreg.pagination.page = page; this.syncEligibilityRoute(); return this.loadUnregistered() },
     async loadUnregistered() {
       return this.loadRegistrationQueue('unreg', () => academicAffairsApi.getUnregisteredStudents({
-        batchId: this.batchId || undefined, page: this.unreg.pagination.page, pageSize: this.unreg.pagination.pageSize
+        batchId: this.batchId || undefined, keyword: this.unreg.appliedKeyword || undefined,
+        page: this.unreg.pagination.page, pageSize: this.unreg.pagination.pageSize
       }))
     },
     scanTargetCurrent(target) {
@@ -1123,6 +1123,7 @@ export default {
     openExport() {
       this.exportDialog = {
         visible: true, title: '导出未注册学生名单', submitting: false,
+        message: `${this.batchId ? '导出所选批次' : '导出全部批次'}的可见未注册名单，不按姓名或学号搜索词筛选。文件带水印，用途会记录。`,
         action: async (purpose) => {
           const res = await academicAffairsApi.exportUnregistered({ batchId: this.batchId || undefined, purpose })
           if (res.code !== 0) { toast.error(res.message || '导出失败'); return false }
@@ -1583,6 +1584,8 @@ export default {
 .aarw-evidence-item p { margin: 10px 0 0; color: var(--text-secondary, #64748b); font-size: 12px; line-height: 1.7; overflow-wrap: anywhere; }
 .aarw-evidence-item .mp-link { margin-top: 10px; }
 .aarw-action-grid { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; }
+.aarw-flow-summary > summary { padding: 8px 0; cursor: pointer; font-weight: 600; }
+.aarw-long-text-table :deep(.dt__table) { min-width: 720px; }
 .aarw-object-empty { margin: 0; color: var(--text-secondary, #64748b); }
 @media (max-width: 1100px) {
   .aarw-elig-layout { grid-template-columns: minmax(220px, 30%) minmax(0, 1fr); }
@@ -1591,6 +1594,7 @@ export default {
 @media (max-width: 720px) {
   .aarw-elig-layout { grid-template-columns: minmax(0, 1fr); }
   .aarw-progress { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .aarw-elig-queue__items { max-height: 24rem; overflow-y: auto; }
   .aarw-batch-row { flex-wrap: wrap; }
   .aarw-tabs { overflow-x: auto; }
   .aarw-tab { flex-shrink: 0; }

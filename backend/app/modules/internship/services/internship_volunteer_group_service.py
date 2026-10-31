@@ -12,6 +12,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import select
 
 from app.core.exceptions import AppException, not_found
+from app.core.timeutil import iso_utc
 from app.models.internship_volunteer_group import InternshipVolunteerGroup
 from app.modules.internship.services import internship_audit_service
 from app.services.db_service import _as_id, _tid, session
@@ -148,7 +149,7 @@ def _notify_lock_in_tx(db, *, group: InternshipVolunteerGroup, decision_id: int)
         "campaignId": str(group.campaign_id),
         "volunteerGroupId": str(group.id),
         "applicationId": str(group.locked_application_id or ""),
-        "teacherConfirmDeadline": group.teacher_confirm_deadline.isoformat() if group.teacher_confirm_deadline else None,
+        "teacherConfirmDeadline": iso_utc(group.teacher_confirm_deadline),
     }
     _message_in_tx(
         db, tenant_id=group.tenant_id, receiver_user_id=_student_user_id_in_tx(db, group),
@@ -201,7 +202,7 @@ def lazy_release_expired_lock_in_tx(db, *, group: InternshipVolunteerGroup, tena
             "campaignId": str(group.campaign_id),
             "lockedApplicationId": str(group.locked_application_id or ""),
             "lockedByDecisionId": str(group.locked_by_decision_id or ""),
-            "deadlineExpiredAt": current.isoformat(),
+            "deadlineExpiredAt": iso_utc(current),
             "decisionEffect": decision.effect_status if decision else None,
         },
     )
@@ -228,7 +229,7 @@ def assert_student_editable_in_tx(db, *, group: InternshipVolunteerGroup, tenant
         raise AppException(
             "VOLUNTEER_GROUP_LOCKED",
             "企业已给出拟接收意向，志愿已锁定，需等待学校确认或解除锁定",
-            details={"teacherConfirmDeadline": group.teacher_confirm_deadline.isoformat() if group.teacher_confirm_deadline else None},
+            details={"teacherConfirmDeadline": iso_utc(group.teacher_confirm_deadline)},
             http_status=409,
         )
     if group.status in {"APPROVED", "CLOSED"}:
@@ -304,7 +305,7 @@ def lock_for_accept_intent_in_tx(
             "campaignId": str(group.campaign_id),
             "applicationId": str(application_id),
             "decisionId": str(decision_id),
-            "teacherConfirmDeadline": group.teacher_confirm_deadline.isoformat(),
+            "teacherConfirmDeadline": iso_utc(group.teacher_confirm_deadline),
         },
     )
     _notify_lock_in_tx(db, group=group, decision_id=decision_id)
@@ -509,11 +510,11 @@ def group_dict(group: InternshipVolunteerGroup) -> dict:
         "currentMaterialSnapshotId": str(group.current_material_snapshot_id or ""),
         "lockedApplicationId": str(group.locked_application_id or ""),
         "lockedDecisionId": str(group.locked_by_decision_id or ""),
-        "lockedAt": group.locked_at.isoformat() if group.locked_at else None,
-        "teacherConfirmDeadline": group.teacher_confirm_deadline.isoformat() if group.teacher_confirm_deadline else None,
-        "releasedAt": group.released_at.isoformat() if group.released_at else None,
+        "lockedAt": iso_utc(group.locked_at),
+        "teacherConfirmDeadline": iso_utc(group.teacher_confirm_deadline),
+        "releasedAt": iso_utc(group.released_at),
         "releaseReason": group.release_reason,
-        "unlockRequestedAt": group.unlock_requested_at.isoformat() if group.unlock_requested_at else None,
+        "unlockRequestedAt": iso_utc(group.unlock_requested_at),
         "unlockRequestReason": group.unlock_request_reason,
         "revisionReason": group.revision_reason,
         "version": int(group.version or 0),

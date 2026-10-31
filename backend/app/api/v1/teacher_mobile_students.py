@@ -13,6 +13,7 @@ from fastapi import APIRouter, Depends, Query
 
 from app.api.v1.teacher_mobile_employment import router as employment_router
 from app.api.v1.teacher_mobile_internship import router as internship_router
+from app.api.v1.teacher_mobile_internship_workbench import router as internship_workbench_router
 from app.api.v1.teacher_mobile_sequential import router as sequential_router
 from app.core.response import success
 from app.core.security import require_mobile_staff
@@ -23,6 +24,7 @@ from app.services import teacher_mobile_todo_grouped_service as todo_grouped_svc
 router = APIRouter()
 router.include_router(sequential_router)
 router.include_router(internship_router)
+router.include_router(internship_workbench_router)
 router.include_router(employment_router)
 
 

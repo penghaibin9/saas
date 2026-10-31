@@ -20,18 +20,18 @@ test('W4 exposes one bounded command-owner IA and keeps compatibility routes hid
   const all = internshipGroup(NAV_PLAN)
 
   assert.equal(visible.children.length, 9)
-  assert.equal(visible.children.flatMap((workspace) => workspace.children).length, 35)
+  assert.equal(visible.children.flatMap((workspace) => workspace.children).length, 46)
 
   const expectedOwners = {
     'in-command-screen': ['实习中心大屏'],
     'in-workbench': ['待办与进度'],
-    'in-batch-rules': ['批次管理', '学生名单', '资格认定'],
+    'in-batch-rules': ['批次管理', '学生名单', '资格认定', '请假审批配置'],
     'in-enterprise-position': ['企业库', '岗位库', '招聘与邀请', '企业准入'],
     'in-match-assign': ['岗位确认', '申请审核', '岗位匹配', '导师分配', '三方协议', '保险核验', '上岗核验', '分配记录'],
-    'in-attendance-leave': ['考勤记录', '异常核验', '请假与返岗', '计划任务', '报告批阅', '指导巡访', '指导计划'],
-    'in-risk': ['风险预警', '风险处置', '调岗退岗', '事故与应急'],
+    'in-attendance-leave': ['考勤记录', '异常核验', '请假与返岗', '计划任务', '报告批阅', '指导巡访', '指导计划', '月度工资台账', '我的指导报告', '教师本人报告', '教师工作台账', '通知公告'],
+    'in-risk': ['风险预警', '风险处置', '学生意见反馈', '调岗退岗', '事故与应急'],
     'in-eval-score': ['企业评价', '学生与教师评价', '综合成绩', '成绩申诉'],
-    'in-employment-archive-stats': ['材料归档', '实习统计', '就业衔接']
+    'in-employment-archive-stats': ['材料归档', '实习统计', '材料收件要求', '正式文书', '监管上报', '实习转就业预审', '就业衔接']
   }
 
   for (const [workspaceKey, labels] of Object.entries(expectedOwners)) {

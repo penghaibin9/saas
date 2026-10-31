@@ -1,16 +1,26 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
+import { cpSync, existsSync } from 'node:fs'
+import { resolve } from 'node:path'
 
 // UI-P1.5 最小工程配置：仅 Vue 插件 + @ alias，不引入任何 UI 框架
 export default defineConfig({
-  plugins: [vue()],
+  plugins: [vue(), {
+    name: 'school-public-help-only',
+    writeBundle(options) {
+      // 官网图片与站点地图由独立 website 工程发布；学校仅保留公共帮助资源。
+      const help = fileURLToPath(new URL('./public/help', import.meta.url))
+      if (existsSync(help)) cpSync(help, resolve(options.dir, 'help'), { recursive: true })
+    }
+  }],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))
     }
   },
   build: {
+    copyPublicDir: false,
     rollupOptions: {
       output: {
         manualChunks(id) {
@@ -30,12 +40,6 @@ export default defineConfig({
     // 不设该变量时行为与以往完全一致。
     proxy: {
       '/api': {
-        target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
-        changeOrigin: true
-      },
-      // 资讯页面由后端以公开 HTML 提供；与生产 Nginx 的 /news 反向代理保持一致，
-      // 不能让 Vite 的 history fallback 把读者送到业务系统登录页。
-      '/news': {
         target: process.env.VITE_PROXY_TARGET || 'http://127.0.0.1:8000',
         changeOrigin: true
       }

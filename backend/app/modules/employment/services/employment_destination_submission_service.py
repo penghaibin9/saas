@@ -209,52 +209,67 @@ def _require_applicant_user_id(db, student_id: int) -> int:
 def submit(*, student_id: int, student_name: str,
            destination_type: str, company_name: str = "", job_title: str = "",
            city: str = "", contact: str = "", remark: str = "") -> dict:
-    """学生发起就业去向登记提交。同一学生同一时刻只允许一条在途（SUBMITTED）提交；
-    RETURNED/REJECTED/APPROVED 均已终结，可以再次提交一条新的。"""
+    """学生本人提交，保留既有对外契约与唯一就业审批链。"""
+    with session() as db:
+        applicant_id = _require_applicant_user_id(db, int(student_id))
+        result = submit_in_session(db, student_id=student_id, student_name=student_name,
+            applicant_user_id=applicant_id, destination_type=destination_type,company_name=company_name,
+            job_title=job_title,city=city,contact=contact,remark=remark)
+        db.commit()
+        return result
+
+
+def submit_in_session(db, *, student_id: int, student_name: str, applicant_user_id: int,
+                      destination_type: str, company_name: str = "", job_title: str = "",
+                      city: str = "", contact: str = "", remark: str = "") -> dict:
+    """供已鉴权的本人提交或实习预审事务调用；不提交事务、不跳过就业老师审批。"""
     dt = (destination_type or "").upper()
     if dt not in L_DEST:
         raise AppException("VALIDATION_ERROR", "非法的就业去向类型")
-    with session() as db:
-        # W2/P1：必须先锁稳定主体，再做 active-check。否则两个并发事务都可能在空集上
-        # 通过“无在途提交”检查，各自创建一套 submission/workflow/task/todo。
-        _lock_student_submission_slot(db, int(student_id))
-        applicant_user_id = _require_applicant_user_id(db, int(student_id))
-        dup = db.scalars(select(EmpDestinationSubmission).where(
-            EmpDestinationSubmission.tenant_id == _tid(),
-            EmpDestinationSubmission.student_id == int(student_id),
-            EmpDestinationSubmission.status.in_(list(_ACTIVE)),
-            EmpDestinationSubmission.is_deleted.is_(False),
-        )).first()
-        if dup:
-            raise AppException("DATA_CONFLICT", "已有一条就业去向登记正在审核中，请等待处理结果")
+    # W2/P1：必须先锁稳定主体，再做 active-check。否则两个并发事务都可能在空集上
+    # 通过“无在途提交”检查，各自创建一套 submission/workflow/task/todo。
+    _lock_student_submission_slot(db, int(student_id))
+    from app.services.student_account_link_service import get_user_id_by_student
+    from app.models import User
+    linked_id = get_user_id_by_student(db, tenant_id=_tid(), student_id=int(student_id))
+    account = db.scalar(select(User).where(User.id==int(applicant_user_id),User.tenant_id==_tid(),
+        User.is_deleted.is_(False),User.status=='ACTIVE',User.user_type=='STUDENT'))
+    if not account or not linked_id or int(linked_id)!=int(applicant_user_id):
+        raise AppException('IDENTITY_LINK_REQUIRED','就业申请的学生账号绑定已变化，请重新核对',http_status=409)
+    dup = db.scalars(select(EmpDestinationSubmission).where(
+        EmpDestinationSubmission.tenant_id == _tid(),
+        EmpDestinationSubmission.student_id == int(student_id),
+        EmpDestinationSubmission.status.in_(list(_ACTIVE)),
+        EmpDestinationSubmission.is_deleted.is_(False),
+    )).first()
+    if dup:
+        raise AppException("DATA_CONFLICT", "已有一条就业去向登记正在审核中，请等待处理结果")
 
-        x = EmpDestinationSubmission(
-            tenant_id=_tid(), student_id=int(student_id), applicant_id=applicant_user_id,
-            destination_type=dt, company_name=(company_name or "").strip() or None,
-            job_title=(job_title or "").strip() or None, city=(city or "").strip() or None,
-            contact=(contact or "").strip() or None, remark=(remark or "").strip() or None,
-            status="SUBMITTED",
-        )
-        db.add(x)
-        db.flush()
+    x = EmpDestinationSubmission(
+        tenant_id=_tid(), student_id=int(student_id), applicant_id=applicant_user_id,
+        destination_type=dt, company_name=(company_name or "").strip() or None,
+        job_title=(job_title or "").strip() or None, city=(city or "").strip() or None,
+        contact=(contact or "").strip() or None, remark=(remark or "").strip() or None,
+        status="SUBMITTED",
+    )
+    db.add(x)
+    db.flush()
 
-        from app.services.affairs_assignee_service import require_assignee_id
-        # 注意：require_assignee_id() 的负载均衡查询按 source_module=="student-affairs"
-        # 统计在办量，对 employment 模块的候选人永远读到 0——不是 bug，是该共享函数目前
-        # 只服务学工域负载统计；效果是候选人间退化成按 user_id 稳定 tie-break，而不是
-        # 真正的最小负载优先。候选池本身（EMPLOYMENT_TEACHER 角色）解析是正确、共享的，
-        # 不在本次改共享函数扩大范围。
-        assignee_id = require_assignee_id(db, REVIEW_NODE, student_id=int(student_id))
+    from app.services.affairs_assignee_service import require_assignee_id
+    # 注意：require_assignee_id() 的负载均衡查询按 source_module=="student-affairs"
+    # 统计在办量，对 employment 模块的候选人永远读到 0——不是 bug，是该共享函数目前
+    # 只服务学工域负载统计；效果是候选人间退化成按 user_id 稳定 tie-break，而不是
+    # 真正的最小负载优先。候选池本身（EMPLOYMENT_TEACHER 角色）解析是正确、共享的，
+    # 不在本次改共享函数扩大范围。
+    assignee_id = require_assignee_id(db, REVIEW_NODE, student_id=int(student_id))
 
-        inst, task = _open_workflow(db, x.id, applicant_user_id,
-                                    f"{student_name} 就业去向登记待审", assignee_id)
-        x.workflow_instance_id = inst.id
-        x.current_task_id = task.id
-        _todo_upsert(db, x.id, assignee_id, int(student_id), f"就业去向登记待审：{student_name}")
-        _audit(db, x.id, "SUBMIT", dt)
-        db.commit()
-        db.refresh(x)
-        return _row(x)
+    inst, task = _open_workflow(db, x.id, applicant_user_id,
+                                f"{student_name} 就业去向登记待审", assignee_id)
+    x.workflow_instance_id = inst.id
+    x.current_task_id = task.id
+    _todo_upsert(db, x.id, assignee_id, int(student_id), f"就业去向登记待审：{student_name}")
+    _audit(db, x.id, "SUBMIT", dt)
+    return _row(x)
 
 
 def get_submission(submission_id, user=None) -> dict:

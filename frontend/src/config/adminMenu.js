@@ -7,6 +7,7 @@
  */
 import { matchPermission, NAV_PLAN, PLATFORM_PLAN, getVisibleNavPlan } from '@/config/navPlan'
 import { coreGroupEntitled, entitlementSignature, moduleCodeForNav, moduleEntitled } from '@/security/moduleEntitlement'
+import { academicRoleModules, hasAcademicRoleMenu } from '@/modules/academicAffairs/config/academicRoleNavigation'
 
 export const ROLE_TYPE = {
   PLATFORM: 'PLATFORM',
@@ -175,7 +176,10 @@ export function getVisibleAdminMenu(ctx) {
     })
     .map((group) => ({
       ...group,
-      children: group.children.map((leaf) => visibleLeaf(leaf, ctx)).filter(Boolean)
+      children: group.key === 'academic-affairs' && hasAcademicRoleMenu(ctx)
+        ? academicRoleModules(ctx).map(module => ({ key: module.key, label: module.label,
+          path: module.path, moduleCode: inferModuleCode(group.key, module.path) }))
+        : group.children.map((leaf) => visibleLeaf(leaf, ctx)).filter(Boolean)
     }))
     .filter((group) => group.children.length > 0)
   if (_adminMenuVisibleCache.size > 64) _adminMenuVisibleCache.clear()
@@ -244,7 +248,8 @@ export function searchSearchAliases(query, { scopeGroupKeys = null, emptyLimit =
     .flatMap(group => {
       const allowed = visible.get(group.key)
       if (!allowed || (scopeGroupKeys && !scopeGroupKeys.has(group.key))) return []
-      const modules = group.children.filter(module => allowed.children.some(item => item.key === module.key))
+      const modules = group.key === 'academic-affairs' && hasAcademicRoleMenu(ctx) ? academicRoleModules(ctx)
+        : group.children.filter(module => allowed.children.some(item => item.key === module.key))
       return modules.flatMap(module => module.children || []).filter(item => item.path && !item.disabled && !item.hidden)
     }) : []
   const canonicalRoots = { '/admin/academic': '/admin/academic-affairs', '/admin/campus-service': '/admin/student-affairs' }

@@ -1,3 +1,4 @@
+import { ACADEMIC_STUDENT_STATUS_LABELS } from '../src/modules/academicAffairs/config/academicStudentLabels.js'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test from 'node:test'
@@ -12,7 +13,7 @@ const exceptionRow = (recordId, gradeTaskId) => ({ recordId: String(recordId), g
 const auditRow = id => ({ id: String(id), bizType: 'AA_GRADE_TASK' })
 function mount(name, api = {}, notices = []) {
   const script = sources[name].match(/<script>([\s\S]*?)<\/script>/)[1].replace(/import [\s\S]*? from ['"][^'"\n]+['"]\s*\n/g,'').replace(/ {2}components: \{[\s\S]*?\},/,'').replace('export default','return')
-  const options = new Function('academicAffairsApi','toast','currentUserFromToken','gradeError','gradeStatusLabel','EXCEPTION_FLAG_LABEL','exceptionFlagColor','gradeQueueState','gradeTaskDestination',script)(api,{success: m=>notices.push(m),error:m=>notices.push(m)},()=>({}),gradeError,gradeStatusLabel,{ABSENT:'缺考'},()=> 'warning',gradeQueueState,gradeTaskDestination)
+  const options = new Function('academicAffairsApi','toast','currentUserFromToken','gradeError','gradeStatusLabel','EXCEPTION_FLAG_LABEL','exceptionFlagColor','gradeQueueState','gradeTaskDestination','ACADEMIC_STUDENT_STATUS_LABELS',script)(api,{success: m=>notices.push(m),error:m=>notices.push(m)},()=>({}),gradeError,gradeStatusLabel,{ABSENT:'缺考'},()=> 'warning',gradeQueueState,gradeTaskDestination,ACADEMIC_STUDENT_STATUS_LABELS)
   const vm = { $route:{path:'/test',fullPath:'/test',query:{}}, ctx:{currentRole:{},dataScope:{}}, identityKey:'identity-A' }
   Object.assign(vm,options.data.call(vm))
   for (const [key,method] of Object.entries(options.methods)) vm[key]=method.bind(vm)
@@ -103,3 +104,5 @@ test('总览分析筛选变化作废旧读取与导出上下文',async()=>{
 test('成绩异常使用正式任务标识下钻',()=>{
  const routes=[];const vm=mount('AaGradeExceptionView',{},routes);vm.goTask({gradeTaskId:'90071992547409937'});assert.equal(routes[0].query.taskId,'90071992547409937')
 })
+
+test('成绩单当期学籍只显示中文业务状态',()=>{const page=mount('AaTranscriptView');assert.match(page.identityLabel({status:'RESOLVED',studentStatus:'NORMAL'}),/正常在籍/);assert.match(page.identityLabel({status:'RESOLVED',studentStatus:'UNKNOWN_INTERNAL'}),/学籍状态待核对/)})

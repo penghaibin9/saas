@@ -19,12 +19,12 @@
     <AppButton v-if="createdProgram?.programId" @click="openCreatedProgram(createdProgram)">打开已创建方案</AppButton>
 
     <details class="aapc-workspace-directory"><summary>切换相关工作区</summary><div class="aapc-tabs">
-      <button v-for="t in tabs" :key="t.key" :class="['aapc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
+      <button v-for="t in visibleTabs" :key="t.key" :class="['aapc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div></details>
 
     <nav v-if="!isWorkflowView && selectedProgramId" class="aapc-object-nav" aria-label="当前方案连续办理">
       <AppButton @click="returnToProgram">方案详情</AppButton>
-      <AppButton v-for="item in tabs.filter(item => ['courseModules', 'creditRequirements', 'practiceSegments', 'graduationRequirements'].includes(item.key))" :key="item.key" :disabled="item.key === tab" @click="switchTab(item.key)">{{ item.label }}</AppButton>
+      <AppButton v-for="item in visibleTabs.filter(item => ['courseModules', 'creditRequirements', 'practiceSegments', 'graduationRequirements'].includes(item.key))" :key="item.key" :disabled="item.key === tab" @click="switchTab(item.key)">{{ item.label }}</AppButton>
     </nav>
 
     <div v-if="isWorkflowView" class="aapc-flow">
@@ -180,14 +180,14 @@
           <template v-if="tab === 'courseModules'">
             <template v-if="isEditable">
               <button class="mp-link" @click="openCourseForm(row)">编辑</button>
-              <button class="mp-link is-danger" @click="confirmDeleteCourse(row)">删除</button>
+              <button v-if="canDeleteItems" class="mp-link is-danger" @click="confirmDeleteCourse(row)">删除</button>
             </template>
           </template>
           <!-- 实践教学计划（课程模块的实践环节筛选切面，复用同一套课程明细读写） -->
           <template v-if="tab === 'practicePlan'">
             <template v-if="isEditable">
               <button class="mp-link" @click="openCourseForm(row)">编辑</button>
-              <button class="mp-link is-danger" @click="confirmDeleteCourse(row)">删除</button>
+              <button v-if="canDeleteItems" class="mp-link is-danger" @click="confirmDeleteCourse(row)">删除</button>
             </template>
           </template>
           <!-- 学分要求 -->
@@ -201,14 +201,14 @@
           <template v-if="tab === 'practiceSegments'">
             <template v-if="isEditable">
               <button class="mp-link" @click="openPracticeForm(row)">编辑</button>
-              <button class="mp-link is-danger" @click="confirmDeletePractice(row)">删除</button>
+              <button v-if="canDeleteItems" class="mp-link is-danger" @click="confirmDeletePractice(row)">删除</button>
             </template>
           </template>
           <!-- 毕业要求 -->
           <template v-if="tab === 'graduationRequirements'">
             <template v-if="isEditable">
               <button class="mp-link" @click="openGradForm(row)">编辑</button>
-              <button class="mp-link is-danger" @click="confirmDeleteGrad(row)">删除</button>
+              <button v-if="canDeleteItems" class="mp-link is-danger" @click="confirmDeleteGrad(row)">删除</button>
             </template>
           </template>
           <!-- 方案审核 -->
@@ -427,6 +427,7 @@ import {
 } from '@/modules/academicAffairs/constants/course-program'
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
+import { academicRoleTabs, academicRoleAllows } from '../config/academicRoleNavigation'
 
 const _CHANGE_LOG_ACTION_LABEL = {
   LIFECYCLE_FREEZE: '冻结', LIFECYCLE_RESUME: '恢复', LIFECYCLE_DISABLE: '停用',
@@ -481,6 +482,7 @@ export default {
   },
   computed: {
     creditDirty() { return this.creditBaseline !== '' && (JSON.stringify(this.creditItems) !== this.creditBaseline || (this.creditVisible && JSON.stringify(this.creditForm) !== this.creditFormBaseline)) },
+    visibleTabs() { return academicRoleTabs(this.tabs, '/admin/academic-affairs/programs/console', this.ctx) },
     isWorkflowView() { return ['review', 'publish', 'changeStatus'].includes(this.tab) },
     pageSubtitle() {
       return {
@@ -536,6 +538,9 @@ export default {
     },
     needsProgramPicker() { return ['courseModules', 'creditRequirements', 'graduationRequirements', 'practiceSegments', 'practicePlan'].includes(this.tab) },
     isEditable() { return this.selectedProgram && canSubmit(this.selectedProgram.status) && this.hasPermission('academicAffairs.program.manage') },
+    canDeleteItems() {
+      return this.isEditable && String(this.ctx.currentRole?.roleCode || this.ctx.currentRole?.roleType || '').toUpperCase() !== 'COLLEGE_ACADEMIC'
+    },
     programOptions() {
       return this.allPrograms.map((p) => ({ label: `${p.programName}（${p.gradeYear || '未设年级'} · v${p.version} · ${this.statusLabel(p.status)}）`, value: p.programId }))
     },
@@ -714,6 +719,7 @@ export default {
       }
     },
     switchTab(k) {
+      if (!academicRoleAllows({ path: '/admin/academic-affairs/programs/console', query: { tab: k } }, this.ctx)) return
       return this.$router.replace({ query: { ...this.$route.query, tab: k } })
     },
     async loadAllPrograms() {
@@ -961,6 +967,7 @@ export default {
       if (res.code === 0) { toast.success('已保存'); this.courseVisible = false; this.reload() } else this.formError = res.message
     },
     confirmDeleteCourse(row) {
+      if (!this.canDeleteItems) return
       this.confirmDlg = { visible: true, title: `删除课程「${row.courseName}」？`, submitting: false, action: async () => {
         const res = await academicAffairsApi.deleteProgramCourse(row.programCourseId)
         if (res.code === 0) { toast.success('已删除'); this.reload() } else toast.error(res.message)
@@ -1040,6 +1047,7 @@ export default {
       if (res.code === 0) { toast.success('已保存'); this.practiceVisible = false; this.reload() } else this.formError = res.message
     },
     confirmDeletePractice(row) {
+      if (!this.canDeleteItems) return
       this.confirmDlg = { visible: true, title: `删除实践环节「${row.segmentName}」？`, submitting: false, action: async () => {
         const res = await academicAffairsApi.deletePracticeSegment(row.segmentId)
         if (res.code === 0) { toast.success('已删除'); this.reload() } else toast.error(res.message)
@@ -1065,6 +1073,7 @@ export default {
       if (res.code === 0) { toast.success('已保存'); this.gradVisible = false; this.reload() } else this.formError = res.message
     },
     confirmDeleteGrad(row) {
+      if (!this.canDeleteItems) return
       this.confirmDlg = { visible: true, title: '删除该条毕业要求？', submitting: false, action: async () => {
         const res = await academicAffairsApi.deleteGraduationRequirement(row.requirementId)
         if (res.code === 0) { toast.success('已删除'); this.reload() } else toast.error(res.message)
@@ -1153,6 +1162,7 @@ export default {
     },
 
     async onConfirmDelete() {
+      if (!this.canDeleteItems) return
       this.confirmDlg.submitting = true
       const action = this.confirmDlg.action
       if (action) await action()

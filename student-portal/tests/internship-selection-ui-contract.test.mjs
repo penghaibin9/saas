@@ -93,7 +93,8 @@ test('A03 production privacy seal defaults submit to MASKED_ONLY while preservin
     confirmMaterialPreviewHash: 'sha256:x'
   }).contactSharingMode, 'AFTER_INTERVIEW')
   assert.match(submissionPanelSource, /default: 'MASKED_ONLY'/)
-  assert.match(submissionPanelSource, /emit\('update:contactSharingMode', 'MASKED_ONLY'\)/)
+  assert.match(selectionViewSource, /const contactSharingMode = ref\('MASKED_ONLY'\)/)
+  assert.match(submissionPanelSource, /\$emit\('update:contactSharingMode', \$event\.target\.value\)/)
   assert.throws(() => buildVolunteerSubmitPayload({ expectedGroupVersion: 12, expectedProfileVersion: 8, consentPolicyVersion: 'v1' }), /必须确认/)
   assert.throws(() => buildVolunteerSubmitPayload({ expectedProfileVersion: 8, consentPolicyVersion: 'v1', confirmMaterialPreviewHash: 'sha256:x' }), /志愿组版本缺失/)
   assert.throws(() => buildVolunteerSubmitPayload({ expectedGroupVersion: 12, consentPolicyVersion: 'v1', confirmMaterialPreviewHash: 'sha256:x' }), /实习档案版本缺失/)
@@ -102,7 +103,7 @@ test('A03 production privacy seal defaults submit to MASKED_ONLY while preservin
 test('A03-11 student-facing selection fails closed when volunteer authority is unavailable', () => {
   assert.match(selectionViewSource, /normalizeVolunteerGroup\(\{ status: 'UNAVAILABLE' \}\)/)
   assert.match(selectionViewSource, /系统不会用本地数据替代学校记录/)
-  assert.match(selectionViewSource, /if \(!volunteerEditable\.value \|\| submissionBusy\.value\)/)
-  assert.match(selectionViewSource, /if \(!submissionConfirmed\.value \|\| !volunteerEditable\.value \|\| submissionBusy\.value\) return/)
+  assert.match(selectionViewSource, /if \(!volunteerEditable\.value \|\| submissionBusy\.value \|\| volunteerBusy\.value \|\| volunteerDraftDirty\.value\)/)
+  assert.match(selectionViewSource, /if \(!submissionConfirmed\.value \|\| !volunteerEditable\.value \|\| submissionBusy\.value \|\| volunteerBusy\.value \|\| volunteerDraftDirty\.value\) return/)
   assert.doesNotMatch(selectionViewSource, /A01 接口就绪后/)
 })

@@ -16,6 +16,18 @@ from app.services.db_service import _as_id, _tid, session
 _ALLOWED_TYPES = {"MISSING", "OUT_OF_RANGE"}
 
 
+def _check_existing_checkin(existing_checkin, makeup_type):
+    # 无定位留痕不是有效出勤，须允许学生进入正式补卡审批；仍保留原定位事实。
+    if (existing_checkin and existing_checkin.result in ('OUT_OF_RANGE', 'LOW_ACCURACY', 'LOCATION_UNCERTAIN')
+            and makeup_type != 'OUT_OF_RANGE'):
+        raise AppException("VALIDATION_ERROR", "已有定位异常，请选择定位异常补录并上传佐证，由教师核实")
+    location_correction = (makeup_type == 'OUT_OF_RANGE' and existing_checkin
+                           and existing_checkin.result in ('OUT_OF_RANGE', 'LOW_ACCURACY', 'LOCATION_UNCERTAIN'))
+    if existing_checkin and existing_checkin.result != 'NO_LOCATION' and not location_correction and not (existing_checkin.is_deleted and existing_checkin.result == 'LEAVE'):
+        label = "请假留痕" if existing_checkin.result == "LEAVE" else "打卡记录"
+        raise AppException("DATA_CONFLICT", f"该日期已有{label}，不能重复申请补卡")
+
+
 def _parse_date(raw: str) -> date:
     try:
         value = date.fromisoformat(str(raw or "").strip()[:10])
@@ -102,9 +114,7 @@ def apply(user: dict, body: dict) -> dict:
             InternshipCheckin.internship_id == record.id,
             InternshipCheckin.checkin_date == date_text,
         ).with_for_update())
-        if existing_checkin:
-            label = "请假留痕" if existing_checkin.result == "LEAVE" else "打卡记录"
-            raise AppException("DATA_CONFLICT", f"该日期已有{label}，不能重复申请补卡")
+        _check_existing_checkin(existing_checkin, makeup_type)
         existing_makeup = db.scalar(select(InternshipMakeup).where(
             InternshipMakeup.tenant_id == _tid(),
             InternshipMakeup.internship_id == record.id,
@@ -122,9 +132,7 @@ def apply(user: dict, body: dict) -> dict:
         db.add(row)
         db.flush()
         if evidence_file_id:
-            from app.services import file_service
-            file_service.bind_file_biz(
-                evidence_file_id, "INTERNSHIP", str(row.id), user=user, db=db)
+            legacy.bind_makeup_evidence(db, evidence_file_id, row, record, user)
         legacy._trail(db, row.id, "APPLY_CONTEXT", {
             "date": date_text,
             "makeupType": makeup_type,

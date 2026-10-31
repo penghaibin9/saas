@@ -2,7 +2,7 @@
   <article class="enterprise-public">
     <header class="enterprise-hero">
       <div class="enterprise-brand">
-        <img v-if="company.logo" :src="company.logo" :alt="`${company.name} logo`" />
+        <img v-if="company.logo" :src="company.logo" :alt="`${company.name}企业标识`" />
         <div v-else class="enterprise-logo-fallback">企</div>
         <div>
           <div class="enterprise-title-row">
@@ -32,9 +32,9 @@
       <div><span>企业规模</span><strong>{{ company.scale || '待完善' }}</strong></div>
       <div><span>所在地区</span><strong>{{ locationText }}</strong></div>
     </section>
-    <section v-if="company.website" class="enterprise-section">
+    <section v-if="website" class="enterprise-section">
       <h2>官方网站</h2>
-      <a :href="company.website" rel="noopener noreferrer">{{ company.website }}</a>
+      <a :href="website" rel="noopener noreferrer">{{ website }}</a>
     </section>
   </article>
 </template>
@@ -43,6 +43,7 @@
 import { computed } from 'vue'
 
 const props = defineProps({ company: { type: Object, required: true } })
+const website = computed(() => { try { const url = new URL(props.company.website); return ['https:', 'http:'].includes(url.protocol) ? url.href : '' } catch { return '' } })
 const summaryLine = computed(() => [props.company.industry, props.company.nature, props.company.scale].filter(Boolean).join(' · ') || '学校合作企业')
 const locationText = computed(() => [props.company.city, props.company.region].filter(Boolean).join(' · ') || '待完善')
 </script>

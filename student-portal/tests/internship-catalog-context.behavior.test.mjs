@@ -15,7 +15,7 @@ import { latestRead as latestProjectionRead } from '../../miniapp/src/services/l
 const read = (path) => fs.readFileSync(new URL(path, import.meta.url), 'utf8')
 const stripImports = (source) => source.replace(/^import[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
 const empty = { catalogState: 'NO_OPEN_CAMPAIGN', canSelect: false, selectionBlockReason: '等待学校开放' }
-const available = { catalogState: 'AVAILABLE', campaignId: '1', campaignStatus: 'OPEN', canSelect: true }
+const available = { batchId:'2',recordId:'3',catalogState: 'AVAILABLE', campaignId: '1', campaignStatus: 'OPEN', canSelect: true }
 const deferred = () => { let resolve; const promise = new Promise((r) => { resolve = r }); return { promise, resolve } }
 
 function fixture(mobile = false, contextRequest = async () => empty) {
@@ -34,9 +34,9 @@ function fixture(mobile = false, contextRequest = async () => empty) {
   }
   const source = parse(read('../src/views/internship/InternshipSelectionView.vue')).descriptor.scriptSetup.content
   let unload = () => {}
-  const deps = { ...contextModel, ...queryModel, ...volunteerModel, ...materialModel, ...positionModel, internshipSelectionApi: api,
+  const deps = { ...scopeModel, currentSessionGeneration:()=>1, useSessionStore:()=>({user:{tenantId:'11',userId:'18'}}), ...contextModel, ...queryModel, ...volunteerModel, ...materialModel, ...positionModel, internshipSelectionApi: api,
     ref: (value) => ({ value }), computed: (getter) => ({ get value() { return getter() } }),
-    watch: () => {}, useRoute: () => ({ query: {} }), onMounted: () => {}, onBeforeUnmount: (fn) => { unload = fn }, useRouter: () => ({ push() {} }) }
+    watch: () => {}, useRoute: () => ({ query: {batchId:'2',campaignId:'1',recordId:'3'} }), onMounted: () => {}, onBeforeUnmount: (fn) => { unload = fn }, useRouter: () => ({ push() {},replace() {} }) }
   const page = new Function(...Object.keys(deps), stripImports(source) + '\nreturn {loadContext, loadPositions, loadVolunteerGroup, context, error, catalogReady}')(...Object.values(deps))
   return { page, calls, unload: () => unload(), api }
 }

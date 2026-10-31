@@ -5,7 +5,7 @@ import test from 'node:test'
 const source = fs.readFileSync(new URL('../src/pages/student-internship/index.vue', import.meta.url), 'utf8')
 const script = source.split('<script>')[1].split('</script>')[0]
   .replace(/^import .*$/gm, '').replace('export default', 'return')
-const page = new Function('formatDateTime', 'toast', 'go', script)(String, () => {}, () => {})
+const page = new Function('formatDateTime', 'toast', 'go','currentSessionGeneration', script)(String, () => {}, () => {},()=>1)
 function view(statusText) {
   const instance = { ...page.data(), i: { hasBatch: true, statusText }, compliance: {} }
   for (const [key, getter] of Object.entries(page.computed)) {
@@ -19,9 +19,9 @@ test('preparation retains every service while only onsite students get daily tas
   const groups = preparing.serviceGroups
   assert.equal(groups.find(g => g.key === 'today').items.length, 1)
   assert.match(groups.find(g => g.key === 'today').items[0].path, /\/help\//)
-  assert.equal(new Set(groups.flatMap(g => g.items.map(item => item.path))).size, 17)
+  assert.equal(new Set(groups.flatMap(g => g.items.map(item => item.path))).size, 22)
   assert.equal(view('ONBOARD').canShowDailyWork, true)
-  assert.equal(view('ONBOARD').serviceGroups.find(g => g.key === 'today').items.length, 4)
+  assert.equal(view('ONBOARD').serviceGroups.find(g => g.key === 'today').items.length, 6)
   assert.equal(view('ARCHIVED').canShowDailyWork, false)
 })
 test('a refreshed deep link returns to its parent and still respects the password gate', () => {

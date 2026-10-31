@@ -9,7 +9,7 @@
     "contract:navigation:check": "node ../scripts/generate-navigation-surface-contract.mjs --check",
     "contract:navigation:routes": "node scripts/check-navigation-route-parity.mjs",
     "dev": "vite",
-    "build": "vite build && node scripts/prerender-official-site.mjs",
+    "build": "vite build",
     "preview": "vite preview",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import test, { beforeEach } from 'node:test'
+import { matchPermission } from '../src/config/navPlan.js'
 import * as recovery from '../src/modules/academicAffairs/views/parallel-c/grade-command-recovery.js'
 const store = new Map()
 globalThis.window = { sessionStorage: { getItem: key => store.get(key) || null, setItem: (key, value) => store.set(key, value) } }
@@ -153,7 +154,7 @@ function mount(api = {}, dynamic = {}, notices = []) {
       return res
     }
   }
-  const options = new Function('academicAffairsApi', 'academicAffairsR10Api', 'academicFileExchangeApi', 'gradeIdentityApi', 'gradeReminderApi', 'toast', 'currentUserFromToken', 'gradeError', 'systemConfirm', ...Object.keys(recovery), script)(api, { getGradeScheme: async () => ({ code: 0, data: { schemeId: '', status: 'DEFAULT' } }), ...dynamic }, {}, {}, {}, { success(m) { notices.push(m) }, error(m) { notices.push(m) } }, () => actor, gradeError, dynamic.confirmLeave || (async () => false), ...Object.values(recovery))
+  const options = new Function('matchPermission', 'academicAffairsApi', 'academicAffairsR10Api', 'academicFileExchangeApi', 'gradeIdentityApi', 'gradeReminderApi', 'toast', 'currentUserFromToken', 'gradeError', 'systemConfirm', ...Object.keys(recovery), script)(matchPermission, api, { getGradeScheme: async () => ({ code: 0, data: { schemeId: '', status: 'DEFAULT' } }), ...dynamic }, {}, {}, {}, { success(m) { notices.push(m) }, error(m) { notices.push(m) } }, () => actor, gradeError, dynamic.confirmLeave || (async () => false), ...Object.values(recovery))
   const vm = { ...options.data(), identityKey: 'identity-1', formalSchemeMode: 'fixed', $route: { query: {} }, ctx: { currentRole: { roleCode: 'ACADEMIC_TEACHER' }, dataScope: {} } }
   for (const [name, method] of Object.entries(options.methods)) vm[name] = method.bind(vm)
   for (const [name, getter] of Object.entries(options.computed)) if (name !== 'identityKey') Object.defineProperty(vm, name, { get: () => getter.call(vm) })

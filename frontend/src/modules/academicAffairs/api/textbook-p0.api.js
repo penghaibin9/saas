@@ -34,6 +34,13 @@ function paged(data, page, pageSize) {
 }
 
 export const textbookP0Api = {
+  registerRefund(feeId, reason, expectedPaidAmount) {
+    return call(() => request(`${BASE}/fee-ledger/${feeId}/refund`, { method: 'POST', body: { reason, expectedPaidAmount } }))
+  },
+  async reviewItems(batchId, { page = 1, pageSize = 20 } = {}) {
+    const result = await call(() => request(`${BASE}/review-batches/${batchId}/items`, { params: { page, pageSize } }))
+    return result.code === 0 ? ok(paged(result.data, page, pageSize)) : result
+  },
   async listReviewBatches(params = {}) {
     const result = await call(() => request(`${BASE}/review-batches`, { params }))
     if (result.code !== 0) return result

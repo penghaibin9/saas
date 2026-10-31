@@ -7,7 +7,7 @@
     show-subtitle-in-concise
   >
     <div class="aawc-tabs">
-      <button v-for="t in tabs" :key="t.key" :class="['aawc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
+      <button v-for="t in visibleTabs" :key="t.key" :class="['aawc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
     <section v-if="actionReceipt" class="aawc-receipt" role="status">
@@ -248,6 +248,7 @@ import {
   NOTIFY_SCENE, NOTIFY_RECEIVER, NOTIFY_STATUS, notifyStatusColor
 } from '@/modules/academicAffairs/constants/grade-graduation'
 import { toast } from '@/utils/toast'
+import { academicRoleTabs, academicRoleAllows } from '../config/academicRoleNavigation'
 import { currentUserFromToken } from '@/services/http/client'
 import { matchPermission } from '@/config/navPlan'
 import { gradeError } from './parallel-c/grade-review'
@@ -322,6 +323,7 @@ export default {
     }
   },
   computed: {
+    visibleTabs() { return academicRoleTabs(this.tabs, '/admin/academic-affairs/warnings/console', this.ctx) },
     tabTitle() { return this.tabs.find(item => item.key === this.tab)?.label || '学业预警' },
     identity() { const u=currentUserFromToken()||{}; return JSON.stringify([u.tenantId,u.userId,u.activeContextId,u.currentRoleCode,this.ctx.currentRole,this.ctx.dataScope,this.ctx.permissionPatterns]) },
     canHandle() { return matchPermission(this.ctx.permissionPatterns||[],'academicAffairs.warning.handle') },
@@ -395,6 +397,7 @@ export default {
       return `${Math.max(4, Math.round((count / max) * 100))}%`
     },
     switchTab(k) {
+      if (!academicRoleAllows({ path: '/admin/academic-affairs/warnings/console', query: { tab: k } }, this.ctx)) return
       if(this.acting||this.scanning)return
       this.scope++
       this.tab = k

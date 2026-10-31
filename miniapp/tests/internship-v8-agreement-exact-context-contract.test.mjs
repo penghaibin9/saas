@@ -8,7 +8,7 @@ const studentApi = read('src/services/studentApi.js')
 const internshipApi = read('src/services/internshipApi.js')
 
 test('Student Mini agreement uses canonical context APIs only', () => {
-  assert.match(studentApi, /internship\.studentInternshipAgreements\(\)/)
+  assert.match(studentApi, /internship\.studentInternshipAgreements\(batchId,\s*internshipId\)/)
   assert.match(studentApi, /internship\.studentInternshipAgreementDetail\(id\)/)
   assert.match(studentApi, /internship\.studentInternshipAgreementConfirm\(id, body\)/)
   assert.match(internshipApi, /\/mobile\/internship\/context\/agreements/)

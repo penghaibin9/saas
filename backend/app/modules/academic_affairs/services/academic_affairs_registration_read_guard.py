@@ -211,7 +211,7 @@ def list_registration_deferrals(user, batch_id=None, status=None, page=1, page_s
         return out, total
 
 
-def _unregistered_union(db, user, batch_id=None):
+def _unregistered_union(db, user, batch_id=None, *, keyword=None):
     """One SQL ledger for explicit UNREGISTERED + expired candidates awaiting scan."""
     legacy = importlib.import_module(".academic_affairs_service", package=__package__)
     from app.models import (
@@ -223,6 +223,11 @@ def _unregistered_union(db, user, batch_id=None):
 
     ctx = build_affairs_context(user, db)
     scope_condition = _scope_condition(ctx, db, StudentProfile)
+    query = str(keyword or "").strip().lower()
+    search_condition = or_(
+        func.lower(StudentProfile.real_name).contains(query, autoescape=True),
+        func.lower(StudentProfile.student_no).contains(query, autoescape=True),
+    ) if query else None
     explicit_conditions = [
         AaRegistration.tenant_id == legacy._tid(),
         AaRegistration.is_deleted.is_(False),
@@ -234,6 +239,8 @@ def _unregistered_union(db, user, batch_id=None):
         explicit_conditions.append(AaRegistration.batch_id == int(batch_id))
     if scope_condition is not None:
         explicit_conditions.append(scope_condition)
+    if search_condition is not None:
+        explicit_conditions.append(search_condition)
 
     explicit = (
         select(
@@ -318,6 +325,8 @@ def _unregistered_union(db, user, batch_id=None):
         overdue_conditions.append(AaRegistrationBatch.id == int(batch_id))
     if scope_condition is not None:
         overdue_conditions.append(scope_condition)
+    if search_condition is not None:
+        overdue_conditions.append(search_condition)
 
     overdue = (
         select(
@@ -361,11 +370,11 @@ def _unregistered_dto(row, legacy) -> dict:
     }
 
 
-def list_unregistered_students(user, batch_id=None, page=1, page_size=20):
+def list_unregistered_students(user, batch_id=None, page=1, page_size=20, *, keyword=None):
     legacy = importlib.import_module(".academic_affairs_service", package=__package__)
     page_no, size = _page_values(page, page_size)
     with legacy.session() as db:
-        ledger = _unregistered_union(db, user, batch_id)
+        ledger = _unregistered_union(db, user, batch_id, keyword=keyword)
         total = int(db.scalar(select(func.count()).select_from(ledger)) or 0)
         rows = db.execute(
             select(ledger)

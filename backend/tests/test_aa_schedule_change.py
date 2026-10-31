@@ -271,7 +271,12 @@ def test_c1_adjust_full_chain_applied(client, db_mode):
     owner = role_headers("ACADEMIC_TEACHER", login_name="academic01")
     leader = role_headers("LEADER", login_name="schedule_readonly_leader")
     college = _review_hdr("college_admin01")
-    for headers, expected in ((owner, True), (leader, False), (college, False)):
+    for path in (f"{BASE}/schedule-change/{submitted['changeId']}", f"{BASE}/schedule-change"):
+        denied_leader = client.get(path, headers=leader)
+        assert denied_leader.status_code == 403, denied_leader.text
+        assert denied_leader.json()["bizCode"] == "NO_PERMISSION"
+        assert denied_leader.json()["data"] is None
+    for headers, expected in ((owner, True), (college, False)):
         detail = client.get(f"{BASE}/schedule-change/{submitted['changeId']}", headers=headers)
         assert detail.status_code == 200, detail.text
         assert detail.json()["data"]["canCancel"] is expected

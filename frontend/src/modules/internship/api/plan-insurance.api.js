@@ -15,7 +15,14 @@ async function callList(path, params = {}) {
 }
 
 export const planApi = {
+  getExportOptions(params = {}) { return call(() => request('/internship/plans/export-options', { params })) },
+  getTemplates() { return call(() => request('/internship/plans/templates')) },
+  bulkExportPdf(batchIds = []) { return call(() => request('/internship/plans/bulk-export.pdf', { method:'POST', timeoutMs: 60000, body:{ batchIds } })) },
+  bulkExportXlsx(batchIds = []) { return call(() => request('/internship/plans/bulk-export.xlsx', { method:'POST', timeoutMs: 60000, body:{ batchIds } })) },
+  getBatchPlanContext(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/context`)) },
   getBatchPlan(batchId) { return call(() => request(`/internship/plans/batch/${batchId}`)) },
+  exportBatchPlanPdf(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/export.pdf`, { method: 'POST', timeoutMs: 60000 })) },
+  exportBatchPlanXlsx(batchId) { return call(() => request(`/internship/plans/batch/${batchId}/export.xlsx`, { method: 'POST', timeoutMs: 60000 })) },
   saveBatchPlan(batchId, body) { return call(() => request(`/internship/plans/batch/${batchId}`, { method: 'PUT', body })) },
   publishBatchPlan(batchId, body) { return call(() => request(`/internship/plans/batch/${batchId}/publish`, { method: 'POST', body })) },
   getPlanAcks(params = {}) { return callList('/internship/plan-acks', params) },

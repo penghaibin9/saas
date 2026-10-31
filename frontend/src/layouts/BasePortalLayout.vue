@@ -192,7 +192,7 @@
       :legacy-identity-key="ctx.ctxKey || ''"
       :scope-name="scopeName"
       :horizontal-module="horizontalModule"
-      :resolve-destination="workspaceNavigate"
+      :resolve-destination="resolveWorkspaceDestination"
       @tokens="workspaceColors = $event"
       @theme-label="workspaceThemeLabel = $event"
     >
@@ -335,6 +335,7 @@ import {
   projectAcademicTeacherModules
 } from '@/modules/academicAffairs/config/academicTeacherNavigation'
 import { projectAcademicCollegeModules } from '@/modules/academicAffairs/config/academicCollegeNavigation'
+import { academicRoleModules, academicRoleDefaultPath, academicRoleActiveModule, academicRoleAllows, academicRoleSearchResults, hasAcademicRoleMenu } from '@/modules/academicAffairs/config/academicRoleNavigation'
 import { toast } from '@/utils/toast'
 import router from '@/router'
 
@@ -469,6 +470,7 @@ export default {
     workspaceStudentSearchEnabled() {
       return this.useWorkspace && !this.isPlatformMode && !isAcademicTeacherContext(this.ctx)
         && ['student.profile.view', 'studentAffairs.student.view'].some(code => matchPermission(this.ctx?.permissionPatterns || [], code))
+        && !(this.railActiveKey === 'academic-affairs' && this.ctx?.currentRole?.roleCode === 'LEADER')
     },
     workspaceSearchPlaceholder() {
       if (!this.useWorkspace) return '搜功能、帮助文档、流程图'
@@ -487,7 +489,8 @@ export default {
       const permissions = this.ctx?.permissionPatterns || []
       const sourceModules = getVisibleNavPlan({ includePlanned: false, permissionPatterns: permissions, ctxKey: this.ctx?.ctxKey || '' }).find(group => group.key === this.railActiveKey)?.children || []
       const modules = this.railActiveKey === 'academic-affairs'
-        ? projectAcademicCollegeModules(projectAcademicTeacherModules(sourceModules, this.ctx), this.ctx)
+        ? (hasAcademicRoleMenu(this.ctx) ? academicRoleModules(this.ctx)
+          : projectAcademicCollegeModules(projectAcademicTeacherModules(sourceModules, this.ctx), this.ctx))
         : sourceModules
       return modules.map(mod => mod.key !== 'sa-workbench' ? mod : { ...mod, children: [...mod.children, ...WORKBENCH_PAGE_TABS.filter(page => matchPermission(permissions, page.permissionKey) && !mod.children.some(child => child.path === page.path)).map(page => ({ ...page, workspaceHidden: true }))] })
     },
@@ -515,6 +518,11 @@ export default {
       })
       // 完整目录（navPlan）：implemented/partial 可跳；planned/未开通「待施工/未开通」不跳
       if (q) {
+        if (hasAcademicRoleMenu(this.ctx)) for (const module of academicRoleModules(this.ctx)) {
+          for (const leaf of module.children) if (`${module.label} ${leaf.label}`.toLowerCase().includes(q)) {
+            out.push({ kind: '功能/页面', label: leaf.label, to: leaf.path, disabled: false, badge: '' })
+          }
+        }
         for (const r of searchNavPlan(this.fnQueryDebounced, (this.ctx && this.ctx.permissionPatterns) || null)) {
           // PLATFORM_PLAN 也进入拍平索引供平台端导航使用；搜索仍须受当前可见一级模块约束，
           // 防止学校角色通过全局搜索发现或直达平台控制面。
@@ -523,7 +531,7 @@ export default {
             r.status === 'planned' ? '暂未开放'
               : r.status === 'partial' ? '部分可用'
                 : r.status === 'unauthorized' ? '未开通' : '功能/页面'
-          out.push({ kind, label: r.trail, to: r.disabled ? null : r.path, disabled: r.disabled, badge: r.badge })
+          out.push({ kind, label: r.trail, path: r.path, to: r.disabled ? null : r.path, disabled: r.disabled, badge: r.badge })
         }
       }
       // 帮助任务卡 / 帮助文档 / 业务流程图
@@ -537,7 +545,7 @@ export default {
         return true
       })
       const projected = filterAcademicTeacherSearchResults(dedup, this.ctx, this.workspaceModules)
-      return projected.slice(0, 16).map((r, i) => ({ ...r, _idx: i }))
+      return academicRoleSearchResults(projected, this.ctx).slice(0, 16).map((r, i) => ({ ...r, _idx: i }))
     },
     /** 按类别分组，供面板分区渲染 */
     fnGrouped() {
@@ -614,6 +622,9 @@ export default {
       return getVisibleAdminMenu(this.ctx)
         .filter((group) => !this.hideGlobalWorkbench || group.key !== 'workbench')
         .map((group) => {
+          if (group.key === 'academic-affairs' && hasAcademicRoleMenu(this.ctx)) {
+            return { key: group.key, label: group.label, path: academicRoleDefaultPath(this.ctx), badge: group.badge }
+          }
           if (group.key === 'academic-affairs' && isAcademicTeacherContext(this.ctx)) {
             return { key: group.key, label: group.label, path: academicTeacherDefaultPath(this.ctx), badge: group.badge }
           }
@@ -672,9 +683,13 @@ export default {
       return this.planGroup ? this.planGroup.label : ''
     },
     planMods() {
+      if (this.railActiveKey === 'academic-affairs' && hasAcademicRoleMenu(this.ctx)) return this.workspaceModules
       return this.planGroup ? this.planGroup.children : []
     },
     planActiveModKey() {
+      if (this.railActiveKey === 'academic-affairs' && hasAcademicRoleMenu(this.ctx)) {
+        return academicRoleActiveModule(this.ctx, this.currentNavRef) || this.workspaceModules[0]?.key || ''
+      }
       if (this.railActiveKey === 'academic-affairs' && isAcademicTeacherContext(this.ctx)) {
         return academicTeacherActiveModule(this.workspaceModules, this.currentNavRef, this.ctx) ||
           (this.workspaceModules[0] && this.workspaceModules[0].key) || ''
@@ -708,6 +723,11 @@ export default {
     }
   },
   methods: {
+    resolveWorkspaceDestination(ref) {
+      if (!academicRoleAllows(ref, this.ctx)) return null
+      const target = this.workspaceNavigate(ref)
+      return academicRoleAllows(target, this.ctx) ? target : null
+    },
     /** 顶栏铃铛：角标为消息未读数（ctx.messageUnreadCount），点击进「我的消息」。
      *  待办角标仍属于「我的待办」入口，二者不得共用。 */
     goBell() {

@@ -30,6 +30,49 @@ test('排课任务教室要求使用资源字典中文名称，未知类型不�
   assert.equal(methods.roomRequirementText(null), '教室类型不限')
 })
 
+test('预发布课表沿已有写入规则允许补排，正式历史及结果待确认仍只读',()=>{
+  const c=page('AaScheduleMaintainView')
+  const state={scheduleBatch:null,taskLoadError:'',$route:{query:{classId:'4671'}},classId:'4671',focusItemId:'',focusedItem:null,pendingWrite:null,moving:false}
+  for(const status of ['DRAFT','PRE_PUBLISHED','PUBLISHED','ARCHIVED','SUPERSEDED','UNKNOWN']){
+    state.scheduleBatch={status};assert.equal(c.computed.canEditBatch.call(state),['DRAFT','PRE_PUBLISHED'].includes(status))
+  }
+  state.scheduleBatch={status:'PRE_PUBLISHED'};state.pendingWrite={};assert.equal(c.computed.canEditBatch.call(state),false)
+  state.pendingWrite=null;state.taskLoadError='来源读取失败';assert.equal(c.computed.canEditBatch.call(state),false)
+})
+
+test('排课返回标识失效时仍回到当前批次，无返回服务时保持同一对象',async()=>{
+  const {methods}=page('AaScheduleMaintainView'), destinations=[]
+  const state={batchId:'47',$route:{query:{returnToken:'expired'}},$router:{push:value=>{destinations.push(value);return Promise.resolve()}}}
+  state.academicFlow={back:async(token,fallback)=>{assert.equal(token,'expired');await state.$router.push(fallback)}}
+  await methods.returnToQueue.call(state)
+  assert.deepEqual(destinations,['/admin/academic-affairs/scheduling?batchId=47'])
+  state.academicFlow=null
+  await methods.returnToQueue.call(state)
+  assert.equal(destinations[1],destinations[0])
+  state.batchId='';await methods.returnToQueue.call(state)
+  assert.equal(destinations[2],'/admin/academic-affairs/scheduling')
+})
+
+test('被替代和归档课表显示只读状态，当前正式课表仍按原流程办理', () => {
+  const c=page('AaSchedulingConsoleView')
+  const state={workbenchBatchId:'41',workbench:{batchId:'41',batchStatus:'SUPERSEDED',workflow:{steps:[{state:'current',label:'正式发布'}]}},batchStatusLabel:c.methods.batchStatusLabel}
+  Object.defineProperty(state,'historicalWorkbench',{get:()=>c.computed.historicalWorkbench.call(state)})
+  assert.equal(c.computed.currentStageLabel.call(state),'已被新版本替代')
+  state.workbench.batchStatus='ARCHIVED';assert.equal(c.computed.currentStageLabel.call(state),'已归档')
+  state.workbench.batchStatus='PUBLISHED';assert.equal(state.historicalWorkbench,false);assert.equal(c.computed.currentStageLabel.call(state),'正式发布')
+  state.workbench.batchStatus='SUPERSEDED';state.workbenchBatchId='44';assert.equal(state.historicalWorkbench,false)
+})
+
+test('工作台历史课表入口复用带返回标识的正式视图入口', () => {
+  const c=page('AaSchedulingConsoleView'), routes=[]
+  const state={workbenchBatchId:'41',academicFlow:{captureReturn:()=> 'historical-workbench'},$router:{push:route=>routes.push(route)}}
+  state.returnQuery=c.methods.returnQuery.bind(state)
+  state.openPublishedSchedule=c.methods.openPublishedSchedule.bind(state)
+  c.methods.runWorkbenchAction.call(state,'VIEW_HISTORY')
+  assert.equal(routes[0].path,'/admin/academic-affairs/schedule/41/views')
+  assert.equal(routes[0].query.returnToken,'historical-workbench')
+})
+
 test('排课检查失败不把网络错误说明为已发现冲突', async () => {
   const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaScheduleMaintainView.vue', import.meta.url), 'utf8')
   const snippet = source.match(/<div class="aa-preflight__head">[\s\S]*?<\/div>/)[0]
@@ -462,7 +505,7 @@ test('teacher change actions carry a concrete teaching week instead of a method 
   let destination
   const scope = { $route: { params: {} } }
   const state = Object.assign(component.data.call(scope), component.methods, {
-    teacherKey: 'teacher-1', selfKey: 'teacher-1',
+    teacherKey: 'teacher-1', selfKey: 'teacher-1', canStartChange: true,
     selectedItem: { itemId: '123', startWeek: 1, endWeek: 16 },
     $router: { push: value => { destination = value } }
   })
@@ -479,7 +522,7 @@ test('teacher change actions carry a concrete teaching week instead of a method 
 
 test('teacher lesson guidance distinguishes no week, selected week, and management query', async () => {
   const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaTeacherScheduleView.vue', import.meta.url), 'utf8')
-  const guidance = source.match(/<p v-if="isSelfView && !selectedOccurrenceWeek"[\s\S]*?<p v-else class="mp-note">[\s\S]*?<\/p>/)?.[0]
+  const guidance = source.match(/<p v-if="canStartChange && !selectedOccurrenceWeek"[\s\S]*?<p v-else class="mp-note">[\s\S]*?<\/p>/)?.[0]
   assert.ok(guidance, '课位详情应保留连续的三分支提示')
   const render = new Function('Vue', compile(guidance, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
   const component = page('AaTeacherScheduleView', { currentUserFromToken: () => ({ loginName: 'teacher-1' }) })
@@ -489,17 +532,17 @@ test('teacher lesson guidance distinguishes no week, selected week, and manageme
     })
     const isSelfView = component.computed.isSelfView.call(state)
     const selectedOccurrenceWeek = component.computed.selectedOccurrenceWeek.call(state)
-    return renderToString(Vue.createSSRApp({ render, setup: () => ({ isSelfView, selectedOccurrenceWeek }) }))
+    return renderToString(Vue.createSSRApp({ render, setup: () => ({ canStartChange: isSelfView, selectedOccurrenceWeek }) }))
   }
   const noWeek = await guidanceFor('teacher-1', null)
   assert.match(noWeek, /停课或补课须先选周次/)
-  assert.doesNotMatch(noWeek, /仅任课教师本人可申请/)
+  assert.doesNotMatch(noWeek, /当前为只读查询/)
   const selectedWeek = await guidanceFor('teacher-1', 6)
   assert.match(selectedWeek, /第6教学周的申请/)
   assert.match(selectedWeek, /先交学院审核，教务处终审通过后更新课表/)
-  assert.doesNotMatch(selectedWeek, /仅任课教师本人可申请/)
+  assert.doesNotMatch(selectedWeek, /当前为只读查询/)
   const management = await guidanceFor('other-teacher', 6)
-  assert.match(management, /仅任课教师本人可申请/)
+  assert.match(management, /当前为只读查询/)
   assert.doesNotMatch(management, /第6教学周的申请/)
 })
 
@@ -562,51 +605,4 @@ test('真实父子承接回读后刷新队列，同时保持成功说明和时�
   state.routeContextKey = () => 'school-b:53:48'
   assert.equal(state.visibleHandoffReceipt, null)
   await state.syncRoute(); assert.equal(state.sourceHandoffReceipt, null)
-})
-
-
-test('预发布课表沿已有写入规则允许补排，正式历史及结果待确认仍只读',()=>{
-  const c=page('AaScheduleMaintainView')
-  const state={scheduleBatch:null,taskLoadError:'',$route:{query:{classId:'4671'}},classId:'4671',focusItemId:'',focusedItem:null,pendingWrite:null,moving:false}
-  for(const status of ['DRAFT','PRE_PUBLISHED','PUBLISHED','ARCHIVED','SUPERSEDED','UNKNOWN']){
-    state.scheduleBatch={status};assert.equal(c.computed.canEditBatch.call(state),['DRAFT','PRE_PUBLISHED'].includes(status))
-  }
-  state.scheduleBatch={status:'PRE_PUBLISHED'};state.pendingWrite={};assert.equal(c.computed.canEditBatch.call(state),false)
-  state.pendingWrite=null;state.taskLoadError='来源读取失败';assert.equal(c.computed.canEditBatch.call(state),false)
-})
-
-
-test('排课返回标识失效时仍回到当前批次，无返回服务时保持同一对象',async()=>{
-  const {methods}=page('AaScheduleMaintainView'), destinations=[]
-  const state={batchId:'47',$route:{query:{returnToken:'expired'}},$router:{push:value=>{destinations.push(value);return Promise.resolve()}}}
-  state.academicFlow={back:async(token,fallback)=>{assert.equal(token,'expired');await state.$router.push(fallback)}}
-  await methods.returnToQueue.call(state)
-  assert.deepEqual(destinations,['/admin/academic-affairs/scheduling?batchId=47'])
-  state.academicFlow=null
-  await methods.returnToQueue.call(state)
-  assert.equal(destinations[1],destinations[0])
-  state.batchId='';await methods.returnToQueue.call(state)
-  assert.equal(destinations[2],'/admin/academic-affairs/scheduling')
-})
-
-
-test('被替代和归档课表显示只读状态，当前正式课表仍按原流程办理', () => {
-  const c=page('AaSchedulingConsoleView')
-  const state={workbenchBatchId:'41',workbench:{batchId:'41',batchStatus:'SUPERSEDED',workflow:{steps:[{state:'current',label:'正式发布'}]}},batchStatusLabel:c.methods.batchStatusLabel}
-  Object.defineProperty(state,'historicalWorkbench',{get:()=>c.computed.historicalWorkbench.call(state)})
-  assert.equal(c.computed.currentStageLabel.call(state),'已被新版本替代')
-  state.workbench.batchStatus='ARCHIVED';assert.equal(c.computed.currentStageLabel.call(state),'已归档')
-  state.workbench.batchStatus='PUBLISHED';assert.equal(state.historicalWorkbench,false);assert.equal(c.computed.currentStageLabel.call(state),'正式发布')
-  state.workbench.batchStatus='SUPERSEDED';state.workbenchBatchId='44';assert.equal(state.historicalWorkbench,false)
-})
-
-
-test('工作台历史课表入口复用带返回标识的正式视图入口', () => {
-  const c=page('AaSchedulingConsoleView'), routes=[]
-  const state={workbenchBatchId:'41',academicFlow:{captureReturn:()=> 'historical-workbench'},$router:{push:route=>routes.push(route)}}
-  state.returnQuery=c.methods.returnQuery.bind(state)
-  state.openPublishedSchedule=c.methods.openPublishedSchedule.bind(state)
-  c.methods.runWorkbenchAction.call(state,'VIEW_HISTORY')
-  assert.equal(routes[0].path,'/admin/academic-affairs/schedule/41/views')
-  assert.equal(routes[0].query.returnToken,'historical-workbench')
 })

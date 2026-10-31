@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -6,8 +7,8 @@ const source = parse(fs.readFileSync(new URL('../src/modules/internship/views/We
 assert.deepEqual(source.errors, [])
 const script = source.descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/ {2}components: \{[\s\S]*?ActionReceipt \},/, '').replace('export default', 'return')
 function view(api) {
-  const def = new Function('internshipApi', 'emptyConflict', script)(api, () => ({}))
-  const vm = { ...def.data(), loading: false, canReview: true, $route: { params: { id: '1' } } }
+  const def = componentFactory('internshipApi', 'emptyConflict', script)(api, () => ({}))
+  const vm = { ...def.data(), loading: false, canReview: true, ratingLevel: 4, summaryScore: 85, $route: { params: { id: '1' }, query: { batchId:'7' } } }
   for (const [key, method] of Object.entries(def.methods)) vm[key] = method.bind(vm)
   return vm
 }

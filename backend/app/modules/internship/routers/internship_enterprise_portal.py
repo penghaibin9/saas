@@ -125,7 +125,6 @@ def inspect_invite(body: EnterpriseInviteInspect):
 @router.post("/auth/invite/accept", openapi_extra={"x-internship-auth": "public"})
 def accept_invite(body: EnterpriseInviteAccept):
     result = auth_svc.accept_invite(tenant_code=body.tenantCode, token=body.token, phone=body.phone, password=body.password)
-    audit_log.record("ENTERPRISE_INVITE_ACCEPT", f"enterprise-member:{result['context']['memberId']}", detail={"companyId": result["context"]["companyId"]}, tenant_id=int(result["context"]["tenantId"]))
     return success(result, message="企业邀请已接受")
 
 
@@ -142,9 +141,6 @@ def accept_existing_invite(
     principal: EnterprisePrincipal = Depends(require_permission("internship.enterprise.view")),
 ):
     result = auth_svc.accept_existing_invite(principal=principal, tenant_code=body.tenantCode, token=body.token)
-    audit_log.record("ENTERPRISE_CAMPAIGN_INVITE_ACCEPT", f"enterprise-member:{principal.member_id}",
-                     detail={"companyId": result["companyId"], "campaignId": result["campaignId"]},
-                     tenant_id=principal.tenant_id)
     return success(result, message="本轮企业邀请已接受")
 
 
@@ -297,18 +293,19 @@ def withdraw_enterprise_position(position_id: int, body: EnterprisePositionTrans
 
 
 @router.get("/applications")
-def applications(campaignId: int = Query(..., ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100), positionId: int | None = Query(default=None, ge=1), decisionStatus: str | None = Query(default=None), principal: EnterprisePrincipal = Depends(require_permission("internship.application.view"))):
+def applications(keyword: str | None = Query(default=None, max_length=100), campaignId: int = Query(..., ge=1), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100), positionId: int | None = Query(default=None, ge=1), decisionStatus: str | None = Query(default=None), principal: EnterprisePrincipal = Depends(require_permission("internship.application.view"))):
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
     with session() as db:
-        items, total = decision_svc.list_owned_applications_in_tx(db, context=ctx, page=page, page_size=pageSize, position_id=positionId, decision_status=decisionStatus)
+        items, total = decision_svc.list_owned_applications_in_tx(db, context=ctx, page=page, page_size=pageSize, position_id=positionId, decision_status=decisionStatus, keyword=keyword)
         return success({"items": items, "total": total, "page": page, "pageSize": pageSize})
 
 
 @router.get("/applications/{application_id}")
-def application_detail(application_id: int, campaignId: int = Query(..., ge=1), principal: EnterprisePrincipal = Depends(require_permission("internship.application.view"))):
+def application_detail(application_id: int, campaignId: int = Query(..., ge=1), historyPage: int = Query(1, ge=1), historyPageSize: int = Query(20, ge=1, le=100), principal: EnterprisePrincipal = Depends(require_permission("internship.application.view"))):
     ctx = resolve_recruitment_context(principal, campaign_id=campaignId)
     with session() as db:
-        return success(decision_svc.material_detail_in_tx(db, context=ctx, application_id=application_id))
+        return success(decision_svc.material_detail_in_tx(db, context=ctx, application_id=application_id,
+            history_page=historyPage, history_page_size=historyPageSize))
 
 
 @router.get("/applications/{application_id}/resume-pdf", summary="企业按申请归属查看冻结实习档案 PDF")

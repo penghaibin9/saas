@@ -11,7 +11,7 @@ function fail(message, code = 1) {
   return Promise.resolve({ code, data: null, message })
 }
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
+  if (e?.biz) return Promise.resolve({ code: e.code || 1, data: null, message: e.message, bizCode: e.bizCode, httpStatus: e.httpStatus, ...(e.details !== undefined ? { details: e.details } : {}) })
   return fail(e?.message || '暂时无法连接，请稍后重试', 503001)
 }
 async function call(fn) {
@@ -33,6 +33,33 @@ async function callList(path, params = {}) {
 const BASE = '/internship/intern-students'
 
 export const internStudentApi = {
+  getBasicInfo(id, batchId) {
+    return call(() => request(`${BASE}/${id}/basic-info`, { params: { batchId } }))
+  },
+  saveBasicInfo(id, batchId, body) {
+    return call(() => request(`${BASE}/${id}/basic-info`, { method: 'PUT', params: { batchId }, body }))
+  },
+  basicInfoImportConfirm(rows, batchId) {
+    return call(() => request(`${BASE}/basic-info-import/confirm`, { method: 'POST', body: { rows, batchId } }))
+  },
+  async uploadBasicInfoXlsx(file, batchId) {
+    try { return ok(await requestUpload(`${BASE}/basic-info-import/xlsx?batchId=${encodeURIComponent(batchId)}`, file)) }
+    catch (e) { return toErr(e) }
+  },
+  async downloadBasicInfoTemplate() {
+    const blob = await requestBlob(`${BASE}/basic-info-import/template`)
+    const url = URL.createObjectURL(blob), link = document.createElement('a')
+    link.href = url; link.download = '学生基础资料导入模板.xlsx'
+    document.body.appendChild(link); link.click(); link.remove(); URL.revokeObjectURL(url)
+  },
+  async downloadBasicInfoErrors(rows, errors) {
+    try {
+      const blob = await requestBlob(`${BASE}/basic-info-import/errors-xlsx`, { method:'POST', body:{rows, errors} })
+      const bytes = new Uint8Array(await blob.arrayBuffer())
+      let binary = ''; for (const byte of bytes) binary += String.fromCharCode(byte)
+      return ok({ contentBase64:btoa(binary), filename:'学生基础资料错误行.xlsx', mediaType:blob.type })
+    } catch (e) { return toErr(e) }
+  },
   getStudents(params = {}) {
     return callList(BASE, params)
   },
@@ -41,6 +68,22 @@ export const internStudentApi = {
   },
   createStudent(body) {
     return call(() => request(BASE, { method: 'POST', body }))
+  },
+  getPlanAssignments(id) {
+    return call(() => request(`${BASE}/${id}/plan-assignments`))
+  },
+  getPlanOptions(id, keyword = '') {
+    return call(() => request(`${BASE}/${id}/plan-options`, { params: { keyword: keyword || undefined } }))
+  },
+  assignPlans(id, planIds = []) {
+    return call(() => request(`${BASE}/${id}/plan-assignments`, {
+      method: 'POST', body: { planIds }
+    }))
+  },
+  removePlanAssignment(id, assignmentId, { reason, expectedVersion }) {
+    return call(() => request(`${BASE}/${id}/plan-assignments/${assignmentId}/remove`, {
+      method: 'POST', body: { reason, expectedVersion }
+    }))
   },
   updateStudent(id, body) {
     return call(() => request(`${BASE}/${id}`, { method: 'PUT', body }))
@@ -80,6 +123,52 @@ export const internStudentApi = {
   assignAdvisor(id, { advisorUserId, reason = '', expectedVersion }) {
     return call(() => request(`${BASE}/${id}/advisor`, { method: 'POST', body: { advisorUserId, reason, expectedVersion } }))
   },
+  allocationImportDryRun(rows, batchId) {
+    return call(() => request(`${BASE}/allocation-import/dry-run`, {
+      method: 'POST', body: { rows, batchId }
+    }))
+  },
+  allocationImportConfirm(rows, batchId) {
+    return call(() => request(`${BASE}/allocation-import/confirm`, {
+      method: 'POST', body: { rows, batchId }
+    }))
+  },
+  async downloadAllocationImportTemplate() {
+    const blob = await requestBlob(`${BASE}/allocation-import/template`)
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = '实习分配导入模板.xlsx'
+    a.click()
+    URL.revokeObjectURL(url)
+  },
+  async uploadAllocationImportXlsx(file, batchId) {
+    try {
+      const q = batchId ? `?batchId=${encodeURIComponent(batchId)}` : ''
+      return ok(await requestUpload(`${BASE}/allocation-import/xlsx${q}`, file))
+    } catch (e) {
+      return toErr(e)
+    }
+  },
+  async downloadAllocationImportErrors(rows, errors) {
+    try {
+      const blob = await requestBlob(`${BASE}/allocation-import/errors-xlsx`, {
+        method: 'POST',
+        body: { rows, errors }
+      })
+      const buf = await blob.arrayBuffer()
+      const bytes = new Uint8Array(buf)
+      let binary = ''
+      for (let i = 0; i < bytes.length; i += 1) binary += String.fromCharCode(bytes[i])
+      return ok({
+        contentBase64: btoa(binary),
+        filename: '实习分配导入错误行.xlsx',
+        mediaType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      })
+    } catch (e) {
+      return toErr(e)
+    }
+  },
   importDryRun(rows, batchId) {
     return call(() => request(`${BASE}/import/dry-run`, { method: 'POST', body: { rows, batchId } }))
   },
@@ -87,7 +176,7 @@ export const internStudentApi = {
     return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows, batchId } }))
   },
   exportStudents(params = {}) {
-    return call(() => request(`${BASE}/export`, { method: 'POST', params }))
+    return call(() => request(`${BASE}/export`, { method: 'POST', timeoutMs: 60000, params }))
   },
   async downloadImportTemplate() {
     const blob = await requestBlob(`${BASE}/import/template`)
@@ -129,12 +218,11 @@ export const internStudentApi = {
     return call(() => request(`${BASE}/import/confirm`, { method: 'POST', body: { rows, batchId } }))
   },
   // 建档用：可选学生（学生主档）；分配用：已上架岗位
-  getStudentOptions(keyword) {
-    return call(() =>
-      request('/students', { params: { page: 1, pageSize: 200, keyword: keyword || '' } }).then((d) =>
-        (d.items || []).map((s) => ({ id: s.id || s.studentId, name: s.realName || s.name, studentNo: s.studentNo }))
-      )
-    )
+  getStudentOptions(keyword = '', pageSize = 30) {
+    return call(() => request('/directory/student-options', { params: { page: 1, pageSize, keyword } }).then(data => data.items || []))
+  },
+  getStudentOptionsByIds(ids = []) {
+    return call(() => request('/directory/student-options', { params: { ids: ids.join(',') } }).then(data => data.items || []))
   },
   getPublishedPositions() {
     return call(() =>

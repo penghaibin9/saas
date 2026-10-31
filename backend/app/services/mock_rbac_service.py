@@ -82,7 +82,7 @@ _BUTTONS_BY_TYPE = {
 
 _ADMIN_CONTEXT_TYPES = {
     "PLATFORM_SUPER_ADMIN", "PLATFORM_OP", "SCHOOL_ADMIN", "SYS_ADMIN",
-    "SECURITY_AUDITOR", "LEADER", "COLLEGE_ADMIN", "ACADEMIC_ADMIN",
+    "SECURITY_AUDITOR", "LEADER", "COLLEGE_ADMIN", "COLLEGE_ACADEMIC", "ACADEMIC_ADMIN",
     "STUDENT_AFFAIRS_ADMIN", "GRADUATION_ADMIN",
 }
 
@@ -128,6 +128,7 @@ ROLE_CATALOG = [
     {"roleCode": "ACADEMIC_TEACHER", "roleName": "教务老师", "side": "school", "defaultScope": "SCHOOL"},
     {"roleCode": "STUDENT_AFFAIRS", "roleName": "学工老师", "side": "school", "defaultScope": "COLLEGE"},
     {"roleCode": "COLLEGE_ADMIN", "roleName": "学院管理员", "side": "school", "defaultScope": "COLLEGE"},
+    {"roleCode": "COLLEGE_ACADEMIC", "roleName": "学院教务", "side": "school", "defaultScope": "COLLEGE"},
     {"roleCode": "SCHOOL_ADMIN", "roleName": "学校管理员", "side": "school", "defaultScope": "SCHOOL"},
     {"roleCode": "SYS_ADMIN", "roleName": "系统管理员", "side": "school", "defaultScope": "SCHOOL"},
     {"roleCode": "PLATFORM_OP", "roleName": "平台运营人员", "side": "platform", "defaultScope": "PLATFORM"},

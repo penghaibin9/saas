@@ -13,7 +13,7 @@ test('Staff risk card shows canonical source, latest event, current action and d
     assert.match(view, new RegExp(token))
   }
   assert.match(view, /expectedVersion: d\.version/)
-  assert.match(view, /业务记录与审计记录已在同一事务提交/)
+  assert.match(view, /业务处理与审批留痕已同步保存/)
 })
 
 test('Staff incident workbench explains close blockers and leads to regulatory evidence package', () => {

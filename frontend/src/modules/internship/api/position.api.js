@@ -76,7 +76,7 @@ export const positionApi = {
   },
 
   exportPositions(params = {}) {
-    return call(() => request('/internship/positions/export', { method: 'POST', params }))
+    return call(() => request('/internship/positions/export', { method: 'POST', timeoutMs: 60000, params }))
   },
 
   async downloadPositionExport(params = {}) {

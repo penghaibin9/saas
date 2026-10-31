@@ -1,9 +1,11 @@
+import { WEEK_PARITY } from '../../constants/teaching.js'
+import { ACADEMIC_STUDENT_STATUS_LABELS, ACADEMIC_STATUS_CHANGE_LABELS } from '../../config/academicStudentLabels.js'
 import { TYPE_LABEL, STATUS_LABEL } from '../../constants/status-change.js'
 import { COURSE_CATEGORY, COURSE_NATURE } from '../../constants/course-program.js'
 import { WARNING_LEVEL, WARNING_SOURCE, WARNING_STATUS } from '../../constants/grade-graduation.js'
 import { ACADEMIC_STATUS_LABELS } from '../../constants/academic-display.constants.js'
 
-const labels = { ...ACADEMIC_STATUS_LABELS, ...STATUS_LABEL, ...TYPE_LABEL,
+const labels = { ...WEEK_PARITY, ...ACADEMIC_STUDENT_STATUS_LABELS, ...ACADEMIC_STATUS_CHANGE_LABELS, GRADUATE: '毕业', ...ACADEMIC_STATUS_LABELS, ...STATUS_LABEL, ...TYPE_LABEL,
   ...COURSE_CATEGORY, ...COURSE_NATURE, ...WARNING_LEVEL, ...WARNING_SOURCE, ...WARNING_STATUS,
   makeup: '补考', retake: '重修', conflict: '冲突', UNKNOWN: '未分类',
   OPEN: '选课中', CLOSED: '已截止', LOCKED: '名单已锁定' }

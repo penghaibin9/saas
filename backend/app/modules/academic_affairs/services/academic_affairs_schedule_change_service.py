@@ -10,6 +10,7 @@
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from datetime import datetime
 
 from sqlalchemy import and_, func, select
@@ -169,6 +170,8 @@ def _load(db, cid):
 
 
 def _can_manage_all(ctx) -> bool:
+    if ctx.scope_type == "TENANT_ALL" and "COLLEGE_ACADEMIC" in getattr(ctx, "role_codes", set()):
+        raise no_data_scope("学院教务须配置本院范围，不能按全校范围办理")
     return ctx.scope_type == "TENANT_ALL"
 
 
@@ -179,13 +182,28 @@ def _cancel_checker(user, ctx, *, keys=None):
     permitted = has_permission(user, "academicAffairs.scheduleChange.apply")
     all_scope = _can_manage_all(ctx)
     actor_keys = _derive_keys(user) if keys is None else keys
+    college_assistant = (user or {}).get("currentRoleCode") == "COLLEGE_ACADEMIC"
+    raw_actor_id = str((user or {}).get("userId") or "").removeprefix("db-")
+    actor_id = int(raw_actor_id) if raw_actor_id.isdigit() else None
 
     def allowed(change):
+        if college_assistant:
+            return bool(permitted and change.status in _CANCELLABLE
+                        and ctx.scope_type == "COLLEGE" and ctx.college_ids
+                        and actor_id and change.applicant_id == actor_id)
         return bool(permitted and change.status in _CANCELLABLE and (
             all_scope or (change.teacher_key and change.teacher_key in actor_keys)
         ))
 
     return allowed
+
+
+def _require_assist_cancel_scope(db, change, user, ctx):
+    from .academic_affairs_grade_correction_command import _task_college_id
+
+    if (not _cancel_checker(user, ctx)(change)
+            or _task_college_id(db, change) not in ctx.college_ids):
+        raise no_data_scope("仅可撤销本人协助登记且仍在本院范围内的调停课单")
 
 
 def _actor_row(db, change, user, *, ctx=None):
@@ -318,7 +336,7 @@ def _create_adjust_residuals(db, change, origin) -> list[int]:
 
 
 _TERMINAL_STATES = ("APPLIED", "REJECTED", "CANCELLED")
-_COLLEGE_OPERATOR_ROLES = frozenset({"COLLEGE_ADMIN", "COLLEGE_SA"})
+_COLLEGE_OPERATOR_ROLES = frozenset({*COLLEGE_ACADEMIC_ROLES, "COLLEGE_SA"})
 
 
 def _uses_college_change_scope(ctx, user) -> bool:
@@ -347,8 +365,56 @@ def _offering_college_expression():
     ).correlate(AaScheduleChange).scalar_subquery()
 
 
+def _college_assist_teacher(db, origin, user, *, lock=False):
+    from app.core.permissions import has_permission
+    from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+    from . import academic_affairs_responsibility_service as responsibility
+    from . import academic_affairs_teacher_relation_authority as teacher_authority
+
+    ctx = build_affairs_context(user, db)
+    if (not has_permission(user, "academicAffairs.scheduleChange.apply")
+            or ctx.scope_type != "COLLEGE" or not ctx.college_ids):
+        raise no_data_scope("当前身份未获本院调停课协助办理权限")
+    query = db.query(AaTeachingTask, AaCourse, AaTeachingTaskBatch).join(
+        AaCourse, AaCourse.id == AaTeachingTask.course_id,
+    ).join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).filter(
+        AaTeachingTask.id == origin.task_id,
+        AaTeachingTask.tenant_id == _tid(), AaTeachingTask.is_deleted.is_(False),
+        AaCourse.tenant_id == _tid(), AaCourse.is_deleted.is_(False),
+        AaTeachingTaskBatch.tenant_id == _tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+    )
+    if lock:
+        query = query.with_for_update().populate_existing()
+    source = query.first()
+    if not source:
+        raise no_data_scope("无法确认原课位所属教学任务，不能协助登记")
+    task, course, batch = source
+    college_id = responsibility.offering_college_id(course, batch)
+    if college_id is None:
+        college_id = responsibility.resolve_task_offering_colleges(db, [task], lock=lock).get(int(task.id))
+    if college_id not in ctx.college_ids:
+        raise no_data_scope("原课位不在本院开课范围内")
+    teaching_class = teacher_authority.class_authority(db, int(task.id), lock=lock)
+    if teaching_class is not None:
+        relations, _ = teacher_authority.active_relations(db, teaching_class, lock=lock)
+        matched = [row for row in relations if str(row.teacher_key or "") == str(origin.teacher_key or "")]
+        if not matched and len({row.teacher_key for row in relations if row.teacher_key}) == 1:
+            matched = relations
+        if not matched or not matched[0].teacher_key:
+            raise AppException("DATA_CONFLICT", "当前任课关系不明确，请先核对正式课表", http_status=409)
+        teacher = matched[0]
+        return str(teacher.teacher_key), teacher.teacher_name or (
+            origin.teacher_name if teacher.teacher_key == origin.teacher_key else "")
+    if not task.teacher_key:
+        raise no_data_scope("教学任务未配置任课教师，不能协助登记")
+    return str(task.teacher_key), task.teacher_name or (
+        origin.teacher_name if task.teacher_key == origin.teacher_key else "")
+
+
 def _teacher_key_for_origin(db, origin, user, *, lock=False):
     """Use current formal teacher relation; schedule snapshot is legacy fallback only."""
+    if (user or {}).get("currentRoleCode") == "COLLEGE_ACADEMIC":
+        return _college_assist_teacher(db, origin, user, lock=lock)[0]
     ctx = build_affairs_context(user, db)
     if _can_manage_all(ctx):
         return str(origin.teacher_key or "")
@@ -398,7 +464,11 @@ def get_origin_item(item_id, user) -> dict:
             )
         _require_current_published_origin(db, batch, origin)
 
-        _teacher_key_for_origin(db, origin, user)
+        if (user or {}).get("currentRoleCode") == "COLLEGE_ACADEMIC":
+            _, teacher_name = _college_assist_teacher(db, origin, user)
+        else:
+            _teacher_key_for_origin(db, origin, user)
+            teacher_name = origin.teacher_name
 
         return {
             "itemId": str(origin.id),
@@ -407,7 +477,7 @@ def get_origin_item(item_id, user) -> dict:
             "termId": str(batch.term_id or ""),
             "courseName": origin.course_name or "",
             "className": origin.class_name or "",
-            "teacherName": origin.teacher_name or "",
+            "teacherName": teacher_name or "",
             "weekday": origin.weekday,
             "slotNo": origin.slot_no,
             "startWeek": origin.start_week,
@@ -484,7 +554,11 @@ def submit(body, user) -> dict:
         b = tenant_get(db, AaScheduleBatch, int(origin.batch_id), tenant_id=_tid()) if origin.batch_id else None
         _require_current_published_origin(db, b, origin)
         # 数据范围(COURSE)：以当前正式任课关系裁决。
-        actor_teacher_key = _teacher_key_for_origin(db, origin, user)
+        if (user or {}).get("currentRoleCode") == "COLLEGE_ACADEMIC":
+            actor_teacher_key, teacher_name = _college_assist_teacher(db, origin, user, lock=True)
+        else:
+            actor_teacher_key = _teacher_key_for_origin(db, origin, user)
+            teacher_name = (user or {}).get("realName") or (user or {}).get("name") or origin.teacher_name
         # 停课需给出后续安排（真实业务：不填补课安排且课程仍有周学时缺口 → 422 警示）
         if ct == "STOP" and not (getattr(body, "makeupPlan", None) or "").strip():
             raise AppException("VALIDATION_ERROR", "停课须填写补课/后续安排说明")
@@ -515,7 +589,7 @@ def submit(body, user) -> dict:
             task_id=origin.task_id, change_type=ct,
             course_name=origin.course_name, class_id=origin.class_id, class_name=origin.class_name,
             teacher_key=actor_teacher_key,
-            teacher_name=(user or {}).get("realName") or (user or {}).get("name") or origin.teacher_name,
+            teacher_name=teacher_name,
             origin_weekday=origin.weekday, origin_slot_no=origin.slot_no,
             origin_start_week=origin.start_week, origin_end_week=origin.end_week,
             origin_week_parity=origin.week_parity, origin_classroom=origin.classroom_text,
@@ -740,7 +814,9 @@ def cancel(cid, user, reason="") -> dict:
         if x.status not in _CANCELLABLE:
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可撤销")
         ctx = build_affairs_context(user, db)
-        if not _can_manage_all(ctx):
+        if (user or {}).get("currentRoleCode") == "COLLEGE_ACADEMIC":
+            _require_assist_cancel_scope(db, x, user, ctx)
+        elif not _can_manage_all(ctx):
             keys = _derive_keys(user)
             if not x.teacher_key or x.teacher_key not in keys:
                 raise no_data_scope("仅可撤销本人发起的调停课单")

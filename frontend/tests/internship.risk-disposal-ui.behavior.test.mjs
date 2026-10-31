@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -7,7 +8,7 @@ const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/
 const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '')
   .replace(/ {2}components: \{[\s\S]*?ActionReceipt, AppInlineAlert \},/, '').replace('export default', 'return')
 function setup(riskApi = {}, complaintApi = {}, fileSdk = {}) {
-  const def = new Function('riskApi', 'complaintApi', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', 'fileSdk', script)(riskApi, complaintApi, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} }, fileSdk)
+  const def = componentFactory('riskApi', 'complaintApi', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', 'fileSdk', script)(riskApi, complaintApi, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} }, fileSdk)
   const vm = { ...def.data(), batchStore: { selectedBatchId: '1' }, $route: { query: {} } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   return { vm, def }

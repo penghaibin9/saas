@@ -89,6 +89,7 @@ def _ensure_builtin_resolvers() -> None:
     if _BUILTIN_RESOLVERS_LOADED:
         return
     from app.services import file_access_resolvers as _file_access_resolvers  # noqa: F401
+    from app.services import file_internship_tender_resolvers as _internship_resolvers  # noqa: F401
 
     _BUILTIN_RESOLVERS_LOADED = True
 

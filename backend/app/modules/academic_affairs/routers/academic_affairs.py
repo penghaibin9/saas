@@ -3932,13 +3932,14 @@ def defer_my(status: Optional[str] = None, user=Depends(_require_student)):
 
 @router.post("/deferred-exams/{deferId}/resubmit", summary="退回后补材料重提")
 def defer_resubmit(deferId: int = Path(...), body: dict = Body(default={}), user=Depends(_require_student)):
-    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion")), message="已重提")
+    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion"), reason=(body or {}).get("reason")), message="已重提")
 
 
 @router.get("/deferred-exams", summary="缓考审批列表（教务/学院/教师/辅导员）")
 def defer_list(status: Optional[str] = None, page: int = 1, pageSize: int = 50,
+               deferId: Optional[int] = Query(None, gt=0),
                user=Depends(require_any_permission(_DEFER_COUNSELOR, _DEFER_REVIEW, "academicAffairs.exam.view"))):
-    items, total = exam_svc.defer_list(user, status, student_only=False, page=page, page_size=pageSize)
+    items, total = exam_svc.defer_list(user, status, student_only=False, page=page, page_size=pageSize, defer_id=deferId)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -4106,9 +4107,13 @@ def makeup_score(body: MakeupScoreBody, mid: int = Path(...), user=Depends(requi
     return success(makeup_svc.enter_makeup_score(user, mid, body.score), message="已录入")
 
 
-@router.post("/makeup/batches/{bid}/college-review", summary="补考成绩学院审核（接R1审核链，SCORING→REVIEWED）")
-def makeup_college_review(bid: int = Path(...), user=Depends(require_permission(_MK_MANAGE))):
-    return success(makeup_svc.college_review_scores(user, bid), message="学院审核通过")
+class MakeupCollegeReviewBody(BaseModel):
+    expectedVersion: int = Field(..., ge=0, strict=True)
+
+
+@router.post("/makeup/batches/{bid}/college-review", summary="开课学院审核本院补考或清考成绩")
+def makeup_college_review(body: MakeupCollegeReviewBody, bid: int = Path(...), user=Depends(require_permission("academicAffairs.grade.collegeReview"))):
+    return success(makeup_svc.college_review_scores(user, bid, body.expectedVersion), message="本学院成绩审核通过")
 
 
 @router.post("/makeup/batches/{bid}/finish", summary="教务发布回写（REVIEWED→FINISHED，接R1审核链末端）")
@@ -4191,8 +4196,8 @@ def exemption_review(body: ExemptionReviewBody, eid: int = Path(...), command_ke
 
 # ── 缓考合流 ──
 @router.get("/makeup/deferred-pool", summary="缓考 APPROVED 学生池（供并入补考批次）")
-def deferred_pool(page: int = 1, pageSize: int = 50, user=Depends(require_permission(_MK_VIEW))):
-    items, total = makeup_svc.deferred_pool(user, page, pageSize)
+def deferred_pool(page: int = 1, pageSize: int = 50, deferId: Optional[int] = Query(None, gt=0), user=Depends(require_permission(_MK_VIEW))):
+    items, total = makeup_svc.deferred_pool(user, page, pageSize, defer_id=deferId)
     return success(paginate(items, total, page, pageSize))
 
 

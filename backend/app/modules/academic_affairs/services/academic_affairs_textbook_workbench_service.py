@@ -123,7 +123,7 @@ def list_distribution_batches(user, term_id=None, page=1, page_size=50):
                 unsettled = db.query(AaTextbookFeeLedger).filter(
                     AaTextbookFeeLedger.tenant_id == _tid(),
                     AaTextbookFeeLedger.distribution_record_id.in_(record_ids),
-                    AaTextbookFeeLedger.status.in_(["UNPAID", "PARTIAL"]),
+                    AaTextbookFeeLedger.status.in_(["UNPAID", "PARTIAL", "REFUNDED"]),
                     AaTextbookFeeLedger.is_deleted.is_(False),
                 ).count()
             pending = int(counts.get("PENDING", 0) or 0)
@@ -155,12 +155,15 @@ def list_distribution_records(user, batch_id, page=1, page_size=100):
         AaTextbookDistributionBatch,
         AaTextbookDistributionRecord,
         AaTextbookFeeLedger,
+        AaTextbookRefund,
         AaTextbookOrderBatch,
         StudentProfile,
     )
+    from app.core.permissions import _match
 
     with session() as db:
-        _require_school(user, db)
+        ctx = _require_school(user, db)
+        fee_visible = _match("academicAffairs.textbook.fee.manage", ctx.permission_codes)
         batch = db.query(AaTextbookDistributionBatch).filter(
             AaTextbookDistributionBatch.id == int(batch_id),
             AaTextbookDistributionBatch.tenant_id == _tid(),
@@ -201,6 +204,10 @@ def list_distribution_records(user, batch_id, page=1, page_size=100):
                     AaTextbookFeeLedger.is_deleted.is_(False),
                 ).all()
             }
+        fee_ids = [int(fee.id) for fee in fees.values()]
+        refunds = {int(refund.fee_id): refund for refund in db.query(AaTextbookRefund).filter(
+            AaTextbookRefund.tenant_id == _tid(), AaTextbookRefund.fee_id.in_(fee_ids),
+        ).all()} if fee_ids and fee_visible else {}
         return [{
             "recordId": str(record.id),
             "studentId": str(record.student_id),
@@ -210,8 +217,11 @@ def list_distribution_records(user, batch_id, page=1, page_size=100):
             "qty": record.qty,
             "status": record.status,
             "feeStatus": fees.get(int(record.id)).status if fees.get(int(record.id)) else None,
-            "amount": float(fees.get(int(record.id)).amount) if fees.get(int(record.id)) else None,
-            "paidAmount": float(fees.get(int(record.id)).paid_amount) if fees.get(int(record.id)) else None,
+            "amount": float(fees.get(int(record.id)).amount) if fee_visible and fees.get(int(record.id)) else None,
+            "paidAmount": float(fees.get(int(record.id)).paid_amount) if fee_visible and fees.get(int(record.id)) else None,
+            "refundAmount": (float(refunds[int(fees[int(record.id)].id)].amount) if int(record.id) in fees and int(fees[int(record.id)].id) in refunds else 0) if fee_visible else None,
+            "feeVisible": fee_visible,
+            "feeMismatch": bool(fees.get(int(record.id)) and int(fees[int(record.id)].student_id) != int(record.student_id)),
         } for record, student in rows], total, {
             "distributionBatchId": str(batch.id),
             "orderBatchId": str(order.id),

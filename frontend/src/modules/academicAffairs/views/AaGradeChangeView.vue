@@ -16,7 +16,7 @@
       <div class="aa-workspace">
         <AppSectionCard title="责任队列">
           <LoadingState v-if="queueLoading" />
-          <EmptyState v-else-if="!rows.length" title="当前队列暂无申请" description="换个队列或状态试试" />
+          <EmptyState v-else-if="!error && !rows.length" title="当前队列暂无申请" description="换个队列或状态试试" />
           <ul v-else class="aa-queue"><li v-for="row in rows" :key="row.changeRequestId"><button type="button" :class="['aa-queue-item',{active:String(detail?.changeRequestId||'')===String(row.changeRequestId)}]" :disabled="writeLocked" @click="openDetail(row)"><span class="aa-queue-title"><strong>{{ row.studentName||'学生待核对' }} · {{ row.courseName||'课程待核对' }}</strong><AppStatusTag :type="statusColor(row.requestStatus)">{{ statusLabel(row.requestStatus) }}</AppStatusTag></span><span>{{ row.studentNo||'学号待核对' }} · {{ row.termCode||'学期待核对' }}</span><span>{{ currentNodeLabel(row) }} · {{ row.requestStatus==='PENDING'?(row.assigneeName||'下一责任人待确定'):'已结束' }}</span></button></li></ul>
           <div class="aa-pages"><AppButton variant="ghost" :disabled="pagination.page<=1||writeLocked" @click="changePage(pagination.page-1)">上一页</AppButton><span>{{ pagination.page }} / {{ pageCount }}</span><AppButton variant="ghost" :disabled="pagination.page>=pageCount||writeLocked" @click="changePage(pagination.page+1)">下一页</AppButton></div>
         </AppSectionCard>

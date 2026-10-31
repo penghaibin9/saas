@@ -66,18 +66,19 @@
             </template>
             <template #cell-timeBandCount="{ row }">{{ row.timeBandCount }} 套</template>
             <template #cell-referenceStatus="{ row }">
-              <StatusTag :type="row.referenceStatus === 'IN_USE' ? 'warning' : 'success'" :label="row.referenceStatus === 'IN_USE' ? `引用 ${row.referenceCount} 条` : '暂无引用'" dot />
+              <StatusTag :type="slotReferenced(row) ? 'warning' : 'success'" :label="slotReferenced(row) ? (row.referenceCount > 0 ? `引用 ${row.referenceCount} 条` : '已有业务引用') : '暂无引用'" dot />
             </template>
             <template #cell-actions="{ row }">
               <div class="aa-slot-actions">
-              <button v-if="canViewBands" class="mp-link" :disabled="busy" @click="goBands(row)">时间段</button>
+              <button v-if="canViewBands" class="mp-link" :disabled="busy" @click="goBands(row)">维护上课时间段</button>
               <template v-if="canManageSlots">
                 <button class="mp-link" :disabled="busy" @click="openEdit(row)">编辑</button>
-                <button class="mp-link" :disabled="busy" @click="toggleEnabled(row)">{{ row.enabled ? '停用' : '启用' }}</button>
-                <button class="mp-link aa-danger" :disabled="busy" @click="confirmDelete(row)">删除</button>
+                <button class="mp-link" :disabled="busy || (row.enabled && slotReferenced(row))" @click="toggleEnabled(row)">{{ row.enabled ? '停用' : '启用' }}</button>
+                <button class="mp-link aa-danger" :disabled="busy || slotReferenced(row)" @click="confirmDelete(row)">删除</button>
               </template>
               <span v-else-if="!canViewBands" class="mp-note">只读</span>
               </div>
+              <p v-if="canManageSlots && slotReferenced(row)" class="mp-note">已有业务引用，不能改号、停用或删除；调整季节作息请维护上课时间段。</p>
             </template>
           </DataTable>
         </AppSectionCard>
@@ -173,8 +174,9 @@
     <AppDrawer :visible="editVisible" title="编辑节次" mode="modal" size="medium" @close="editVisible = false">
       <fieldset class="aa-cal-form--drawer" v-if="editForm" :disabled="saving">
         <AppFormItem label="第几节" required>
-          <AppNumberInput :model-value="editForm.slotNo" @update:model-value="updateEditorField('slotEdit', 'slotNo', $event)" :min="1" />
+          <AppNumberInput :model-value="editForm.slotNo" :disabled="slotReferenced(rows.find(row => String(row.slotId) === String(editForm.slotId)))" @update:model-value="updateEditorField('slotEdit', 'slotNo', $event)" :min="1" />
         </AppFormItem>
+        <p v-if="slotReferenced(rows.find(row => String(row.slotId) === String(editForm.slotId)))" class="mp-note">已有业务引用，节次编号不能修改。名称仍可更正；夏令、冬令作息请在上课时间段中按生效日期维护。</p>
         <AppFormItem label="名称"><AppTextInput :model-value="editForm.slotName" @update:model-value="updateEditorField('slotEdit', 'slotName', $event)" :maxlength="30" /></AppFormItem>
         <AppFormItem label="开始时间"><AppTimePicker :model-value="editForm.startTime" @update:model-value="updateEditorField('slotEdit', 'startTime', $event)" /></AppFormItem>
         <AppFormItem label="结束时间"><AppTimePicker :model-value="editForm.endTime" @update:model-value="updateEditorField('slotEdit', 'endTime', $event)" /></AppFormItem>
@@ -212,7 +214,7 @@
                       confirm-text="放弃修改并切换" cancel-text="继续编辑原时间段" type="warning"
                       :submitting="busy" @confirm="confirmBandSwitch" @cancel="cancelBandSwitch" />
     <AppConfirmDialog v-model:visible="confirmVisible" title="删除节次"
-                      message="删除后，该节次及其时间段将不再提供作息。已有业务引用的节次不能删除。确认删除？" type="danger" :submitting="actionBusy" @confirm="doDelete" />
+                      :message="pendingDelete ? `确认删除第 ${pendingDelete.slotNo} 节${pendingDelete.slotName ? '（' + pendingDelete.slotName + '）' : ''}？该节次及其上课时间段将不再提供作息；已有业务引用时系统会拒绝删除。` : ''" type="danger" :submitting="actionBusy" @confirm="doDelete" />
     <AppConfirmDialog v-model:visible="confirmBandVisible" title="删除上课时间段"
                       message="删除后，课表将按其他适用时间段或基础钟点显示。确认删除？" type="danger" :submitting="actionBusy" @confirm="doDeleteBand" />
   </ModulePageShell>
@@ -508,6 +510,11 @@ export default {
     },
     async submitEdit() {
       if (!this.canManageSlots || this.busy || !this.editForm) return
+      const source = this.rows.find(row => String(row.slotId) === String(this.editForm.slotId))
+      if (this.slotReferenced(source) && Number(source.slotNo) !== Number(this.editForm.slotNo)) {
+        this.editError = '该节次已有业务引用，不能修改节次编号。你的其他修改已保留。'
+        return
+      }
       const err = this.validate(this.editForm)
       if (err) { this.editError = err; return }
       this.saving = true
@@ -515,8 +522,13 @@ export default {
       const body = { slotNo: Number(this.editForm.slotNo), slotName: this.editForm.slotName || '', startTime: this.editForm.startTime || null, endTime: this.editForm.endTime || null }
       return this.saveEditor('slotEdit', body, () => academicAffairsApi.updateTimeSlot(id, body), id)
     },
+    slotReferenced(row) { return row?.referenceStatus === 'IN_USE' || row?.referenceCount > 0 },
     async toggleEnabled(row) {
       if (!this.canManageSlots || this.busy) return
+      if (row.enabled && this.slotReferenced(row)) {
+        this.commandError = `第 ${row.slotNo} 节已有业务引用，不能停用；调整季节作息请维护上课时间段。`
+        return
+      }
       this.commandError = ''
       this.actionBusy = true
       const res = await academicAffairsApi.updateTimeSlot(row.slotId, { enabled: !row.enabled })
@@ -525,17 +537,28 @@ export default {
         toast.success(row.enabled ? '已停用' : '已启用')
         this.load()
       } else {
-        this.commandError = `第 ${row.slotNo} 节（${row.slotId}）：${res.message || '操作未完成，请核对状态'}`
+        this.commandError = `第 ${row.slotNo} 节：${res.message || '操作未完成，请核对状态'}`
         toast.error(res.message || '操作失败')
       }
     },
     confirmDelete(row) {
       if (!this.canManageSlots || this.busy) return
-      this.pendingDelete = row
+      if (this.slotReferenced(row)) {
+        this.commandError = `第 ${row.slotNo} 节已有业务引用，不能删除。`
+        return
+      }
+      this.commandError = ''
+      this.pendingDelete = { ...row }
       this.confirmVisible = true
     },
     async doDelete() {
       if (!this.canManageSlots || this.busy || !this.pendingDelete) return
+      const source = this.rows.find(row => String(row.slotId) === String(this.pendingDelete.slotId))
+      if (this.slotReferenced(source) || this.slotReferenced(this.pendingDelete)) {
+        this.commandError = `第 ${this.pendingDelete.slotNo} 节已有业务引用，不能删除。`
+        this.confirmVisible = false; this.pendingDelete = null
+        return
+      }
       this.actionBusy = true
       const res = await academicAffairsApi.deleteTimeSlot(this.pendingDelete.slotId)
       if (res.code === 0) {
@@ -543,6 +566,7 @@ export default {
         this.load()
         if (this.bandSlotId === this.pendingDelete.slotId) { this.bandSlotId = ''; this.bandRows = [] }
       } else {
+        this.commandError = `第 ${this.pendingDelete.slotNo} 节：${res.message || '删除未完成，请重新加载后核对'}`
         toast.error(res.message || '删除失败')
       }
       this.pendingDelete = null

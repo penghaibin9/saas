@@ -60,7 +60,7 @@ test('A03-7 builds exactly one atomic group PUT payload with three-layer CAS evi
   const payload = buildVolunteerGroupSaveRequest(group, withStatement)
   assert.equal(payload.items.length, 3)
   assert.deepEqual(payload.items.map((item) => item.volunteerNo), [1, 2, 3])
-  assert.deepEqual(payload.items.map((item) => item.positionId), [201, 203, 218])
+  assert.deepEqual(payload.items.map((item) => item.positionId), ['201', '203', '218'])
   assert.equal(payload.items[2].applicationStatement, '希望锻炼质量管理能力')
   assert.equal(payload.expectedGroupVersion, 12)
   assert.equal(payload.expectedRecordVersion, 7)

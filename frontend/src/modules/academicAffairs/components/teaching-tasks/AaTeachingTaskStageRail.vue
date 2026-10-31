@@ -1,9 +1,9 @@
 <template>
   <div class="aa-stage-fold">
     <button type="button" class="aa-stage-fold__toggle" :aria-expanded="String(stageOpen)" @click="stageOpen = !stageOpen">
-      <span class="aa-stage-fold__arrow">▸</span>办理进度：<b>{{ normalizedSteps[current - 1]?.label || '' }}</b>（第 {{ current }} 步 / 共 {{ normalizedSteps.length }} 步）
+      <span class="aa-stage-fold__arrow">▸</span><template v-if="current > 0">办理进度：<b>{{ normalizedSteps[current - 1]?.label || '' }}</b>（第 {{ current }} 步 / 共 {{ normalizedSteps.length }} 步）</template><template v-else>开课办理流程（共 {{ normalizedSteps.length }} 个环节）</template>
     </button>
-    <ol v-show="stageOpen" class="aa-task-rail" aria-label="教学任务办理阶段">
+    <ol v-show="stageOpen" class="aa-task-rail" :style="{ '--stage-count': normalizedSteps.length }" aria-label="教学任务办理阶段">
       <li
         v-for="(step, index) in normalizedSteps"
         :key="step.label"
@@ -20,14 +20,15 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
-const stageOpen = ref(false)
 const props = defineProps({
+  expanded: { type: Boolean, default: false },
   current: { type: Number, default: 1 },
   currentNote: { type: String, default: '当前环节' },
   steps: { type: Array, default: () => [] }
 })
+const stageOpen = ref(props.expanded)
 
 const defaults = [
   { label: '方案生成' },
@@ -37,14 +38,14 @@ const defaults = [
   { label: '正式就绪' }
 ]
 
-const normalizedSteps = props.steps.length ? props.steps : defaults
+const normalizedSteps = computed(() => props.steps.length ? props.steps : defaults)
 </script>
 
 <style scoped>
 @import '../../styles/stage-fold.css';
 .aa-task-rail {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--stage-count, 5), minmax(0, 1fr));
   gap: 0;
   margin: 0;
   padding: 13px 16px;

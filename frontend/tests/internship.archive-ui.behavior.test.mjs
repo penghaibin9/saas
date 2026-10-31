@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -8,7 +9,8 @@ const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+
 const ok = data => ({ code: 0, data })
 const record = () => ({ id: '9007199254740999', studentName: '测试学生', studentNo: 'UI-001', archived: false, version: null, recordVersion: 3, missing: [], archivePassed: true })
 function setup(api = {}, permission = () => true) {
-  const def = new Function('archiveApi', 'canCode', 'toast', script)(api, permission, { success() {}, error() {}, warning() {} })
+  api = {listFormalDocuments:async()=>ok({items:[]}),...api}
+  const def = componentFactory('archiveApi', 'canCode', 'toast', script)(api, permission, { success() {}, error() {}, warning() {} })
   const targets = [], vm = { ...def.data(), ctx: {}, $route: { query: {} }, batchStore: { selectedBatchId: '1', withBatchQuery: q => ({ ...q, batchId: vm.batchStore.selectedBatchId }) }, $router: { push: t => targets.push(t), replace: t => targets.push(t), beforeEach: () => () => {} } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   for (const [key, fn] of Object.entries(def.computed)) if (key !== 'batchStore') Object.defineProperty(vm, key, { get: () => fn.call(vm) })
@@ -95,7 +97,7 @@ test('material links keep batch and cannot mistake an internship ID for a score 
   vm.goFix({ code: 'score', path: '/admin/internship/scores?stage=publish&id=9007199254740999' })
   assert.equal(targets[0].query.id, undefined); assert.equal(targets[0].query.keyword, '测试学生'); assert.equal(targets[0].query.batchId, '1'); assert.equal(targets[0].query.stage, 'publish')
   vm.goFix({ code: 'enterpriseEval', path: '/admin/internship/evaluations?stage=enterprise&id=9007199254740999' }); assert.equal(targets[1].path, '/admin/internship/enterprise-evals'); assert.equal(targets[1].query.id, undefined)
-  vm.goFix({ code: 'visit', path: '/admin/internship/visits?id=9007199254740999' }); assert.equal(targets[2].path, '/admin/internship/guidance'); assert.equal(targets[2].query.view, 'visit')
+  vm.goFix({ code: 'visit', path: '/admin/internship/visits?id=9007199254740999' }); assert.equal(targets[2].path, '/admin/internship/guidance'); assert.equal(targets[2].query.panel, 'visit')
   vm.goFix({ path: 'https://outside.invalid' }); assert.equal(targets.length, 3)
 })
 

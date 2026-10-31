@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -9,9 +10,10 @@ const script = parse(fs.readFileSync(new URL('../src/modules/internship/views/We
 test('report list rejects late results after filters have changed', async () => {
   let finish
   const api = { getWeeklyReports: params => params.status === 'PENDING_REVIEW' ? new Promise(resolve => { finish = resolve }) : Promise.resolve({ code: 0, data: { list: [{ id: 'new' }], total: 1 } }) }
-  const def = new Function('internshipApi', script)(api)
-  const vm = { ...def.data(), batchStore: { selectedBatchId: '1' }, isProcessReport: false }
-  const load = def.methods.load.bind(vm)
+  const def = componentFactory('internshipApi', script)(api)
+  const vm = { ...def.data(), batchStore: { selectedBatchId: '1' }, isProcessReport: false, $route:{query:{}} }
+  for(const [key,method] of Object.entries(def.methods))vm[key]=method.bind(vm)
+  const load = vm.load
   const old = load(); vm.filters.status = 'APPROVED'; await load()
   finish({ code: 0, data: { list: [{ id: 'old' }], total: 20 } }); await old
   assert.equal(vm.rows[0].id, 'new'); assert.equal(vm.pagination.total, 1)
@@ -19,7 +21,7 @@ test('report list rejects late results after filters have changed', async () => 
 
 test('report detail link and queue retain type, batch and current page', () => {
   let queue, target
-  const def = new Function('saveReviewQueue', script)(value => { queue = value })
+  const def = componentFactory('saveReviewQueue', script)(value => { queue = value })
   const vm = { ...def.data(), batchStore: { selectedBatchId: '9' }, isProcessReport: true,
     typeConfig: { label: '月报' }, activeTabs: [{ value: 'PENDING_REVIEW', label: '待批阅' }],
     $route: { path: '/admin/internship/reports', query: { type: 'monthly', panel: 'review' } }, $router: { push: value => { target = value } } }
@@ -32,7 +34,7 @@ test('report detail link and queue retain type, batch and current page', () => {
 
 test('approved report tab keeps the approved status filter in the URL', () => {
   let target
-  const def = new Function(script)()
+  const def = componentFactory(script)()
   const vm = { ...def.data(), $route: { query: { batchId: '47', panel: 'all', page: '1' } },
     $router: { replace: value => { target = value } } }
   def.methods.switchTab.call(vm, 'APPROVED')

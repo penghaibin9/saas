@@ -24,14 +24,15 @@ test('W3 semantic client owns create list detail verify without browser hash aut
 
 test('stats host mounts snapshot as a tab and does not create a second route/menu', () => {
   assert.match(host, /{ key: 'snapshot', label: '统计快照' }/)
-  assert.match(host, /<AaStatsSnapshotWorkspace :ctx="ctx" :context-filters="appliedFilters" \/>/)
-  assert.match(host, /tab !== 'snapshot'/)
+  assert.match(host, /<AaStatsSnapshotWorkspace\b[^>]*:ctx="ctx"[^>]*:context-filters="appliedFilters"[^>]*\/>/)
+  assert.match(host, /<AaStatsSnapshotWorkspace\b[^>]*v-else-if="tab === 'snapshot'"/)
+  assert.match(host, /<form v-if="!\['export', 'snapshot', 'resource'\]\.includes\(tab\)"/)
 })
 
 test('snapshot workspace exposes freeze history, detail and server verify semantics', () => {
   for (const text of [
-    '冻结当前统计', '后续实时源数据变化不会回写已冻结快照', 'payloadHash',
-    '冻结原因', '冻结 payload', '重新校验完整性', '系统校验通过'
+    '冻结当前统计', '快照保存冻结时的统计结果', 'payloadHash',
+    '冻结原因', '冻结数据原文', '重新校验完整性', '系统校验通过'
   ]) assert.match(workspace, new RegExp(text))
   assert.match(workspace, /academicAffairs\.stats\.snapshot\.view/)
   assert.match(workspace, /academicAffairs\.stats\.snapshot\.create/)

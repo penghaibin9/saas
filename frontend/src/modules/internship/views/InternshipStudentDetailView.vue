@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell class="isd" :title="detail ? detail.name + ' · 实习档案' : '实习档案'" :subtitle="pageSubtitle">
-    <template #actions><button class="mp-btn" @click="goBack">{{ systemReturnTo ? '返回系统管理' : graduationReturnTo ? '返回毕业审核' : volunteerReturnTo ? '返回岗位确认' : /^\/admin\/internship\/insurance(?:\/\d+)?(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回保险材料' : /^\/admin\/internship\/assignment-logs(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回分配记录' : /^\/admin\/internship\/compliance(?:\?|$)/.test(String($route.query.returnTo || '')) ? '返回上岗核验' : '返回名单' }}</button></template>
+    <template #actions><button class="mp-btn" @click="goBack">{{ systemReturnTo ? '返回系统管理' : graduationReturnTo ? '返回毕业审核' : backDestination?.label || '返回名单' }}</button></template>
     <LoadingState v-if="loading" />
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <template v-else-if="detail">
@@ -17,7 +17,7 @@
             <div><dt>班级</dt><dd>{{ detail.className || '待补充' }}</dd></div>
             <div><dt>联系电话</dt><dd>{{ detail.phone || '未登记' }}</dd></div>
             <div><dt>实习批次</dt><dd>{{ detail.batchName || '待补充' }}</dd></div>
-            <div><dt>实习时间</dt><dd>{{ detail.internRange || '待安排' }}</dd></div>
+            <div><dt>实际实习日期</dt><dd>{{ detail.internRange || '尚未补全' }}<button v-if="canManage && ['ONBOARD','ASSESSING'].includes(detail.status)" type="button" class="mp-link" @click="openPeriod">维护实际日期</button></dd></div>
             <div><dt>校内指导教师</dt><dd>{{ detail.advisorName || '待分配' }}</dd></div>
             <div><dt>实习去向</dt><dd>{{ detail.destinationLabel }}</dd></div>
             <div class="isd-facts__wide"><dt>备注</dt><dd>{{ detail.remark || '暂无备注' }}</dd></div>
@@ -53,13 +53,14 @@
           <p class="isd-result__reason">{{ detail.eligibilityReview?.reason || '暂无认定说明' }}</p>
           <p v-if="detail.eligibilityReview?.reviewedAt" class="sd-card-note">认定时间 · {{ formatDateTime(detail.eligibilityReview.reviewedAt) }}</p>
           <p v-if="detail.eligibilityReview?.reason" class="sd-card-note">{{ detail.eligibilityReview.studentVisible ? '该说明已向学生展示' : '历史内部说明，仅教师可见' }}</p>
-          <div class="isd-note">资格合格后，继续落实实习岗位，并按本批次要求完成上岗手续。</div>
+          <div class="isd-note">{{ isReadonly ? '档案仅供查阅，可查看历次认定和处理记录。' : '资格合格后，继续落实实习岗位，并按本批次要求完成上岗手续。' }}</div>
           <RouterLink class="mp-link" :to="sectionLocation('history')">查看历次处理记录 →</RouterLink>
         </aside>
       </div>
       <div v-show="activeSection === 'placement'" class="isd-placement-actions">
         <button v-if="canManage && ['PREPARING', 'READY'].includes(detail.status)" class="mp-btn" :disabled="onboardLoading || submitting" @click="checkOnboard()">{{ onboardLoading ? '正在核对…' : '核对上岗条件' }}</button>
         <button v-if="canManage" class="mp-btn mp-btn--primary" @click="openAssign">{{ detail.positionId ? '调整岗位' : '分配岗位' }}</button>
+        <button v-if="canEvalQr" class="mp-btn" :disabled="qrLoading" @click="openEvaluationQr">{{ qrLoading ? '正在生成…' : '企业扫码评价' }}</button>
         <button v-if="canManage && detail.positionId" class="mp-btn mp-btn--danger-ghost" @click="askUnassign">退岗</button>
       </div>
       <section v-if="(onboardLoading || onboardError || onboardChecklist) && ['profile', 'placement'].includes(activeSection)" class="mp-card isd-check" aria-label="上岗条件核对" aria-live="polite" :aria-busy="onboardLoading">
@@ -88,16 +89,17 @@
             <EmptyState v-if="!detail.positionId" title="尚未分配岗位" description="使用页面上方“分配岗位”，从已上架且未满员的岗位中选择。" />
             <div v-else class="sd-grid">
               <div class="sd-kv"><span class="sd-k">实习企业</span>
-                <span class="sd-v sd-v--wrap"><a class="mp-link" @click="openEnterprise">{{ detail.enterpriseName }}</a>
+                <span class="sd-v sd-v--wrap"><button v-if="canOpenEnterprise" type="button" class="mp-link" @click="openEnterprise">{{ detail.enterpriseName }}</button><span v-else>{{ detail.enterpriseName }}</span>
                   <span v-if="detail.company && detail.company.blacklist" class="sd-warn"> · 黑名单</span></span>
               </div>
               <div class="sd-kv"><span class="sd-k">实习岗位</span>
-                <span class="sd-v sd-v--wrap"><a class="mp-link" @click="openPosition">{{ detail.positionName }}</a></span>
+                <span class="sd-v sd-v--wrap"><button v-if="canOpenPosition" type="button" class="mp-link" @click="openPosition">{{ detail.positionName }}</button><span v-else>{{ detail.positionName }}</span></span>
               </div>
               <div class="sd-kv"><span class="sd-k">企业导师</span><span class="sd-v">{{ detail.mentorName || '未指定' }}</span></div>
               <div class="sd-kv"><span class="sd-k">岗位容量</span><span class="sd-v">{{ detail.position ? detail.position.capacity : '—' }}</span></div>
               <div class="sd-kv sd-kv--full"><span class="sd-k">工作地点</span><span class="sd-v sd-v--wrap">{{ detail.position ? detail.position.workLocation : '—' }}</span></div>
             </div>
+            <p v-if="detail.positionId && (!canOpenEnterprise || !canOpenPosition)" class="sd-card-note">企业与岗位资料由具备对应权限的经办人核验；此处展示该生已关联的信息。</p>
             <div v-if="!detail.positionId && canManage" class="sd-dest-actions">
               <div>
                 <strong>不走学校岗位库？</strong>
@@ -110,6 +112,48 @@
             </div>
           </div>
         </section>
+
+      <section v-show="activeSection === 'plans'" class="mp-card">
+        <div class="mp-card__head isd-plan-head">
+          <div>
+            <h2 class="isd-title">实习方案分配</h2>
+            <p class="sd-card-note">一名学生可分配多个已发布实习方案；每份方案分别确认、分别记录任务进度。</p>
+          </div>
+          <button v-if="canManage" class="mp-btn mp-btn--primary" :disabled="planAssignmentsLoading || submitting" @click="openPlanAssign">追加实习方案</button>
+        </div>
+        <div class="mp-card__body">
+          <p v-if="planAssignmentsLoading" class="isd-readonly">正在读取实习方案…</p>
+          <p v-else-if="planAssignmentsError" class="isd-error" role="alert">{{ planAssignmentsError }} <button type="button" class="mp-link" @click="loadPlanAssignments">重试</button></p>
+          <EmptyState v-else-if="!planAssignments.length" title="尚未分配实习方案" description="主计划发布后会自动生成主方案；管理员也可追加其他已发布方案。" />
+          <div v-else class="isd-plan-list">
+            <article v-for="row in planAssignments" :key="row.id" class="isd-plan-card">
+              <div class="isd-plan-card__main">
+                <div class="isd-plan-card__title">
+                  <strong>{{ row.planTitle || '未命名方案' }}</strong>
+                  <AppStatusTag :type="row.isPrimary ? 'success' : 'info'">{{ row.isPrimary ? '主方案' : '附加方案' }}</AppStatusTag>
+                </div>
+                <p>{{ row.batchName || ('批次 #' + row.planBatchId) }}</p>
+                <div class="isd-plan-metrics">
+                  <span>确认：<b>{{ row.ackStatus === 'ACKNOWLEDGED' ? '已确认' : '待确认' }}</b></span>
+                  <span>任务：<b>{{ row.approvedTaskCount }}/{{ row.taskCount }} 已完成</b></span>
+                  <span v-if="row.startedTaskCount">已开始 <b>{{ row.startedTaskCount }}</b> 项</span>
+                  <span>分配：{{ formatDateTime(row.assignedAt) || '—' }}</span>
+                </div>
+              </div>
+              <div class="isd-plan-card__actions">
+                <button
+                  v-if="canManage && !row.isPrimary"
+                  type="button"
+                  class="mp-btn mp-btn--danger-ghost"
+                  :disabled="submitting || row.ackStatus === 'ACKNOWLEDGED' || Number(row.startedTaskCount || 0) > 0"
+                  :title="row.ackStatus === 'ACKNOWLEDGED' ? '学生已确认，不能直接移除' : (Number(row.startedTaskCount || 0) > 0 ? '已有任务办理记录，不能直接移除' : '')"
+                  @click="askRemovePlan(row)"
+                >移除方案</button>
+              </div>
+            </article>
+          </div>
+        </div>
+      </section>
 
       <section v-show="activeSection === 'history'" class="mp-card">
         <div class="mp-card__head"><h2 class="isd-title">处理记录</h2><span class="sd-card-note">最近 20 条</span></div>
@@ -145,21 +189,86 @@
       </div>
     </AppDrawer>
 
+    <AppDrawer v-model:visible="planAssignVisible" title="追加实习方案" mode="modal" size="medium">
+      <div class="ie-form">
+        <div class="ie-intro">
+          <strong>{{ detail?.name || '当前学生' }} · 多方案分配</strong>
+          <p>仅展示当前账号有权查看的已发布方案。可一次选择多个；已分配方案不会重复生成回执或任务。</p>
+        </div>
+        <p v-if="planOptionsLoading" class="isd-readonly">正在读取可选方案…</p>
+        <p v-else-if="planAssignError" class="ie-err">{{ planAssignError }}</p>
+        <div v-else-if="planOptions.length" class="isd-plan-options">
+          <label v-for="row in planOptions" :key="row.id" class="isd-plan-option" :class="{ 'is-disabled': row.alreadyAssigned }">
+            <input v-model="selectedPlanIds" type="checkbox" :value="row.id" :disabled="row.alreadyAssigned || submitting" />
+            <span><strong>{{ row.title }}</strong><small>{{ row.batchName }}{{ row.alreadyAssigned ? ' · 已分配' : '' }}</small></span>
+          </label>
+        </div>
+        <EmptyState v-else title="暂无可追加方案" description="请先在实习计划管理中发布其他方案，或当前权限范围内没有可用方案。" />
+        <div class="ie-actions">
+          <button type="button" class="mp-btn" :disabled="submitting" @click="planAssignVisible = false">取消</button>
+          <button type="button" class="mp-btn mp-btn--primary" :disabled="submitting || !selectedPlanIds.length" @click="submitPlanAssignments">确认追加 {{ selectedPlanIds.length }} 个方案</button>
+        </div>
+      </div>
+    </AppDrawer>
+
+    <AppDrawer v-model:visible="qrVisible" title="企业扫码评价" mode="modal" size="medium">
+      <div class="qr-eval">
+        <div v-if="qrLoading" class="qr-eval__state">正在生成企业评价二维码…</div>
+        <div v-else-if="qrError" class="qr-eval__error" role="alert">{{ qrError }}</div>
+        <template v-else-if="qrEntry">
+          <div class="qr-eval__intro">
+            <strong>{{ qrEntry.studentName || detail?.name }} · 企业评价</strong>
+            <p>{{ qrEntry.securityNote }}</p>
+          </div>
+          <AppQRCode :value="qrEntry.url" :size="220" label="企业扫码后进入指定学生评价任务">
+            <img class="qr-eval__image" :src="qrEntry.qrImageDataUrl" alt="企业扫码评价二维码" />
+          </AppQRCode>
+          <div class="qr-eval__facts">
+            <span>批次 #{{ qrEntry.batchId }}</span>
+            <span>安置快照 #{{ qrEntry.placementSnapshotId }}</span>
+          </div>
+          <div class="qr-eval__link">{{ qrEntry.url }}</div>
+          <div class="ie-actions">
+            <button type="button" class="mp-btn" @click="copyQrLink">复制评价链接</button>
+            <button type="button" class="mp-btn mp-btn--primary" @click="qrVisible = false">完成</button>
+          </div>
+        </template>
+      </div>
+    </AppDrawer>
+
+    <AppDrawer v-model:visible="periodVisible" title="维护实际实习日期" size="520px">
+      <p class="isd-note">按学校核对的实际日期填写，用于正式实习证明与出勤核验。未调整的既有结束日期保留；修改实际结束日期须已发生。已发布成绩须先撤回，日期保存后重新核算。</p>
+      <label class="isd-field">实际开始日期<AppDatePicker v-model="periodForm.start" aria-label="实际实习开始日期" :disabled="periodSaving" /></label>
+      <label class="isd-field">实际结束日期<AppDatePicker v-model="periodForm.end" aria-label="实际实习结束日期" :disabled="periodSaving" /></label>
+      <label class="isd-field">核对说明<textarea v-model="periodForm.reason" aria-label="实习日期核对说明" :disabled="periodSaving" rows="3" placeholder="说明实际日期的核对依据，不少于5字" /></label>
+      <p v-if="periodError" role="alert" class="isd-error">{{ periodError }}</p>
+      <p v-if="periodLatest">最新已存日期：{{ periodLatest }}。本次填写保留，请核对后明确保存。</p>
+      <button v-if="periodConflict" type="button" class="mp-btn" :disabled="periodSaving" @click="refreshPeriod">读取最新档案并保留填写</button>
+      <template #footer><button type="button" class="mp-btn" :disabled="periodSaving" @click="periodVisible=false">关闭</button><button type="button" class="mp-btn mp-btn--primary" :disabled="periodSaving || !periodForm.start || !periodForm.end || periodForm.reason.trim().length<5" @click="savePeriod">{{ periodSaving ? '正在保存…' : '保存实际日期' }}</button></template>
+    </AppDrawer>
+
     <AppConfirmDialog
       v-model:visible="confirm.visible" :title="confirm.title" :message="confirm.message"
       :type="confirm.type" :confirm-text="confirm.confirmText" :require-reason="confirm.requireReason"
-      :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm"
-    />
+      :reason-label="confirm.reasonLabel" :submitting="submitting" @confirm="onConfirm" @cancel="commandError = ''; commandBlockers = []"
+    >
+      <div v-if="commandError" role="alert" class="isd-error">
+        {{ commandError }}
+        <ul v-if="commandBlockers.length"><li v-for="item in commandBlockers" :key="item">{{ item }}</li></ul>
+      </div>
+    </AppConfirmDialog>
 
   </ModulePageShell>
 </template>
 <script>
+import { AppDatePicker } from '@/components/common'
 /** 实习学生详情：普通状态流只负责 READY/ONBOARD/ASSESS；归档统一进入正式归档中心。 */
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSensitiveText, AppStatusTag, AppInternshipPositionPicker } from '@/components/common'
+import { AppSensitiveText, AppStatusTag, AppInternshipPositionPicker, AppQRCode } from '@/components/common'
 import { AppDrawer } from '@/components/ui'
 import AppConfirmDialog from '@/components/common/AppConfirmDialog.vue'
 import { internStudentApi } from '@/modules/internship/api/internship-student.api'
+import { enterpriseEvalApi } from '@/modules/internship/api/enterprise-eval.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { systemRelationshipReturnTo } from '@/utils/systemRelationshipNavigation'
@@ -173,16 +282,22 @@ const STATUS_NEXT = {
 
 export default {
   name: 'InternshipStudentDetailView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppDrawer, AppConfirmDialog, AppInternshipPositionPicker },
+  components: { AppDatePicker, ModulePageShell, LoadingState, ErrorState, EmptyState, AppSensitiveText, AppStatusTag, AppDrawer, AppConfirmDialog, AppInternshipPositionPicker, AppQRCode },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
       loading: true, error: '', submitting: false, detail: null, loadSequence: 0,
       reviewForm: { status: '', reason: '' }, reviewError: '', reviewConflict: false,
+      commandError: '', commandBlockers: [],
+      periodVisible: false, periodSaving: false, periodError: '', periodConflict: false, periodLatest: '', periodVersion: null, periodRecordId: '',
+      periodForm: { start: '', end: '', reason: '' },
       onboardLoading: false, onboardError: '', onboardChecklist: null, onboardSequence: 0,
-      sections: [{ key: 'profile', label: '基本资料' }, { key: 'eligibility', label: '资格审核' }, { key: 'placement', label: '岗位去向' }, { key: 'history', label: '处理记录' }],
+      sections: [{ key: 'profile', label: '基本资料' }, { key: 'eligibility', label: '资格审核' }, { key: 'placement', label: '岗位去向' }, { key: 'plans', label: '实习方案' }, { key: 'history', label: '处理记录' }],
       eligibilityOptions: [{ value: 'QUALIFIED', label: '合格', hint: '已按学校要求核对，可以继续实习准备' }, { value: 'UNQUALIFIED', label: '不合格', hint: '本次未通过，请在说明中写清后续安排' }, { value: 'PENDING', label: '待认定', hint: '暂未形成结论，继续核对或补充材料' }],
       assignVisible: false, assignPositionId: '', assignError: '',
+      planAssignments: [], planAssignmentsLoading: false, planAssignmentsError: '',
+      planAssignVisible: false, planOptions: [], planOptionsLoading: false, planAssignError: '', selectedPlanIds: [],
+      qrVisible: false, qrLoading: false, qrError: '', qrEntry: null,
       confirm: { visible: false, title: '', message: '', type: 'primary', confirmText: '确认', requireReason: false, reasonLabel: '原因', action: null, extra: null }
     }
   },
@@ -203,11 +318,31 @@ export default {
       const batchId = this.detail?.batchId || this.$route.query.batchId
       return batchId && new URL(ref, 'https://local.invalid').searchParams.get('batchId') === String(batchId) ? ref : ''
     },
+    backDestination() {
+      if (this.volunteerReturnTo) return { path: this.volunteerReturnTo, label: '返回岗位确认' }
+      const ref = this.$route.query.returnTo
+      if (typeof ref !== 'string' || !/^\/admin\/internship\/(?:students|assignment-logs|compliance|insurance(?:\/\d+)?|risks|risk-disposal|changes|archive|enterprise-evals)(?:\?|$)/.test(ref)) return null
+      const target = new URL(ref, 'https://local.invalid'), batchId = this.detail?.batchId || this.$route.query.batchId
+      if (batchId && target.searchParams.has('batchId') && target.searchParams.get('batchId') !== String(batchId)) return null
+      const area = target.pathname.split('/')[3]
+      return { path: ref, label: ({ insurance: '返回保险材料', 'assignment-logs': '返回分配记录', compliance: '返回上岗核验', risks: '返回风险预警', 'risk-disposal': '返回风险处置', changes: '返回变更审核', archive: '返回归档核验', 'enterprise-evals': '返回企业评价' })[area] || '返回名单' }
+    },
     activeSection() { return this.sections.some((s) => s.key === this.$route.query.section) ? this.$route.query.section : 'profile' },
     isReadonly() { return !this.detail || this.detail.status === 'ARCHIVED' || ['CLOSED', 'ARCHIVED', 'VOIDED'].includes(this.detail.batchStatus) },
     canManage() { return !this.isReadonly && canCode(this.ctx, 'internship.student.manage') },
     canReview() { return !this.isReadonly && canCode(this.ctx, 'internship.student.eligibility.review') },
     canArchive() { return canCode(this.ctx, 'internship.archive.view') },
+    canOpenEnterprise() { return canCode(this.ctx, 'internship.enterprise.view') },
+    canOpenPosition() { return canCode(this.ctx, 'internship.position.view') },
+    canEvalQr() {
+      return !!(
+        this.detail &&
+        this.detail.enterpriseId &&
+        this.detail.positionId &&
+        ['ONBOARD', 'ASSESSING'].includes(this.detail.status) &&
+        canCode(this.ctx, 'internship.eval.enterprise.manage')
+      )
+    },
     statusAction() { return this.detail && this.detail.status !== 'ARCHIVED' ? STATUS_NEXT[this.detail.status] : null },
     pageSubtitle() {
       if (!this.detail) return this.loading ? '加载中' : '核对本批次学生实习档案'
@@ -238,13 +373,15 @@ export default {
   },
   watch: {
     '$route.params.id': { immediate: true, handler() {
-      this.assignVisible = false; this.confirm.visible = false
+      this.assignVisible = false; this.planAssignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''; this.confirm.visible = false
+      this.planAssignments = []; this.planOptions = []; this.selectedPlanIds = []; this.planAssignmentsError = ''; this.planAssignError = ''
       this.reviewForm = { status: '', reason: '' }; this.reviewError = ''; this.reviewConflict = false
       this.load()
       this.focusHeading()
     } },
     '$route.query.batchId'() {
-      this.confirm.visible = false; this.assignVisible = false
+      this.confirm.visible = false; this.assignVisible = false; this.planAssignVisible = false; this.qrVisible = false; this.qrEntry = null; this.qrError = ''
+      this.planAssignments = []; this.planOptions = []; this.selectedPlanIds = []; this.planAssignmentsError = ''; this.planAssignError = ''
       this.reviewForm = { status: '', reason: '' }; this.reviewError = ''; this.reviewConflict = false
       this.load()
     }
@@ -252,6 +389,38 @@ export default {
   mounted() { this.focusHeading() },
   beforeUnmount() { this.loadSequence++; this.onboardSequence++ },
   methods: {
+    openPeriod() {
+      if (!this.canManage || this.periodSaving || !['ONBOARD','ASSESSING'].includes(this.detail?.status)) return
+      if (this.periodRecordId !== this.detail.id) {
+        this.periodForm = { start: this.detail.internStartDate || '', end: this.detail.internEndDate || '', reason: '' }
+        this.periodVersion = this.detail.version; this.periodError = ''; this.periodConflict = false; this.periodLatest = ''; this.periodRecordId = this.detail.id
+      }
+      this.periodVisible = true
+    },
+    async savePeriod() {
+      if (!this.canManage || this.periodSaving || !this.periodForm.start || !this.periodForm.end || this.periodForm.reason.trim().length < 5) return
+      const id = this.detail.id, seq = this.loadSequence, draft = this.periodForm
+      this.periodSaving = true; this.periodError = ''
+      try {
+        const res = await internStudentApi.updateStudent(id, { expectedVersion: this.periodVersion,
+          internStartDate: this.periodForm.start, internEndDate: this.periodForm.end, periodReason: this.periodForm.reason.trim() })
+        if (id !== this.detail?.id || seq !== this.loadSequence || !this.canManage) return
+        if (res.code !== 0) { this.periodError = res.message || '日期保存未完成，本次填写保留'; this.periodConflict = (res.bizCode === 'DATA_CONFLICT' || res.code === 'DATA_CONFLICT' || res.code === 409001) && !res.details?.scoreId; return }
+        this.periodVisible = false; this.periodRecordId = ''
+        if (typeof window !== 'undefined') window.__SAAS_DIRTY_FORM_GUARD__?.markSaved()
+        await this.load()
+        toast.success('实际日期已保存并写入处理记录，请重新核对成绩来源')
+      } catch {
+        if (id === this.detail?.id && seq === this.loadSequence) this.periodError = '日期保存未完成，请稍后重试，本次填写保留'
+      } finally { if (this.periodForm === draft) this.periodSaving = false }
+    },
+    async refreshPeriod() {
+      if (this.periodSaving) return
+      const id = this.detail.id
+      await this.load()
+      if (this.error || this.detail?.id !== id) return
+      this.periodVersion = this.detail.version; this.periodLatest = this.detail.internRange || '尚未补全'; this.periodConflict = false
+    },
     focusHeading() {
       this.$nextTick(() => {
         const heading = this.$el?.querySelector('h1')
@@ -266,41 +435,78 @@ export default {
     sectionLocation(section) { return { path: this.$route.path, query: { ...this.$route.query, section } } },
     eligibilityLabel(status) { return this.eligibilityOptions.find((x) => x.value === status)?.label || '待认定' },
     auditLabel(action) {
-      return ({ ELIGIBILITY: '资格认定', CREATE: '建立实习档案', ASSIGN: '分配岗位', UNASSIGN: '退岗', ADVISOR: '调整指导教师', DESTINATION: '更新去向', STATUS_READY: '确认待上岗', STATUS_ONBOARD: '确认上岗', STATUS_ASSESS: '进入考核' })[action] || action
+      return ({ ELIGIBILITY: '资格认定', CREATE: '建立实习档案', UPDATE: '更新实习资料', ASSIGN: '分配岗位', ASSIGN_POSITION: '分配岗位', PLACEMENT_SNAPSHOT: '留存岗位分配记录', UNASSIGN: '退岗', ADVISOR: '调整指导教师', ASSIGN_ADVISOR: '调整指导教师', DESTINATION: '更新去向', STATUS_READY: '确认待上岗', STATUS_ONBOARD: '确认上岗', STATUS_ASSESS: '进入考核' })[action] || '其他办理记录'
     },
     openEnterprise() {
-      if (!this.detail?.enterpriseId) return
+      if (!this.detail?.enterpriseId || !this.canOpenEnterprise) return
       this.$router.push({
         path: `/admin/internship/enterprises/${this.detail.enterpriseId}`,
         query: { batchId: String(this.detail.batchId || this.$route.query.batchId || ''), returnTo: this.$route.fullPath }
       })
     },
     openPosition() {
-      if (!this.detail?.positionId) return
+      if (!this.detail?.positionId || !this.canOpenPosition) return
       this.$router.push({
         path: `/admin/internship/positions/${this.detail.positionId}`,
         query: { batchId: String(this.detail.batchId || this.$route.query.batchId || ''), returnTo: this.$route.fullPath }
       })
     },
+    async openEvaluationQr() {
+      if (!this.canEvalQr || this.qrLoading) return
+      this.qrVisible = true
+      this.qrLoading = true
+      this.qrError = ''
+      this.qrEntry = null
+      const recordId = this.detail?.id || this.$route.params.id
+      const res = await enterpriseEvalApi.getQrEntry(recordId)
+      this.qrLoading = false
+      if (!this.qrVisible || String(recordId) !== String(this.detail?.id || this.$route.params.id)) return
+      if (res.code !== 0) {
+        this.qrError = res.message || '企业评价二维码生成失败'
+        return
+      }
+      this.qrEntry = res.data
+    },
+    async copyQrLink() {
+      const value = String(this.qrEntry?.url || '')
+      if (!value) return
+      try {
+        await navigator.clipboard.writeText(value)
+        toast.success('企业评价链接已复制')
+      } catch {
+        const input = document.createElement('textarea')
+        input.value = value
+        input.style.position = 'fixed'
+        input.style.opacity = '0'
+        document.body.appendChild(input)
+        input.select()
+        document.execCommand('copy')
+        document.body.removeChild(input)
+        toast.success('企业评价链接已复制')
+      }
+    },
     goBack() {
       if (this.systemReturnTo) return this.$router.push(this.systemReturnTo)
       if (this.graduationReturnTo) return this.$router.push(this.graduationReturnTo)
-      if (this.volunteerReturnTo) return this.$router.push(this.volunteerReturnTo)
-      const target = String(this.$route.query.returnTo || '')
-      if (/^\/admin\/internship\/(?:students|assignment-logs|compliance|insurance(?:\/\d+)?)(?:\?|$)/.test(target)) return this.$router.push(target)
+      if (this.backDestination) return this.$router.push(this.backDestination.path)
       this.$router.push({ path: '/admin/internship/students', query: { batchId: this.detail?.batchId || this.$route.query.batchId } })
     },
     goArchive() {
+      if (this.backDestination?.path.startsWith('/admin/internship/archive?')) return this.$router.push(this.backDestination.path)
       this.$router.push({
         path: '/admin/internship/archive',
         query: {
           batchId: this.detail?.batchId || this.$route.query.batchId || '',
-          internshipId: this.detail?.id || this.$route.params.id
+          id: this.detail?.id || this.$route.params.id,
+          returnTo: this.$route.fullPath
         }
       })
     },
     eligTone(s) { return s === 'QUALIFIED' ? 'success' : (s === 'UNQUALIFIED' ? 'danger' : 'warning') },
     async load() {
+      if (this.periodRecordId && String(this.periodRecordId) !== String(this.$route.params.id)) {
+        this.periodVisible = false; this.periodSaving = false; this.periodRecordId = ''; this.periodForm = { start: '', end: '', reason: '' }
+      }
       const seq = ++this.loadSequence
       this.onboardSequence++; this.onboardLoading = false; this.onboardError = ''; this.onboardChecklist = null
       this.loading = true; this.error = ''
@@ -308,13 +514,79 @@ export default {
       if (seq !== this.loadSequence) return
       if (res.code === 0 && this.$route.query.batchId && String(res.data.batchId) !== String(this.$route.query.batchId)) {
         this.detail = null; this.error = '此档案不属于当前批次，请返回名单重新进入'
-      } else if (res.code === 0) this.detail = res.data
-      else { this.detail = null; this.error = res.message || '实习档案加载失败，请重试' }
+      } else if (res.code === 0) {
+        this.detail = res.data
+        this.loadPlanAssignments()
+      } else { this.detail = null; this.error = res.message || '实习档案加载失败，请重试' }
       this.loading = false
     },
     async refreshReview() {
       await this.load()
       if (!this.error) { this.reviewConflict = false; this.reviewError = '' }
+    },
+    async loadPlanAssignments() {
+      const recordId = String(this.detail?.id || this.$route.params.id || '')
+      if (!recordId) return
+      this.planAssignmentsLoading = true
+      this.planAssignmentsError = ''
+      const res = await internStudentApi.getPlanAssignments(recordId)
+      if (recordId !== String(this.detail?.id || this.$route.params.id || '')) return
+      this.planAssignmentsLoading = false
+      if (res.code === 0) this.planAssignments = res.data?.items || []
+      else {
+        this.planAssignments = []
+        this.planAssignmentsError = res.message || '实习方案读取失败'
+      }
+    },
+    async openPlanAssign() {
+      if (!this.canManage || this.submitting) return
+      this.planAssignVisible = true
+      this.planOptionsLoading = true
+      this.planAssignError = ''
+      this.selectedPlanIds = []
+      const recordId = String(this.detail?.id || '')
+      const res = await internStudentApi.getPlanOptions(recordId)
+      if (!this.planAssignVisible || recordId !== String(this.detail?.id || '')) return
+      this.planOptionsLoading = false
+      if (res.code === 0) this.planOptions = res.data || []
+      else {
+        this.planOptions = []
+        this.planAssignError = res.message || '可选实习方案读取失败'
+      }
+    },
+    async submitPlanAssignments() {
+      if (!this.canManage || this.submitting || !this.selectedPlanIds.length) return
+      const recordId = String(this.detail?.id || '')
+      this.submitting = true
+      this.planAssignError = ''
+      try {
+        const res = await internStudentApi.assignPlans(recordId, [...this.selectedPlanIds])
+        if (recordId !== String(this.detail?.id || '')) return
+        if (res.code !== 0) {
+          this.planAssignError = res.message || '实习方案分配失败'
+          return
+        }
+        toast.success(`已追加 ${res.data?.added || 0} 个实习方案`)
+        this.planAssignVisible = false
+        this.selectedPlanIds = []
+        await this.loadPlanAssignments()
+      } finally {
+        this.submitting = false
+      }
+    },
+    askRemovePlan(row) {
+      if (!this.canManage || !row || row.isPrimary || this.submitting) return
+      this.confirm = {
+        visible: true,
+        title: '移除附加实习方案',
+        message: `确认从“${this.detail.name}”当前实习记录中移除“${row.planTitle}”？仅未确认且未开始任务的附加方案可移除。`,
+        type: 'warning',
+        confirmText: '确认移除',
+        requireReason: true,
+        reasonLabel: '移除原因',
+        action: 'PLAN_REMOVE',
+        extra: row
+      }
     },
     openAssign() {
       if (!this.canManage || this.submitting) return
@@ -343,6 +615,7 @@ export default {
       const m = STATUS_NEXT[this.detail.status]
       if (!m || m.action !== action) return
       if (action === 'ONBOARD' && !await this.checkOnboard()) return
+      this.commandError = ''; this.commandBlockers = []
       this.confirm = { visible: true, title: m.label, message: `确认执行「${m.label}」？`, type: 'primary', confirmText: '确认', requireReason: false, action: 'STATUS', extra: action }
     },
     async checkOnboard() {
@@ -371,6 +644,7 @@ export default {
       const { action, extra } = this.confirm
       if (this.submitting || (action === 'ELIG' ? !this.canReview : !this.canManage)) return
       const recordId = this.detail.id
+      this.commandError = ''; this.commandBlockers = []
       this.submitting = true
       try {
         let res
@@ -384,6 +658,9 @@ export default {
         else if (action === 'DEST') res = await internStudentApi.setDestination(this.detail.id, {
           destination: extra, reason: reason || '', expectedVersion: this.detail.version
         })
+        else if (action === 'PLAN_REMOVE') res = await internStudentApi.removePlanAssignment(
+          this.detail.id, extra.id, { reason: reason || '', expectedVersion: extra.version }
+        )
         if (recordId !== this.detail?.id) return
         if (res && res.code === 0) {
           toast.success('已保存并写入处理记录'); this.confirm.visible = false
@@ -391,11 +668,16 @@ export default {
             this.reviewForm = { status: '', reason: '' }; this.reviewError = ''
             window.__SAAS_DIRTY_FORM_GUARD__?.markSaved()
           }
-          this.load()
+          if (action === 'PLAN_REMOVE') await this.loadPlanAssignments()
+          else this.load()
         } else if (res && action === 'ELIG') {
           this.confirm.visible = false; this.reviewError = res.message || '保存失败，填写内容已保留'
           this.reviewConflict = res.code === 409001 || res.code === 'DATA_CONFLICT'
-        } else if (res) toast.error(res.message)
+        } else if (res) {
+          this.commandError = res.message || '本次办理未完成，请核对后重试'
+          this.commandBlockers = (res.details?.blockers || []).map(item => [item.label, item.reason].filter(Boolean).join('：')).filter(Boolean)
+          toast.error(this.commandError)
+        }
       } finally { this.submitting = false }
     }
   }
@@ -404,8 +686,10 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+.isd-field input{display:block;box-sizing:border-box;width:100%;margin:8px 0 16px;padding:10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--t1);font:inherit}
 .sd-card-note{margin:4px 0 0;font-size:12px;line-height:1.5;color:var(--t3,#64748b)}.sd-warn{color:var(--danger,#dc2626)}.sd-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px 22px}.sd-kv{display:flex;flex-direction:column;gap:4px;min-width:0}.sd-kv--full{grid-column:1/-1}.sd-k{font-size:12px;color:var(--t3,#64748b)}.sd-v{font-size:13px;line-height:1.55;color:var(--t1,#0f1e3d);min-width:0}.sd-v--wrap{word-break:break-word;white-space:normal}.sd-dest-actions{margin-top:16px;padding:14px;border-radius:9px;background:var(--warning-50,#fff7ed);display:flex;align-items:center;justify-content:space-between;gap:16px}.sd-dest-actions>div:first-child{display:flex;flex-direction:column;gap:4px}.sd-dest-actions strong{font-size:13px;color:var(--t1,#0f1e3d)}.sd-dest-actions span{font-size:12px;line-height:1.5;color:var(--t2,#475569)}.sd-dest-actions__buttons{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;flex-shrink:0}.mp-btn{padding:8px 14px;border:1px solid var(--line,#d9dee8);border-radius:8px;background:#fff;cursor:pointer;font-size:13px;line-height:1.4;white-space:nowrap}.mp-btn:hover{border-color:var(--pri,#2563eb);color:var(--pri,#2563eb)}.mp-btn--primary{background:var(--pri,#2563eb);color:#fff;border-color:var(--pri,#2563eb)}.mp-btn--primary:hover{color:#fff}.mp-btn--danger-ghost{border-color:var(--danger-300,#fca5a5);color:var(--danger,#dc2626)}.mp-btn:disabled{opacity:.5;cursor:not-allowed}.ie-form{display:grid;grid-template-columns:1fr;gap:16px}.ie-intro{padding:12px 14px;border-radius:8px;background:var(--pri-50,#eff6ff)}.ie-intro strong{font-size:14px;color:var(--t1,#0f1e3d)}.ie-intro p{margin:5px 0 0;font-size:12px;line-height:1.55;color:var(--t2,#475569)}.ie-fld{display:flex;flex-direction:column;gap:6px}.ie-fld--full{grid-column:1/-1}.ie-lbl{font-size:12px;color:var(--t2,#475569)}.ie-lbl i{color:var(--danger,#dc2626);font-style:normal}.ie-err{color:var(--danger,#dc2626);font-size:12px;margin:0;padding:9px 11px;border-radius:7px;background:var(--danger-50,#fef2f2)}.ie-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:4px}@media(max-width:720px){.sd-grid{grid-template-columns:1fr}.sd-dest-actions{align-items:flex-start;flex-direction:column}.sd-dest-actions__buttons{justify-content:flex-start}.mp-btn{max-width:100%;white-space:normal}}
 
+.qr-eval{display:flex;flex-direction:column;align-items:center;gap:16px;padding:4px}.qr-eval__state,.qr-eval__error{width:100%;box-sizing:border-box;padding:16px;border-radius:8px;background:var(--surface-soft,#f8fafc);font-size:13px;color:var(--t2,#475569)}.qr-eval__error{background:var(--danger-50,#fef2f2);color:var(--danger,#dc2626)}.qr-eval__intro{width:100%;padding:12px 14px;border-radius:9px;background:var(--pri-50,#eff6ff)}.qr-eval__intro strong{font-size:14px}.qr-eval__intro p{margin:5px 0 0;font-size:12px;line-height:1.6;color:var(--t2,#475569)}.qr-eval__image{display:block;width:220px;height:220px;object-fit:contain}.qr-eval__facts{display:flex;gap:12px;flex-wrap:wrap;font-size:11px;color:var(--t3,#64748b)}.qr-eval__link{width:100%;max-height:88px;overflow:auto;padding:10px;border:1px solid var(--line,#d9dee8);border-radius:8px;background:#fff;font-size:11px;line-height:1.5;word-break:break-all}.qr-eval .ie-actions{width:100%}
 .isd.mps{gap:12px}
 .isd-identity{display:flex;align-items:center;flex-wrap:wrap;gap:10px 20px;color:var(--t2);font-size:13px;margin:0}
 .isd-sections{display:flex;gap:26px;border-bottom:1px solid var(--card-b);margin-bottom:4px;overflow:auto}
@@ -426,8 +710,8 @@ export default {
 .isd-result__reason{white-space:pre-wrap;overflow-wrap:anywhere;font-size:14px;line-height:1.8;margin:20px 0}.isd-note{padding-top:20px;margin-top:22px;border-top:1px solid var(--line)}
 .isd-error{color:var(--danger);background:var(--danger-50,#fff2f0);font-size:13px;line-height:1.7;padding:12px;margin-top:15px}.isd-error button{display:block;margin-top:8px}
 .isd-readonly{padding:24px;font-size:14px;color:var(--t2)}.isd-readonly h3{font-size:15px;color:var(--t1);margin-top:0}.isd-readonly p{line-height:1.7}
-.isd-placement-actions{display:flex;gap:10px;margin-bottom:16px}.isd-history{list-style:none;margin:0;padding:24px}.isd-history li{display:flex;gap:18px;padding-bottom:24px}.isd-history__dot{width:9px;height:9px;border:3px solid var(--pri-bg);background:var(--pri);border-radius:50%;margin-top:3px;flex:none}.isd-history h3{font-size:14px;font-weight:600;margin:0 0 8px}.isd-history h3 span{font-size:12px;color:var(--t3);font-weight:400;margin-left:18px}.isd-history p{font-size:13px;margin:6px 0;line-height:1.7}.isd-history__reason{white-space:pre-wrap;overflow-wrap:anywhere}.isd-history time{color:var(--t3);font-size:12px}
+.isd-plan-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}.isd-plan-list{display:grid;gap:10px}.isd-plan-card{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px;border:1px solid var(--line,#d9dee8);border-radius:10px;background:var(--card,#fff)}.isd-plan-card__main{min-width:0;flex:1}.isd-plan-card__title{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.isd-plan-card__main p{margin:5px 0;color:var(--t2,#475569);font-size:12px}.isd-plan-metrics{display:flex;gap:8px 16px;flex-wrap:wrap;color:var(--t3,#64748b);font-size:12px}.isd-plan-metrics b{color:var(--t1,#0f1e3d)}.isd-plan-card__actions{flex:none}.isd-plan-options{display:grid;gap:8px;max-height:420px;overflow:auto}.isd-plan-option{display:flex;align-items:flex-start;gap:10px;padding:10px 12px;border:1px solid var(--line,#d9dee8);border-radius:8px;cursor:pointer}.isd-plan-option.is-disabled{opacity:.55;cursor:not-allowed}.isd-plan-option input{margin-top:3px}.isd-plan-option span{display:grid;gap:4px}.isd-plan-option small{color:var(--t3,#64748b);font-size:12px}.isd-placement-actions{display:flex;gap:10px;margin-bottom:16px}.isd-history{list-style:none;margin:0;padding:24px}.isd-history li{display:flex;gap:18px;padding-bottom:24px}.isd-history__dot{width:9px;height:9px;border:3px solid var(--pri-bg);background:var(--pri);border-radius:50%;margin-top:3px;flex:none}.isd-history h3{font-size:14px;font-weight:600;margin:0 0 8px}.isd-history h3 span{font-size:12px;color:var(--t3);font-weight:400;margin-left:18px}.isd-history p{font-size:13px;margin:6px 0;line-height:1.7}.isd-history__reason{white-space:pre-wrap;overflow-wrap:anywhere}.isd-history time{color:var(--t3);font-size:12px}
 .isd-check{margin-top:16px}.isd-check .mp-card__head{display:flex;align-items:center;justify-content:space-between;gap:12px}.isd-check .mp-card__body{font-size:13px;line-height:1.7}.isd-check p{margin:8px 0}.isd-check ul{padding-left:20px;margin:12px 0}.isd-check li{padding:4px 0;overflow-wrap:anywhere}.isd-placement-actions{flex-wrap:wrap}
-@media(max-width:900px){.isd-layout{grid-template-columns:1fr}.isd-facts{gap:18px;padding:18px}.isd-sections{gap:20px}.isd-review__footer{flex-wrap:wrap}}
+@media(max-width:900px){.isd-plan-card,.isd-plan-head{align-items:stretch;flex-direction:column}.isd-plan-card__actions{align-self:flex-start}.isd-layout{grid-template-columns:1fr}.isd-facts{gap:18px;padding:18px}.isd-sections{gap:20px}.isd-review__footer{flex-wrap:wrap}}
 @media(max-width:600px){.isd-review fieldset{grid-template-columns:1fr}.isd-choice{align-items:center}.isd-field span{display:block;margin:4px 0 0}}
 </style>

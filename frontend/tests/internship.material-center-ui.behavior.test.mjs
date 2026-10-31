@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -9,7 +10,7 @@ const script = descriptor.script.content.replace(/^import[^\n]+\r?\n/gm, '').rep
 const file = (fileId = '9007199254740999', safe = true) => ({ fileId, versionId: '9007199254740998', versionNo: 2, fileName: '测试材料.pdf', canPreview: safe, canDownload: safe, readyForBusiness: safe })
 const detail = (id = '2', items = [file()]) => ({ internshipId: id, batchId: '1', studentName: '测试学生', items, summary: { total: items.length, ready: items.filter(f => f.readyForBusiness).length, unsafe: items.filter(f => !f.readyForBusiness).length }, manifest: null })
 function setup(api = {}, permission = () => true) {
-  const def = new Function('internshipMaterialCenterApi', 'canCode', 'toast', script)({ createPreviewProvider: () => ({}), ...api }, permission, { warning() {} })
+  const def = componentFactory('internshipMaterialCenterApi', 'canCode', 'toast', script)({ createPreviewProvider: () => ({}), ...api }, permission, { warning() {} })
   const targets = [], vm = { ...def.data(), ctx: {}, batchStore: { selectedBatchId: '1', withBatchQuery: q => ({ ...q, batchId: vm.batchStore.selectedBatchId }) }, $route: { query: {} }, $router: { push: t => targets.push(t), replace: t => targets.push(t) } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   for (const [key, fn] of Object.entries(def.computed)) if (key !== 'batchStore') Object.defineProperty(vm, key, { get: () => fn.call(vm) })
@@ -77,7 +78,7 @@ test('material deep links resolve to archive in the actual shared teacher shell'
 const apiScript = fs.readFileSync(new URL('../src/modules/internship/api/material-center.api.js', import.meta.url), 'utf8').replace(/^import[^\n]+\r?\n/gm, '').replace('export const internshipMaterialCenterApi', 'const internshipMaterialCenterApi').replace('export default internshipMaterialCenterApi', 'return internshipMaterialCenterApi')
 test('preview cancellation returns AbortError without assigning a readonly DOMException code', async () => {
   let finish, bytes = 0
-  const api = new Function('request', 'fileSdk', 'buildPreviewDescriptorFromFile', apiScript)(() => new Promise(r => { finish = r }), { blobFrom: () => { bytes++; return Promise.resolve(new Blob()) } }, f => f)
+  const api = componentFactory('request', 'fileSdk', 'buildPreviewDescriptorFromFile', apiScript)(() => new Promise(r => { finish = r }), { blobFrom: () => { bytes++; return Promise.resolve(new Blob()) } }, f => f)
   const controller = new AbortController(), provider = api.createPreviewProvider(), pending = provider.fetchBytes({ fileId: '7' }, { signal: controller.signal })
   controller.abort(); await assert.rejects(pending, e => e.name === 'AbortError' && e.code === 'PREVIEW_ABORTED'); finish({ url: '/api/v1/example' }); await Promise.resolve(); assert.equal(bytes, 0)
   await assert.rejects(provider.fetchBytes({ fileId: '8' }, { signal: controller.signal }), e => e.name === 'AbortError')

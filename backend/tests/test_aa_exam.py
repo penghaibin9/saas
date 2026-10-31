@@ -90,6 +90,34 @@ def _seed_exam_review_identity(db, college_id):
     db.flush()
 
 
+def _defer_counselor(client):
+    from app.db.session import get_sessionmaker
+    from app.models import TeacherStudentScope
+    with get_sessionmaker()() as db:
+        db.add(TeacherStudentScope(tenant_id=TID, teacher_key="counselor01", role_code="COUNSELOR",
+                                  scope_type="CLASS", ref_value="软件2401", status="ACTIVE"))
+        db.commit()
+    return _hdr(client, "counselor01")
+
+
+def _defer_teacher(client):
+    from app.core.security import create_access_token
+    from app.db.session import get_sessionmaker
+    from app.models import Role, RolePermission, User
+    from app.services.auth_service_db import _claims, _role_contexts
+    from tests.support_grade_review_identity import _ensure_permission
+    with get_sessionmaker()() as db:
+        teacher = db.query(User).filter_by(tenant_id=TID, login_name="teacher_a").one()
+        role = db.query(Role).filter_by(tenant_id=TID, role_code="ACADEMIC_TEACHER").one()
+        permission = _ensure_permission(db, "academicAffairs.deferredExam.review")
+        if not db.query(RolePermission).filter_by(tenant_id=TID, role_id=role.id, permission_id=permission.id).first():
+            db.add(RolePermission(tenant_id=TID, role_id=role.id, permission_id=permission.id, status="ACTIVE"))
+            db.commit()
+        contexts = _role_contexts(db, teacher)
+        context = next(row for row in contexts if row["roleCode"] == "ACADEMIC_TEACHER")
+        return {"Authorization": "Bearer " + create_access_token(_claims(db, teacher, context, contexts, "PC"))}
+
+
 def _prepare_task_batch_for_exam(client, school, task_id):
     """考务只种初始任务；学院分配、本人确认、院校确认全部经正式命令推进。"""
     from app.core.security import create_access_token
@@ -394,13 +422,13 @@ def test_e6_deferred_four_level_approval(client, db_mode):
     assert d["code"] == 0
     did = d["data"]["deferId"]
     assert d["data"]["status"] == "COUNSELOR_REVIEW"
-    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=admin, json={"action": "APPROVE"}).json()
+    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=_defer_counselor(client), json={"action": "APPROVE", "expectedVersion": 0}).json()
     assert r1["data"]["status"] == "TEACHER_CONFIRM"
-    r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE"}).json()
+    r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=_defer_teacher(client), json={"action": "APPROVE", "expectedVersion": 1}).json()
     assert r2["data"]["status"] == "COLLEGE_REVIEW"
-    r3 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE"}).json()
+    r3 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=_hdr(client, "college_admin01"), json={"action": "APPROVE", "expectedVersion": 2}).json()
     assert r3["data"]["status"] == "ACADEMIC_FINAL"
-    r4 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE"}).json()
+    r4 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE", "expectedVersion": 3}).json()
     assert r4["data"]["status"] == "APPROVED"
 
 
@@ -492,7 +520,7 @@ def test_e14_defer_teacher_scope_403(client, db_mode):
     d = client.post(f"{BASE}/deferred-exams", headers=stu,
                     json={"examCourseId": str(cid), "reasonType": "SICK", "reason": "住院"}).json()
     did = d["data"]["deferId"]
-    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=admin, json={"action": "APPROVE"}).json()
+    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=_defer_counselor(client), json={"action": "APPROVE", "expectedVersion": 0}).json()
     assert r1["data"]["status"] == "TEACHER_CONFIRM"
     other_teacher = _hdr(client, "academic01")
     r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=other_teacher, json={"action": "APPROVE"})
@@ -520,9 +548,9 @@ def test_e16_defer_college_scope_403(client, db_mode):
     d = client.post(f"{BASE}/deferred-exams", headers=stu,
                     json={"examCourseId": str(cid), "reasonType": "SICK", "reason": "住院"}).json()
     did = d["data"]["deferId"]
-    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=admin, json={"action": "APPROVE"}).json()
+    r1 = client.post(f"{BASE}/deferred-exams/{did}/counselor-review", headers=_defer_counselor(client), json={"action": "APPROVE", "expectedVersion": 0}).json()
     assert r1["data"]["status"] == "TEACHER_CONFIRM"
-    r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=admin, json={"action": "APPROVE"}).json()
+    r2 = client.post(f"{BASE}/deferred-exams/{did}/review", headers=_defer_teacher(client), json={"action": "APPROVE", "expectedVersion": 1}).json()
     assert r2["data"]["status"] == "COLLEGE_REVIEW"
     # 课程确认已由真实本院办理人完成；此负向用例将其当前范围调到另一学院，
     # 保留“学院不能审核外院课程”的原断言，而不是依赖没有任何学院范围的空身份。

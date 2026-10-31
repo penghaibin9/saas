@@ -35,12 +35,14 @@
           <div v-for="ref in detail.report.refs" :key="ref.refType" class="aa-reference-item">
             <div class="aa-reference-item-title"><strong>{{ ref.label }}</strong><StatusTag :type="ref.blocked ? 'warning' : 'default'" :label="String(ref.refCount)" /></div>
             <p class="mp-note">{{ ref.guidance }}</p>
+            <AppButton v-if="canViewStudents && detail.report.targetType === 'CLASS' && ref.refType === 'STUDENT'" variant="ghost" @click="viewStudents">查看班级学生</AppButton>
           </div>
         </div>
         <AppInlineAlert v-for="warning in detail.report.warnings" :key="warning" type="info" :description="warning" />
       </template>
       <template #footer>
         <AppButton @click="closeDetail">关闭</AppButton>
+        <AppButton v-if="detail.target" :disabled="detail.loading" @click="retryDetail">重新核对此对象</AppButton>
         <AppButton v-if="detail.report" variant="primary" @click="viewOrganization">查看组织资料</AppButton>
       </template>
     </AppDrawer>
@@ -57,8 +59,8 @@ import { formatDateTime } from '@/utils/dateUtils'
 export default {
   name: 'AaOrgReferencePanel',
   components: { DataTable, StatusTag, LoadingState, ErrorState, EmptyState, AppButton, AppDrawer, AppInlineAlert, AppSelect, AppFormItem, AppTextInput, AppCollegePicker },
-  props: { collegeOptions: { type: Array, default: () => [] } },
-  emits: ['view-organization'],
+  props: { collegeOptions: { type: Array, default: () => [] }, canViewStudents: { type: Boolean, default: false } },
+  emits: ['view-organization', 'view-students'],
   data() {
     return {
       criteria: { targetType: '', collegeId: '', keyword: '' }, appliedCriteria: null,
@@ -118,6 +120,11 @@ export default {
       if (!this.detail.report) return
       const report = this.detail.report
       this.closeDetail(); this.$emit('view-organization', report)
+    },
+    viewStudents() {
+      const report = this.detail.report
+      if (!this.canViewStudents || this.detail.loading || report?.targetType !== 'CLASS' || !report.targetId) return
+      this.closeDetail(); this.$emit('view-students', report)
     },
   },
 }

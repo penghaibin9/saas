@@ -1,13 +1,15 @@
 <script setup>
 import { computed,onBeforeUnmount,reactive,ref,watch } from 'vue'
+import { useRoute } from 'vue-router'
 import { assertEvaluationContext,createRequestFence,evaluationContextKey,freezeEvaluationTarget } from '../services/evaluationContext.js'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
 import { useEnterpriseContextStore } from '../stores/enterpriseContext'
 
 // Authority contract: canonical source=ENTERPRISE_ONLINE; actor/member/time 由服务端写入并审计，客户端 payload 不得伪造。
 const context=useEnterpriseContextStore()
+const route=useRoute()
 const SCORE_FIELDS=['attendanceScore','skillScore','attitudeScore','collaborationScore','safetyScore']
-const loading=ref(true),submitting=ref(false),error=ref(''),items=ref([]),tab=ref('PENDING'),selected=ref(null),receipt=ref(null)
+const loading=ref(true),submitting=ref(false),error=ref(''),items=ref([]),tab=ref('PENDING'),selected=ref(null),receipt=ref(null),deepLinkOpened=ref('')
 const page=ref(1),pageSize=50,total=ref(null),hasNext=ref(false)
 const form=reactive({attendanceScore:null,skillScore:null,attitudeScore:null,collaborationScore:null,safetyScore:null,overallComment:'',recommendHire:false})
 const pageInfo=computed(()=>total.value===null?`第 ${page.value} 页`:`第 ${page.value} 页 · 共 ${total.value} 项`)
@@ -16,6 +18,14 @@ const batchId=computed(()=>String(context.campaign?.batchId||''))
 const contextKey=computed(()=>evaluationContextKey(context))
 const listFence=createRequestFence(),submitFence=createRequestFence()
 const taskCount=computed(()=>total.value===null?items.value.length:total.value)
+const requestedInternshipId=computed(()=>{
+  const value=String(route.query?.internshipId||'').trim()
+  return /^[1-9]\d*$/.test(value)?value:''
+})
+const requestedBatchId=computed(()=>{
+  const value=String(route.query?.batchId||'').trim()
+  return /^[1-9]\d*$/.test(value)?value:''
+})
 
 function resetForm(){Object.assign(form,{attendanceScore:null,skillScore:null,attitudeScore:null,collaborationScore:null,safetyScore:null,overallComment:'',recommendHire:false})}
 function validate(){
@@ -31,12 +41,32 @@ async function load(){
   const current=listFence.start()
   loading.value=true;error.value=''
   if(!collabReady.value){items.value=[];total.value=null;hasNext.value=false;error.value='学校尚未开放当前批次的实习评价协同';loading.value=false;return}
+  if(requestedBatchId.value&&String(batchId.value)!==requestedBatchId.value){
+    items.value=[];total.value=null;hasNext.value=false;error.value='扫码任务不属于当前企业协同批次，请重新扫码或切换到正确企业账号';loading.value=false;return
+  }
   try{
-    const data=await enterpriseInternshipApi.evaluationTasks({batchId:batchId.value,status:tab.value==='ALL'?'':tab.value,page:page.value,pageSize})
+    const deepId=requestedInternshipId.value
+    const data=await enterpriseInternshipApi.evaluationTasks({
+      batchId:batchId.value,
+      status:deepId?'':(tab.value==='ALL'?'':tab.value),
+      page:page.value,
+      pageSize,
+      internshipId:deepId
+    })
     if(!current())return
     items.value=Array.isArray(data)?data:(data?.items||[])
     total.value=Array.isArray(data)||data?.total===undefined||data?.total===null?null:Number(data.total)
     hasNext.value=Array.isArray(data)?false:(data?.hasNext===true||(Number.isFinite(total.value)&&page.value*pageSize<total.value))
+    if(deepId){
+      const item=items.value.find(row=>String(row?.internshipId||row?.id||'')===deepId)
+      const key=`${contextKey.value}:${deepId}`
+      if(item&&deepLinkOpened.value!==key&&(item.task_status||item.taskStatus||item.status)!=='COMPLETED'){
+        deepLinkOpened.value=key
+        start(item)
+      }else if(!item){
+        error.value='当前企业账号无权访问该扫码评价任务，或该学生已不属于当前企业'
+      }
+    }
   }catch(e){if(current()){items.value=[];total.value=null;hasNext.value=false;error.value=e.message||'评价任务加载失败'}}finally{if(current())loading.value=false}
 }
 function start(item){
@@ -72,20 +102,26 @@ function nextPage(){if(!hasNext.value)return;page.value+=1;load()}
 watch([tab,contextKey],([,newContext],[,oldContext]=[])=>{
   page.value=1
   if(newContext!==oldContext){
-    submitFence.invalidate();selected.value=null;receipt.value=null;submitting.value=false;resetForm()
+    submitFence.invalidate();selected.value=null;receipt.value=null;submitting.value=false;deepLinkOpened.value='';resetForm()
     items.value=[];total.value=null;hasNext.value=false
   }
   load()
 },{immediate:true})
+watch(requestedInternshipId,()=>{
+  page.value=1
+  deepLinkOpened.value=''
+  selected.value=null
+  load()
+})
 onBeforeUnmount(()=>{listFence.dispose();submitFence.dispose()})
 </script>
 <template>
   <section class="ep-page">
     <div class="ep-page-head"><div><h1 class="ep-title">评价任务</h1><p class="ep-subtitle">按学校统一规则完成企业评价。企业填写评分与意见，评价人身份、提交来源、提交时间和审计记录由系统自动记录。</p></div><div class="head-summary"><strong>{{ taskCount }}</strong><span>当前筛选任务</span></div></div>
     <div class="filter-card ep-card"><div class="filter-copy"><span>企业评价工作台</span><strong>先完成待评价，再核对已提交记录</strong></div><div class="tabs"><button v-for="item in [['PENDING','待评价'],['COMPLETED','已完成'],['ALL','全部']]" :key="item[0]" :class="{active:tab===item[0]}" @click="tab=item[0]">{{ item[1] }}</button></div></div>
-    <div v-if="receipt" class="submit-receipt ep-card" role="status"><strong>✓ 企业评价已提交学校审核</strong><span>评价编号 {{ receipt.id }} · v{{ receipt.version }} · 安置快照编号 {{ receipt.placementSnapshotId || '—' }}</span><button type="button" @click="receipt=null">关闭</button></div>
+    <div v-if="receipt" class="submit-receipt ep-card" role="status"><strong>✓ 企业评价已提交学校审核</strong><span>评价编号 {{ receipt.id }} · 等待学校审核</span><button type="button" @click="receipt=null">关闭</button></div>
     <div v-if="error" class="ep-error">{{ error }}</div><div v-if="loading" class="ep-card ep-empty">正在加载评价任务…</div><div v-else-if="!items.length" class="ep-card ep-empty">当前没有评价任务</div>
-    <div v-else class="list"><article v-for="item in items" :key="item.id||item.task_id||item.taskId" class="ep-card task"><div class="task-main"><div class="avatar">{{ String(item.student_name||item.studentName||'学').slice(0,1) }}</div><div class="task-copy"><div class="name-line"><h3>{{ item.student_name||item.studentName||'学生' }} · {{ item.position_name||item.positionName||'实习岗位' }}</h3><span class="ep-tag" :class="{ok:(item.task_status||item.taskStatus||item.status)==='COMPLETED',warn:item.schoolReviewStatus==='RETURNED'}">{{ item.status_label||item.statusLabel||item.task_status||item.taskStatus||item.status||'状态未知' }}</span></div><p>企业导师：{{ item.mentor_name||item.mentorName||'—' }}</p><p v-if="item.returnReason" class="return-reason">学校退回：{{ item.returnReason }}</p></div></div><div class="deadline"><span>评价截止</span><strong>{{ item.deadline||'—' }}</strong></div><div class="task-action"><span v-if="(item.task_status||item.taskStatus||item.status)==='COMPLETED'" class="completed-note">已完成并留痕</span><button v-else class="ep-btn ep-btn-primary" :disabled="!collabReady" @click="start(item)">{{ item.schoolReviewStatus==='RETURNED'?'修改后重交':'开始评价' }}</button></div></article><div class="pager ep-card"><span>{{ pageInfo }}</span><div><button class="ep-btn" :disabled="page<=1" @click="previousPage">上一页</button><button class="ep-btn" :disabled="!hasNext" @click="nextPage">下一页</button></div></div></div>
+    <div v-else class="list"><article v-for="item in items" :key="item.id||item.task_id||item.taskId" class="ep-card task"><div class="task-main"><div class="avatar">{{ String(item.student_name||item.studentName||'学').slice(0,1) }}</div><div class="task-copy"><div class="name-line"><h3>{{ item.student_name||item.studentName||'学生' }} · {{ item.position_name||item.positionName||'实习岗位' }}</h3><span class="ep-tag" :class="{ok:(item.task_status||item.taskStatus||item.status)==='COMPLETED',warn:item.schoolReviewStatus==='RETURNED'}">{{ item.status_label||item.statusLabel||item.task_status||item.taskStatus||item.status||'状态未知' }}</span></div><p>企业导师：{{ item.mentor_name||item.mentorName||'—' }}</p><p v-if="item.returnReason" class="return-reason">学校退回：{{ item.returnReason }}</p></div></div><div class="deadline"><span>实习结束日期</span><strong>{{ item.deadline ? String(item.deadline).slice(0,10) : '未设置' }}</strong></div><div class="task-action"><span v-if="(item.task_status||item.taskStatus||item.status)==='COMPLETED'" class="completed-note">已完成并留痕</span><button v-else class="ep-btn ep-btn-primary" :disabled="!collabReady" @click="start(item)">{{ item.schoolReviewStatus==='RETURNED'?'修改后重交':'开始评价' }}</button></div></article><div class="pager ep-card"><span>{{ pageInfo }}</span><div><button class="ep-btn" :disabled="page<=1" @click="previousPage">上一页</button><button class="ep-btn" :disabled="!hasNext" @click="nextPage">下一页</button></div></div></div>
     <div v-if="selected" class="overlay" @click.self="selected=null"><form class="ep-card dialog" @submit.prevent="submit"><div class="dialog-head"><div><span>企业在线评价</span><h2>{{ selected.student_name||selected.studentName }} · {{ selected.position_name||selected.positionName }}</h2><p>五项评分均需明确填写 0–100 的整数分。</p></div><button type="button" class="close" aria-label="关闭评价弹窗" @click="selected=null">×</button></div><div class="scores"><label v-for="field in [['attendanceScore','出勤'],['skillScore','技能'],['attitudeScore','态度'],['collaborationScore','协作'],['safetyScore','安全纪律']]" :key="field[0]"><span>{{ field[1] }}</span><input v-model.number="form[field[0]]" type="number" min="0" max="100" step="1" required class="ep-input" placeholder="0-100"></label></div><label class="comment-label"><span>总体评价</span><textarea v-model.trim="form.overallComment" class="ep-textarea" rows="5" maxlength="2000" required placeholder="请结合学生出勤、技能、态度、协作和安全表现填写评价" /></label><label class="check"><input v-model="form.recommendHire" type="checkbox">建议后续录用 / 留用</label><div class="audit-note"><strong>系统自动留痕</strong><span>评价人、企业成员身份、提交来源和提交时间由系统记录，企业无需填写。</span></div><div class="dialog-actions"><button type="button" class="ep-btn" @click="selected=null">取消</button><button class="ep-btn ep-btn-primary" :disabled="submitting||!collabReady">{{ submitting?'提交中…':'提交企业评价' }}</button></div></form></div>
   </section>
 </template>

@@ -69,11 +69,12 @@
             <view class="flex-1">
               <text class="t-md">{{ r.courseName }}</text>
               <text class="ed__sub">{{ reasonLabel(r.reasonType) }} · {{ (r.applyAt || '').replace('T', ' ').slice(0, 16) }}</text>
+              <textarea v-if="r.status === 'RETURNED'" v-model="resubmitReasons[r.deferId]" :disabled="submitting || !!pendingApplication" maxlength="500" placeholder="按退回意见补充说明，至少5字" />
               <text v-if="r.returnReason" class="ed__reason">{{ r.status === 'REJECTED' ? '驳回原因' : '退回原因' }}：{{ r.returnReason }}</text>
             </view>
             <view class="flex-col-end">
               <MobileStatusTag :status="r.status" />
-              <button v-if="r.status === 'RETURNED'" class="btn-tag" @click="resubmit(r)">补材料重提</button>
+              <button v-if="r.status === 'RETURNED'" class="btn-tag" :disabled="submitting || !!pendingApplication" @click="resubmit(r)">补材料重提</button>
             </view>
           </view>
         </view>
@@ -138,7 +139,7 @@ export default {
   components: { AcademicPageNav, AcademicPageState },
   mixins: [academicApplicationPage],
   created() { this.applicationScope = 'exam' },
-  data() { return { d: null, state: 'loading', showForm: false, selectedCourse: null, form: { reasonType: 'ILLNESS', reason: '' }, reasonOptions: REASON_OPTIONS, targetId: '', partialErrors: [], printing: false, schedulePage: 1, deferPage: 1, academicDraftFields: ['selectedCourse', 'form', 'showForm'] } },
+  data() { return { d: null, state: 'loading', showForm: false, selectedCourse: null, resubmitReasons: {}, form: { reasonType: 'ILLNESS', reason: '' }, reasonOptions: REASON_OPTIONS, targetId: '', partialErrors: [], printing: false, schedulePage: 1, deferPage: 1, academicDraftFields: ['selectedCourse', 'form', 'showForm', 'resubmitReasons'] } },
   onLoad(options = {}) { this.targetId = String(options.id || options.deferId || options.recordId || ''); this.load() },
   computed: {
     schedulePageCount() { return this.d?.scheduleTotal ? Math.ceil(this.d.scheduleTotal / EXAM_PAGE_SIZE) : 1 },
@@ -156,7 +157,7 @@ export default {
       this.applicationNotice = hadPending ? '当前无权核对考试与缓考记录；本次办理仍待核实。' : ''
       savePending('draft:' + this.applicationScope, null)
     },
-    finishApplication() { this.showForm = false; this.selectedCourse = null; this.form = { reasonType: 'ILLNESS', reason: '' } },
+    finishApplication() { this.resubmitReasons = {}; this.showForm = false; this.selectedCourse = null; this.form = { reasonType: 'ILLNESS', reason: '' } },
     previousSchedulePage() { return this.hasPreviousSchedulePage ? this.load(this.schedulePage - 1) : Promise.resolve(null) },
     nextSchedulePage() { return this.hasNextSchedulePage ? this.load(this.schedulePage + 1) : Promise.resolve(null) },
     previousDeferPage() { return this.hasPreviousDeferPage ? this.load(this.schedulePage, this.deferPage - 1) : Promise.resolve(null) },
@@ -195,9 +196,10 @@ export default {
         }
         if (valid(0)) this.schedulePage = schedule.page
         if (valid(2)) this.deferPage = deferrals.page
+        for (const row of this.d.deferrals) if (row.status === 'RETURNED' && !(row.deferId in this.resubmitReasons)) this.resubmitReasons[row.deferId] = row.reason || ''
         if (this.selectedCourse) this.selectedCourse = this.d.options.find(row => String(row.examCourseId) === String(this.selectedCourse.examCourseId)) || { ...this.selectedCourse, canApply: false }
         if (valid(2)) this.acceptApplication(this.d.deferrals, 'deferId', (row, body, kind) => kind === 'resubmit'
-          ? String(this.pendingApplication?.returnedId || '') === String(body.deferId) && !['RETURNED', 'REJECTED', 'CANCELLED'].includes(row.status) && !!row.status
+          ? String(this.pendingApplication?.returnedId || '') === String(body.deferId) && row.version === body.expectedVersion + 1 && row.reason === body.reason && ['COUNSELOR_REVIEW','TEACHER_CONFIRM','COLLEGE_REVIEW','ACADEMIC_FINAL','APPROVED'].includes(row.status)
           : !!this.pendingApplication?.returnedId && String(row.examCourseId) === String(body.examCourseId) && row.reasonType === body.reasonType && (row.reason || '') === body.reason)
       })
     },
@@ -219,9 +221,11 @@ export default {
         send: frozen => studentApi.applyDefer(frozen.examCourseId, frozen.reasonType, frozen.reason), rows: this.d.deferrals, idKey: 'deferId' })
     },
     resubmit(r) {
-      if (r.status !== 'RETURNED' || this.partialErrors.includes('缓考记录')) return
-      return this.sendApplication({ title: '确认已处理退回要求并重提', kind: 'resubmit', body: { deferId: r.deferId, expectedVersion: r.version }, existingId: r.deferId,
-        recovery: { field: 'status', excludes: ['RETURNED', 'REJECTED', 'CANCELLED'] }, send: body => studentApi.resubmitDefer(body.deferId, body.expectedVersion), rows: this.d.deferrals, idKey: 'deferId' })
+      if (this.submitting || this.pendingApplication || r.status !== 'RETURNED' || this.partialErrors.includes('缓考记录')) return
+      const reason = String(this.resubmitReasons[r.deferId] || '').trim()
+      if (reason.length < 5 || !Number.isSafeInteger(r.version)) { toast('请补充至少5字说明，并刷新核对原申请版本'); return }
+      return this.sendApplication({ title: '确认保存补充说明并重提原申请', kind: 'resubmit', body: { deferId: r.deferId, expectedVersion: r.version, reason }, existingId: r.deferId, recovery: { field: 'version', equals: r.version + 1 },
+        send: body => studentApi.resubmitDefer(body.deferId, body.expectedVersion, body.reason), rows: this.d.deferrals, idKey: 'deferId' })
     },
     async printTicket() {
       if (!(this.d && this.d.schedule && this.d.schedule.length)) return

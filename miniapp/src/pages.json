@@ -100,7 +100,14 @@
         {"path": "plan/index", "style": {"navigationBarTitleText": "实习计划"}},
         {"path": "process-report/index", "style": {"navigationBarTitleText": "过程报告"}},
         {"path": "self-eval/index", "style": {"navigationBarTitleText": "实习自评"}},
-        {"path": "help/index", "style": {"navigationBarTitleText": "实习求助", "navigationStyle": "custom"}}
+        {"path": "help/index", "style": {"navigationBarTitleText": "实习求助", "navigationStyle": "custom"}},
+        {"path": "basic-info/index", "style": {"navigationBarTitleText": "完善基础资料"}},
+        {"path": "employment/index", "style": {"navigationBarTitleText": "就业上报"}},
+        {"path": "exemption/index", "style": {"navigationBarTitleText": "免实习申请", "navigationStyle": "custom"}},
+        {"path": "feedback/index", "style": {"navigationBarTitleText": "意见反馈", "navigationStyle": "custom"}},
+        {"path": "materials/index", "style": {"navigationBarTitleText": "实习材料", "navigationStyle": "custom"}},
+        {"path": "notices/index", "style": {"navigationBarTitleText": "通知公告", "navigationStyle": "custom"}},
+        {"path": "process-facts/index", "style": {"navigationBarTitleText": "轮岗与工资", "navigationStyle": "custom"}}
       ]
     },
     {
@@ -180,7 +187,17 @@
         {"path": "process-report-review/index", "style": {"navigationBarTitleText": "过程报告批阅", "navigationStyle": "custom"}},
         {"path": "plan-task-review/index", "style": {"navigationBarTitleText": "实习计划任务确认", "navigationStyle": "custom"}},
         {"path": "internship-application/index", "style": {"navigationBarTitleText": "实习申请审核", "navigationStyle": "custom"}},
-        {"path": "internship-volunteers/index", "style": {"navigationBarTitleText": "岗位确认", "navigationStyle": "custom"}}
+        {"path": "internship-volunteers/index", "style": {"navigationBarTitleText": "岗位确认", "navigationStyle": "custom"}},
+        {"path": "employment/index", "style": {"navigationBarTitleText": "就业上报审核"}},
+        {"path": "index", "style": {"navigationBarTitleText": "岗位实习教师工作台", "navigationStyle": "custom"}},
+        {"path": "todos/index", "style": {"navigationBarTitleText": "分类待办", "navigationStyle": "custom"}},
+        {"path": "messages/index", "style": {"navigationBarTitleText": "站内信", "navigationStyle": "custom"}},
+        {"path": "checkin-exemption/index", "style": {"navigationBarTitleText": "免签审批", "navigationStyle": "custom"}},
+        {"path": "material-review/index", "style": {"navigationBarTitleText": "材料审核", "navigationStyle": "custom"}},
+        {"path": "payroll-review/index", "style": {"navigationBarTitleText": "工资单审核", "navigationStyle": "custom"}},
+        {"path": "activity/index", "style": {"navigationBarTitleText": "教师工作记录", "navigationStyle": "custom"}},
+        {"path": "school-stats/index", "style": {"navigationBarTitleText": "校级实习统计", "navigationStyle": "custom"}},
+        {"path": "student-process/index", "style": {"navigationBarTitleText": "学生过程事实", "navigationStyle": "custom"}}
       ]
     }
   ],

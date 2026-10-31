@@ -11,6 +11,7 @@ const attendanceApi = read('../src/modules/internship/api/attendance.api.js')
 const leaveApi = read('../src/modules/internship/api/leave-risk.api.js')
 const router = read('../../backend/app/modules/internship/routers/internship.py')
 const leaveContext = read('../../backend/app/modules/internship/services/internship_student_leave_context_service.py')
+const leaveService = read('../../backend/app/modules/internship/services/internship_leave_service.py')
 const studentPortal = read('../../student-portal/src/views/internship/InternshipView.vue')
 const studentMobile = read('../../miniapp/src/pages/student-internship/leave/index.vue')
 const teacherMobile = read('../../miniapp/src/pages/teacher-internship/internship-approval/ApprovalCore.vue')
@@ -38,12 +39,12 @@ test('W7 makeup approval requires full request and current-version evidence ackn
 })
 
 test('W7 leave workbench leads with exact requests and protects evidence plus 409 recovery', () => {
-  assert.match(leave, /markEvidenceViewed\(current\.id\)/)
+  assert.match(leave, /markViewed\(current, a, stillCurrent\)/)
   assert.match(leave, /:disabled="!leaveCanApprove"/)
   assert.match(leave, /isConflict\(res\)/)
   assert.match(leave, /captureConflict\(/)
   assert.match(leaveApi, /\/leaves\/\$\{id\}\/evidence-viewed/)
-  assert.match(router, /def leave_evidence_viewed[\s\S]*?lv\.mark_evidence_viewed\(user, leave_id\)/)
+  assert.match(router, /def leave_evidence_viewed[\s\S]*?lv\.mark_evidence_viewed\(user, leave_id,/)
 })
 
 test('W7 successful critical writes retain a truthful page receipt', () => {
@@ -59,13 +60,15 @@ test('W7 successful critical writes retain a truthful page receipt', () => {
 
 test('W8 leave return closes the student and teacher PC story with versioned risk sync', () => {
   for (const text of ['待审批', '返岗确认', '已批准', '全部台账']) assert.match(leave, new RegExp(text))
-  assert.match(leave, /getReturnQueue\(this\.batchStore\.selectedBatchId\)/)
-  assert.match(leave, /ackReturn\(this\.pending\.id/)
+  assert.match(leave, /returnPending: this\.activePanel === \'return\'/)
+  assert.match(leave, /ackReturn\(pending\.id/)
   assert.match(leaveApi, /\/leaves\/return-queue/)
   assert.match(leaveApi, /\/leaves\/\$\{id\}\/ack-return/)
   assert.match(router, /def leave_return_queue[\s\S]*?list_teacher_overdue/)
   assert.match(router, /def leave_ack_return[\s\S]*?ack_overdue_return/)
-  assert.match(leaveContext, /acknowledged_ids[\s\S]*?ACK_OVERDUE_RETURN_VERSIONED/)
+  assert.match(leaveContext, /acknowledged = legacy\._acknowledged_returns\(db, rows\)/)
+  assert.match(leaveContext, /'returnAcknowledged': row\.id in acknowledged/)
+  assert.match(leaveService, /def _acknowledged_returns[\s\S]*?ACK_OVERDUE_RETURN_VERSIONED/)
   assert.match(leaveContext, /_expected\(payload\.get\("expectedVersion"\), row\.version\)/)
 })
 

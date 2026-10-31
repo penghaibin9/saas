@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -9,7 +10,7 @@ import { workspaceCurrentPage, workspacePages } from '../src/components/workspac
 const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/views/ScoreView.vue', import.meta.url), 'utf8'))
 const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/ {2}components: \{[\s\S]*?AppTextarea, ActionReceipt, AppPagination, ScoreAppealWorkspace \},/, '').replace('export default', 'return')
 function setup(api = {}, permission = () => true, files = {}) {
-  const def = new Function('scoreApi', 'canCode', 'toast', 'isConflict', 'fileSdk', 'systemConfirm', 'window', script)(api, permission, { success() {}, error() {}, info() {} }, isConflict, files, () => Promise.resolve(false), { addEventListener() {}, removeEventListener() {} })
+  const def = componentFactory('scoreApi', 'canCode', 'toast', 'isConflict', 'fileSdk', 'systemConfirm', 'window', script)(api, permission, { success() {}, error() {}, info() {} }, isConflict, files, () => Promise.resolve(false), { addEventListener() {}, removeEventListener() {} })
   const targets = []
   const vm = { ...def.data(), ctx: {}, batchStore: { selectedBatchId: '1', batchStatus: 'DRAFT', withBatchQuery: q => ({ ...q, batchId: '1' }) }, $route: { query: {} }, $router: { replace: t => targets.push(t), push: t => targets.push(t) } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
@@ -122,7 +123,7 @@ test('appeal object deep link preserves list context and return removes only the
   vm.$route.query = targets[0].query; vm.closeAppeal(); assert.equal(targets[1].query.appealId, undefined); assert.equal(targets[1].query.page, '2'); assert.equal(targets[1].query.keyword, '测试学生'); assert.equal(targets[1].query.batchId, '1')
 })
 
-const scoreRecord = (extra = {}) => ({ id: '9007199254740999', internId: '9007199254740888', studentName: '测试学生', version: 2, status: 'PENDING_REVIEW', incomplete: false, totalScore: 80, sourceManifest: { facts: { internship: { batchId: '1' } } }, manualAdjustments: { checkin: 0, weekly: 0, monthly: 0, enterprise: 0, school: 0 }, ...extra })
+const scoreRecord = (extra = {}) => ({ id: '9007199254740999', internId: '9007199254740888', studentName: '测试学生', version: 2, status: 'PENDING_REVIEW', allowedActions: ['review','return','publish'], incomplete: false, totalScore: 80, sourceManifest: { facts: { internship: { batchId: '1' } } }, manualAdjustments: { checkin: 0, weekly: 0, monthly: 0, enterprise: 0, school: 0 }, ...extra })
 function selectScore(vm, mode = 'detail', extra = {}) { vm.panel = { visible: true, mode, rowId: scoreRecord().id, loading: false, error: '', data: scoreRecord(extra), submitting: false }; if (mode === 'edit') vm.restoreCompute() }
 
 test('score workspace deep links preserve filters and return to the originating appeal', () => {

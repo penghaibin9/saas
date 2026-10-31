@@ -72,6 +72,7 @@ test('顶部菜单（adminMenu）同口径：老师的毕设分组只剩三个�
   const entitlementUrl = pathToFileURL(fileURLToPath(new URL('../src/security/moduleEntitlement.js', import.meta.url))).href
   const source = fs.readFileSync(new URL('../src/config/adminMenu.js', import.meta.url), 'utf8')
     .replace("from '@/config/navPlan'", `from '${navPlanUrl}'`)
+    .replace("from '@/modules/academicAffairs/config/academicRoleNavigation'", `from '${new URL('../src/modules/academicAffairs/config/academicRoleNavigation.js', import.meta.url).href}'`)
     .replace("from '@/security/moduleEntitlement'", `from '${entitlementUrl}'`)
   const { getVisibleAdminMenu } = await import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
   const ctx = (patterns) => ({

@@ -42,13 +42,13 @@
           </aside>
           <section v-if="selectedTask" class="aa-publish-evidence" aria-label="发布前核对">
             <h3>正式任务与发布核对</h3>
-            <table><thead><tr><th>核验对象</th><th>当前正式记录</th><th>核对说明</th></tr></thead><tbody>
-              <tr><th>课程身份</th><td>{{ selectedTask.courseName }} · {{ selectedTask.courseId || '课程版本未关联' }}</td><td>以任务绑定的课程版本为准</td></tr>
-              <tr><th>正式教学班</th><td>{{ selectedTask.teachingClassName || '待核对' }}</td><td>{{ selectedTask.teachingClassId || '教学班身份未返回' }}</td></tr>
-              <tr><th>任课教师</th><td>{{ selectedTask.teacherAuthorityReady && selectedTask.teacherNames?.length ? selectedTask.teacherNames.join('、') : '正式任课关系待核对' }}</td><td>以正式教学任务的任课关系为准</td></tr>
-              <tr><th>提交时间</th><td>{{ selectedTask.submittedAt || '未返回' }}</td><td>{{ statusLabel(selectedTask.status) }}</td></tr>
-              <tr><th>名单与成绩方案</th><td>发布时由服务器再次核验</td><td>当前任务摘要不提供完整审核证据</td></tr>
-              <tr><th>后置预警扫描</th><td>与正式发布分别回执</td><td>不及格人数不能替代预警条数</td></tr>
+            <table><thead><tr><th>核对项目</th><th>当前情况</th></tr></thead><tbody>
+              <tr><th>课程</th><td>{{ selectedTask.courseName }}<span v-if="!selectedTask.courseId"> · 课程版本未关联</span></td></tr>
+              <tr><th>教学班</th><td>{{ selectedTask.teachingClassName || '待核对' }}</td></tr>
+              <tr><th>任课教师</th><td>{{ selectedTask.teacherAuthorityReady && selectedTask.teacherNames?.length ? selectedTask.teacherNames.join('、') : '任课关系待核对' }}</td></tr>
+              <tr><th>提交时间</th><td>{{ selectedTask.submittedAt || '未提供' }}</td></tr>
+              <tr><th>名单与成绩构成</th><td>发布时再次检查；当前摘要不含完整审核明细。</td></tr>
+              <tr><th>预警扫描</th><td>与发布结果分别确认；不及格人数不能替代预警条数。</td></tr>
             </tbody></table>
             <p class="aa-publish-note">发布产生正式成绩。名单、课程版本、计分方案及当前状态由正式发布命令核验；失败时按具体阻断处理。</p>
             <footer>

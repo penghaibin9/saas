@@ -1,6 +1,6 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="brand" title="志愿办理结果" show-back />
+  <view class="internship-surface mobile-page mobile-student page-wrap">
+    <MobileNavBar variant="brand" title="志愿办理结果" show-back :fallback-url="returnUrl" />
     <view class="page-pad result-wrap">
       <MobileGlobalState :state="state" title="暂时无法读取原志愿" :description="error" @retry="load">
         <template v-if="result">
@@ -10,9 +10,11 @@
             <text class="result-title">{{ statusLabel }}</text>
             <text class="result-description">{{ guidance }}</text>
             <view v-if="result.status === 'NEEDS_REVISION'" class="result-revision"><text class="result-label">学校补正意见</text><text class="result-description">{{ result.revisionReason || '请联系指导教师核对补正要求。' }}</text></view>
-            <button v-if="result.status === 'NEEDS_REVISION' && result.campaignStatus === 'OPEN'" class="result-refresh" @click="openSelection">进入原招聘季补正</button>
+            <button v-if="result.status === 'NEEDS_REVISION' && result.campaignStatus === 'OPEN'" class="mobile-control result-refresh" @click="openSelection">进入原招聘季补正</button>
             <text v-else-if="result.status === 'NEEDS_REVISION'" class="result-description">原招聘季当前未开放补正，请联系指导教师核对安排。</text>
-            <view class="result-facts"><view><text>本组投递次数</text><text>{{ result.submissionVersion }} 次</text></view>
+            <button class="mobile-control result-refresh" :aria-expanded="detailsOpen" @click="detailsOpen=!detailsOpen">{{ detailsOpen ? '收起投递详情' : '查看投递详情' }}</button>
+            <view v-if="detailsOpen" class="result-facts"><view><text>本组投递次数</text><text>{{ result.submissionVersion }} 次</text></view>
+              <view v-if="result.version != null"><text>记录版本</text><text>第 {{ result.version }} 版</text></view>
               <view><text>最近投递</text><text>{{ fmt(result.submittedAt) }}</text></view>
               <view v-if="result.approvedAt"><text>学校确认</text><text>{{ fmt(result.approvedAt) }}</text></view>
               <view v-else-if="result.revisionRequestedAt"><text>学校退回</text><text>{{ fmt(result.revisionRequestedAt) }}</text></view>
@@ -24,23 +26,30 @@
               <view class="result-choice-head"><text class="result-context">第 {{ item.volunteerNo }} 志愿</text><MobileStatusTag :status="item.status" /></view>
               <text class="result-position">{{ item.positionName || '岗位名称未记录' }}</text>
               <text class="result-context">{{ item.companyName || '企业名称未记录' }}</text>
-              <text v-if="item.applicationStatement" class="result-description">{{ item.applicationStatement }}</text>
+              <text v-if="detailsOpen && item.applicationStatement" class="result-description">{{ item.applicationStatement }}</text>
             </view>
           </view>
-          <text class="result-footnote">此页始终对应原招聘季。查看消息不会修改志愿、解除锁定或办理上岗。</text>
-          <button class="result-refresh" @click="load">刷新当前结果</button>
+          <button class="mobile-control result-refresh" @click="load">刷新当前结果</button>
+          <button class="mobile-control result-refresh" @click="returnToSelection">查看原招聘季志愿与岗位</button>
         </template>
       </MobileGlobalState>
+      <button v-if="state === 'error'" class="mobile-control result-refresh" @click="returnHome">返回实习首页重新进入</button>
     </view>
   </view>
 </template>
 
 <script>
 import { internshipSelectionApi } from '@/services/internshipSelectionApi'
+import { selectionScope, selectionScopePath } from '../../../../../shared/internshipSelectionScope.mjs'
 
 export default {
-  data() { return { groupId: '', messageVersion: '', state: 'loading', error: '', result: null, sequence: 0, alive: true } },
+  data() { return { detailsOpen: false, groupId: '', messageVersion: '', state: 'loading', error: '', result: null, sequence: 0, alive: true } },
   computed: {
+    returnUrl() {
+      if (!this.result || !this.result.batchId || !this.result.campaignId || !this.result.recordId) return '/pages/student-internship/index'
+      try { return selectionScopePath('/pages/student-internship/enterprises/index', selectionScope({ batchId:this.result.batchId,campaignId:this.result.campaignId,recordId:this.result.recordId })) }
+      catch { return '/pages/student-internship/index' }
+    },
     updatedSinceMessage() { return this.result && /^\d+$/.test(this.messageVersion) && this.messageVersion !== String(this.result.version) },
     statusLabel() { return ({ DRAFT: '尚未投递', SUBMITTED: '等待企业与学校处理', LOCKED: '企业拟接收，待学校确认', NEEDS_REVISION: '学校退回，请补正后重提', APPROVED: '学校已确认岗位', CLOSED: '本组志愿已关闭' }[this.result?.status] || '请核对办理状态') },
     guidance() {
@@ -59,6 +68,8 @@ export default {
   },
   onUnload() { this.alive = false; this.sequence++ },
   methods: {
+    returnHome() { if(this.alive)uni.redirectTo({url:'/pages/student-internship/index'}) },
+    returnToSelection() { if(this.alive && this.result && this.returnUrl!=='/pages/student-internship/index')uni.navigateTo({url:this.returnUrl}) },
     openSelection() {
       const row = this.result
       if (!row || row.status !== 'NEEDS_REVISION' || row.campaignStatus !== 'OPEN') return
@@ -66,6 +77,7 @@ export default {
       uni.navigateTo({ url: `/pages/student-internship/enterprises/index?${query}` })
     },
     applyQuery(query = {}) {
+      this.detailsOpen = false
       this.groupId = typeof query.groupId === 'string' && /^[1-9]\d*$/.test(query.groupId) ? query.groupId : ''
       this.messageVersion = typeof query.groupVersion === 'string' ? query.groupVersion : ''
       return this.load()
@@ -74,7 +86,7 @@ export default {
     async load() {
       const current = ++this.sequence
       this.result = null; this.error = ''; this.state = 'loading'
-      if (!this.groupId) { this.error = '消息缺少有效的原志愿编号，请从消息重新进入。'; this.state = 'error'; return }
+      if (!this.groupId) { this.error = '结果链接缺少有效的原志愿编号，请从我的志愿重新进入。'; this.state = 'error'; return }
       const id = this.groupId
       try {
         const data = await internshipSelectionApi.volunteerResult(id)
@@ -88,5 +100,5 @@ export default {
 </script>
 
 <style scoped>
-.result-wrap{padding-bottom:calc(24px + env(safe-area-inset-bottom))}.result-card{padding:20px;margin-bottom:16px;background:var(--bg-card,#fff);border:1px solid var(--border-light);border-radius:var(--radius-lg,16px)}.result-context,.result-title,.result-description,.result-label,.result-position,.result-footnote{display:block}.result-context{color:var(--text-tertiary);font-size:var(--font-size-xs);line-height:1.6}.result-title{font-size:22px;font-weight:600;color:var(--text-primary);line-height:1.5;margin:14px 0 8px}.result-description{font-size:var(--font-size-base);color:var(--text-secondary);line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.result-revision{padding:16px;background:var(--bg-page,#f6f8fb);border-radius:10px;margin-top:16px}.result-label,.result-position{font-size:16px;font-weight:600;color:var(--text-primary);line-height:1.6}.result-revision .result-description{margin-top:8px}.result-facts{padding-top:16px;margin-top:16px;border-top:1px solid var(--border-light);font-size:var(--font-size-xs);color:var(--text-secondary)}.result-facts>view{display:flex;justify-content:space-between;gap:12px;margin:8px 0}.result-facts>view>text:last-child{text-align:right}.result-choice{border-top:1px solid var(--border-light);padding-top:16px;margin-top:16px}.result-choice-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.result-choice .result-description{margin-top:8px}.result-footnote{color:var(--text-tertiary);font-size:12px;line-height:1.8;margin-bottom:16px}.result-refresh{min-height:44px;font-size:14px;color:var(--text-primary);background:var(--bg-card,#fff)}
-</style>
+.result-wrap{padding-bottom:calc(24px + env(safe-area-inset-bottom))}.result-card{padding:20px;margin-bottom:16px;background:var(--bg-card,#fff);border:1px solid var(--border-light);border-radius:var(--radius-lg,16px)}.result-context,.result-title,.result-description,.result-label,.result-position,.result-footnote{display:block}.result-context{color:var(--text-tertiary);font-size:var(--font-size-base);line-height:1.6}.result-title{font-size:22px;font-weight:600;color:var(--text-primary);line-height:1.5;margin:14px 0 8px}.result-description{font-size:var(--font-size-base);color:var(--text-secondary);line-height:1.8;white-space:pre-wrap;overflow-wrap:anywhere}.result-revision{padding:16px;background:var(--bg-page,#f6f8fb);border-radius:10px;margin-top:16px}.result-label,.result-position{font-size:16px;font-weight:600;color:var(--text-primary);line-height:1.6}.result-revision .result-description{margin-top:8px}.result-facts{padding-top:16px;margin-top:16px;border-top:1px solid var(--border-light);font-size:var(--font-size-base);color:var(--text-secondary)}.result-facts>view{display:flex;justify-content:space-between;gap:12px;margin:8px 0}.result-facts>view>text:last-child{text-align:right}.result-choice{border-top:1px solid var(--border-light);padding-top:16px;margin-top:16px}.result-choice-head{display:flex;justify-content:space-between;gap:12px;margin-bottom:8px}.result-choice .result-description{margin-top:8px}.result-footnote{color:var(--text-tertiary);font-size:var(--font-size-base);line-height:1.8;margin-bottom:16px}.result-refresh{min-height:44px;font-size:14px;color:var(--text-primary);background:var(--bg-card,#fff)}
+.result-card{padding:16px;margin-bottom:12px}.result-title{font-size:20px;margin:10px 0 8px}.result-position{margin-bottom:4px}.result-facts>view>text:last-child{overflow-wrap:anywhere}.result-refresh{border:1px solid var(--border-base);border-radius:8px;color:var(--text-link)}</style>

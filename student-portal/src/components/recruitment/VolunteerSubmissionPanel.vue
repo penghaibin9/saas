@@ -34,15 +34,13 @@
         </li>
       </ol>
       <div class="material-version">
-        <span>材料版本</span><strong>资料第 {{ preview.profileVersion || '—' }} 版 / 志愿组第 {{ group.version || 0 }} 版</strong>
+        <span>材料版本</span><strong>档案第{{ preview.profileVersion ?? '—' }}版 · 志愿第{{ group.version ?? 0 }}版</strong>
       </div>
       <label class="contact-field">
         <span>联系方式策略</span>
         <select :value="contactSharingMode" :disabled="busy" @change="$emit('update:contactSharingMode', $event.target.value)">
-          <option value="MASKED_ONLY">仅脱敏</option>
-          <option value="AFTER_INTERVIEW">面试后可查看</option>
-          <option value="AFTER_ACCEPT_INTENT">拟接收后可查看</option>
-          <option value="IMMEDIATE">立即允许查看</option>
+          <option value="" disabled>请选择学校允许的方式</option>
+          <option v-for="option in sharingOptions" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
       </label>
       <div class="preview-hash">企业视角预览：{{ preview.previewHash ? '已确认当前版本' : '尚未生成' }}</div>
@@ -50,7 +48,7 @@
         <input :checked="confirmed" type="checkbox" :disabled="busy" @change="$emit('update:confirmed', $event.target.checked)" />
         <span>我确认以上 1–3 志愿、材料版本与联系方式共享范围，并同意整组投递。</span>
       </label>
-      <button type="button" class="primary" :disabled="busy || !confirmed || !preview.previewHash" @click="$emit('submit')">
+      <button type="button" class="primary" :disabled="busy || !confirmed || !preview.previewHash || !sharingOptions.some(option => option.value === contactSharingMode)" @click="$emit('submit')">
         {{ busy ? '整组提交中…' : '确认整组投递' }}
       </button>
     </div>
@@ -64,7 +62,8 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed } from 'vue'
+import { CONTACT_SHARING_OPTIONS } from '../../modules/internshipRecruitment/materialPreviewModel.js'
 import {
   VOLUNTEER_STATUS_META,
   canRequestVolunteerUnlock,
@@ -84,16 +83,12 @@ const props = defineProps({
   busy: { type: Boolean, default: false },
   submitError: { type: Object, default: () => ({ message: '', invalidItems: [] }) }
 })
-const emit = defineEmits(['prepare-submit', 'cancel-confirm', 'submit', 'withdraw', 'unlock', 'update:contactSharingMode', 'update:confirmed'])
+defineEmits(['prepare-submit', 'cancel-confirm', 'submit', 'withdraw', 'unlock', 'update:contactSharingMode', 'update:confirmed'])
 
-onMounted(() => {
-  // A03 production privacy seal: historical parent default was AFTER_INTERVIEW.
-  // Normalize only the initial mounted value; later explicit student choices are preserved.
-  if (props.contactSharingMode === 'AFTER_INTERVIEW') emit('update:contactSharingMode', 'MASKED_ONLY')
-})
 
 const status = computed(() => String(props.group.status || 'DRAFT').toUpperCase())
-const meta = computed(() => VOLUNTEER_STATUS_META[status.value] || { label: status.value, tone: 'neutral' })
+const sharingOptions = computed(() => CONTACT_SHARING_OPTIONS.filter(option => props.preview.allowedContactSharingModes?.includes(option.value)))
+const meta = computed(() => VOLUNTEER_STATUS_META[status.value] || { label: '状态待确认', tone: 'neutral' })
 const activeSlots = computed(() => props.slots.filter((slot) => slot.positionId))
 const canSubmit = computed(() => canSubmitVolunteerGroup(props.group))
 const canWithdraw = computed(() => canWithdrawVolunteerGroup(props.group))

@@ -59,16 +59,20 @@ def _seed(db_mode):
     db.add(term); db.flush()
     col = College(tenant_id=TID, college_name="软件学院", status="ACTIVE")
     db.add(col); db.flush()
+    from tests.support_grade_review_identity import _ensure_account, _ensure_college_scope, _ensure_base_grade_policy
+    _ensure_account(db, "college_admin01")
+    _ensure_college_scope(db, col)
+    _ensure_base_grade_policy(db)
     major = Major(tenant_id=TID, college_id=col.id, major_name="软件技术", status="ACTIVE")
     db.add(major); db.flush()
     klass = SchoolClass(tenant_id=TID, major_id=major.id, class_name="软件2401", grade="2024", status="ACTIVE")
     db.add(klass); db.flush()
     c_math = AaCourse(tenant_id=TID, course_code="MK_MATH", course_name="高等数学", credit=4,
-                      version=1, status="ENABLED")
+                      version=1, status="ENABLED", owner_college_id=col.id)
     c_eng = AaCourse(tenant_id=TID, course_code="MK_ENG", course_name="大学英语", credit=3,
-                     version=1, status="ENABLED")
+                     version=1, status="ENABLED", owner_college_id=col.id)
     c_lin = AaCourse(tenant_id=TID, course_code="MK_LIN", course_name="线性代数", credit=3,
-                     version=1, status="ENABLED")
+                     version=1, status="ENABLED", owner_college_id=col.id)
     db.add_all([c_math, c_eng, c_lin]); db.flush()
     # 重修「编入跟班」必须落到真实教学任务：同学期、同 courseId，否则服务端拒绝
     tb = AaTeachingTaskBatch(tenant_id=TID, term_id=term.id, batch_name="2024秋教学任务",
@@ -135,7 +139,10 @@ def test_m1_makeup_full_flow(client, db_mode, monkeypatch):
     # 未学院审直接发布 → 409
     assert client.post(f"{BASE}/makeup/batches/{bid}/finish", headers=admin).status_code == 409
     # 学院审核 SCORING→REVIEWED
-    assert client.post(f"{BASE}/makeup/batches/{bid}/college-review", headers=admin).json()["data"]["status"] == "REVIEWED"
+    from tests.test_aa_clearance import _review_college
+    assert client.post(f"{BASE}/makeup/batches/{bid}/college-review", headers=admin,
+                       json={"expectedVersion": 1}).status_code == 403
+    _review_college(client, bid)
     fin = client.post(f"{BASE}/makeup/batches/{bid}/finish", headers=admin).json()
     assert fin["code"] == 0 and fin["data"]["status"] == "FINISHED"
     records = client.get(f"{BASE}/makeup/batches/{bid}/records", headers=admin).json()["data"]["items"]

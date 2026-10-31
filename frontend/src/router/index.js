@@ -1,11 +1,13 @@
 import { createRouter, createWebHistory } from 'vue-router'
 import { createOwnedHistoryAdapter, registerOwnedHistoryAdapter } from './ownedAcademicNavigation'
-import { getToken, request } from '@/services/http/client'
+import { getToken, request, currentUserFromToken } from '@/services/http/client'
+import { academicRoleAllows, academicRoleDefaultPath, hasAcademicRoleMenu } from '@/modules/academicAffairs/config/academicRoleNavigation'
 import {
   canEnterRoute,
   ensurePermissionPatterns,
   GUARDED_MODULES,
   getPermissionPatterns,
+  getModuleEntitlements,
   getRbacLoadFailed,
   routeAccessNotice,
 } from '@/security/permissionGate'
@@ -76,13 +78,9 @@ const router = createRouter({
   history: ownedAcademicHistory.history,
   routes: [
     {
-      /* PORTAL-ROOT：主域名根路径 = 对外统一门户首页（公开，不需登录）。
-         门户只做身份分流与产品导航，不实现认证、不调业务接口。
-         教师/管理端工作台已迁至 /workbench，旧地址 / 不再直达工作台。 */
+      // 学校系统根入口只进入受既有身份和权限保护的工作台。企业官网独立运行。
       path: '/',
-      name: 'portal-home',
-      component: () => import('../views/PortalHomeView.vue'),
-      meta: { public: true, title: '高校学生全生命周期管理平台' }
+      redirect: '/workbench'
     },
     ...projectedCoreControlRoutes,
     {
@@ -222,6 +220,11 @@ router.beforeEach(async (to, from, next) => {
   ) {
     await ensurePermissionPatterns(request)
   }
+  const roleContext = { ...currentUserFromToken(), permissionPatterns: getPermissionPatterns(), moduleEntitlements: getModuleEntitlements() }
+  if (hasAcademicRoleMenu(roleContext) && to.path === '/admin/academic-affairs' && !Object.keys(to.query).length) {
+    const home = academicRoleDefaultPath(roleContext)
+    if (home && home !== to.path) { next({ path: home.split('?')[0], query: Object.fromEntries(new URLSearchParams(home.split('?')[1] || '')), replace: true }); return }
+  }
   if (!canEnterRoute(to.meta)) {
     if (!isPlatform) {
       // App renders only the denial workspace, never the denied route component.
@@ -237,6 +240,12 @@ router.beforeEach(async (to, from, next) => {
         ...(svcErr ? { reason: 'permission-service', message: svcErr } : {})
       }
     })
+    return
+  }
+  if (!academicRoleAllows(to, roleContext)) {
+    to.meta.accessNotice = { title: '当前岗位不能进入此教务页面',
+      message: '请从当前岗位菜单选择可用功能。需要办理其他岗位业务时，请切换对应身份。' }
+    next()
     return
   }
   delete to.meta.accessNotice

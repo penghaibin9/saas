@@ -4,11 +4,9 @@
     <template v-if="batchIsOpen">
     <div class="aa-bulk__head">
       <div>
-        <p class="aa-bulk__eyebrow">高频办理</p>
-        <h3 class="aa-bulk__title">批量注册</h3>
-        <p class="aa-bulk__desc">来源：注册批次 {{ batchId }} · 当前办理岗位：{{ ctx.currentRole?.roleName || '待核对' }} · 范围：{{ ctx.dataScope?.scopeName || '待核对' }}</p>
+        <h3 class="aa-bulk__title">选择学生</h3>
         <p class="aa-bulk__desc">
-          系统自动带入学生、班级、专业、当前学籍状态和资格说明；先预览，再确认。最终仍逐人走正式注册校验与学籍状态流水。
+          核对学生和资格，预览后确认注册。
         </p>
       </div>
       <div class="aa-bulk__limit">单次最多 100 人</div>

@@ -42,7 +42,7 @@
         </aside>
       </div>
       <BatchParticipantScope v-show="activeSection === 'participants'" :key="detail.id" ref="participantScope"
-        :batch-id="detail.id" :batch-status="detail.status" :readonly="!canManage" @frozen="load" />
+        :batch-id="detail.id" :batch-status="detail.status" :readonly="!canManage" @frozen="load" @changed="load" />
       <div v-if="activeSection === 'rules'" class="bdv-overview">
         <section class="mp-card">
           <div class="mp-card__head"><h2 class="mp-card__title">业务规则</h2><AppButton v-if="detail.status === 'DRAFT' && canManage" variant="ghost" @click="goEdit">编辑规则</AppButton></div>
@@ -51,7 +51,7 @@
               <div v-for="rule in rulesList" :key="rule.label"><dt>{{ rule.label }}</dt><dd>{{ rule.value }}</dd></div>
             </dl>
             <p v-else class="mp-note">该批次未配置规则。</p>
-            <p class="bdv-footnote">启用后的规则按原有生效范围执行，已形成的历史结果保留。</p>
+            <RouterLink v-if="canViewScores" class="mp-link" :to="{ path:'/admin/internship/scores', query:{ batchId:String(detail.id), stage:'config' } }">查看正式评分规则 →</RouterLink>
           </div>
         </section>
         <section class="mp-card">
@@ -64,7 +64,7 @@
       </div>
       <section v-if="activeSection === 'history'" class="mp-card">
         <div class="mp-card__head"><h2 class="mp-card__title">操作记录</h2></div>
-        <div class="mp-card__body"><AppAuditTrail :records="auditRecords" :show-ip="false" empty-text="暂无操作记录" /></div>
+        <div class="mp-card__body"><AppAuditTrail :records="auditRecords" :show-ip="false" empty-text="未查询到历史操作记录" /></div>
       </section>
     </template>
     <AppConfirmDialog v-model:visible="confirmVisible" :title="confirmConf.title" :message="confirmConf.message"
@@ -89,6 +89,7 @@ import { formatDate, formatDateTime } from '@/utils/dateUtils'
 import BatchParticipantScope from './components/BatchParticipantScope.vue'
 import { withInternshipBatch, internshipBatchListReturn } from '../navigation.js'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { canCode } from '@/modules/internship/composables/permission'
 
 const ACTION_LABEL = { CREATE: '新建批次', UPDATE: '编辑批次', ACTIVATE: '启用批次', CLOSE: '结束批次', ARCHIVE: '归档批次', VOID: '作废批次' }
 
@@ -133,6 +134,7 @@ export default {
       return messages[this.detail?.status] || '请核对当前批次信息。'
     },
     canManage() { return this.ctx?.permissionActions?.createBatch?.allowed === true },
+    canViewScores() { return canCode(this.ctx, 'internship.score.view') },
     roleName() {
       return this.ctx?.currentRole?.roleName || ''
     },
@@ -174,13 +176,12 @@ export default {
       if (!r) return []
       const out = []
       if (r.checkin) out.push({ label: '考勤打卡', value: `${r.checkin.requireDaily ? '每日必打卡' : '不强制每日打卡'}；电子围栏 ${r.checkin.geofenceRadiusM ?? '—'} 米；最大定位误差 ${r.checkin.maxAccuracyM ?? 200} 米` })
+      if(r.teacherCheckin) out.push({label:'教师签到范围',value:r.teacherCheckin.locations?.length ? r.teacherCheckin.locations.map(site=>`${site.name}（${site.radiusM}米，${site.coordinateSystem==='WGS84'?'国际通用坐标':'国内地图坐标'}）`).join('；') : '未配置，只留痕，不判定围栏内正常'})
       if (r.weeklyReport) {
         const day = ['', '周一', '周二', '周三', '周四', '周五', '周六', '周日'][r.weeklyReport.deadlineWeekday]
         out.push({ label: '实习周报', value: `${r.weeklyReport.frequency === 'WEEKLY' ? '每周 1 次' : '每两周 1 次'}；正文至少 ${r.weeklyReport.minWordCount ?? '—'} 字${day ? `；${day}前提交` : ''}` })
       }
       if (r.guidance) out.push({ label: '指导巡访', value: `每学期现场巡访至少 ${r.guidance.minVisitsPerTerm ?? '—'} 次；每月沟通至少 ${r.guidance.minCommunicationsPerMonth ?? '—'} 次` })
-      if (r.evaluation) out.push({ label: '评价权重', value: `企业 ${this.pct(r.evaluation.enterpriseWeight)} / 教师 ${this.pct(r.evaluation.teacherWeight)} / 自评 ${this.pct(r.evaluation.selfWeight)}` })
-      if (r.score) out.push({ label: '成绩评定', value: `及格线 ${r.score.passThreshold ?? '—'} 分；${(r.score.components || []).map((c) => `${c.name} ${this.pct(c.weight)}`).join(' + ')}` })
       if (r.onboard) {
         const checks = [['requireAgreement', '三方协议生效'], ['requireInsurance', '保险核验'], ['requireAdvisor', '分配校内指导教师']]
         out.push({ label: '上岗前置', value: checks.map(([key, label]) => `${label}：${r.onboard[key] === true ? '必需' : r.onboard[key] === false ? '不要求' : '未配置'}`).join('；') })
@@ -248,6 +249,12 @@ export default {
     }
   },
   watch: {
+    '$route.query.batchId'(id) {
+      if (!this.loading && this.detail && typeof id === 'string' && /^\d+$/.test(id) && id !== String(this.$route.params.id)) {
+        this.confirmVisible = false
+        this.$router.replace({ path: `/admin/internship/batches/${id}`, query: { ...this.$route.query, batchId: id } })
+      }
+    },
     '$route.params.id'(id, oldId) {
       if (!id || id === oldId) return
       this.detail = null
@@ -315,13 +322,17 @@ export default {
         const res = await internshipApi.getBatchDetail(id)
         if (sequence !== this.loadSequence || id !== this.$route.params.id) return
         if (res.code !== 0 || !res.data) throw new Error(res.message || '批次不存在或无权查看')
+          if (String(res.data.id) !== String(id)) throw new Error('批次读取结果与当前页面不一致，请重新进入')
         this.detail = res.data
         const store = useInternshipBatchStore()
         const cached = store.availableBatches.find((batch) => String(batch.id) === String(this.detail.id))
         if (cached) {
           for (const key of ['status', 'batchName', 'batchNo', 'startDate', 'endDate']) cached[key] = this.detail[key]
-          if (String(store.selectedBatchId) === String(this.detail.id)) store.applyBatch(cached)
+            store.applyBatch(cached)
         }
+          if (this.$route.query.batchId !== String(this.detail.id)) {
+            await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, batchId: String(this.detail.id) } })
+          }
       } catch (error) {
         if (sequence === this.loadSequence) this.error = error.message || '批次加载失败，请重试'
       } finally {

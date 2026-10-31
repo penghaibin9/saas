@@ -8,7 +8,7 @@
         </view>
         <view class="card tb__sum">
           <view class="tb__sum-item"><text class="tb__sum-num">{{ fmt(d.fees.totalDue) }}</text><text class="tb__sum-lb">应缴(元)</text></view>
-          <view class="tb__sum-item"><text class="tb__sum-num">{{ fmt(d.fees.totalPaid) }}</text><text class="tb__sum-lb">已缴</text></view>
+          <view class="tb__sum-item"><text class="tb__sum-num">{{ fmt(d.fees.totalPaid) }}</text><text class="tb__sum-lb">净缴</text></view>
           <view class="tb__sum-item"><text class="tb__sum-num tb__unpaid">{{ fmt(d.fees.unpaid) }}</text><text class="tb__sum-lb">待缴</text></view>
         </view>
 
@@ -48,9 +48,9 @@
           <view v-for="f in d.fees.items" :key="f.feeId" class="list-row tb__item">
             <view class="flex-1">
               <text class="t-md">{{ f.textbookName }}</text>
-              <text class="tb__sub">{{ f.status === 'WAIVED' ? '原应缴' : '应缴' }} {{ fmt(f.amount) }} 元 · 已缴 {{ fmt(f.paidAmount) }} 元</text>
+              <text class="tb__sub">原应缴 {{ fmt(f.amount) }} 元 · 累计已缴 {{ fmt(f.paidAmount) }} 元 · 已退 {{ fmt(f.refundAmount || 0) }} 元</text>
             </view>
-            <MobileStatusTag :status="f.status" :label="f.status === 'WAIVED' ? '已减免' : ''" />
+            <MobileStatusTag :status="f.status" :label="f.status === 'REFUNDED' ? '已退款待退领' : f.status === 'WAIVED' ? (f.refundAmount ? '已退领' : '已减免') : ''" />
           </view>
         </view>
         <view v-if="showFeePagination" class="tb__pages">

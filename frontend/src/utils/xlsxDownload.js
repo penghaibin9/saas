@@ -69,5 +69,20 @@ export function downloadXlsxFromApi(payload = {}) {
   URL.revokeObjectURL(href)
 }
 
+/** 页面持有下载快照；查询条件或身份变化、离开页面时释放对象地址。 */
+export function prepareXlsxDownload(payload = {}) {
+  const filename = String(payload.filename || payload.fileName || '')
+  if (!payload.contentBase64 || !/\.xlsx$/i.test(filename)) {
+    throw new Error('导出内容不完整，请重新生成')
+  }
+  const rowCount = Number(payload.rowCount || 0)
+  if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
+    throw new Error('导出记录数不正确，请重新生成')
+  }
+  const blob = base64ToBlob(payload.contentBase64, payload.mediaType)
+  if (!blob.size) throw new Error('导出文件为空，请重新生成')
+  return { url: URL.createObjectURL(blob), filename, rowCount }
+}
+
 export default downloadXlsxFromApi
 

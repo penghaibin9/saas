@@ -13,7 +13,7 @@ from typing import Any, Literal
 from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from app.core.permissions import require_permission
+from app.core.permissions import require_any_permission, require_permission
 from app.core.response import success
 from app.core.security import get_current_user
 from app.modules.academic_affairs.services import academic_affairs_dynamic_grade_live_authority as live_authority
@@ -51,7 +51,7 @@ class DynamicScoreBody(BaseModel):
 @router.get("/{task_id}/scheme", summary="动态成绩项方案")
 def dynamic_grade_scheme(
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(require_any_permission("academicAffairs.grade.input", "academicAffairs.grade.scheme.manage")),
 ):
     return success(service.get_scheme(task_id, user))
 
@@ -60,7 +60,7 @@ def dynamic_grade_scheme(
 def dynamic_grade_scheme_update(
     body: GradeSchemeBody,
     task_id: int = Path(..., gt=0),
-    user=Depends(require_permission("academicAffairs.grade.input")),
+    user=Depends(require_any_permission("academicAffairs.grade.input", "academicAffairs.grade.scheme.manage")),
 ):
     return success(
         service.configure_scheme(task_id, user, [item.model_dump() for item in body.components]),

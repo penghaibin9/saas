@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -6,7 +7,7 @@ import { emptyConflict, isConflict, captureConflict } from '../src/modules/inter
 const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/views/StudentEvalView.vue', import.meta.url), 'utf8'))
 const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/ {2}components: \{[\s\S]*?ActionReceipt, AppInlineAlert \},/, '').replace('export default', 'return')
 function setup(api = {}, download = async () => {}) {
-  const def = new Function('studentEvalApi', 'downloadAttachment', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', 'ENTERPRISE_EVAL_COMMENT', 'REJECT_STUDENT_EVAL', 'ADVISOR_EVAL_COMMENT', script)(api, download, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} }, [], [], [])
+  const def = componentFactory('studentEvalApi', 'downloadAttachment', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', 'ENTERPRISE_EVAL_COMMENT', 'REJECT_STUDENT_EVAL', 'ADVISOR_EVAL_COMMENT', script)(api, download, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} }, [], [], [])
   const targets = []
   const vm = { ...def.data(), ctx: {}, batchStore: { selectedBatchId: '1', withBatchQuery: q => ({ ...q, batchId: '1' }) }, $route: { query: {}, fullPath: '/student-evals' }, $router: { replace: t => targets.push(t), push: t => targets.push(t) } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)

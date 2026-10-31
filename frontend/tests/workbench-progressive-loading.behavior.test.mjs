@@ -4,6 +4,7 @@ import vm from 'node:vm'
 import test from 'node:test'
 import { setImmediate } from 'node:timers/promises'
 import { runAdminQuery, resetAdminQueryCoordinatorForTest } from '../src/services/performance/queryCoordinator.js'
+import { academicRoleModules, filterAcademicRoleLinks, hasAcademicRoleMenu } from '../src/modules/academicAffairs/config/academicRoleNavigation.js'
 
 function scheduleApi(read, identity = { userId: 'teacher-A', currentRoleCode: 'TEACHER' }) {
   resetAdminQueryCoordinatorForTest()
@@ -66,6 +67,7 @@ function workbench(overrides = {}) {
     .replace(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm, (_, binding) => `const ${binding} = dependencies${binding.startsWith('{') ? '' : '.' + binding}`)
     .replace('export default', 'component =')
   const dependencies = {
+    academicRoleModules, filterAcademicRoleLinks, hasAcademicRoleMenu,
     fetchTodoSummary: async () => ({ role: 'TEACHER', pending: 2 }),
     fetchTodoCount: async () => ({ total: 1 }),
     fetchTodoList: async () => ({ items: [{ todoId: '90071992547409931', typedRouteTarget: '/review/1' }], total: 1 }),
@@ -86,6 +88,20 @@ function workbench(overrides = {}) {
   Object.defineProperty(state, 'recipe', { get: () => component.computed.recipe.call(state) })
   return { state, component }
 }
+
+test('岗位快捷入口使用同一菜单契约，其他中心链接保留且旧教务审核快捷方式被移除', () => {
+  const { state } = workbench({ resolveRecipe: () => ({ quickLinks: [
+    { label: '旧审核入口', to: '/admin/academic-affairs/workload-review' },
+    { label: '帮助', to: '/admin/help' }
+  ] }) })
+  state.ctx = { currentRole: { roleCode: 'COLLEGE_ACADEMIC' }, permissionPatterns: ['academicAffairs.*'], moduleEntitlements: ['academicAffairs'] }
+  assert.equal(state.recipe.quickLinks.length, 9)
+  assert.ok(state.recipe.quickLinks.some(link => link.to === '/admin/help'))
+  assert.equal(state.recipe.quickLinks.some(link => link.to.includes('workload-review')), false)
+  state.ctx.currentRole.roleCode = 'LEADER'
+  assert.equal(state.recipe.quickLinks.length, 3)
+  assert.ok(state.recipe.quickLinks.some(link => link.to === '/admin/academic-affairs?wall=1'))
+})
 
 test('ready business todos render while statistics, approvals, preferences and schedule are still pending', async () => {
   const stats = deferred(), approvals = deferred(), prefs = deferred(), schedule = deferred()

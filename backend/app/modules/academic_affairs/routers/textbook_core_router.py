@@ -35,7 +35,7 @@ class TextbookBody(BaseModel):
     edition: Optional[str] = None
     author: Optional[str] = None
     subject: Optional[str] = None
-    unitPrice: Optional[float] = None
+    unitPrice: Optional[Decimal] = Field(None, ge=0, max_digits=8, decimal_places=2, allow_inf_nan=False)
     isNationalStandard: Optional[bool] = False
     status: Optional[str] = None
 
@@ -153,6 +153,15 @@ def review_batches(status: Optional[str] = None, page: int = Query(1, ge=1), pag
 @router.post("/textbooks/review-batches/{bid}/advance", summary="审核推进（学院→教务→备案公示）")
 def review_advance(body: ReviewAdvanceBody, bid: int = Path(...), user=Depends(require_permission(_TB_REVIEW))):
     return success(textbook_svc.review_batch_advance(user, bid, body.action, body.reason), message="已处理")
+
+
+@router.get("/textbooks/review-batches/{bid}/items", summary="审核批次选用明细")
+def review_items(bid: int = Path(...), page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
+                 user=Depends(require_permission(_TB_REVIEW))):
+    items, total, batch = textbook_read.review_items(user, bid, page, pageSize)
+    data = paginate(items, total, page, pageSize)
+    data["batch"] = batch
+    return success(data)
 
 
 @router.post("/textbooks/order-batches", summary="从已备案选用生成征订批次")

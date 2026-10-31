@@ -7,6 +7,7 @@ from sqlalchemy import func, select
 
 from app.core.exceptions import AppException, not_found
 from app.core.field_crypto import decrypt_field
+from app.core.timeutil import iso_utc
 from app.models import InternshipApplication, InternshipPosition, InternshipRecord, StudentContact
 from app.models.internship_application_material_snapshot import InternshipApplicationMaterialSnapshot
 from app.models.internship_enterprise_application_decision import InternshipEnterpriseApplicationDecision
@@ -96,7 +97,7 @@ def _assert_decision_write_window(
     current_status: str,
     target_status: str,
     now: datetime,
-) -> None:
+) -> datetime | None:
     # A withdrawal is a safety action for an existing ACCEPT_INTENT. It is allowed while the
     # campaign is still OPEN/FROZEN; school approval is checked separately on the application.
     if current_status == "ACCEPT_INTENT" and target_status == "REJECTED":
@@ -104,6 +105,15 @@ def _assert_decision_write_window(
             raise AppException("DATA_CONFLICT", "招聘季已关闭，企业不能再撤回拟接收")
         return
     window_guard.assert_campaign_operation_window(campaign, "ENTERPRISE_DECISION", now=now)
+    if target_status == "ACCEPT_INTENT":
+        bounds = [
+            value for value in (campaign.school_confirm_end_at, campaign.enterprise_access_end_at)
+            if value is not None
+        ]
+        valid_until = min(bounds) if bounds else None
+        if valid_until is not None and valid_until <= now:
+            raise AppException("DATA_CONFLICT", "学校确认/企业访问期限已结束，不能再拟接收")
+        return valid_until
 
 
 def list_owned_applications_in_tx(
@@ -114,6 +124,7 @@ def list_owned_applications_in_tx(
     page_size: int = 20,
     position_id: int | None = None,
     decision_status: str | None = None,
+    keyword: str | None = None,
 ) -> tuple[list[dict], int]:
     page = max(1, int(page or 1))
     page_size = min(100, max(1, int(page_size or 20)))
@@ -145,6 +156,13 @@ def list_owned_applications_in_tx(
         InternshipPosition.is_deleted.is_(False),
         InternshipApplicationMaterialSnapshot.tenant_id == context.tenant_id,
     )
+    if keyword and keyword.strip():
+        term = keyword.strip()
+        if len(term) > 100:
+            raise AppException("VALIDATION_ERROR", "查询内容不能超过100字")
+        query = query.where(
+            InternshipApplicationMaterialSnapshot.school_fact_snapshot_json['realName'].as_string().contains(term, autoescape=True)
+            | InternshipPosition.title.contains(term, autoescape=True))
     if position_id is not None:
         query = query.where(InternshipPosition.id == int(position_id))
     if decision_status:
@@ -182,7 +200,7 @@ def list_owned_applications_in_tx(
             },
             "submissionVersion": int(snapshot.submission_version or 0),
             "materialSnapshotId": str(snapshot.id),
-            "submittedAt": application.submitted_at.isoformat() if application.submitted_at else None,
+            "submittedAt": iso_utc(application.submitted_at),
             "decisionStatus": decision.decision_status if decision else "PENDING",
             "effectStatus": decision.effect_status if decision else None,
             "decisionVersion": int(decision.version or 0) if decision else 0,
@@ -190,16 +208,89 @@ def list_owned_applications_in_tx(
     return items, total
 
 
-def material_detail_in_tx(db, *, context, application_id: int) -> dict:
+def material_detail_in_tx(db, *, context, application_id: int, history_page: int = 1, history_page_size: int = 20) -> dict:
+    if history_page < 1 or not 1 <= history_page_size <= 100:
+        raise AppException("VALIDATION_ERROR", "企业处理历史分页参数不正确")
     application, position = _owned_application_in_tx(db, context=context, application_id=application_id)
+    group = db.scalar(select(InternshipVolunteerGroup).join(InternshipRecord,
+        InternshipRecord.id == InternshipVolunteerGroup.record_id).where(
+        InternshipVolunteerGroup.tenant_id == context.tenant_id,
+        InternshipVolunteerGroup.record_id == application.record_id,
+        InternshipVolunteerGroup.student_id == application.student_id,
+        InternshipVolunteerGroup.batch_id == context.batch_id,
+        InternshipVolunteerGroup.campaign_id == context.campaign_id,
+        InternshipVolunteerGroup.is_deleted.is_(False),
+        InternshipRecord.tenant_id == context.tenant_id,
+        InternshipRecord.student_id == application.student_id,
+        InternshipRecord.batch_id == context.batch_id,
+        InternshipRecord.is_deleted.is_(False),
+    ))
+    if not group:
+        raise not_found("投递关联的实习记录或志愿组不存在")
     snapshot = db.scalar(select(InternshipApplicationMaterialSnapshot).where(
         InternshipApplicationMaterialSnapshot.id == application.material_snapshot_id,
         InternshipApplicationMaterialSnapshot.tenant_id == context.tenant_id,
+        InternshipApplicationMaterialSnapshot.volunteer_group_id == group.id,
+        InternshipApplicationMaterialSnapshot.student_id == application.student_id,
+        InternshipApplicationMaterialSnapshot.batch_id == context.batch_id,
+        InternshipApplicationMaterialSnapshot.campaign_id == context.campaign_id,
     ))
     if not snapshot:
         raise not_found("投递材料快照不存在")
+    decision, material = InternshipEnterpriseApplicationDecision, InternshipApplicationMaterialSnapshot
+    history_query = select(decision).join(material, material.id == decision.material_snapshot_id).where(
+        decision.tenant_id == context.tenant_id, decision.company_id == context.company_id,
+        decision.batch_id == context.batch_id, decision.campaign_id == context.campaign_id,
+        decision.application_id == application.id, decision.position_id == position.id,
+        decision.volunteer_group_id == group.id, decision.is_deleted.is_(False),
+        decision.submission_version == material.submission_version,
+        material.tenant_id == context.tenant_id, material.volunteer_group_id == group.id,
+        material.student_id == application.student_id, material.batch_id == context.batch_id,
+        material.campaign_id == context.campaign_id,
+    )
+    current = db.scalar(history_query.where(decision.material_snapshot_id == snapshot.id))
+    history_total = int(db.scalar(select(func.count()).select_from(history_query.subquery())) or 0)
+    history = list(db.scalars(history_query.order_by(decision.submission_version.desc(), decision.id.desc())
+        .offset((history_page - 1) * history_page_size).limit(history_page_size)))
+    now, actions, reason = datetime.utcnow(), [], ""
+    if application.status == "APPROVED" or group.status == "APPROVED":
+        reason = "学校已确认岗位，企业处理已结束"
+    elif application.status != "PENDING_REVIEW" or group.status not in {"SUBMITTED", "LOCKED"}:
+        reason = "学生当前投递已结束或待补正，不能继续处理"
+    elif group.current_material_snapshot_id != snapshot.id or group.submission_version != snapshot.submission_version:
+        reason = "当前展示为历史投递材料，不能继续处理"
+    elif group.status == "LOCKED" and (not group.teacher_confirm_deadline or group.teacher_confirm_deadline <= now):
+        reason = "学校确认期限已过，请等待学校处理或学生重新投递"
+    elif current and (current.effect_status != "ACTIVE" or (current.valid_until and current.valid_until <= now)):
+        reason = "本次企业处理已失效或进入后续流程，不能继续修改"
+    else:
+        campaign = _campaign_in_tx(db, context=context)
+        status = current.decision_status if current else "PENDING"
+        for target in sorted(_ALLOWED.get(status, set())):
+            if target == "ACCEPT_INTENT" and group.status == "LOCKED" and group.locked_application_id != application.id:
+                continue
+            try:
+                _assert_decision_write_window(campaign, current_status=status, target_status=target, now=now)
+            except AppException:
+                continue
+            actions.append(target)
+        if not actions:
+            reason = "当前申请暂无可办理的企业处理动作"
+    from app.modules.internship.services.internship_school_volunteer_service import _decision
     return {
         "applicationId": str(application.id),
+        "volunteerNo": int(application.volunteer_no or 0),
+        "submittedAt": iso_utc(application.submitted_at),
+        "applicationStatus": application.status,
+        "groupStatus": group.status,
+        "decisionStatus": current.decision_status if current else "PENDING",
+        "effectStatus": current.effect_status if current else None,
+        "decisionHistory": [_decision(row) for row in history],
+        "decisionHistoryTotal": history_total,
+        "decisionHistoryPage": history_page,
+        "decisionHistoryPageSize": history_page_size,
+        "allowedDecisionActions": actions,
+        "decisionDisabledReason": reason,
         "positionId": str(position.id),
         "positionTitle": position.title,
         "applicationStatement": application.application_statement,
@@ -401,7 +492,7 @@ def set_decision_in_tx(
         raise AppException("DATA_CONFLICT", f"企业决定不能从 {current} 变更为 {target}")
 
     campaign = _campaign_in_tx(db, context=context)
-    _assert_decision_write_window(
+    valid_until = _assert_decision_write_window(
         campaign, current_status=current, target_status=target, now=now,
     )
     text = str(reason or "").strip()
@@ -425,13 +516,7 @@ def set_decision_in_tx(
     decision.version = int(decision.version or 0) + 1
 
     if target == "ACCEPT_INTENT":
-        bounds = [
-            value for value in (campaign.school_confirm_end_at, campaign.enterprise_access_end_at)
-            if value is not None
-        ]
-        decision.valid_until = min(bounds) if bounds else None
-        if decision.valid_until is not None and decision.valid_until <= now:
-            raise AppException("DATA_CONFLICT", "学校确认/企业访问期限已结束，不能再拟接收")
+        decision.valid_until = valid_until
         group_svc.lock_for_accept_intent_in_tx(
             db,
             group=group,

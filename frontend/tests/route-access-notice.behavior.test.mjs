@@ -21,8 +21,8 @@ test('school module denial is distinguished from an account permission denial', 
 
 const routerSource = fs.readFileSync(new URL('../src/router/index.js', import.meta.url), 'utf8')
 const guardBody = routerSource.slice(routerSource.indexOf('router.beforeEach(async (to, from, next) => {') + 'router.beforeEach(async (to, from, next) => {'.length, routerSource.lastIndexOf('\n})'))
-const guard = new Function('getToken', 'isPlatformPrincipal', 'GUARDED_MODULES', 'getPermissionPatterns', 'canEnterRoute', 'routeAccessNotice', `return async (to, from, next) => {${guardBody.replace('import.meta.env.PROD', 'false')}}`)(
-  () => 'test', () => false, GUARDED_MODULES, () => [], canEnterRoute, routeAccessNotice)
+const guard = new Function('currentUserFromToken', 'getModuleEntitlements', 'hasAcademicRoleMenu', 'academicRoleAllows', 'getToken', 'isPlatformPrincipal', 'GUARDED_MODULES', 'getPermissionPatterns', 'canEnterRoute', 'routeAccessNotice', `return async (to, from, next) => {${guardBody.replace('import.meta.env.PROD', 'false')}}`)(
+  () => ({}), () => [], () => false, () => true, () => 'test', () => false, GUARDED_MODULES, () => [], canEnterRoute, routeAccessNotice)
 test('denied school deep link stays at the requested URL with a blocking workspace', async () => {
   clearPermissionPatterns(); setPermissionPatterns([]); setModuleEntitlements(['studentProfile'])
   const to = { path: '/admin/student/list', fullPath: '/admin/student/list?page=2', meta: { ...meta } }

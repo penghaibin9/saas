@@ -113,6 +113,7 @@ ROLE_DEFAULT_SCOPE: dict[str, tuple[str, str]] = {
     "SECURITY_AUDITOR": ("SCHOOL", "本校审计日志（只读）"),
     "LEADER": ("SCHOOL", "全校汇总（只读、脱敏）"),
     "COLLEGE_ADMIN": ("COLLEGE", "所属学院"),
+    "COLLEGE_ACADEMIC": ("COLLEGE", "所属学院教务"),
     "ACADEMIC_ADMIN": ("SCHOOL", "全校教务域"),
     "ACADEMIC_TEACHER": ("ASSIGNED", "本人教学任务"),
     "STUDENT_AFFAIRS_ADMIN": ("SCHOOL", "全校学工域"),

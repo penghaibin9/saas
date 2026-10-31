@@ -64,6 +64,8 @@ _AFFAIRS_MANAGEMENT = {"studentAffairs." + action for action in (
 )}
 
 _COLLEGE_INTERNSHIP = {
+    "internship.payroll.view", "internship.payroll.review", "internship.rotation.manage",
+    "internship.material.review", "internship.employment.view", "internship.employment.review",
     "internship.dashboard.view",
     "internship.student.view", "internship.student.manage", "internship.student.export",
     "internship.student.eligibility.review",
@@ -110,6 +112,103 @@ _COLLEGE_INTERNSHIP = {
     "internship.stats.view", "internship.stats.export",
 }
 
+# 校领导（D17）：只读。原 "*.view" + "*.stat" 后缀通配会放行教务全部 49 个查看类办理页，
+# 通配又不能做减法，故改为显式清单：非教务部分 = 2026-10-24 通配在权限目录上的展开结果（原样冻结，
+# 新增查看码不再自动授予领导，默认拒绝）；教务只留大屏 / 统计 / 统计快照。
+_LEADER_NON_ACADEMIC_READ = {
+    "approval.done.view", "approval.returned.view", "approval.template.view",
+    "campus.record.view",
+    "campusService.audit.view", "campusService.dashboard.view", "campusService.discipline.view",
+    "campusService.dorm.view", "campusService.grant.view", "campusService.student.view",
+    "campusService.workOrder.view",
+    "dataCenter.dashboard.view", "dataCenter.lifecycle.view", "dataCenter.ranking.view",
+    "dataCenter.report.view", "dataCenter.risk.view",
+    "employment.audit.view", "employment.company.view", "employment.dashboard.view",
+    "employment.followup.view", "employment.job.view", "employment.material.view",
+    "employment.student.view", "employment.unemployed.view",
+    "graduationDesign.archive.view", "graduationDesign.audit.view", "graduationDesign.batch.view",
+    "graduationDesign.dashboard.view", "graduationDesign.defense.view",
+    "graduationDesign.final.view", "graduationDesign.grade.view", "graduationDesign.guidance.view",
+    "graduationDesign.plagiarism.view", "graduationDesign.proposal.view",
+    "graduationDesign.review.view", "graduationDesign.risk.view", "graduationDesign.stats.view",
+    "graduationDesign.student.view", "graduationDesign.taskbook.view",
+    "graduationDesign.template.view", "graduationDesign.topic.view",
+    "internship.agreement.view", "internship.application.view", "internship.archive.view",
+    "internship.attendance.view", "internship.batch.view", "internship.change.view",
+    "internship.communication.view", "internship.complaint.view", "internship.compliance.view",
+    "internship.dashboard.view", "internship.employment.view",
+    "internship.enterprise.contact.view", "internship.enterprise.inspection.view",
+    "internship.enterprise.mentor.view", "internship.enterprise.view",
+    "internship.eval.enterprise.view", "internship.eval.enterprise_by_student.view",
+    "internship.eval.position_by_student.view", "internship.eval.self.view",
+    "internship.guidance.insufficient.view", "internship.guidance.view",
+    "internship.insurance.view", "internship.leave.view", "internship.makeup.view",
+    "internship.match.conflict.view", "internship.match.intention.view",
+    "internship.match.log.view", "internship.match.recommend.view", "internship.match.result.view",
+    "internship.plan.view", "internship.position.match.view", "internship.position.view",
+    "internship.recruitment.view", "internship.report.view", "internship.risk.view",
+    "internship.safety.view", "internship.score.view", "internship.stats.enterprise.view",
+    "internship.stats.position.view", "internship.stats.score.view", "internship.stats.view",
+    "internship.student.material.view", "internship.student.view", "internship.task.view",
+    "internship.visit.plan.view", "internship.visit.view",
+    "orientation.payment.view", "orientation.student.view",
+    "student.profile.view",
+    "studentAffairs.activity.view", "studentAffairs.aid.view", "studentAffairs.archive.view",
+    "studentAffairs.class.view", "studentAffairs.club.view", "studentAffairs.counselorEval.view",
+    "studentAffairs.dashboard.view", "studentAffairs.discipline.view", "studentAffairs.dorm.view",
+    "studentAffairs.funding.view", "studentAffairs.homeSchool.view", "studentAffairs.league.view",
+    "studentAffairs.leave.view", "studentAffairs.org.view", "studentAffairs.orientation.view",
+    "studentAffairs.risk.psyDetail.view", "studentAffairs.risk.view", "studentAffairs.stats.view",
+    "studentAffairs.student.view", "studentAffairs.talk.view",
+    "system.audit.login.view", "system.audit.operation.view", "system.audit.sensitive.view",
+    "system.config.feature.view", "system.config.view", "system.dashboard.view",
+    "system.integration.sync.view", "system.migration.view", "system.org.view",
+    "system.role.template.view", "system.role.view", "system.scope.view",
+    "system.user.exception.view", "system.user.view",
+    "systemAdmin.academicCalendar.view", "systemAdmin.audit.login.view",
+    "systemAdmin.audit.operation.view", "systemAdmin.audit.sensitive.view",
+    "systemAdmin.audit.view", "systemAdmin.communication.view", "systemAdmin.config.feature.view",
+    "systemAdmin.config.view", "systemAdmin.dashboard.view", "systemAdmin.fileGovernance.view",
+    "systemAdmin.implementation.installed.view", "systemAdmin.implementation.preset.view",
+    "systemAdmin.implementation.view", "systemAdmin.integration.sync.view", "systemAdmin.job.view",
+    "systemAdmin.migration.view", "systemAdmin.org.view", "systemAdmin.phoneBinding.policy.view",
+    "systemAdmin.phoneBinding.view", "systemAdmin.role.template.view", "systemAdmin.role.view",
+    "systemAdmin.scope.view", "systemAdmin.security.view", "systemAdmin.user.exception.view",
+    "systemAdmin.user.sensitive.view", "systemAdmin.user.view", "systemAdmin.workflow.view",
+    "workbench.message.statistics.view",
+    "workflow.home.view", "workflow.permission.view", "workflow.process.view",
+    "workflow.role.view", "workflow.task.view",
+}
+_LEADER_ACADEMIC_READ = {
+    "academicAffairs.dashboard.view", "academicAffairs.stats.view", "academicAffairs.stats.snapshot.view",
+}
+
+# 学院教务（COLLEGE_ACADEMIC，文档 2 第 2.1 节）：本学院办理岗。只给查看与本院办理；
+# 一切审核（review 由 R2 审批人节点在单据级授予）、发布、归档、导入导出、删除、校级设置均不授予。
+# 数据范围由各域服务按本学院收敛（见 academic_affairs_college_roles.COLLEGE_ACADEMIC_ROLES）。
+_COLLEGE_ACADEMIC = {
+    *_WORKBENCH_SELF, "approval.dashboard.view",
+    # 查看
+    "academicAffairs.dashboard.view", "academicAffairs.term.view", "academicAffairs.calendar.view",
+    "academicAffairs.timeslot.view", "academicAffairs.classTimeBand.view", "academicAffairs.org.view",
+    "academicAffairs.course.view", "academicAffairs.program.view", "academicAffairs.teachingTask.view",
+    "academicAffairs.schedule.view", "academicAffairs.scheduleChange.view", "academicAffairs.exam.view",
+    "academicAffairs.grade.view", "academicAffairs.grade.policy.view", "academicAffairs.roster.view",
+    "academicAffairs.roster.correction.view", "academicAffairs.registration.view",
+    "academicAffairs.statusChange.view", "academicAffairs.warning.view", "academicAffairs.textbook.view",
+    "academicAffairs.classroom.view", "academicAffairs.lab.view", "academicAffairs.resourceOccupancy.view",
+    "academicAffairs.graduation.view", "academicAffairs.attendance.view", "academicAffairs.evaluation.view",
+    "academicAffairs.selection.view", "academicAffairs.makeup.view", "academicAffairs.process.view",
+    "academicAffairs.stats.view",
+    # 本院办理
+    "academicAffairs.teachingTask.assign", "academicAffairs.program.manage", "academicAffairs.program.submit",
+    "academicAffairs.course.manage", "academicAffairs.grade.scheme.manage",
+    "academicAffairs.scheduleChange.apply", "academicAffairs.statusChange.apply",
+    "academicAffairs.roster.correction.apply", "academicAffairs.warning.handle",
+    # 本院学籍维护（D21）：可补录、维护；恢复已删除学籍只归教务处管理员
+    "student.profile.view", "student.profile.create", "student.profile.update",
+}
+
 ROLE_PERMISSIONS: dict[str, set[str]] = {
     "PLATFORM_SUPER_ADMIN": {"*"},
     # PLAT-15: platform duties are deliberately separate from school roles.
@@ -145,7 +244,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                          "internship.archive.view", "internship.complaint.view",
                          "internship.compliance.view",
                          *_WORKBENCH_SELF, "dataCenter.*"},
-    "LEADER": {"audit.view", "*.view", "*.stat", *_WORKBENCH_SELF},  # 校/院领导：只读驾驶舱；显式补工作台自助权限
+    "LEADER": {"audit.view", *_LEADER_NON_ACADEMIC_READ, *_LEADER_ACADEMIC_READ, *_WORKBENCH_SELF},
     "COLLEGE_ADMIN": {"studentAffairs.*", "academicAffairs.*", "campusService.*", "graduationDesign.*",
                       *_COLLEGE_INTERNSHIP, "audit.view", *_WORKBENCH_SELF, "approval.dashboard.view",
                       "student.profile.view", "student.profile.manage",
@@ -159,6 +258,7 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
                       "workbench.message.withdraw", "workbench.message.statistics.view",
                       "workbench.message.recipient.view",
                       "workbench.message.emergency.approve"},  # 本院（范围另行收敛）；实习学院负责人本院全权，成绩发布等超高危由端点层校级再收敛
+    "COLLEGE_ACADEMIC": _COLLEGE_ACADEMIC,
     # 任课教师：2026-07-19 起从 academicAffairs.* 通配收窄为显式清单（教务中心测试报告
     # Bug#3 越权整改的完整版）。原则：教学职责所需的查看/录入/发起/流程节点动作显式授予，
     # 数据范围仍由 service 层收敛（本人课程/COURSE/仅本人课表等）；一切管理/审批/发布/
@@ -392,6 +492,8 @@ ROLE_PERMISSIONS: dict[str, set[str]] = {
     # 校内指导教师：本人指导学生（范围由 scope 收敛）——工作台/学生/打卡请假审批/周报批阅/指导巡访/风险处理/评价，看企业岗位与匹配结果
     "INTERN_MENTOR": {
         *_WORKBENCH_SELF,
+        "internship.payroll.view", "internship.payroll.review", "internship.rotation.manage",
+        "internship.material.review", "internship.employment.view", "internship.employment.review",
         # 请假审批页必须先加载当前实习批次；只授予读取上下文，不授予任何批次配置或写操作。
         "internship.guide.*", "internship.dashboard.view", "internship.batch.view",
         "internship.student.view", "internship.student.material.view",

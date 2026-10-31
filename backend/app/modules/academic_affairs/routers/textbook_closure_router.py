@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Path, Query
 from pydantic import BaseModel, Field
+from decimal import Decimal
 
 from app.core.permissions import require_permission
 from app.core.response import paginate, success
@@ -18,6 +19,16 @@ router = APIRouter(prefix="/academic-affairs/textbooks", tags=["教务中心-教
 
 class TextbookReasonBody(BaseModel):
     reason: str = Field(..., min_length=5, max_length=500)
+
+
+class TextbookRefundBody(TextbookReasonBody):
+    expectedPaidAmount: Decimal = Field(..., gt=0, max_digits=8, decimal_places=2)
+
+
+@router.post("/fee-ledger/{feeId}/refund", summary="登记已实际完成的全额退款")
+def register_refund(body: TextbookRefundBody, feeId: int = Path(...),
+                    user=Depends(require_permission("academicAffairs.textbook.fee.manage"))):
+    return success(textbook_svc.register_refund(user, feeId, body.reason, body.expectedPaidAmount), message="退款已登记，请继续办理退领")
 
 
 @router.get("/review-candidates", summary="当前学期待审核教材选用候选")

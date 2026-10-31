@@ -92,7 +92,7 @@ def create_exam(user, body) -> dict:
             raise _bad("考试名称必填")
         cat = (getattr(body, "category", None) or "SKILL").upper()
         if cat not in CATEGORIES:
-            raise _bad("考试类别非法（CET/PUTONGHUA/SKILL/OTHER）")
+            raise _bad("请选择有效的考试类别")
         e = AaLevelExam(tenant_id=_tid(), exam_name=name, category=cat,
                         level=getattr(body, "level", None),
                         exam_date=getattr(body, "examDate", None),
@@ -137,9 +137,9 @@ def transition(user, exam_id, action) -> dict:
         act = (action or "").upper()
         legal = {"OPEN": ("DRAFT",), "CLOSE": ("OPEN",), "FINISH": ("CLOSED",)}
         if act not in legal:
-            raise _bad("无效动作（OPEN/CLOSE/FINISH）")
+            raise _bad("请选择开放报名、截止报名或完成考试")
         if e.status not in legal[act]:
-            raise _invalid(f"当前状态 {e.status} 不可执行 {act}")
+            raise _invalid("考试状态已变化，请刷新后按当前阶段办理")
         if act == "FINISH":
             pend = db.query(AaLevelExamReg).filter(
                 AaLevelExamReg.tenant_id == _tid(), AaLevelExamReg.exam_id == e.id,
@@ -289,6 +289,14 @@ def my_registration_statuses(user, exam_ids) -> dict[str, str]:
 def list_regs(user, exam_id, status=None, page=1, page_size=100):
     """报名名单(教务处口径)。收敛 TENANT_ALL,防越范围读全校报名/缴费/成绩(修数据范围红线)。"""
     from app.models import AaLevelExamReg
+    if isinstance(page, bool) or isinstance(page_size, bool):
+        raise _bad("页码格式不正确")
+    try:
+        page, page_size = int(page), int(page_size)
+    except (TypeError, ValueError) as exc:
+        raise _bad("页码格式不正确") from exc
+    if not 1 <= page <= 100000 or not 1 <= page_size <= 200:
+        raise _bad("页码须大于等于1，每页最多200条")
     with session() as db:
         _require_school(user, db)
         _get_exam(db, exam_id)
@@ -297,18 +305,34 @@ def list_regs(user, exam_id, status=None, page=1, page_size=100):
             AaLevelExamReg.is_deleted.is_(False))
         if status:
             q = q.filter(AaLevelExamReg.status == status)
-        rows = q.order_by(AaLevelExamReg.id).all()
-        return [_r_dto(r) for r in rows[(page - 1) * page_size: page * page_size]], len(rows)
+        total = q.count()
+        rows = q.order_by(AaLevelExamReg.id).offset((page - 1) * page_size).limit(page_size).all()
+        return [_r_dto(r) for r in rows], total
+
+
+def _locked_registration(db, reg_id):
+    from app.models import AaLevelExamReg
+    exam_id = db.query(AaLevelExamReg.exam_id).filter(
+        AaLevelExamReg.id == int(reg_id), AaLevelExamReg.tenant_id == _tid(),
+        AaLevelExamReg.is_deleted.is_(False),
+    ).scalar()
+    if not exam_id:
+        raise not_found("报名记录不存在")
+    exam = _get_exam(db, exam_id, for_update=True)
+    row = db.query(AaLevelExamReg).filter(
+        AaLevelExamReg.id == int(reg_id), AaLevelExamReg.exam_id == exam.id,
+        AaLevelExamReg.tenant_id == _tid(), AaLevelExamReg.is_deleted.is_(False),
+    ).with_for_update().first()
+    if not row:
+        raise not_found("报名记录不存在")
+    return exam, row
 
 
 def confirm_fee(user, reg_id) -> dict:
     """教务缴费确认（UNPAID→PAID，留痕）。"""
-    from app.models import AaLevelExamReg
     with session() as db:
         _require_school(user, db)
-        r = db.get(AaLevelExamReg, int(reg_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("报名记录不存在")
+        _exam, r = _locked_registration(db, reg_id)
         if r.status != "REGISTERED":
             raise _invalid("仅有效报名可确认缴费")
         if r.fee_status == "PAID":
@@ -321,28 +345,26 @@ def confirm_fee(user, reg_id) -> dict:
 
 def enter_result(user, reg_id, body) -> dict:
     """成绩录入：分数制按合格线判定；结论制直接录 PASS/FAIL；通过可回填证书号。"""
-    from app.models import AaLevelExamReg
     with session() as db:
         _require_school(user, db)
-        r = db.get(AaLevelExamReg, int(reg_id))
-        if not r or r.is_deleted or r.tenant_id != _tid():
-            raise not_found("报名记录不存在")
-        e = _get_exam(db, r.exam_id)
+        e, r = _locked_registration(db, reg_id)
         if e.status not in ("CLOSED", "FINISHED"):
             raise _invalid("请先截止报名再录成绩")
         if r.status == "CANCELLED":
             raise _invalid("已取消的报名不可录成绩")
         score = getattr(body, "score", None)
         result = (getattr(body, "result", None) or "").upper() or None
+        if e.pass_line is not None and score is None:
+            raise _bad("本考试按合格线判定，请填写分数")
         if score is not None:
             score = int(score)
             if not (0 <= score <= 750):
                 raise _bad("分数非法")
             r.score = score
-            if e.pass_line:
+            if e.pass_line is not None:
                 result = "PASS" if score >= e.pass_line else "FAIL"
         if result not in ("PASS", "FAIL"):
-            raise _bad("须提供结论（PASS/FAIL）或在设置合格线后录入分数")
+            raise _bad("请选择通过或未通过；设置合格线的考试请填写分数")
         r.result = result
         r.cert_no = getattr(body, "certNo", None) if result == "PASS" else None
         r.status = "SCORED"

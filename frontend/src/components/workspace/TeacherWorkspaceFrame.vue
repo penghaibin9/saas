@@ -1,5 +1,5 @@
 <template>
-  <div class="tw-frame" :class="{ focused, 'mobile-open': mobileOpen, 'academic-workspace': activeCenter === 'academic-affairs', 'system-workspace': activeCenter === 'system' }" :style="tokens">
+  <div class="tw-frame" :class="{ focused, 'mobile-open': mobileOpen, 'academic-workspace': activeCenter === 'academic-affairs', 'academic-foundation': isAcademicFoundation, 'system-workspace': activeCenter === 'system' }" :style="tokens">
     <div class="tw-centers"><nav aria-label="一级菜单"><button v-for="center in centers" :key="center.key" :class="{ selected: center.key === activeCenter }" @click="navigate(center.path)">{{ center.label }}</button></nav><WorkspaceDeskUtilities scope-mode :scope-name="scopeName" :identity-key="identityKey" /></div>
     <div class="tw-body">
       <div class="tw-rails">
@@ -10,7 +10,7 @@
               <button type="button" :aria-expanded="expandedMenu" @click="expandedMenu = !expandedMenu; menuQuery = ''">{{ expandedMenu ? '收起完整目录' : '全部业务与设置' }}</button>
               <input v-if="expandedMenu" v-model="menuQuery" type="search" aria-label="搜索本模块业务" placeholder="搜索本模块业务" />
             </div>
-            <nav :aria-label="level.title"><template v-for="(item, index) in level.items" :key="item.id || item.key"><p v-if="level.key === 'third' && expandedMenu && item.menuSection && item.menuSection !== level.items[index - 1]?.menuSection" class="tw-directory-section">{{ item.menuSection }}</p><button :title="item.disabled ? `${item.label} · ${item.badge || '暂不可用'}` : item.label" :disabled="item.disabled || (level.key === 'third' && !item.path)" :aria-label="item.disabled ? `${item.label} · ${item.badge || '暂不可用'}` : item.label" :class="{ selected: level.active === (item.id || item.key) }" :aria-current="level.active === (item.id || item.key) ? 'page' : undefined" @click="selectItem(level.key, item)"><component v-if="level.key === 'second'" :is="menuIcon(item)" class="tw-menu-icon" :class="{ 'tw-menu-icon--configured': MENU_ICONS[item.menuIcon] }" aria-hidden="true" /><span class="short-label">{{ workspaceShort(item) }}</span><span class="full-label">{{ item.label }}</span></button></template><p v-if="menuQuery && !level.items.length" class="tw-directory-section">未找到相关业务</p></nav>
+            <nav :aria-label="level.title"><template v-for="(item, index) in level.items" :key="item.id || item.key"><p v-if="level.key === 'third' && (expandedMenu || isAcademicFoundation) && item.menuSection && item.menuSection !== level.items[index - 1]?.menuSection" class="tw-directory-section"><component v-if="isAcademicFoundation" :is="foundationSectionIcons[item.menuSection]" class="tw-section-icon" aria-hidden="true" />{{ item.menuSection }}</p><button :title="item.disabled ? `${item.label} · ${item.badge || '暂不可用'}` : item.label" :disabled="item.disabled || (level.key === 'third' && !item.path)" :aria-label="item.disabled ? `${item.label} · ${item.badge || '暂不可用'}` : item.label" :class="{ selected: level.active === (item.id || item.key) }" :aria-current="level.active === (item.id || item.key) ? 'page' : undefined" @click="selectItem(level.key, item)"><component v-if="level.key === 'second'" :is="menuIcon(item)" class="tw-menu-icon" :class="{ 'tw-menu-icon--configured': MENU_ICONS[item.menuIcon] }" aria-hidden="true" /><span class="short-label">{{ workspaceShort(item) }}</span><span class="full-label">{{ item.label }}</span></button></template><p v-if="menuQuery && !level.items.length" class="tw-directory-section">未找到相关业务</p></nav>
           </div>
           <button class="tw-pin" :aria-label="`${prefs[level.key] === 'auto' ? '固定' : '取消固定'}${level.title}`" :aria-pressed="prefs[level.key] !== 'auto'" @click="prefs[level.key] = prefs[level.key] === 'auto' ? 'compact' : 'auto'">{{ prefs[level.key] === 'auto' ? '固定' : '已固定' }}</button>
         </aside>
@@ -85,6 +85,8 @@ const expandedMenu = ref(false), menuQuery = ref('')
 watch(() => selectedModule.value || props.activeModule, () => { expandedMenu.value = false; menuQuery.value = '' })
 const hasSecondaryMenu = computed(() => pages.value.some(item => item.moduleKey === selected.value?.key && item.menuSecondary && !item.workspaceHidden))
 const selected = computed(() => props.modules.find(item => item.key === (selectedModule.value || props.activeModule)) || props.modules[0])
+const isAcademicFoundation = computed(() => props.activeCenter === 'academic-affairs' && selected.value?.key === 'aa-terms')
+const foundationSectionIcons = { '学期与作息': Calendar, '学院与班级': OfficeBuilding, '核对与统计': DataAnalysis }
 const levels = computed(() => [{ key: 'second', title: '二级菜单', heading: props.centers.find(center => center.key === props.activeCenter)?.label || '业务中心', items: props.modules, active: selected.value?.key }, { key: 'third', title: '三级菜单', heading: selected.value?.label, items: workspaceMenuItems(pages.value, selected.value?.key, currentMenuId.value, expandedMenu.value, menuQuery.value), active: expandedMenu.value ? currentPage.value?.id : currentMenuId.value }])
 const horizontalLevel = computed(() => props.horizontalModule && selected.value?.key === props.horizontalModule ? levels.value[1] : null)
 const railLevels = computed(() => horizontalLevel.value ? levels.value.slice(0, 1) : levels.value)
@@ -251,4 +253,16 @@ function tabKeydown(event) { if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].inc
 .tw-rail .full-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 @media(hover:hover){.tw-rail.auto .tw-rail-body:hover,.tw-rail.auto .tw-rail-body:focus-within{width:152px}}
 .tw-shortcut-icon{display:grid;place-items:center;width:36px;height:36px;border-radius:11px;color:#fff;flex:none}.tw-shortcut-icon svg{width:22px;height:22px}.tw-dock>button>span:last-child{max-width:84px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--t3)}
+.academic-foundation .tw-rail.full { width: 190px; flex-basis: 190px; }
+.academic-foundation .tw-rail.full nav button { min-height: 44px; font-size: 14px; padding-inline: 16px; }
+.academic-foundation .tw-rail.tertiary.full nav button { padding-left: 26px; }
+.academic-foundation .tw-rail nav button.selected { box-shadow: inset 3px 0 var(--pri); }
+.academic-foundation .tw-directory-section { align-items: center; gap: 8px; margin: 20px 12px 10px; color: var(--t2, var(--t3)); font-size: 13px; line-height: 1.5; }
+.academic-foundation .tw-rail.full .tw-directory-section { display: flex; }
+.tw-section-icon { width: 18px; height: 18px; flex: none; }
+.academic-foundation .tw-main { padding: 20px 22px; }
+@media (max-width: 900px) {
+  .academic-foundation .tw-rail.full { width: 170px; flex-basis: 170px; }
+  .academic-foundation .tw-main { padding: 14px 10px; }
+}
 </style>

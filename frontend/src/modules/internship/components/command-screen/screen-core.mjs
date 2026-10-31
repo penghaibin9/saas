@@ -11,6 +11,7 @@ export const ROUTES = Object.freeze({
   attendance: ['/admin/internship/attendance', 'internship.attendance.view'],
   exceptions: ['/admin/internship/exceptions', 'internship.attendance.view'],
   reports: ['/admin/internship/reports', 'internship.report.view'],
+  leaves: ['/admin/internship/leaves', 'internship.leave.view'],
   guidance: ['/admin/internship/guidance', 'internship.guidance.view'],
   evaluation: ['/admin/internship/enterprise-evals', 'internship.eval.enterprise.view'],
   scores: ['/admin/internship/scores', 'internship.score.view'],
@@ -18,7 +19,7 @@ export const ROUTES = Object.freeze({
   risks: ['/admin/internship/risk-disposal', 'internship.risk.handle']
 })
 export const REQUIRED_PERMISSIONS = [...new Set([
-  'internship.stats.view', 'internship.dashboard.view', ...Object.values(ROUTES).map(v => v[1])
+  'internship.stats.view', 'internship.dashboard.view', 'internship.leave.review', ...Object.values(ROUTES).map(v => v[1])
 ])]
 export const METRIC_LABELS = Object.freeze({
   placementRate: '实习落实率', matchRate: '岗位匹配率', agreementSignRate: '协议签署率',
@@ -67,10 +68,16 @@ export function workRoute(item, context) {
   if (item.kind === 'RISK') { key = 'risks'; path = '/admin/internship/risk-disposal' }
   else if (item.kind === 'ATTENDANCE_EXCEPTION') { key = 'exceptions'; path = `/admin/internship/exceptions/${item.objectId}` }
   else if (item.kind === 'WEEKLY_REPORT') { key = 'reports'; path = `/admin/internship/reports/${item.objectId}` }
+  else if (['DAILY_REPORT','MONTHLY_REPORT','SUMMARY_REPORT'].includes(item.kind)) { key = 'reports'; path = `/admin/internship/process-reports/${item.objectId}` }
+  else if (['LEAVE_REVIEW', 'LEAVE_RETURN'].includes(item.kind)) {
+    if (!can(context, 'internship.leave.review')) return null
+    key = 'leaves'; path = '/admin/internship/leaves'
+  }
   else return null
   if (!routeFor(key, context)) return null
   const q = new URLSearchParams({ batchId: String(context.batchId) })
   if (key === 'risks') q.set('id', String(item.objectId))
+  if (key === 'leaves') { q.set('id', String(item.objectId)); q.set('panel', item.kind === 'LEAVE_REVIEW' ? 'pending' : 'return') }
   return `${path}?${q}`
 }
 export function metricOf(list, key) {
@@ -82,7 +89,7 @@ export function metricOf(list, key) {
   const empty = denominator === 0
   const state = invalid ? 'anomaly' : empty ? 'empty' : r === null ? 'missing' : 'ok'
   const note = ['enterpriseEvalRate', 'studentEvalRate'].includes(key)
-    ? '当前指标说明与系统分母描述不一致。本屏按系统返回的分子、分母显示，不能作为已核定的监管报表。'
+    ? '统计定义待核对，当前数据不用于正式报表。'
     : (raw.note || raw.definition?.note || '沿用实习统计服务口径')
   return { key, label: METRIC_LABELS[key] || String(raw.label || key), numerator, denominator,
     rate: state === 'ok' ? r : null, state, note,
@@ -108,6 +115,12 @@ function counter(data, key) { return count((Array.isArray(data?.counters) ? data
 /** Backend percentages are used as returned; only chart shares use count / sum. */
 export function project(overview, dashboard, trends, context, issues = [], extension = null) {
   const metrics = Object.fromEntries(Object.keys(METRIC_LABELS).map(key => [key, metricOf(overview.metrics, key)]))
+  const partial = Array.isArray(overview.partial) ? overview.partial : []
+  const employmentIssue = partial.find(item => item?.key === 'employment')
+  if (employmentIssue) {
+    const note = String(employmentIssue.status || '').toUpperCase() === 'NOT_CONFIGURED' ? '就业及帮扶统计尚未接通。' : String(employmentIssue.message || '就业及帮扶统计暂不可用。')
+    for (const key of ['employmentRate', 'helpCoverRate']) metrics[key] = { ...metrics[key], state:'unavailable', rate:null, numerator:null, denominator:null, note }
+  }
   const total = counter(overview, 'totalStudents'), onboard = counter(overview, 'onboardStudents')
   const flowRaw = Array.isArray(dashboard?.flow) ? dashboard.flow : []
   const states = flowRaw.map(f => ({ label: String(f.label || ''), value: count(f.value) })).filter(f => f.label && f.value !== null)
@@ -116,7 +129,7 @@ export function project(overview, dashboard, trends, context, issues = [], exten
   const work = (Array.isArray(dashboard?.workItems) ? dashboard.workItems : []).slice(0, 8).map(item => ({
     kind: item.kind, objectId: /^\d+$/.test(String(item.objectId || '')) ? String(item.objectId) : '',
     tone: item.tone === 'danger' ? 'danger' : 'warning', route: workRoute(item, context),
-    label: ({ RISK: '风险跟进', ATTENDANCE_EXCEPTION: '考勤核实', WEEKLY_REPORT: '周报批阅' })[item.kind] || '待核实事项'
+    label: ({ RISK: '风险跟进', ATTENDANCE_EXCEPTION: '考勤核实', WEEKLY_REPORT: '周报批阅', DAILY_REPORT:'日报批阅', MONTHLY_REPORT:'月报批阅', SUMMARY_REPORT:'总结批阅', LEAVE_REVIEW: '请假审批', LEAVE_RETURN: '返岗确认' })[item.kind] || '待核实事项'
   }))
   const distribution = (Array.isArray(overview.scoreDistribution) ? overview.scoreDistribution : []).map(d => ({
     label: String(d.bucket || ''), count: count(d.count)
@@ -126,6 +139,7 @@ export function project(overview, dashboard, trends, context, issues = [], exten
     key: s.key, label: String(s.label || s.key), points: (Array.isArray(s.points) ? s.points : []).filter(p => /^\d{4}-\d{2}$/.test(p.month)).slice(-12).map(p => ({ month: p.month, value: count(p.value) }))
   }))
   const extra = normalizeExtension(extension, total)
+  if (employmentIssue) extra.employmentMonths = []
   return { extra, metrics, total, onboard, riskStudents: counter(overview, 'riskStudents'),
     states: coherent ? states : [], stateCoherent: coherent,
     stateIssue: states.length && !coherent ? '不同来源的统计数不一致，请刷新核对' : '',
@@ -135,7 +149,7 @@ export function project(overview, dashboard, trends, context, issues = [], exten
     generatedAt: String(overview.generatedAt || ''), trendGeneratedAt: String(trends?.generatedAt || ''),
     metricVersion: String(overview.metricVersion || ''),
     scopeMode: String(overview.appliedFilters?.scopeMode || overview.dimensions?.scopeMode || ''),
-    issues: [...issues, ...(extra.issue ? [extra.issue] : []), ...(Array.isArray(overview.partial) ? overview.partial : []).map(p => String(p?.reason || p?.label || '部分统计不可用'))]
+    issues: [...issues, ...(extra.issue ? [extra.issue] : []), ...partial.map(p => p?.key === 'employment' ? metrics.employmentRate.note : String(p?.message || p?.reason || p?.label || '部分统计不可用'))]
   }
 }
 /** At most four source requests: existing metrics + dashboard + trends + audited extension. */

@@ -7,14 +7,14 @@ import { setImmediate } from 'node:timers'
 import { mountNewsPreview } from '../src/components/official-site/showcase/news-preview.js'
 const root=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')
 const read=p=>fs.readFileSync(path.join(root,p),'utf8')
-test('news page is a genuine platform route using a root-plane capability',()=>{
+test('school platform no longer registers website news management',()=>{
  const routes=read('src/modules/platform/platform.routes.js'),catalog=read('src/modules/platform/platformManagementCatalog.js')
- assert.match(routes,/PlatformWebsiteNewsView/);assert.match(routes,/platform\.websiteNews\.manage/);assert.match(catalog,/官网内容运营/);assert.match(catalog,/新闻资源包发布/)
+ assert.doesNotMatch(routes,/PlatformWebsiteNewsView|platform\.websiteNews\.manage/)
+ assert.doesNotMatch(catalog,/plt-website-content|plt-website-news/)
 })
 
-test('local development forwards public news pages instead of treating them as protected app routes',()=>{
- const vite=read('vite.config.js')
- assert.match(vite,/['"]\/news['"]:\s*\{[\s\S]*?target:\s*process\.env\.VITE_PROXY_TARGET/)
+test('school development no longer proxies public website news',()=>{
+ assert.doesNotMatch(read('vite.config.js'), /['"]\/news['"]:/)
 })
 test('upload and confirmation replace individual composition and daily quotas',()=>{
  const s=read('src/modules/platform/views/control/PlatformWebsiteNewsView.vue')

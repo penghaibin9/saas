@@ -9,18 +9,9 @@
  * ctx.permissionPatterns（与后端 enforce_permission 同一套权限码模式集）。用 navPlan 的
  * matchPermission 做 `*` / `a.b.*` 前缀 / `*.view` 后缀 / 精确 四类匹配。
  *
- * 降级口径（§8.4.3“正式构建不得回退为全部允许”）：
- *   - 取不到 permissionPatterns（离线 / current-context 降级）：
- *       · 开发构建放开（本地兜底，便于联调）；
- *       · 正式构建收紧为禁用（不 all-allow；后端仍是最终边界）。
+ * 取不到当前身份权限时禁用操作，开发环境也不猜测授权；后端仍是最终边界。
  */
 import { matchPermission } from '@/config/navPlan'
-
-function isProdBuild() {
-  // 兼容 Vite（import.meta.env.PROD）与纯 node 单测（import.meta.env 可能未定义）
-  const env = (typeof import.meta !== 'undefined' && import.meta.env) || {}
-  return env.PROD === true
-}
 
 /**
  * 按权限码模式集判定是否允许某操作。
@@ -29,7 +20,7 @@ function isProdBuild() {
  * @returns {boolean}
  */
 export function allowByPatterns(patterns, code) {
-  if (!Array.isArray(patterns)) return !isProdBuild()
+  if (!Array.isArray(patterns)) return false
   if (!code) return true
   return matchPermission(patterns, code)
 }

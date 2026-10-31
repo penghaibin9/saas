@@ -8,6 +8,7 @@
       </div>
       <div class="header-actions">
         <button type="button" class="profile-entry" @click="router.push({ path: '/internship/profile', query: route.query })">实习档案</button>
+        <button v-if="volunteerGroup.id" type="button" class="profile-entry" :disabled="volunteerBusy || submissionBusy" @click="openResult">志愿办理结果</button>
         <button v-if="catalogReady" type="button" class="volunteer-entry" @click="volunteerOpen = true">我的志愿 {{ volunteerSelectedCount }}/3</button>
       </div>
     </header>
@@ -25,12 +26,12 @@
         <h2 id="selection-preparation-title">等待学校开放选岗</h2>
         <p>{{ context.blockReason }}</p>
         <div class="preparation-actions">
-          <button type="button" class="profile-entry" @click="router.push('/internship')">查看实习准备</button>
+          <button type="button" class="profile-entry" @click="router.push({path:'/internship',query:route.query.batchId ? {batchId:route.query.batchId} : {}})">查看实习准备</button>
           <button type="button" class="preparation-refresh" @click="loadContext">重新检查</button>
         </div>
       </div>
     </section>
-    <RecruitmentContextBar v-else-if="catalogReady" :context="context" />
+    <RecruitmentContextBar v-else-if="catalogReady" :context="displayContext" />
 
     <main v-if="catalogReady" class="selection-shell" aria-label="实习选岗工作区">
       <PositionSearchFilters v-model="query" @search="loadPositions" />
@@ -91,12 +92,13 @@
           </div>
           <div v-if="volunteerLoading" class="volunteer-state">正在加载我的志愿…</div>
           <template v-else>
+            <div v-if="volunteerConflict" class="selection-state"><p>学校记录已变化，本次填写已保留。</p><button type="button" :disabled="volunteerBusy" @click="readLatestVolunteer">读取最新志愿原单</button><template v-if="volunteerLatest"><p>最新第{{ volunteerLatest.version }}版 · {{ volunteerLatest.slots.filter(slot=>slot.positionId).map(slot=>slot.position?.title || '岗位').join('、') }}</p><button v-if="['DRAFT','NEEDS_REVISION'].includes(volunteerLatest.status)" type="button" @click="acceptLatestVolunteer">已核对，保留填写继续</button><p v-else>学校已推进办理，当前不能覆盖；请查看最新志愿办理结果。</p></template></div>
             <VolunteerBoard
               :group="volunteerGroup"
               :slots="volunteerSlots"
               :candidate="candidatePosition"
               :editable="volunteerEditable"
-              :busy="volunteerBusy"
+              :busy="volunteerBusy || submissionBusy"
               :error="volunteerError"
               @move="moveVolunteerSlot"
               @remove="removeVolunteerSlot"
@@ -111,7 +113,7 @@
               :contact-sharing-mode="contactSharingMode"
               :confirmed="submissionConfirmed"
               :confirm-open="submitConfirmOpen"
-              :busy="submissionBusy"
+              :busy="submissionBusy || volunteerBusy"
               :submit-error="submitError"
               @prepare-submit="prepareFinalSubmit"
               @cancel-confirm="cancelFinalSubmit"
@@ -134,6 +136,8 @@
 <script setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
+import { currentSessionGeneration } from '../../services/request'
+import { useSessionStore } from '../../stores/session'
 import RecruitmentContextBar from '../../components/recruitment/RecruitmentContextBar.vue'
 import PositionSearchFilters from '../../components/recruitment/PositionSearchFilters.vue'
 import PositionCard from '../../components/recruitment/PositionCard.vue'
@@ -161,14 +165,14 @@ import {
 import { internshipSelectionApi } from '../../services/internshipSelectionApi.js'
 
 const router = useRouter()
+const session = useSessionStore()
+const identity = computed(() => JSON.stringify([session.user?.tenantId, session.user?.userId, session.user?.roleCode]))
 const route = useRoute()
 const selectionApi = computed(() => internshipSelectionApi.forScope(route.query))
 const loading = ref(true)
 const error = ref('')
 const context = ref(normalizeRecruitmentContext())
-const query = ref(normalizeCatalogQuery({
-  page: 1, pageSize: 20, keyword: '', city: '', companyId: '', accommodation: '', meal: '', sort: 'RECOMMENDED'
-}))
+const query = ref(normalizeCatalogQuery(route.query))
 const positions = ref([])
 const total = ref(0)
 const catalogLoading = ref(false)
@@ -180,16 +184,18 @@ const detailError = ref('')
 const volunteerLoading = ref(true)
 const volunteerBusy = ref(false)
 const volunteerError = ref('')
+const volunteerDraftDirty = ref(false), volunteerConflict = ref(false), volunteerLatest = ref(null)
 const volunteerGroup = ref(normalizeVolunteerGroup())
 const volunteerSlots = ref(volunteerGroup.value.slots)
 const candidatePosition = ref(null)
 const volunteerOpen = ref(false)
 const submissionPreview = ref(normalizeMaterialPreview())
-const contactSharingMode = ref('AFTER_INTERVIEW')
+const contactSharingMode = ref('MASKED_ONLY')
 const submissionConfirmed = ref(false)
 const submitConfirmOpen = ref(false)
 const submissionBusy = ref(false)
 const submitError = ref({ code: '', message: '', invalidItems: [] })
+let alive = true, mutationSequence = 0
 let contextRequestSeq = 0
 let catalogRequestSeq = 0
 const catalogReady = computed(() => !loading.value && !error.value && context.value.catalogState === 'AVAILABLE')
@@ -197,8 +203,12 @@ let detailRequestSeq = 0
 let volunteerRequestSeq = 0
 
 const totalPages = computed(() => Math.max(1, Math.ceil(total.value / query.value.pageSize)))
-const volunteerEditable = computed(() => canEditVolunteerGroup(volunteerGroup.value) && context.value.canSelect)
+const volunteerEditable = computed(() => !volunteerConflict.value && canEditVolunteerGroup(volunteerGroup.value) && context.value.canSelect)
 const volunteerSelectedCount = computed(() => volunteerSlots.value.filter((slot) => slot.positionId).length)
+const displayContext = computed(() => ({ ...context.value,
+  selectedVolunteers: volunteerLoading.value || volunteerGroup.value.status === 'UNAVAILABLE'
+    ? context.value.selectedVolunteers : volunteerSelectedCount.value
+}))
 
 function resetSubmitPreview() {
   submissionPreview.value = normalizeMaterialPreview()
@@ -209,6 +219,7 @@ function resetSubmitPreview() {
 
 async function loadContext() {
   const requestId = ++contextRequestSeq
+  mutationSequence++; volunteerBusy.value = false; submissionBusy.value = false; volunteerDraftDirty.value = false; volunteerConflict.value = false; volunteerLatest.value = null; resetSubmitPreview()
   catalogRequestSeq++; detailRequestSeq++; volunteerRequestSeq++
   loading.value = true
   error.value = ''
@@ -220,6 +231,7 @@ async function loadContext() {
     const next = normalizeRecruitmentContext(await selectionApi.value.context())
     if (requestId !== contextRequestSeq) return
     context.value = next
+    if(next.catalogState==='AVAILABLE' && next.batchId && next.campaignId && next.recordId && (!route.query.campaignId || !route.query.recordId)) { await router.replace({path:'/internship/selection',query:{...route.query,batchId:String(next.batchId),campaignId:String(next.campaignId),recordId:String(next.recordId)}}); return }
     loading.value = false
     if (next.catalogState === 'AVAILABLE') await Promise.all([loadPositions(query.value), loadVolunteerGroup()])
     else { volunteerLoading.value = false; volunteerOpen.value = false }
@@ -232,10 +244,11 @@ async function loadContext() {
   }
 }
 
-async function loadPositions(nextQuery = query.value) {
+async function loadPositions(nextQuery = query.value, syncRoute = true) {
   if (!catalogReady.value) return
   const normalized = normalizeCatalogQuery(nextQuery)
   query.value = normalized
+  if(syncRoute)router.replace({path:'/internship/selection',query:{...route.query,...normalized}})
   const requestId = ++catalogRequestSeq
   catalogLoading.value = true
   catalogError.value = ''
@@ -307,37 +320,34 @@ async function loadVolunteerGroup() {
   }
 }
 
-async function persistVolunteerSlots(nextSlots) {
-  if (!volunteerEditable.value) {
-    volunteerError.value = '当前志愿状态不可直接修改。'
-    return false
-  }
-  const previousSlots = volunteerSlots.value
-  const proposedSlots = nextSlots.map((slot) => ({ ...slot, position: slot.position ? { ...slot.position } : null }))
-  volunteerSlots.value = proposedSlots
-  volunteerBusy.value = true
-  volunteerError.value = ''
-  try {
-    const payload = buildVolunteerGroupSaveRequest(volunteerGroup.value, proposedSlots)
-    const data = await selectionApi.value.saveVolunteers(payload)
-    if (data) {
-      const normalized = normalizeVolunteerGroup(data)
-      volunteerGroup.value = normalized
-      volunteerSlots.value = normalized.slots
-    } else {
-      await loadVolunteerGroup()
-    }
-    candidatePosition.value = null
-    resetSubmitPreview()
-    return true
-  } catch (err) {
-    volunteerSlots.value = previousSlots
-    volunteerError.value = err?.message || '志愿整组保存失败，未保留本地修改。'
-    return false
-  } finally {
-    volunteerBusy.value = false
-  }
+function mutationFence() {
+  const seq=++mutationSequence,contextSeq=contextRequestSeq,generation=currentSessionGeneration(),scope=JSON.stringify([route.query.batchId,route.query.campaignId,route.query.recordId]),account=identity.value,api=selectionApi.value
+  return {api,current:()=>alive && seq===mutationSequence && contextSeq===contextRequestSeq && generation===currentSessionGeneration() && scope===JSON.stringify([route.query.batchId,route.query.campaignId,route.query.recordId]) && account===identity.value}
 }
+async function persistVolunteerSlots(nextSlots) {
+  if (!volunteerEditable.value || volunteerBusy.value || submissionBusy.value) return false
+  const t=mutationFence(),proposedSlots=nextSlots.map(slot=>({...slot,position:slot.position?{...slot.position}:null}))
+  volunteerSlots.value=proposedSlots;volunteerDraftDirty.value=true;volunteerBusy.value=true;volunteerError.value=''
+  try {
+    const data=await t.api.saveVolunteers(buildVolunteerGroupSaveRequest(volunteerGroup.value,proposedSlots))
+    if(!t.current())return false
+    if(!data || !Number.isInteger(data.version))throw Error('志愿保存结果未完整读回，请重新读取学校记录核对')
+    const normalized=normalizeVolunteerGroup(data);volunteerGroup.value=normalized;volunteerSlots.value=normalized.slots;volunteerDraftDirty.value=false;candidatePosition.value=null;resetSubmitPreview();return true
+  }catch(e){if(t.current()){volunteerError.value=e?.message||'志愿保存未完成，本次输入已保留，请核对后重新保存';volunteerConflict.value=e?.bizCode==='DATA_CONFLICT'||e?.status===409}return false}
+  finally{if(t.current())volunteerBusy.value=false}
+}
+async function readLatestVolunteer(){
+  if(volunteerBusy.value||submissionBusy.value)return
+  const t=mutationFence();volunteerBusy.value=true
+  try{const data=await t.api.volunteers();if(t.current())volunteerLatest.value=normalizeVolunteerGroup(data)}catch(e){if(t.current())volunteerError.value=e?.message||'最新志愿读取失败，本次输入保留'}finally{if(t.current())volunteerBusy.value=false}
+}
+function acceptLatestVolunteer(){
+  const latest=volunteerLatest.value;if(!latest||!canEditVolunteerGroup(latest))return
+  volunteerGroup.value=latest
+  volunteerSlots.value=volunteerSlots.value.map(slot=>({...slot,applicationVersion:latest.slots.find(row=>row.volunteerNo===slot.volunteerNo)?.applicationVersion ?? 0}))
+  volunteerLatest.value=null;volunteerConflict.value=false;volunteerDraftDirty.value=true;volunteerError.value='已保留本次填写，请再次保存志愿后投递。';resetSubmitPreview()
+}
+function openResult(){if(!volunteerGroup.value.id||volunteerBusy.value||submissionBusy.value)return;router.push({path:'/internship/volunteer-result',query:{groupId:String(volunteerGroup.value.id),groupVersion:String(volunteerGroup.value.version)}})}
 
 async function prepareVolunteer(position) {
   if (!volunteerEditable.value) {
@@ -376,26 +386,28 @@ function changeVolunteerStatement(volunteerNo, statement) {
 }
 
 async function prepareFinalSubmit() {
-  if (!volunteerEditable.value || submissionBusy.value) {
-    submitError.value = { code: 'VOLUNTEER_NOT_EDITABLE', message: '当前志愿状态不可提交，请刷新后查看学校最新记录。', invalidItems: [] }
+  if (!volunteerEditable.value || submissionBusy.value || volunteerBusy.value || volunteerDraftDirty.value) {
+    submitError.value = { code: 'VOLUNTEER_NOT_EDITABLE', message: '请先保存本次志愿填写并核对学校最新记录，再准备投递。', invalidItems: [] }
     return
   }
   submitError.value = { code: '', message: '', invalidItems: [] }
   submissionConfirmed.value = false
   submissionBusy.value = true
+  const t = mutationFence()
   try {
-    const data = await selectionApi.value.materialPreview()
+    const data = await t.api.materialPreview()
+    if (!t.current()) return
     submissionPreview.value = normalizeMaterialPreview(data || {})
+    if (!submissionPreview.value.allowedContactSharingModes.includes(contactSharingMode.value)) contactSharingMode.value = ''
     if (!submissionPreview.value.previewHash || !submissionPreview.value.consentPolicyVersion) {
       throw new Error('企业视角材料预览不完整，请先完善实习档案。')
     }
     submitConfirmOpen.value = true
     volunteerOpen.value = true
   } catch (err) {
-    submitError.value = normalizeVolunteerSubmitError(err)
-    submitConfirmOpen.value = false
+    if(t.current()){submitError.value = normalizeVolunteerSubmitError(err);submitConfirmOpen.value = false}
   } finally {
-    submissionBusy.value = false
+    if(t.current())submissionBusy.value = false
   }
 }
 
@@ -405,53 +417,61 @@ function cancelFinalSubmit() {
 }
 
 async function submitFinalVolunteerGroup() {
-  if (!submissionConfirmed.value || !volunteerEditable.value || submissionBusy.value) return
+  if (!submissionConfirmed.value || !volunteerEditable.value || submissionBusy.value || volunteerBusy.value || volunteerDraftDirty.value) return
   submissionBusy.value = true
   submitError.value = { code: '', message: '', invalidItems: [] }
+  const t = mutationFence()
   try {
     const payload = buildVolunteerFinalSubmitRequest({
       group: volunteerGroup.value,
       preview: submissionPreview.value,
       contactSharingMode: contactSharingMode.value
     })
-    await selectionApi.value.submitVolunteers(payload)
+    await t.api.submitVolunteers(payload)
+    if(!t.current())return
     submitConfirmOpen.value = false
     submissionConfirmed.value = false
     await loadContext()
   } catch (err) {
-    submitError.value = normalizeVolunteerSubmitError(err)
+    if(t.current())submitError.value = normalizeVolunteerSubmitError(err)
   } finally {
-    submissionBusy.value = false
+    if(t.current())submissionBusy.value = false
   }
 }
 
 async function withdrawVolunteerGroup() {
+  if(submissionBusy.value||volunteerBusy.value)return
+  const t=mutationFence()
   submissionBusy.value = true
   submitError.value = { code: '', message: '', invalidItems: [] }
   try {
-    await selectionApi.value.withdrawVolunteers({ expectedGroupVersion: volunteerGroup.value.version })
+    await t.api.withdrawVolunteers({ expectedGroupVersion: volunteerGroup.value.version })
+    if(!t.current())return
     resetSubmitPreview()
     await loadContext()
   } catch (err) {
-    submitError.value = normalizeVolunteerSubmitError(err)
+    if(t.current())submitError.value = normalizeVolunteerSubmitError(err)
   } finally {
-    submissionBusy.value = false
+    if(t.current())submissionBusy.value = false
   }
 }
 
 async function requestVolunteerUnlock() {
+  if(submissionBusy.value||volunteerBusy.value)return
+  const t=mutationFence()
   submissionBusy.value = true
   submitError.value = { code: '', message: '', invalidItems: [] }
   try {
-    await selectionApi.value.requestUnlock({
+    await t.api.requestUnlock({
       expectedGroupVersion: volunteerGroup.value.version,
       reason: '学生申请重新调整岗位志愿'
     })
+    if(!t.current())return
     await loadVolunteerGroup()
   } catch (err) {
-    submitError.value = normalizeVolunteerSubmitError(err)
+    if(t.current())submitError.value = normalizeVolunteerSubmitError(err)
   } finally {
-    submissionBusy.value = false
+    if(t.current())submissionBusy.value = false
   }
 }
 
@@ -460,14 +480,16 @@ function changePage(page) {
 }
 function viewCompany(companyId) {
   if (!companyId) return
-  router.push({ path: `/internship/selection/company/${encodeURIComponent(companyId)}`, query: { batchId: route.query.batchId, campaignId: route.query.campaignId, recordId: route.query.recordId } })
+  router.push({ path: `/internship/selection/company/${encodeURIComponent(companyId)}`, query: { ...route.query } })
 }
 
-watch(() => [route.query.batchId, route.query.campaignId, route.query.recordId], loadContext)
+watch(() => JSON.stringify([route.query.batchId, route.query.campaignId, route.query.recordId, identity.value]), loadContext)
+watch(() => JSON.stringify(normalizeCatalogQuery(route.query)), value => { if(catalogReady.value && value!==JSON.stringify(query.value))loadPositions(JSON.parse(value),false) })
 onMounted(async () => {
   await loadContext()
 })
 onBeforeUnmount(() => {
+  alive = false; mutationSequence++
   contextRequestSeq += 1
   catalogRequestSeq += 1
   detailRequestSeq += 1

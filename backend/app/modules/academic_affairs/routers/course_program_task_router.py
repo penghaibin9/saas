@@ -421,7 +421,7 @@ def task_list(
 def task_assign(
     body: AssignBody,
     taskId: int = Path(...),
-    user=Depends(require_permission("academicAffairs.teachingTask.manage")),
+    user=Depends(require_permission("academicAffairs.teachingTask.assign")),
 ):
     return success(task_svc.assign_teacher(taskId, user, body), message="已分配")
 
@@ -470,6 +470,8 @@ def task_all_list(
     keyword: Optional[str] = None,
     status: Optional[str] = None,
     mergeable: bool = False,
+    merged: Optional[bool] = None,
+    excludeMerged: bool = False,
     mine: bool = False,
     formalMine: bool = False,
     page: int = 1,
@@ -489,6 +491,8 @@ def task_all_list(
         term_id=termId,
         keyword=keyword,
         formal_mine=formalMine,
+        merged=merged,
+        exclude_merged=excludeMerged,
     )
     return success(paginate(items, total, page, pageSize))
 

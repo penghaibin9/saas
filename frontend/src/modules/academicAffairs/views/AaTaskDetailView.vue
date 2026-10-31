@@ -7,13 +7,13 @@
     show-subtitle-in-concise
   >
     <template #actions>
-      <AppButton @click="returnToSource">返回来源</AppButton>
+      <AppButton v-if="!selectedBatchId" @click="returnToSource">返回</AppButton>
       <AppButton :disabled="loading" @click="load">刷新</AppButton>
       <AppButton v-if="workbench.nextAction?.code === 'READY' && canViewSchedule" variant="primary" @click="openSchedule">进入本学期排课</AppButton>
       <AppButton
-        v-if="canManage && workbench.actions?.canAssign"
+        v-if="canAssign && workbench.actions?.canAssign"
         @click="$router.push({ path: '/admin/academic-affairs/teaching-tasks/assign', query: { batchId, returnTo: $route.fullPath } })"
-      >进入分配工作区</AppButton>
+      >分配教师</AppButton>
       <AppButton
         v-if="canConfirm && workbench.actions?.canCollegeConfirm"
         variant="primary"
@@ -38,9 +38,9 @@
 
     <div class="task-workbench mp-stack">
       <AaOperationReceipt :receipt="receipt && { title: '任务办理回执', ...receipt }" />
-      <p v-if="schoolReadOnly" class="mp-note">当前为学校统筹范围。教师分配、任务调整和合拆班由开课责任学院的当前有效办理人负责；学校在学院确认后终审。</p>
+      <p v-if="schoolReadOnly" class="mp-note">开课学院负责分配教师、调整和合拆班；学院确认后交学校终审。</p>
       <AaTeachingTaskObjectBar
-        v-if="workbench.batchId"
+        v-if="workbench.batchId && !selectedBatchId"
         :name="workbench.batchName || '教学任务批次'"
         :identity="`${workbench.termLabel || '学期待提供'} · 批次编号 ${workbench.batchId}`"
         source="来源：已发布培养方案、适用年级与当前学期；所有任务可返回来源批次回查。"
@@ -48,7 +48,7 @@
         :owner="academicFlowOwner(workbench.responsibility)"
         :next-owner="academicFlowNextOwner(workbench.nextStep)"
       />
-      <AaTeachingTaskStageRail v-if="!selectedBatchId" :current="currentStage" current-note="当前批次办理节点" />
+      <AaTeachingTaskStageRail v-if="workbench.batchId && !loading" :steps="selectedBatchId ? reviewSteps : offeringSteps" expanded :current="selectedBatchId ? reviewStage : currentStage" current-note="当前批次办理节点" />
       <AppButton v-if="pendingResult" :disabled="acting || loading" @click="queryPendingResult">查询原办理结果（不会重复提交）</AppButton>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -60,14 +60,16 @@
               <AppStatusTag :status="workbench.status" dot />
               <strong>{{ workbench.nextAction?.label || '请核对当前任务状态' }}</strong>
             </div>
-            <p>教师确认必须由任课教师本人完成；管理端只负责分配、催办、学院确认和教务终审。</p>
+            <p v-if="selectedBatchId">教师本人确认：{{ (workbench.teacherConfirmedCount || 0) + (workbench.readyCount || 0) }} / {{ workbench.taskTotal ?? '—' }} 项</p>
+            <p v-else>教师确认须由任课教师本人完成。</p>
           </div>
-          <div class="task-workbench__scope-note">
+          <div v-if="!selectedBatchId" class="task-workbench__scope-note">
             <span>当前范围</span>
             <strong>{{ ctx.dataScope.scopeName }}</strong>
           </div>
         </section>
 
+        <details class="task-workspace__records"><summary>查看办理记录（最近30条）</summary><AppAuditTrail :records="workbench.reviewRecords || []" empty-text="暂无可展示的审核记录，不根据当前状态补造历史意见" compact /></details>
         <section class="task-workbench__metrics">
           <article v-for="metric in metrics" :key="metric.label" class="task-metric">
             <span>{{ metric.label }}</span>
@@ -97,7 +99,7 @@
           </button>
         </section>
 
-        <section v-else-if="Array.isArray(workbench.blockers)" class="task-workbench__ready">
+        <section v-else-if="!selectedBatchId && Array.isArray(workbench.blockers)" class="task-workbench__ready">
           <strong>当前批次没有阻断项</strong>
           <span>{{ workbench.nextAction?.label || '可以进入下一处理节点' }}</span>
         </section>
@@ -220,7 +222,7 @@ import { academicFlowOwner, academicFlowNextOwner } from '../config/academicFlow
 
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppStatusTag, AppConfirmDialog, AppTeacherPicker } from '@/components/common'
+import { AppStatusTag, AppConfirmDialog, AppTeacherPicker, AppAuditTrail } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { teachingTaskWorkbenchApi } from '@/modules/academicAffairs/api/teaching-task-workbench.api'
 import { TASK_STATUS, TASK_BATCH_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
@@ -234,11 +236,13 @@ import { isDeniedResult, isConflictResult } from '../components/parallel-a/resul
 
 export default {
   name: 'AaTaskDetailView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppTeacherPicker, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
+  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton, AppStatusTag, AppConfirmDialog, AppTeacherPicker, AppAuditTrail, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
   props: { ctx: { type: Object, required: true }, selectedBatchId: { type: String, default: '' } },
   inject: { academicFlow: { default: null } },
   data() {
     return {
+      offeringSteps: [{ label: '方案生成' }, { label: '任务准备' }, { label: '教师本人确认' }, { label: '学院核对' }, { label: '校教务终审' }, { label: '可进入排课' }],
+      reviewSteps: [{ label: '教师本人确认' }, { label: '学院核对' }, { label: '校教务终审' }, { label: '可进入排课' }],
       loading: true,
       acting: false,
       error: '',
@@ -263,6 +267,11 @@ export default {
     }
   },
   computed: {
+    reviewStage() {
+      if (['APPROVED', 'ARCHIVED'].includes(this.workbench.status)) return 4
+      if (this.workbench.status === 'COLLEGE_CONFIRMED') return 3
+      return this.workbench.teacherConfirmRate === 100 ? 2 : 1
+    },
     batchId() { return this.selectedBatchId || this.$route.params.batchId },
     batchStatusLabel() { return TASK_BATCH_STATUS[this.workbench.status] || '状态待核对' },
     schoolReadOnly() { return ['TENANT_ALL', 'SCHOOL'].includes(this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) },
@@ -272,10 +281,11 @@ export default {
         if (this.workbench.waitingTeacherCount > 0) return 3
         if (this.workbench.teacherConfirmRate === 100) return 4
       }
-      const stage = { DRAFT: 1, GENERATED: 1, ASSIGNING: 2, TEACHER_CONFIRMING: 3, COLLEGE_CONFIRMED: 4, APPROVED: 5, ARCHIVED: 5 }
+      const stage = { DRAFT: 1, GENERATED: 1, ASSIGNING: 2, TEACHER_CONFIRMING: 3, COLLEGE_CONFIRMED: 5, APPROVED: 6, ARCHIVED: 6 }
       return stage[this.workbench.status] || 1
     },
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.manage') },
+    canAssign() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.assign') },
     canConfirm() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.confirm') },
     canViewSchedule() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.view') },
     metrics() {
@@ -313,7 +323,7 @@ export default {
     openSchedule() {
       if (!this.canViewSchedule || this.workbench.nextAction?.code !== 'READY' || !this.workbench.termId) return
       const returnToken = this.academicFlow?.captureReturn?.()
-      this.$router.push({ path: '/admin/academic-affairs/schedule', query: { termId: String(this.workbench.termId), ...(returnToken ? { returnToken } : {}) } })
+      this.$router.push({ path: '/admin/academic-affairs/schedule', query: { termId: String(this.workbench.termId), returnTo: this.$route.fullPath, ...(returnToken ? { returnToken } : {}) } })
     },
     searchTasks() { return this.changeTaskPage(1) },
     async changeTaskPage(page) {
@@ -356,10 +366,10 @@ export default {
       if (item.route) this.$router.push(item.route)
     },
     canAssignRow(row) {
-      return this.canManage && Boolean(this.workbench.actions?.canAssign) && ['PENDING_ASSIGN', 'ASSIGNED', 'REJECTED_BY_TEACHER'].includes(row.status)
+      return this.canAssign && Boolean(this.workbench.actions?.canAssign) && ['PENDING_ASSIGN', 'ASSIGNED', 'REJECTED_BY_TEACHER'].includes(row.status)
     },
     canVoidDraftRow(row) {
-      return this.canManage && this.workbench.status === 'DRAFT' && Boolean(this.workbench.actions?.canAssign)
+      return this.canManage && this.workbench.status === 'DRAFT' && Boolean(this.workbench.actions?.canVoidDraft)
         && row.status === 'PENDING_ASSIGN' && !row.teacherKey
     },
     openVoidDraft(row) {
@@ -396,7 +406,7 @@ export default {
       }
     },
     async doAssign() {
-      if (!this.canManage || !this.workbench.actions?.canAssign || this.assign.submitting || this.acting) return
+      if (!this.canAssign || !this.workbench.actions?.canAssign || this.assign.submitting || this.acting) return
       if (!this.assign.teacherKey || !this.assign.teacherName) {
         toast.error('请选择任课教师')
         return
@@ -543,6 +553,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/teaching-task-workspace.css';
 .task-workbench__hero { display: flex; justify-content: space-between; gap: 24px; padding: 22px 24px; border: 1px solid var(--primary-100); border-radius: 14px; background: linear-gradient(135deg, var(--primary-50), #fff); }
 .task-workbench__eyebrow { margin-bottom: 8px; color: var(--primary-700); font-size: 12px; font-weight: 600; }
 .task-workbench__headline { display: flex; align-items: center; gap: 12px; font-size: 17px; }

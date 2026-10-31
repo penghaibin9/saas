@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -7,6 +8,7 @@ import { withInternshipBatch, internshipBatchListReturn } from '../src/modules/i
 // Execute the real Options API script; replace network/UI dependencies only.
 // These component regressions do not claim real API or browser E2E coverage.
 function component(file, api, overrides = {}) {
+  api = {getPlanAssignments:async()=>({code:0,data:[]}),...api}
   const path = new URL('../src/modules/internship/views/' + file, import.meta.url)
   const script = parse(fs.readFileSync(path, 'utf8')).descriptor.script.content
     .replace(/^import[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
@@ -14,7 +16,7 @@ function component(file, api, overrides = {}) {
     .replace('export default', 'return')
   const feedback = []
   const guard = { saved: 0, markSaved() { this.saved++ } }
-  const options = new Function('internshipApi', 'toast', 'formatDate', 'formatDateTime',
+  const options = componentFactory('internshipApi', 'toast', 'formatDate', 'formatDateTime',
     'withInternshipBatch', 'matchPermission', 'window', 'internStudentApi', 'canCode', 'useInternshipBatchStore', 'internshipBatchListReturn', script)(
     api, { error: (message) => feedback.push(message), success: (message) => feedback.push(message) },
     (value) => value || '', (value) => value || '', withInternshipBatch, () => false,
@@ -61,7 +63,7 @@ test('an agreement blocker links to the student agreements with the exact return
 test('student placement links retain the exact batch and dossier return location', () => {
   const routes = [], fullPath = '/admin/internship/students/9007199254740999?batchId=7&section=placement'
   const { instance: view } = component('InternshipStudentDetailView.vue', {}, {
-    $route: { fullPath, query: { batchId: '7' } }, $router: { push: to => routes.push(to) }
+    ctx:{permissions:['internship.enterprise.view','internship.position.view']}, $route: { fullPath, query: { batchId: '7' } }, $router: { push: to => routes.push(to) }
   })
   view.detail = { batchId: '7', enterpriseId: '9007199254740998', positionId: '9007199254740997' }
   view.openEnterprise(); view.openPosition()

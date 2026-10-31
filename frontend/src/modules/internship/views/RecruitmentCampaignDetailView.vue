@@ -171,15 +171,15 @@
           <p v-if="inviteResult.memberRole" class="rc-aside">成员身份：{{ memberRoleOptions.find(item => item.value === inviteResult.memberRole)?.label || inviteResult.memberRole }}</p>
           <div class="rc-invite-result__row">
             <span class="rc-invite-result__label">企业接受邀请地址</span>
-            <AppCopyableText :text="inviteResult.acceptUrl" />
+            <AppCopyableText :value="inviteResult.acceptUrl" />
           </div>
-          <div class="rc-invite-result__row">
-            <span class="rc-invite-result__label">邀请码</span>
-            <AppCopyableText :text="inviteResult.inviteToken" />
-          </div>
+          <details>
+            <summary>实施人员使用：邀请令牌</summary>
+            <AppCopyableText :value="inviteResult.inviteToken" />
+          </details>
           <div class="rc-invite-result__row">
             <span class="rc-invite-result__label">学校编码</span>
-            <AppCopyableText :text="inviteResult.tenantCode" />
+            <AppCopyableText :value="inviteResult.tenantCode" />
           </div>
           <div class="rc-invite-result__row">
             <span class="rc-invite-result__label">邀请有效期至</span>

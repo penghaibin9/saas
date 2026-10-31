@@ -11,6 +11,7 @@ That transaction locks the execution task and then rechecks its current teacher.
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from contextlib import contextmanager
 from contextvars import ContextVar
 
@@ -33,7 +34,7 @@ def _is_scope_admin(user) -> bool:
     role = str((user or {}).get("currentRoleCode") or "").upper()
     return bool(
         role in _core._REVIEW_ROLES
-        or role == "COLLEGE_ADMIN"
+        or role in COLLEGE_ACADEMIC_ROLES
         or (user or {}).get("userType") == "PLATFORM_SUPER_ADMIN"
     )
 

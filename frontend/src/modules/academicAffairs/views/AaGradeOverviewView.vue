@@ -6,7 +6,7 @@
   >
     <template #actions>
       <AppButton variant="secondary" @click="$router.push('/admin/academic-affairs/grade-fail')">挂科清单</AppButton>
-      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/grade-entry')">成绩录入</AppButton>
+      <AppButton v-if="canInput || canManageScheme" variant="primary" @click="$router.push('/admin/academic-affairs/grade-entry')">{{ canInput ? '成绩录入' : '课程成绩构成' }}</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -100,6 +100,7 @@ import { AppButton } from '@/components/ui'
 import { AppMetricCard, AppSectionCard, AppSelect, AppTextInput, AppG2Chart, AppTermCodePicker, AppStatusTag } from '@/components/common'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 import { currentUserFromToken } from '@/services/http/client'
 import { gradeError, gradeStatusLabel, gradeQueueState, gradeTaskDestination } from './parallel-c/grade-review'
 
@@ -125,6 +126,8 @@ export default {
     }
   },
   computed: {
+    canInput() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.grade.input') },
+    canManageScheme() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.grade.scheme.manage') },
     identityKey() { const u = currentUserFromToken() || {}; return JSON.stringify([u.tenantId, u.userId, u.activeContextId, u.currentRoleCode, this.ctx.currentRole, this.ctx.dataScope]) },
     maxCount() { return Math.max(1, ...(this.data.distribution || []).map((d) => d.count)) },
     distSpec() {

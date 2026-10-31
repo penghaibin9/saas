@@ -202,7 +202,7 @@ test('已发出的调整和合班回执在身份变更后不回读旧对象或�
 })
 
 test('实际确认模板在批次条件未核实时禁确认，并展示中文只读与错误', async () => {
-  for (const name of ['AaTaskAdjustView', 'AaTaskMergeSplitView']) {
+  for (const name of ['AaTaskMergeSplitView']) {
     const source = readFileSync(new URL(`../src/modules/academicAffairs/views/${name}.vue`, import.meta.url), 'utf8')
     const templates = source.match(/<AppConfirmDialog[\s\S]*?<\/AppConfirmDialog>/g)
     assert.ok(templates.length)
@@ -221,6 +221,22 @@ test('实际确认模板在批次条件未核实时禁确认，并展示中文�
       assert.match(html, /<button disabled>确认/); assert.match(html, /当前批次不允许办理/)
     }
   }
+})
+
+test('调整页内表单未取得当前批次授权时禁止提交，并保留条件说明', async () => {
+  const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaTaskAdjustView.vue', import.meta.url), 'utf8')
+  const template = source.match(/<section v-if="adjust.visible"[\s\S]*?<\/section>/)[0]
+  const render = new Function('Vue', compile(template, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
+  const { state } = instance('AaTaskAdjustView')
+  state.adjust = { visible: true, taskId: row.taskId }
+  state.actionError = '当前批次不允许办理'
+  const html = await renderToString(Vue.createSSRApp({ render, setup: () => state, components: {
+    AppButton: { props: ['disabled'], setup: (props, { slots }) => () => Vue.h('button', { disabled: props.disabled }, slots.default?.()) },
+    AppInlineAlert: { props: ['description'], setup: props => () => Vue.h('p', props.description) },
+    AaObjectContext: { render: () => null }, AppTeacherPicker: { render: () => null }
+  } }))
+  assert.match(html, /<button\b[^>]*\bdisabled[^>]*>核对并提交调整/)
+  assert.match(html, /当前批次不允许办理/)
 })
 
 test('真实分配工作区继续以canAssign裁决，学校显示只读责任说明', () => {

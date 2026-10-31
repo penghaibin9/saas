@@ -1,0 +1,133 @@
+/* 岗位实习招标新增页面的布局与触控规则，仅作用于实习业务根节点。 */
+.internship-surface.mobile-page { --text-tertiary:var(--gray-500); overflow-wrap:anywhere; }
+.internship-surface.mobile-teacher { --brand-primary:var(--teacher-600); --brand-primary-strong:var(--teacher-700); --text-link:var(--teacher-700); --primary-50:var(--teacher-50); --primary-500:var(--teacher-500); --primary-600:var(--teacher-600); --primary-700:var(--teacher-700); }
+.internship-surface .mobile-control { min-height:var(--touch-target-min) !important; min-width:var(--touch-target-min); box-sizing:border-box; white-space:normal; overflow-wrap:anywhere; }
+.internship-surface .mobile-input { min-height:var(--touch-target-min) !important; min-width:0; max-width:100%; box-sizing:border-box; font-size:var(--font-size-md) !important; }
+.internship-surface .mobile-textarea { box-sizing:border-box; max-width:100%; font-size:var(--font-size-md) !important; line-height:1.7; }
+.internship-surface .mobile-picker { min-height:var(--touch-target-min); min-width:0; max-width:100%; display:block; }
+.internship-surface .mobile-picker>view { width:100%; box-sizing:border-box; }
+.internship-surface .mobile-control:focus-visible,.internship-surface .mobile-input:focus-visible,.internship-surface .mobile-textarea:focus-visible { outline:2px solid var(--brand-primary); outline-offset:2px; }
+
+
+/* Selected mobile storyboards: scope to the six participating pages and their children. */
+.internship-flow { --card-padding-mobile:16px; --card-gap-mobile:16px; --shadow-card:none; font-size:var(--font-size-md); }
+.internship-flow .page-pad { box-sizing:border-box; width:100%; max-width:680px; margin-inline:auto; }
+.internship-flow .card { border-radius:var(--radius-lg); box-shadow:none; }
+.internship-flow .mnav__bar { min-height:52px; border-bottom:1px solid var(--border-light); }
+uni-page-body .internship-flow .mnav__status { height:0!important; }
+.internship-flow .mnav__center { min-width:0; }
+.internship-flow .mnav__subtitle { color:var(--text-secondary); overflow-wrap:anywhere; line-height:1.5; }
+.mobile-page.internship-flow .mnav.is-teacher .mnav__bar,.mobile-page.internship-flow .mnav.is-teacher .mnav__status { background:var(--teacher-600); }
+.internship-flow .mnav.is-teacher .mnav__subtitle { color:var(--text-inverse); }
+.internship-flow .btn { min-height:46px; font-weight:var(--font-weight-medium); padding:var(--space-2) var(--space-4); }
+.internship-flow button { font-family:inherit; }
+.internship-flow button[disabled] { opacity:.65; }
+.internship-flow .flow-title { display:block; font-size:var(--font-size-lg); font-weight:var(--font-weight-semibold); line-height:1.5; }
+.internship-flow .flow-copy { display:block; font-size:var(--font-size-base); color:var(--text-secondary); line-height:1.6; margin-top:var(--space-1); }
+.internship-flow .flow-link { color:var(--brand-primary); flex-shrink:0; }
+.internship-flow .flow-result-head { display:flex; gap:var(--space-3); align-items:center; padding:var(--space-4); background:var(--primary-50); border-radius:var(--radius-lg); }
+.internship-flow .flow-return { display:flex; flex-direction:column; gap:var(--space-2); margin:var(--space-4) 0; padding:var(--space-4); background:var(--warning-50); border:1px solid var(--warning-100); border-radius:var(--radius-lg); color:var(--text-primary); line-height:1.7; }
+.internship-flow .flow-context-badge { color:var(--brand-primary); background:var(--primary-50); padding:var(--space-2) var(--space-3); border-radius:var(--radius-md); }
+.internship-flow .flow-mentor { display:block; font-size:var(--font-size-base); color:var(--text-secondary); margin-top:var(--space-3); }
+.internship-flow .flow-history { display:flex; flex-direction:column; gap:var(--space-3); }
+.internship-flow .flow-history-row { display:flex; align-items:center; gap:var(--space-3); width:100%; margin:0; padding:var(--space-4); background:var(--bg-card); border-radius:var(--radius-lg); text-align:left; font-size:var(--font-size-md); line-height:1.5; }
+.internship-flow .flow-history-row::after { border:0; }
+.internship-flow.student-home .in__hero { padding:var(--space-4); border:1px solid var(--border-light); }
+.internship-flow.student-home .in__hero-company { font-size:var(--font-size-2xl); line-height:1.5; }
+.internship-flow.student-home .in__hero-footer { margin-top:var(--space-3); border-top:1px solid var(--border-light); }
+.internship-flow.student-home .in__today { display:flex; flex-direction:column; gap:var(--space-2); }
+.internship-flow.student-home .in__section-title { margin-bottom:var(--space-1); font-size:var(--font-size-xl); }
+.internship-flow.student-home .in__today-card { box-sizing:border-box; padding:var(--space-3); gap:var(--space-3); min-height:76px; margin:0; border-radius:var(--radius-lg); box-shadow:none; }
+.internship-flow.student-home .in__today-card .btn { max-width:132px; flex-shrink:0; padding-inline:var(--space-3); }
+.internship-flow.student-home .in__today-title { font-size:var(--font-size-lg); }
+.internship-flow.student-home .in__today-status { font-size:var(--font-size-base); margin-top:var(--space-1); line-height:1.5; }
+.internship-flow.student-home .in__quick-grid { gap:var(--space-3); }
+.internship-flow.student-home .in__quick-grid button { min-height:76px; border-radius:var(--radius-lg); }
+.internship-flow.teacher-home .tw-context { align-items:center; padding-block:var(--space-1); }
+.internship-flow.teacher-home .tw-todos { padding:var(--space-4); }
+.internship-flow.teacher-home .tw-todo { gap:var(--space-3); padding:var(--space-3) 0; text-align:left; }
+.internship-flow.teacher-home .flow-priority { min-height:80px; }
+.internship-flow.teacher-home .tw-todo-title { font-size:var(--font-size-lg); line-height:1.5; }
+.internship-flow .flow-task-action { border:1px solid var(--teacher-600); color:var(--teacher-700); padding:var(--space-2) var(--space-3); border-radius:var(--radius-md); flex-shrink:0; font-size:var(--font-size-base); }
+.internship-flow.teacher-home .tw-shortcuts { gap:var(--space-3); }
+.internship-flow.teacher-home .tw-shortcut { min-height:76px; border-radius:var(--radius-lg); }
+.internship-flow.teacher-todos .td-item { padding:var(--space-4); border-radius:var(--radius-lg); }
+.internship-flow.teacher-todos .td-title { font-size:var(--font-size-lg); line-height:1.5; }
+.internship-flow.teacher-todos .td-filter { border-radius:var(--radius-md); }
+.internship-flow.wr .wr__context { display:flex; flex-direction:row; align-items:center; justify-content:space-between; flex-wrap:wrap; margin-top:0; gap:var(--space-2); color:var(--text-secondary); }
+.internship-flow.wr .wr__weeks { display:flex; gap:var(--space-2); margin:0; padding:var(--space-3) 0; overflow-x:auto; background:transparent; box-shadow:none; }
+.internship-flow.wr .wr__week { display:flex; align-items:center; gap:var(--space-2); margin:0; padding:var(--space-2) var(--space-3); min-width:76px; flex-shrink:0; background:var(--bg-card); border-radius:var(--radius-md); border:1px solid var(--border-light); line-height:1.5; }
+.internship-flow.wr .wr__week::after { border:0; }
+.internship-flow.wr .wr__week.is-on { color:var(--text-inverse); background:var(--brand-primary); border-color:var(--brand-primary); }
+.internship-flow.wr .wr__week.is-on .wr__week-tag { color:var(--text-inverse); }
+.internship-flow.wr .wr__form { padding:0; margin-top:var(--space-2); background:transparent; }
+.internship-flow.wr .wr__period-context { display:flex; flex-wrap:wrap; gap:var(--space-3); margin-top:var(--space-4); color:var(--text-secondary); font-size:var(--font-size-base); }
+.internship-flow.wr .wr__period-context .t-bold { color:var(--text-primary); font-size:var(--font-size-md); }
+.internship-flow.wr .wr__label { display:block; margin-bottom:var(--space-2); font-size:var(--font-size-md); font-weight:var(--font-weight-semibold); color:var(--text-primary); }
+.internship-flow.wr .wr__field { margin-top:var(--space-4); padding:0; border:0; }
+.internship-flow.wr .wr__textarea { box-sizing:border-box; width:100%; min-height:64px; padding:var(--space-3); border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--bg-card); font-size:var(--font-size-lg)!important; line-height:1.75; }
+.internship-flow.wr .wr__count { display:block; color:var(--text-secondary); font-size:var(--font-size-sm); padding-top:var(--space-3); }
+.internship-flow.wr .wr__files { margin-top:var(--space-4); padding:var(--space-4); }
+.internship-flow.wr .wr__file { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-3) 0; border-bottom:1px solid var(--border-light); }
+.internship-flow.wr .wr__filename { display:block; width:100%; padding:var(--space-1) 0; margin:0; text-align:left; border:0; background:transparent; color:var(--text-primary); line-height:1.5; font-size:var(--font-size-md); font-weight:var(--font-weight-medium); }
+.internship-flow.wr .wr__filename::after { border:0; }
+.internship-flow.wr .wr__file-actions { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:var(--space-2); }
+.internship-flow.wr .wr__file-actions button { margin:0; padding:var(--space-2) var(--space-1); border:1px solid var(--border-base); color:var(--brand-primary); background:var(--bg-card); }
+.internship-flow.wr .wr__receipt { margin:var(--space-3) 0; background:var(--primary-50); color:var(--text-primary); gap:var(--space-3); }
+.internship-flow.wr .wr__receipt .flow-result-head { padding:0; }
+.internship-flow.wr .wr__ro { margin-top:var(--space-3); }
+.internship-flow.wr .wr__ro .flow-result-head { margin-bottom:var(--space-5); }
+.internship-flow.wr .wr__ro-block { padding-block:var(--space-3); border-bottom:1px solid var(--border-light); }
+.internship-flow.wr .wr__ro-text { line-height:1.8; }
+.internship-flow.wr .wr__history { margin-top:var(--space-4); }
+.internship-flow.wr .wr__version { border-left:2px solid var(--primary-100); padding:var(--space-3) 0 var(--space-3) var(--space-4); margin-top:var(--space-3); }
+.internship-flow .report-preview { border:1px solid var(--primary-100); background:var(--primary-50); border-radius:var(--radius-lg); padding:var(--space-4); }
+.internship-flow .report-preview__close { min-height:44px; color:var(--brand-primary); font-size:var(--font-size-base); }
+.internship-flow .report-preview__image { border-radius:var(--radius-md); }
+.internship-flow.se .se__score-line { margin-block:var(--space-4); }
+.internship-flow.se .se__score-line>text:first-child { font-size:44px; line-height:1.2; font-weight:var(--font-weight-semibold); color:var(--brand-primary); }
+.internship-flow.se .se__score-grid { gap:var(--space-2); }
+.internship-flow.se .se__score-grid>text { padding:var(--space-3); background:var(--gray-50); border-radius:var(--radius-md); }
+.internship-flow.se .se__result { border-top:0; padding:var(--space-5); }
+.internship-flow.se .se__result { order:-1; }
+.internship-flow .flow-disclosure { display:flex; justify-content:space-between; align-items:center; width:100%; padding:0; margin:0; background:transparent; text-align:left; font-size:var(--font-size-base); }
+.internship-flow .flow-disclosure::after { border:0; }
+.internship-flow.se .se__readonly { line-height:1.8; }
+.internship-flow.teacher-process .ir__summary { padding:var(--space-3) var(--space-4); gap:var(--space-2); }
+.internship-flow.teacher-process .ir__summary-main { flex-basis:auto; display:flex; flex-wrap:wrap; align-items:center; gap:var(--space-2); }
+.internship-flow.teacher-process .ir__summary-value { margin:0; }
+.internship-flow.teacher-process .ir__summary-value text:first-child { font-size:var(--font-size-xl); }
+.internship-flow.teacher-process .ir__summary-note { width:100%; margin:0; }
+.internship-flow.teacher-process .ir__summary-metrics { background:transparent; }
+.internship-flow.teacher-process .ir__metric { padding:var(--space-1); }
+.internship-flow.teacher-process .ir { padding:var(--space-4); gap:var(--space-4); border-radius:var(--radius-lg); }
+.internship-flow.teacher-process .ir__meta { display:flex; flex-wrap:wrap; gap:var(--space-3); background:var(--gray-50); padding:var(--space-3); }
+.internship-flow.teacher-process .ir__meta>view { flex:1; min-width:80px; }
+.internship-flow.teacher-process .ir__body { padding:0; border:0; }
+.internship-flow.teacher-process .ir__section+.ir__section { border-top:1px solid var(--border-light); padding-top:var(--space-4); margin-top:var(--space-4); }
+.internship-flow.teacher-process .ir__label { color:var(--text-primary); font-size:var(--font-size-md); }
+.internship-flow.teacher-process .ir__text { line-height:1.8; font-size:var(--font-size-md); }
+.internship-flow.teacher-process .ir__attachment { padding:var(--space-3); min-height:44px; background:var(--gray-50); border-radius:var(--radius-md); }
+.internship-flow.teacher-process .ir__actions { gap:var(--space-3); }
+.internship-flow .flow-review-overlay { position:fixed; inset:0; z-index:var(--z-modal); display:flex; align-items:flex-end; justify-content:center; }
+.internship-flow .flow-review-mask { position:absolute; inset:0; background:var(--bg-mask); }
+.internship-flow .flow-review-sheet { position:relative; display:flex; flex-direction:column; box-sizing:border-box; width:100%; max-width:680px; min-height:72vh; max-height:90vh; overflow-y:auto; padding:var(--space-5) var(--space-4) calc(var(--space-5) + var(--safe-area-bottom)); border-radius:var(--radius-lg) var(--radius-lg) 0 0; background:var(--bg-card); }
+.internship-flow .flow-review-sheet .row-between { gap:var(--space-3); align-items:flex-start; }
+.internship-flow .flow-review-close { background:transparent; color:var(--text-secondary); margin:0; padding:0 var(--space-2); font-size:var(--font-size-base); }
+.internship-flow .flow-review-close::after { border:0; }
+.internship-flow .flow-review-choices { display:flex; gap:var(--space-2); margin:var(--space-5) 0; }
+.internship-flow .flow-review-choices button { flex:1; margin:0; font-size:var(--font-size-md); border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--bg-card); color:var(--text-primary); }
+.internship-flow .flow-review-choices button.is-on { background:var(--teacher-600); color:var(--text-inverse); border-color:var(--teacher-600); }
+.internship-flow .flow-review-label { display:block; margin:var(--space-4) 0 var(--space-2); font-weight:var(--font-weight-semibold); }
+.internship-flow .flow-review-input { width:100%; min-height:180px; box-sizing:border-box; padding:var(--space-3); border:1px solid var(--border-base); border-radius:var(--radius-md); background:var(--bg-card); }
+.internship-flow .flow-review-footer { display:flex; gap:var(--space-3); margin-top:var(--space-5); }
+.internship-flow .flow-review-sheet .flow-review-footer { margin-top:auto; padding-top:var(--space-5); }
+.internship-flow .flow-review-footer button { flex:1; }
+.internship-flow .flow-review-error { display:block; color:var(--danger-700); margin-top:var(--space-3); }
+.internship-flow .flow-review-receipt { margin-bottom:var(--space-4); }
+.internship-flow .flow-review-receipt>text { display:block; margin-top:var(--space-3); line-height:1.7; }
+@media(max-width:390px) {
+  .internship-flow.student-home .in__today-card { gap:var(--space-2); }
+  .internship-flow.student-home .in__today-card .btn { max-width:116px; font-size:var(--font-size-base); }
+  .internship-flow .flow-review-choices { gap:var(--space-1); }
+}

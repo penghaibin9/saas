@@ -20,6 +20,7 @@ _REVIEW_ROLES = {*_ADMIN_ROLES, "INTERN_MENTOR"}
 
 def _role(user) -> str:
     return str(
+        (user or {}).get("currentRoleBaseCode") or
         (user or {}).get("currentRoleCode") or
         (user or {}).get("roleCode") or
         (user or {}).get("userType") or ""

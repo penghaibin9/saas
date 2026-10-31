@@ -1,7 +1,20 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { parse, compileScript, compileTemplate } from '@vue/compiler-sfc'
 import { page, deferred } from './academic-pc-parallel-b-harness.mjs'
 import { textbookReturnPath, textbookQueuePage, textbookQueueReturnPath } from '../src/modules/academicAffairs/components/textbooks/textbookNavigation.js'
+
+test('教材控制台和发放两个页面的脚本与模板可独立编译', () => {
+  for (const name of ['AaTextbookConsoleView', 'AaTextbookDistributionDetailView', 'AaTextbookDistributionGenerateView']) {
+    const filename = new URL(`../src/modules/academicAffairs/views/${name}.vue`, import.meta.url)
+    const { descriptor, errors } = parse(readFileSync(filename, 'utf8'), { filename: name })
+    assert.deepEqual(errors, [])
+    const script = compileScript(descriptor, { id: name })
+    const result = compileTemplate({ source: descriptor.template.content, filename: name, id: name, compilerOptions: { bindingMetadata: script.bindings } })
+    assert.deepEqual(result.errors, [])
+  }
+})
 
 test('教材目录查询和翻页保留在地址中，刷新可以恢复相同结果范围', async () => {
   const routes = []
@@ -29,7 +42,36 @@ test('fee receivables exclude waived history while keeping actual collected amou
     { amount: 43, paidAmount: 43, status: 'PAID' }
   ]
   assert.equal(state.metricCards.find(card => card.label === '本页应收').value, '¥92.00')
-  assert.equal(state.metricCards.find(card => card.label === '本页已收').value, '¥53.00')
+  assert.equal(state.metricCards.find(card => card.label === '本页净收').value, '¥53.00')
+})
+
+test('全额退款登记冻结原实收并显示待退领，不重复计入净收', async () => {
+  const calls = []
+  const { state } = page('AaTextbookConsoleView', { textbookP0Api: { registerRefund: async (...args) => { calls.push(args); return { code: 0 } } } })
+  state.tab = 'fee'; state.rows = [{ feeId: '3', amount: 50, paidAmount: 20, refundAmount: 20, status: 'REFUNDED' }]
+  assert.equal(state.metricCards.find(card => card.label === '本页净收').value, '¥0.00')
+  assert.equal(state.statusLabel('REFUNDED'), '已退款待退领')
+  state.refundFee({ feeId: '3', paidAmount: 20, status: 'PARTIAL' })
+  state.reload = async () => {}
+  await state.onReasonConfirm({ reason: '确认实际退还全部费用' })
+  assert.deepEqual(calls, [['3', '确认实际退还全部费用', 20]])
+})
+
+test('没有费用权限时统计不显示零元冒充真实结果', () => {
+  const { state } = page('AaTextbookConsoleView')
+  state.tab = 'stats'; state.stats = { feeVisible: false, unpaidAmount: null, refundedAmount: null }
+  assert.equal(state.metricCards.some(card => card.label === '待处理费用'), false)
+  assert.equal(state.statsRows.some(row => row.key === 'fee'), false)
+  state.stats.feeVisible = true; state.stats.unpaidAmount = 12
+  assert.equal(state.metricCards.find(card => card.label === '待处理费用').value, '¥12.00')
+})
+
+test('发放明细发现费用学生不一致时不能打开退领确认', () => {
+  const { state } = page('AaTextbookDistributionDetailView', {}, { ctx: {}, $route: { params: { batchId: '7' }, query: {} } })
+  state.openReturn({ recordId: '9', status: 'RECEIVED', feeMismatch: true })
+  assert.equal(state.returnDialog.visible, false)
+  state.openReturn({ recordId: '9', status: 'RECEIVED', feeMismatch: false })
+  assert.equal(state.returnDialog.visible, true)
 })
 
 test('partial fee keeps the original paid amount on an uncertain retry and prevents duplicate clicks', async () => {
@@ -160,10 +202,96 @@ test('generation carries its original order queue through a successful write', a
 })
 
 test('textbook return links reject external addresses and unrelated business destinations', () => {
-  for (const value of ['https://example.com', '//example.com', '/admin/academic-affairs/textbooks/../terms?tab=order', '/admin/academic-affairs/textbooks?tab=fee', ['bad'], null]) {
+  for (const value of ['https://example.com', '//example.com', '/admin/academic-affairs/textbooks/../terms?tab=order', '/admin/academic-affairs/textbooks?tab=review', ['bad'], null]) {
     assert.equal(textbookReturnPath(value), '/admin/academic-affairs/textbooks?tab=distribution')
   }
   for (const value of ['NaN', '-1', '0', '2.5', 'Infinity', '99999999999999999']) assert.equal(textbookQueuePage(value), 1)
+})
+
+test('费用发放来源可返回原费用页，切换发放记录不携带旧申报筛选', () => {
+  const original = '/admin/academic-affairs/textbooks?tab=fee&page=3'
+  assert.equal(textbookReturnPath(original), original)
+  let destination
+  const { state } = page('AaTextbookConsoleView', {}, { $route: { query: { selectionId: '9', action: 'edit', page: '4' } }, $router: { replace: value => { destination = value } } })
+  state.switchTab('distribution')
+  assert.deepEqual(JSON.parse(JSON.stringify(destination.query)), { tab: 'distribution', page: '1', history: 'all' })
+})
+
+test('选用行按申报定位，同一本教材的多个任务不会选错行', () => {
+  const { state } = page('AaTextbookConsoleView')
+  state.tab = 'selection'
+  state.rows = [{ selectionId: '11', textbookId: '7' }, { selectionId: '12', textbookId: '7' }]
+  state.selectRow(state.rows[1])
+  assert.equal(state.activeRowKey, '12')
+  assert.equal(state.selectedObject.selectionId, '12')
+})
+
+test('本页筛选不把第三页的数据伪装成第一页', () => {
+  const { state } = page('AaTextbookConsoleView')
+  state.tab = 'fee'; state.page = 3; state.keyword = '教材'
+  state.search()
+  assert.equal(state.page, 3)
+})
+
+test('审核明细按原批次读取，旧响应不能覆盖新批次', async () => {
+  const first = deferred(); const queries = []
+  const { state } = page('AaTextbookConsoleView', { textbookP0Api: { reviewItems: (id, params) => {
+    queries.push([id, params.page]); return id === '1' ? first.promise : Promise.resolve({ code: 0, data: { list: [{ selectionId: '22', remark: '用于实训教学' }], total: 21, batch: { reviewBatchId: '2', status: 'COLLEGE_APPROVED', actions: { advance: true } } } })
+  } } })
+  state.tab = 'review'
+  const pending = state.openReview({ reviewBatchId: '1' })
+  await state.openReview({ reviewBatchId: '2' }, 2)
+  first.resolve({ code: 0, data: { list: [{ selectionId: '11' }], total: 1 } }); await pending
+  assert.equal(state.reviewItems[0].selectionId, '22')
+  assert.equal(state.reviewTotal, 21)
+  assert.equal(state.reviewActionLabel(state.reviewRow), '学校审核并备案')
+  assert.equal(state.reviewActionLabel({ status: 'DRAFT' }), '学院审核通过')
+  assert.deepEqual(queries, [['1', 1], ['2', 2]])
+})
+
+test('审核明细失败显示错误并阻止以空明细冒充成功', async () => {
+  const { state } = page('AaTextbookConsoleView', { textbookP0Api: { reviewItems: async () => { throw new Error('offline') } } })
+  state.tab = 'review'
+  await state.openReview({ reviewBatchId: '1' })
+  assert.equal(state.reviewLoading, false)
+  assert.match(state.reviewError, /读取失败/)
+})
+
+test('超过二百本的目录能继续分页加载且失败不保留旧目录', async () => {
+  const calls = []
+  const { state } = page('AaTextbookConsoleView', { academicAffairsTextbookApi: { listTextbooks: async query => {
+    calls.push(query.page)
+    return { code: 0, data: { list: Array.from({ length: query.page === 1 ? 200 : 1 }, (_, i) => ({ textbookId: String((query.page - 1) * 200 + i + 1) })), total: 201 } }
+  } } })
+  await state.openSelection()
+  assert.deepEqual(calls, [1, 2]); assert.equal(state.selectionCatalog.length, 201)
+  const failed = page('AaTextbookConsoleView', { academicAffairsTextbookApi: { listTextbooks: async () => ({ code: 403, message: '无权读取' }) } }).state
+  failed.selectionCatalog = [{ textbookId: 'old' }]
+  await failed.openSelection()
+  assert.equal(failed.selectionCatalog.length, 0); assert.equal(failed.selectionCanSubmit, false)
+})
+
+test('到货校验整数与上下限，成功后回读并关闭已到齐批次的登记动作', async () => {
+  const calls = []
+  const { state } = page('AaTextbookConsoleView', { academicAffairsTextbookApi: {
+    recordArrival: async (...args) => { calls.push(args); return { code: 0, data: { batchStatus: 'ARRIVED' } } },
+    orderItems: async () => ({ code: 0, data: { items: [{ itemId: '8', orderQty: 3, arrivedQty: 3 }] } })
+  } })
+  state.tab = 'order'; state.arrivalRow = { orderBatchId: '7', status: 'PARTIALLY_ARRIVED' }
+  state.arrivalItems = [{ itemId: '8', orderQty: 3, arrivedQty: 1 }]; state.reload = async () => {}
+  for (const qty of [0, 1.5, 4, NaN]) { state.arrivalQty['8'] = qty; await state.submitArrival('8') }
+  assert.equal(calls.length, 0)
+  state.arrivalQty['8'] = 3; await state.submitArrival('8')
+  assert.deepEqual(calls, [['8', 3]])
+  assert.equal(state.arrivalEditable, false); assert.equal(state.arrivalItems[0].arrivedQty, 3)
+})
+
+test('编辑未定价教材不把缺失价格静默变成免费', () => {
+  const { state } = page('AaTextbookConsoleView')
+  state.openTextbook({ textbookId: '1', name: '待定价教材', unitPrice: null })
+  assert.equal(state.tbForm.unitPrice, null)
+  state.openTextbook({ textbookId: '2', name: '免费教材', unitPrice: 0 })
+  assert.equal(state.tbForm.unitPrice, 0)
 })
 
 test('textbook tab pagination goes to the server', async () => {
@@ -345,14 +473,6 @@ test('review buttons and creation use only server actions, and creation selects 
   assert.deepEqual(Array.from(submitted.selectionIds), ['12'])
   assert.equal(submitted.termId, '52')
 })
-
-
-
-
-
-
-
-
 test('已提交教材选用显示审核岗接手，并保留教师填写的课程名称',()=>{
   const {state}=page('AaTextbookConsoleView');state.tab='selection';state.rows=[{selectionId:'1',courseName:'PUBLIC_BASIC',status:'SUBMITTED',officerName:'同名教师',officerLoginName:'teacher-a'}]
   assert.equal(state.normalizedRows[0].primary,'PUBLIC_BASIC')
@@ -361,8 +481,6 @@ test('已提交教材选用显示审核岗接手，并保留教师填写的课�
   assert.equal(state.normalizedRows[0].officerLoginName,'teacher-a')
   assert.equal(state.statusLabel('UNKNOWN_INTERNAL'),'状态待确认')
 })
-
-
 test('教材目录筛选总量与本页数量有独立明确口径',()=>{
   const {state}=page('AaTextbookConsoleView');state.tab='catalog';state.total=196;state.rows=[{status:'ENABLED',unitPrice:40,isbn:'book',publisher:'press'}]
   assert.equal(state.metricCards[0].label,'目录总数');assert.equal(state.metricCards[0].value,196)

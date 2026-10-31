@@ -70,6 +70,9 @@ class AcademicMakeup(PKMixin, TenantMixin, CommonMixin, Base):
     # 13B-SM-12.1 补考批次回链（融合设计 §5.3；nullable，历史行零回填）
     batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True, comment="→ t_aa_makeup_batch 补考批次")
     final_score: Mapped[int | None] = mapped_column(Integer, comment="补考最终成绩(计分规则封顶后)")
+    review_college_id: Mapped[int | None] = mapped_column(BigInteger, comment="冻结的课程开课学院")
+    college_reviewed_by: Mapped[str | None] = mapped_column(String(100), comment="学院审核账号稳定标识")
+    college_reviewed_at: Mapped[datetime | None] = mapped_column(DateTime, comment="学院审核时间")
 
 
 class AcademicRetake(PKMixin, TenantMixin, CommonMixin, Base):

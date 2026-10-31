@@ -83,7 +83,7 @@ def create_plan(body, user=None):
         db.add(x)
         db.flush()
         for fid in file_ids:
-            file_service.bind_file_biz(fid, "INTERNSHIP", str(x.id), user=user, db=db)
+            file_service.bind_file_biz(fid, "INTERNSHIP_EMERGENCY_PLAN", str(x.id), user=user, db=db)
         _audit(db, x.id, "EMERGENCY_PLAN", "CREATE", user, {
             "companyId": str(x.company_id or ""), "batchId": str(x.batch_id or ""),
             "actorUserId": _uid(user), "version": int(x.version or 0),
@@ -279,7 +279,7 @@ def transition(iid, status, body=None, user=None):
         if target == "CLOSED":
             from app.core.permissions import enforce_permission, is_super_admin
             enforce_permission(user or {}, "internship.incident.close")
-            role = str((user or {}).get("currentRoleCode") or "").upper()
+            role = str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or "").upper()
             if x.severity in ("HIGH", "CRITICAL") and role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
                 raise AppException("NO_PERMISSION", "HIGH/CRITICAL事故只能由学校管理员关闭")
             if (not x.investigation_conclusion or not x.rectification_plan or

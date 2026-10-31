@@ -6,6 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
+      <AppButton v-if="taskReturnTo" @click="$router.push(taskReturnTo)">返回来源</AppButton>
       <AppButton @click="$router.push('/admin/academic-affairs/teaching-tasks')">教学任务</AppButton>
       <AppButton v-if="canManage" :disabled="!filters.termId" :loading="checking" @click="runBackfill">存量对账</AppButton>
       <AppButton v-if="canManage" variant="primary" :disabled="!canExecuteBackfill" @click="confirmVisible = true">执行回填</AppButton>
@@ -120,6 +121,7 @@ export default {
     }
   },
   computed: {
+    taskReturnTo() { const target = this.$route.query.returnTo; return typeof target === 'string' && /^\/admin\/academic-affairs\/teaching-tasks(?:[/?]|$)/.test(target) ? target : '' },
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.manage') },
     activeCount() { return this.rows.filter(row => row.status === 'ACTIVE').length },
     lockedCount() { return this.rows.filter(row => row.rosterStatus === 'LOCKED').length },

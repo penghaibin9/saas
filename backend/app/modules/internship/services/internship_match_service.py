@@ -148,6 +148,7 @@ def _intention_row(db, it: InternshipIntention) -> dict:
         "preferredPositionTitle": position_title,
         "intentionNote": it.intention_note or "",
         "status": it.status, "statusLabel": INTENTION_LABEL.get(it.status, it.status),
+        "version": int(it.version or 0),
         "updatedAt": _iso(it.updated_at),
     }
 
@@ -228,12 +229,21 @@ def list_intentions(page: int, page_size: int, keyword=None, status=None,
         return items[start:start + page_size], total
 
 
-def create_intention(body, user=None, self_service: bool = False) -> dict:
-    with session() as db:
-        rec = _get_record(db, body.recordId)
-        if not self_service:
-            from app.modules.internship.services.internship_service import assert_student_in_scope
-            assert_student_in_scope(db, rec.student_id, user, "该实习学生不在你的数据范围内")
+def intention_command_in_tx(db, action, *, body=None, iid=None, user=None,
+                            self_service=False, expected_version=None):
+    """One intention state machine for staff commands and explicitly scoped student commands."""
+    from app.modules.internship.services.internship_version import versioned_update
+    it = _get_intention(db, iid) if iid is not None else None
+    record_id = it.record_id if it else _as_id(body.recordId)
+    rec = db.scalar(select(InternshipRecord).where(
+        InternshipRecord.id == record_id, InternshipRecord.tenant_id == _tid(),
+        InternshipRecord.is_deleted.is_(False)).with_for_update().execution_options(populate_existing=True))
+    if not rec:
+        raise not_found("实习学生记录不存在或不在当前数据范围内")
+    if not self_service:
+        from app.modules.internship.services.internship_service import assert_student_in_scope
+        assert_student_in_scope(db, rec.student_id, user, "该实习学生不在你的数据范围内")
+    if action == "CREATE":
         exists = db.scalars(select(InternshipIntention).where(
             InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
             InternshipIntention.record_id == rec.id,
@@ -257,66 +267,66 @@ def create_intention(body, user=None, self_service: bool = False) -> dict:
             db.rollback()
             raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG) from exc
         _trail(db, it.id, "INTENTION_CREATE", {"recordId": str(rec.id)})
-        try:
-            db.commit()
-        except IntegrityError as exc:
-            db.rollback()
-            raise AppException("DATA_CONFLICT", _DUP_INTENTION_MSG) from exc
-        db.refresh(it)
-        return _intention_row(db, it)
-
-
-def update_intention(iid, body, user=None, self_service: bool = False) -> dict:
-    with session() as db:
-        it = _get_intention(db, iid)
-        if not self_service:
-            from app.modules.internship.services.internship_service import assert_student_in_scope
-            assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
+        return it
+    it = db.scalar(select(InternshipIntention).where(
+        InternshipIntention.id == it.id, InternshipIntention.tenant_id == _tid(),
+        InternshipIntention.is_deleted.is_(False)).with_for_update().execution_options(populate_existing=True))
+    if not it or it.record_id != rec.id or it.student_id != rec.student_id:
+        raise not_found("意向不属于该实习记录")
+    values = {}
+    if action == "UPDATE":
         if it.status == "WITHDRAWN":
             raise AppException("DATA_CONFLICT", "已撤回意向不可编辑")
         for attr, col in (("preferredCity", "preferred_city"), ("preferredIndustry", "preferred_industry"),
                           ("intentionNote", "intention_note")):
             val = getattr(body, attr, None)
             if val is not None:
-                setattr(it, col, val)
+                values[col] = val
         if getattr(body, "preferredCompanyId", None) is not None:
-            it.preferred_company_id = int(body.preferredCompanyId) if body.preferredCompanyId else None
+            values["preferred_company_id"] = int(body.preferredCompanyId) if body.preferredCompanyId else None
         if getattr(body, "preferredPositionId", None) is not None:
-            it.preferred_position_id = int(body.preferredPositionId) if body.preferredPositionId else None
-        _trail(db, it.id, "INTENTION_UPDATE", {})
+            values["preferred_position_id"] = int(body.preferredPositionId) if body.preferredPositionId else None
+    elif action == "SUBMIT":
+        if it.status not in ("DRAFT", "WITHDRAWN"):
+            raise AppException("DATA_CONFLICT", f"当前状态不可提交（{it.status}）")
+        values["status"] = "SUBMITTED"
+    elif action == "WITHDRAW":
+        if it.status != "SUBMITTED":
+            raise AppException("DATA_CONFLICT", "仅已提交意向可撤回")
+        values["status"] = "WITHDRAWN"
+    else:
+        raise AppException("VALIDATION_ERROR", "不支持的意向操作")
+    versioned_update(db, InternshipIntention, entity_id=it.id, tenant_id=_tid(),
+        expected_version=it.version if expected_version is None else expected_version,
+        expected_status=it.status, values=values)
+    _trail(db, it.id, "INTENTION_" + action, {})
+    db.flush()
+    db.refresh(it)
+    return it
+
+
+def _intention_command(action, *, body=None, iid=None, user=None, self_service=False):
+    with session() as db:
+        it = intention_command_in_tx(db, action, body=body, iid=iid, user=user, self_service=self_service)
         db.commit()
         db.refresh(it)
         return _intention_row(db, it)
+
+
+def create_intention(body, user=None, self_service: bool = False) -> dict:
+    return _intention_command("CREATE", body=body, user=user, self_service=self_service)
+
+
+def update_intention(iid, body, user=None, self_service: bool = False) -> dict:
+    return _intention_command("UPDATE", iid=iid, body=body, user=user, self_service=self_service)
 
 
 def submit_intention(iid, user=None, self_service: bool = False) -> dict:
-    with session() as db:
-        it = _get_intention(db, iid)
-        if not self_service:
-            from app.modules.internship.services.internship_service import assert_student_in_scope
-            assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
-        if it.status not in ("DRAFT", "WITHDRAWN"):
-            raise AppException("DATA_CONFLICT", f"当前状态不可提交（{it.status}）")
-        it.status = "SUBMITTED"
-        _trail(db, it.id, "INTENTION_SUBMIT", {})
-        db.commit()
-        db.refresh(it)
-        return _intention_row(db, it)
+    return _intention_command("SUBMIT", iid=iid, user=user, self_service=self_service)
 
 
 def withdraw_intention(iid, user=None, self_service: bool = False) -> dict:
-    with session() as db:
-        it = _get_intention(db, iid)
-        if not self_service:
-            from app.modules.internship.services.internship_service import assert_student_in_scope
-            assert_student_in_scope(db, it.student_id, user, "该实习学生不在你的数据范围内")
-        if it.status != "SUBMITTED":
-            raise AppException("DATA_CONFLICT", "仅已提交意向可撤回")
-        it.status = "WITHDRAWN"
-        _trail(db, it.id, "INTENTION_WITHDRAW", {})
-        db.commit()
-        db.refresh(it)
-        return _intention_row(db, it)
+    return _intention_command("WITHDRAW", iid=iid, user=user, self_service=self_service)
 
 
 def intention_import_dry_run(rows: list[dict], batch_id=None) -> dict:
@@ -359,15 +369,21 @@ def intention_import_confirm(rows: list[dict], user=None, batch_id=None) -> dict
     created = 0
     with session() as db:
         batch = resolve_batch(db, batch_id, for_write=True)
+        # All import rows lock records in a fixed order, before touching intentions.
+        record_ids = db.scalars(select(InternshipRecord.id).join(StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
+            InternshipRecord.tenant_id == _tid(), InternshipRecord.batch_id == batch.id,
+            InternshipRecord.is_deleted.is_(False), StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False), StudentProfile.student_no.in_([(r.get('studentNo') or '').strip() for r in rows or []]))).all()
+        locked_records = {rec.student_id: rec for rec in db.scalars(select(InternshipRecord).where(
+            InternshipRecord.id.in_(record_ids)).order_by(InternshipRecord.id).with_for_update()).all()}
         for r in rows or []:
             sno = (r.get("studentNo") or "").strip()
             stu = db.scalars(select(StudentProfile).where(
                 StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
                 StudentProfile.student_no == sno)).first()
-            rec = db.scalars(select(InternshipRecord).where(
-                InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-                InternshipRecord.student_id == stu.id,
-                InternshipRecord.batch_id == batch.id)).first()
+            rec = locked_records.get(stu.id)
+            if not rec:
+                raise AppException("DATA_CONFLICT", "导入学生实习记录已变化，请重新预检")
             company_id = None
             cname = (r.get("company") or "").strip()
             if cname:
@@ -378,14 +394,18 @@ def intention_import_confirm(rows: list[dict], user=None, batch_id=None) -> dict
             active = db.scalars(select(InternshipIntention).where(
                 InternshipIntention.tenant_id == _tid(), InternshipIntention.is_deleted.is_(False),
                 InternshipIntention.record_id == rec.id,
-                InternshipIntention.status.in_(("DRAFT", "SUBMITTED")))).first()
+                InternshipIntention.status.in_(("DRAFT", "SUBMITTED"))).with_for_update()
+                .execution_options(populate_existing=True)).first()
             if active:
-                active.preferred_city = (r.get("city") or "").strip() or active.preferred_city
-                active.preferred_industry = (r.get("industry") or "").strip() or active.preferred_industry
-                if company_id:
-                    active.preferred_company_id = company_id
-                active.intention_note = (r.get("note") or "").strip() or active.intention_note
-                active.status = "SUBMITTED"
+                from app.modules.internship.services.internship_version import versioned_update
+                versioned_update(db, InternshipIntention, entity_id=active.id, tenant_id=_tid(),
+                    expected_version=active.version, expected_status=active.status,
+                    values={"preferred_city": (r.get("city") or "").strip() or active.preferred_city,
+                            "preferred_industry": (r.get("industry") or "").strip() or active.preferred_industry,
+                            "preferred_company_id": company_id or active.preferred_company_id,
+                            "intention_note": (r.get("note") or "").strip() or active.intention_note,
+                            "status": "SUBMITTED"})
+                db.refresh(active)
             else:
                 it = InternshipIntention(
                     tenant_id=_tid(), record_id=rec.id, student_id=stu.id, batch_id=rec.batch_id,

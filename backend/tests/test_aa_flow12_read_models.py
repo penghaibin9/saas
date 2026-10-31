@@ -62,8 +62,9 @@ def test_registration_batch_counts_are_real_records_not_candidates(client, db_mo
             db.add(AaRegistration(tenant_id=TID, batch_id=batch.id, student_id=student.id, status=status, is_deleted=index==2))
         db.add(AaRegistration(tenant_id=TID+1, batch_id=batch.id, student_id=123, status='REGISTERED'))
         db.commit()
-    result = client.get(f'{BASE}/registration-batches', headers=admin_headers(client), params={'pageSize': 100}).json()['data']
-    row = next(item for item in result['items'] if item['batchId'] == batch_id)
+    result = client.get(f'{BASE}/registration-batches', headers=admin_headers(client), params={'keyword': batch_id}).json()['data']
+    assert result['total'] == 1
+    row = result['items'][0]
     assert row['registrationCount'] == 2 and row['registeredCount'] == 1
     assert row['termId'] is None and row['termName'] is None
 

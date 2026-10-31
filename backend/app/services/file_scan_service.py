@@ -83,6 +83,7 @@ def assert_file_ready_for_business(
     user: dict | None = None,
     biz_type: str | None = None,
     biz_id: str | None = None,
+    access_action: str = "bind",
 ):
     """业务提交、绑定和下载前的统一 fail-closed 门禁。"""
     if not db_enabled() or not str(file_id).isdigit():
@@ -111,7 +112,9 @@ def assert_file_ready_for_business(
             FileObject.is_deleted.is_(False),
         )).first()
         actor = user or get_current_user_ctx() or {}
-        if not row or not file_service.authorize_file_access(actor, row, "bind"):
+        if access_action not in {"bind", "meta"}:
+            raise ValueError("Unsupported file readiness access action")
+        if not row or not file_service.authorize_file_access(actor, row, access_action):
             raise not_found("文件不存在或无权访问")
         if biz_type and row.biz_type and row.biz_type.upper() != biz_type.upper():
             raise AppException("DATA_CONFLICT", "文件用途与当前业务不一致")

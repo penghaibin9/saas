@@ -17,6 +17,7 @@ from app.models import (
     InternshipGuidance, InternshipInsurance, InternshipLeave, InternshipPlanTaskProgress,
     InternshipProcessReport, InternshipSafetyCompletion, InternshipSpecialFiling,
     InternshipStudentEval, InternshipVisit, StudentProfile,
+    InternshipFormalDocument, InternshipReportVersion, InternshipPayrollStatement, InternshipPayrollVersion,
 )
 from app.models.file import ArchiveManifest, ArchiveManifestItem, FileAsset, FileBinding, FileObject, FileVersion
 from app.modules.internship.services import internship_material_center_service as core
@@ -32,6 +33,17 @@ def _model_sources(db, record, model, category, biz_type, file_field, title_fn, 
     return [core._source(category, getattr(row, file_field), title=title_fn(row),
                          biz_type=biz_type, biz_id=row.id,
                          review_status=status_fn(row)) for row in rows]
+
+
+def _retained_source(db, category, file_id, **kwargs):
+    if not str(file_id or "").isascii() or not str(file_id or "").isdigit():
+        raise AppException("DATA_CONFLICT", "历史附件编号无效，请核对原业务材料后重新归档")
+    invalid = db.scalar(select(FileVersion.id).where(
+        FileVersion.tenant_id == _tid(), FileVersion.file_object_id == int(file_id),
+        FileVersion.status.in_(("INVALIDATED", "REJECTED")), FileVersion.is_deleted.is_(False)).limit(1))
+    if invalid:
+        raise AppException("DATA_CONFLICT", "历史附件已有失效或拒绝记录，禁止重新绑定到归档，请核对原业务材料")
+    return core._source(category, file_id, **kwargs)
 
 
 def _sources(db, record, user=None, force_file_ids=None):
@@ -81,6 +93,35 @@ def _sources(db, record, user=None, force_file_ids=None):
     )
     for spec in specs:
         values.extend(_model_sources(db, record, *spec))
+
+    documents = db.scalars(select(InternshipFormalDocument).where(
+        InternshipFormalDocument.tenant_id == _tid(), InternshipFormalDocument.internship_id == record.id,
+        InternshipFormalDocument.is_deleted.is_(False),
+        InternshipFormalDocument.status.in_(("GENERATED", "SUPERSEDED")),
+    ).order_by(InternshipFormalDocument.id)).all()
+    for row in documents:
+        values.append(core._source("FORMAL_DOCUMENT", row.file_id,
+            title=f"正式文书 · 第{row.document_version}版", biz_type="INTERNSHIP_FORMAL_DOCUMENT",
+            biz_id=row.id, review_status="APPROVED", business_version=row.document_version))
+    versions = db.scalars(select(InternshipReportVersion).where(
+        InternshipReportVersion.tenant_id == _tid(), InternshipReportVersion.internship_id == record.id,
+    ).order_by(InternshipReportVersion.id)).all()
+    for row in versions:
+        for index, fid in enumerate(row.attachment_file_ids_json or [], start=1):
+            values.append(_retained_source(db, "REPORT_HISTORY_ATTACHMENT", fid,
+                title=f"报告历史附件 · 第{row.version_no}版 · {index}",
+                biz_type="INTERNSHIP_REPORT_HISTORY", biz_id=f"{row.id}:{index}",
+                business_version=row.version_no))
+    payroll_versions = db.scalars(select(InternshipPayrollVersion).join(
+        InternshipPayrollStatement, InternshipPayrollStatement.id == InternshipPayrollVersion.statement_id,
+    ).where(InternshipPayrollStatement.tenant_id == _tid(), InternshipPayrollStatement.internship_id == record.id,
+        InternshipPayrollStatement.is_deleted.is_(False), InternshipPayrollVersion.tenant_id == _tid(),
+        InternshipPayrollVersion.is_deleted.is_(False), InternshipPayrollVersion.evidence_file_id.is_not(None),
+    ).order_by(InternshipPayrollVersion.id)).all()
+    for row in payroll_versions:
+        values.append(_retained_source(db, "PAYROLL_EVIDENCE", row.evidence_file_id,
+            title=f"工资上报凭证 · 第{row.revision_no}版", biz_type="INTERNSHIP_PAYROLL_VERSION",
+            biz_id=row.id, review_status=row.status, business_version=row.revision_no))
 
     # 投诉记录没有 internship_id；只接入当前学生且批次明确一致的证据。
     complaint_conditions = [

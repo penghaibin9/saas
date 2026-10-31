@@ -13,6 +13,37 @@ const q = (obj) => {
 
 let renderedGraduationTaskbookVersion = null
 
+const intentionPath = '/mobile/internship/context/intention'
+function intentionView(data, context) {
+  if (!context?.batchId || !context?.internshipId || data?.hasData !== true
+    || String(data.batchId) !== String(context.batchId) || String(data.internshipId) !== String(context.internshipId)) {
+    throw new Error('意向不属于当前实习，请重新读取')
+  }
+  const row = data.intention
+  if (row && (!/^\d+$/.test(String(row.id || '')) || String(row.recordId) !== String(context.internshipId)
+    || String(row.batchId) !== String(context.batchId) || !Number.isInteger(row.version) || row.version < 0)) {
+    throw new Error('意向原单或版本不完整，请重新读取')
+  }
+  const labels = { DRAFT: '草稿', SUBMITTED: '已提交', WITHDRAWN: '已撤回' }
+  const known = !row || Object.hasOwn(labels, row.status)
+  return { ...data,
+    intention: row ? { ...row, statusLabel: labels[row.status] || '状态待学校核对' } : null,
+    canEdit: known && data.canEdit === true, canSubmit: known && data.canSubmit === true,
+    canWithdraw: known && data.canWithdraw === true, canCreateNew: known && data.canCreateNew === true,
+    readOnlyReason: data.readOnlyReason === '' ? '' : /[\u4e00-\u9fff]/.test(data.readOnlyReason || '') ? data.readOnlyReason : '当前暂不能办理，请重新读取或联系学校核对。' }
+}
+async function intentionRequest(path, options, context) {
+  try { return intentionView(await request(path, options), context) }
+  catch (error) {
+    const code = error?.bizCode || error?.code
+    const message = code === 'DATA_CONFLICT' ? '意向版本或办理条件已变化，未提交内容已保留，请重新读取并核对。'
+      : code === 'NO_PERMISSION' || error?.status === 403 ? '当前账号无权办理此意向，请联系学校核对。'
+        : code === 'VALIDATION_ERROR' ? '意向内容或所选岗位不符合要求，请核对后重试。'
+          : '意向暂时无法读取或保存，未提交内容仍保留，请重试。'
+    throw Object.assign(new Error(message), error, { message })
+  }
+}
+
 export const portalApi = {
   captcha: (body) => request('/auth/captcha', { method: 'POST', auth: false, body }),
   passwordResetRequest: (body) => request('/auth/password-reset/request', { method: 'POST', auth: false, body }),
@@ -54,7 +85,7 @@ export const portalApi = {
   academicExam: () => request('/portal/academic/exam'),
   academicExamDefer: (status) => request(`/portal/academic/exam/defer${q({ status })}`),
   academicExamDeferApply: (body) => request('/portal/academic/exam/defer/apply', { method: 'POST', body }),
-  academicExamDeferResubmit: (deferId) => request(`/portal/academic/exam/defer/${encodeURIComponent(deferId)}/resubmit`, { method: 'POST' }),
+  academicExamDeferResubmit: (deferId, body = {}) => request(`/portal/academic/exam/defer/${encodeURIComponent(deferId)}/resubmit`, { method: 'POST', body }),
   academicMakeup: () => request('/portal/academic/makeup'),
   academicMakeupOptions: () => request('/portal/academic/makeup/options'),
   academicRetakeApply: (body) => request('/portal/academic/retake/apply', { method: 'POST', body }),
@@ -126,7 +157,8 @@ export const portalApi = {
   affairsActivitiesMy: (params = {}) => request('/portal/affairs/activities/my', { params }),
   affairsActivityEnroll: (activityId) => request(`/portal/affairs/activities/${encodeURIComponent(activityId)}/enroll`, { method: 'POST' }),
 
-  internshipMy: () => request('/portal/internship/my'),
+  internshipMy: (batchId = '') =>
+    request('/portal/internship/my' + q({ batchId })),
   businessFormLoad: (body) => request('/business-forms/runtime/load', { method: 'POST', body }),
   businessFormSubmit: (body) => request('/business-forms/runtime/submit', { method: 'POST', body }),
   internshipCompliance: (operation = 'ONBOARD', batchId = '') => request(`/portal/internship/compliance${q({ operation, batchId })}`),
@@ -143,22 +175,30 @@ export const portalApi = {
   internshipSafetyCommit: (id, body) => request(`/portal/internship/safety/completions/${encodeURIComponent(id)}/commit`, { method: 'POST', body }),
   internshipWeeklySubmit: (body) => request('/portal/internship/weekly/submit', { method: 'POST', body }),
   internshipReportSubmit: (body) => request('/portal/internship/report/submit', { method: 'POST', body }),
-  internshipAgreementPrint: (body) => request('/portal/internship/agreement/print', { method: 'POST', body }),
-  internshipScoreAppealStatus: (params = {}) => request(`/portal/internship/score/appeal${q(params)}`),
-  internshipScoreAppeal: (body) => request('/portal/internship/score/appeal', { method: 'POST', body }),
+  internshipAgreementPrint: (body) =>
+    request('/portal/internship/agreement/print', { method: 'POST', body }),
+  internshipScoreAppealStatus: (params = {}) =>
+    request('/portal/internship/score/appeal' + q(params)),
+  internshipScoreAppeal: (body) =>
+    request('/portal/internship/score/appeal', { method: 'POST', body }),
   internshipLeaves: () => request('/portal/internship/leaves'),
   internshipLeaveApply: (body) => request('/portal/internship/leaves/apply', { method: 'POST', body }),
   internshipLeaveReturn: (leaveId, body) => request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/return`, { method: 'POST', body }),
   internshipLeaveWithdraw: (leaveId) => request(`/portal/internship/leaves/${encodeURIComponent(leaveId)}/withdraw`, { method: 'POST' }),
-  internshipCheckin: (body) => request('/portal/internship/checkin', { method: 'POST', body }),
+  internshipCheckin: (body) =>
+    request('/mobile/internship/checkin' + q({ batchId: body.batchId }), { method: 'POST', body }),
   internshipSelfEval: (body) => request('/portal/internship/self-eval', { method: 'POST', body }),
   internshipMakeupApply: (body) => request('/portal/internship/makeup', { method: 'POST', body }),
   internshipMakeups: () => request('/portal/internship/makeup'),
   internshipMakeupWithdraw: (id) => request(`/portal/internship/makeup/${encodeURIComponent(id)}/withdraw`, { method: 'POST' }),
-  internshipIntentionMy: () => request('/portal/internship/intention'),
-  internshipIntentionSave: (body) => request('/portal/internship/intention', { method: 'POST', body }),
-  internshipIntentionSubmit: () => request('/portal/internship/intention/submit', { method: 'POST' }),
-  internshipIntentionWithdraw: () => request('/portal/internship/intention/withdraw', { method: 'POST' }),
+  internshipIntentionMy: (context) =>
+    intentionRequest(intentionPath + q(context), {}, context),
+  internshipIntentionSave: (body) =>
+    intentionRequest(intentionPath, { method: 'PUT', body }, body),
+  internshipIntentionSubmit: (body) =>
+    intentionRequest(intentionPath + '/submit', { method: 'POST', body }, body),
+  internshipIntentionWithdraw: (body) =>
+    intentionRequest(intentionPath + '/withdraw', { method: 'POST', body }, body),
   internshipApplications: () => request('/portal/internship/applications'),
   internshipApplicationSubmit: (body) => request('/portal/internship/applications', { method: 'POST', body }),
   internshipChangeApply: (body) => request('/portal/internship/change', { method: 'POST', body }),
@@ -171,7 +211,8 @@ export const portalApi = {
   internshipPlan: () => request('/portal/internship/plan'),
   internshipPlanAck: () => request('/portal/internship/plan/acknowledge', { method: 'POST' }),
   internshipEnterprises: (city = '') => request(`/portal/internship/enterprises${city ? `?city=${encodeURIComponent(city)}` : ''}`),
-  internshipHelp: (body) => request('/portal/internship/help', { method: 'POST', body }),
+  internshipHelp: (body) =>
+    request('/mobile/internship/context/help', { method: 'POST', body }),
 
   departureMy: () => request('/portal/departure/my'),
   employmentMy: () => request('/portal/employment/my'),
@@ -251,7 +292,9 @@ export const portalApi = {
   async previewGraduationMaterial(fileId, fileName) {
     const ticket = await this.issueGraduationMaterialTicket(fileId, 'preview')
     return fileSdk.previewFrom(ticket, fileName)
-  }
+  },
+  internshipHelpMy: (context) =>
+    request('/mobile/internship/context/help' + q(context))
 }
 
 export default portalApi

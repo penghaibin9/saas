@@ -1,3 +1,4 @@
+import { teacherInternshipEvidenceV3Api } from './teacherInternshipEvidenceV3Api'
 /** 教师端数据服务：真实后端优先（主链：学生/审批/待办/消息/学生360），失败自动回退 mock。 */
 import { mockRequest, realFirst, realFirstStrict, realRequest } from './request'
 import { latestRead } from './latestRead'
@@ -19,12 +20,15 @@ export const teacherApi = {
   getTodos: () => realFirst('teacher.todos', () => real.teacherTodosReal(), () => mockRequest({ filters: M.todoFilters, list: M.teacherTodos })),
   getApprovals: () => realFirst('teacher.approvals', () => real.teacherApprovalsReal(), () => mockRequest(M.approvals)),
   actApproval: (id, type, reason) => real.actApproval(id, type, reason),
-  reviewWeekly: (id, action, comment, expectedVersion) =>
-    real.reviewWeeklyReal(id, action, comment, expectedVersion),
+  reviewWeekly: (id, action, comment, expectedVersion, ratingLevel = null) =>
+    realRequest(`/internship/reports/${encodeURIComponent(String(id || ''))}/review`, {
+      method: 'POST',
+      data: { action, comment: comment || '', expectedVersion, ratingLevel }
+    }),
   reviewProposal: (id, action, comment, expectedVersion, fileVersionId) =>
     real.reviewProposalReal(id, action, comment, expectedVersion, fileVersionId),
   handleWarning: (id, action, note) => real.handleWarningReal(id, action, note),
-  handleCheckin: (id, action, comment) => teacherSequentialV3.handleCheckin(id, action, comment),
+  handleCheckin: (id, action, comment, riskLevel = null) => teacherSequentialV3.handleCheckin(id, action, comment, riskLevel),
   remindWeekly: (id) => real.remindWeeklyReal(id),
   createFollowup: (body) => real.createFollowupReal(body),
   getAffairs: (page = 1, pageSize = 20) => real.teacherAffairs(page, pageSize),
@@ -53,17 +57,21 @@ export const teacherApi = {
   setNotifyPreference: (key, enabled) => real.teacherNotifySetPreference(key, enabled),
   publishNotice: (body) => real.teacherNotifyPublish(body),
   getDashboard: () => real.teacherDashboard(),
-  getWeeklyReports: (options = {}) => realFirstStrict(
-    'teacher.internship',
-    () => teacherSequentialV3.getInternshipReviewQueue(options),
-    () => mockRequest({ reports: M.weeklyReports, abnormal: M.abnormalCheckins,
-      pagination: { weeklyPage: 1, exceptionPage: 1, pageSize: 20,
-        weeklyPendingTotal: M.weeklyReports.filter((item) => item.status === 'PENDING_REVIEW').length,
-        weeklyOverdueTotal: M.weeklyReports.filter((item) => item.status === 'OVERDUE').length,
-        exceptionTotal: M.abnormalCheckins.filter((item) => item.status === 'PENDING_HANDLE').length,
-        weeklyHasMore: false, exceptionHasMore: false } })
-  ),
-  getWeeklyDetail: (id) => real.teacherWeeklyDetail(id),
+  getWeeklyReports: (options = {}) => teacherSequentialV3.getInternshipReviewQueue(options),
+  async getWeeklyDetail(id) {
+    const d = await realRequest('/internship/reports/' + encodeURIComponent(String(id || '')))
+    const c = d?.content || {}
+    return {
+      id: String(d?.id || ''), batchId: String(d?.batchId || ''), version: d?.version, status: d?.status,
+      work: c.work || '',
+      harvest: c.harvest || '',
+      plan: c.plan || '',
+      positionName: d?.positionName || '',
+      reviewComment: d?.reviewComment || '',
+      attachments: d?.attachments || [],
+      immutableVersions: d?.immutableVersions || []
+    }
+  },
   getGdStudents: () => realFirst('teacher.graduation', () => real.teacherGraduationReal(), () => mockRequest({ list: M.gdStudents, detail: M.gdReviewDetail })),
   createGuidance: (gdStudentId, body) => real.teacherGraduationGuidanceCreate(gdStudentId, body),
   getGraduationProposalDetail: (id) => latestRead(`teacher:graduation:proposal:${id}`, () => real.gdTeacherProposalDetail(id)),
@@ -118,7 +126,7 @@ export const teacherApi = {
   orientationCheckinConfirm: (token, checkinPointId) => real.teacherOrientationCheckinConfirm(token, checkinPointId),
   getOrientationTodayCheckins: () => real.teacherOrientationTodayCheckins(),
   getOrientationDashboard: () => real.teacherOrientationDashboard(),
-  getInternshipVisitPlans: () => real.teacherInternshipVisitPlans(),
+  getInternshipVisitPlans: (batchId, options) => teacherInternshipEvidenceV3Api.visitTargets(batchId, options),
   recordInternshipVisit: (internshipId) => real.teacherInternshipVisitRecord(internshipId),
   getMakeupPending: () => real.teacherMakeupPending(),
   reviewMakeup: (makeupId, action, comment) => real.teacherMakeupReview(makeupId, action, comment),
@@ -126,11 +134,14 @@ export const teacherApi = {
   reviewLeave: (leaveId, action, comment) => real.teacherLeaveReview(leaveId, action, comment),
   getLeaveOverdue: () => real.teacherLeaveOverdue(),
   ackLeaveReturn: (leaveId, note) => real.teacherLeaveAckReturn(leaveId, note),
-  getInternshipRisks: () => real.teacherInternshipRisks(),
-  handleInternshipRisk: (riskId, body) => real.teacherInternshipRiskHandle(riskId, body),
-  followInternshipRisk: (riskId, body) => real.teacherInternshipRiskFollow(riskId, body),
-  closeInternshipRisk: (riskId, body) => real.teacherInternshipRiskClose(riskId, body),
-  createInternshipGuidance: (body) => real.teacherInternshipGuidanceCreate(body),
+  getInternshipRisks: ({ batchId, page = 1, pageSize = 20, status = '' } = {}) => {
+    if (!batchId) return Promise.reject({ biz: true, message: '请先选择实习批次' })
+    return realRequest(`/internship/risks?batchId=${encodeURIComponent(String(batchId))}&page=${page}&pageSize=${pageSize}&status=${encodeURIComponent(status)}`)
+  },
+  handleInternshipRisk: (id, body) => realRequest(`/internship/risks/${encodeURIComponent(String(id || ''))}/handle`, { method: 'POST', data: body || {} }),
+  followInternshipRisk: (id, body) => realRequest(`/internship/risks/${encodeURIComponent(String(id || ''))}/follow`, { method: 'POST', data: body || {} }),
+  closeInternshipRisk: (id, body) => realRequest(`/internship/risks/${encodeURIComponent(String(id || ''))}/close`, { method: 'POST', data: body || {} }),
+  createInternshipGuidance: (body) => realRequest('/internship/guidances', { method: 'POST', data: body || {} }),
   getStudentEvalPending: () => real.teacherStudentEvalPending(),
   getStudentEvalDetail: (evalId) => real.teacherStudentEvalDetail(evalId),
   submitStudentEvalAdvisorComment: (evalId, body) => real.teacherStudentEvalAdvisorComment(evalId, body),
@@ -143,7 +154,7 @@ export const teacherApi = {
   getInternshipChangePending: () => real.teacherInternshipChangePending(),
   reviewInternshipChange: (changeId, action, comment) => real.teacherInternshipChangeReview(changeId, action, comment),
   // 成绩列表由 batch-aware internshipApi 提供；教师仅核算，不发布。
-  computeInternshipScore: (body) => real.teacherInternshipScoreCompute(body),
+  computeInternshipScore: (body) => realRequest('/internship/scores/compute', { method: 'POST', data: body || {} }),
   // 教师只查看待学校终审协议，学校确认动作仅在管理端存在。
   getAgreementPendingSchool: () => real.teacherAgreementPendingSchool(),
   getProcessReportPending: () => real.teacherProcessReportPending(),
@@ -237,6 +248,37 @@ export const teacherApi = {
   submitAttendanceSession: (sessionId) => real.teacherAttendanceSubmit(sessionId),
   getWorkloadDeclarations: (params) => real.teacherWorkloadMy(params),
   getWorkloadCommandReceipt: (commandKey) => real.teacherWorkloadCommandReceipt(commandKey),
-  submitWorkload: (body) => real.teacherWorkloadSubmit(body)
+  submitWorkload: (body) => real.teacherWorkloadSubmit(body),
+  getReportObligations: ({ batchId, reportType, missingOnly = true, submittedOnly = false, page = 1, pageSize = 20 }) =>
+    realRequest(`/internship/report-obligations?batchId=${encodeURIComponent(batchId)}&reportType=${encodeURIComponent(reportType)}&missingOnly=${missingOnly}&submittedOnly=${submittedOnly}&page=${page}&pageSize=${pageSize}`),
+  remindReportObligation: (recordId, batchId, reportType) =>
+    realRequest(`/internship/report-obligations/${encodeURIComponent(recordId)}/remind?batchId=${encodeURIComponent(batchId)}`, { method: 'POST', data: { reportType } }),
+  getEmploymentRegistrations: ({batchId,status='ALL',page=1,pageSize=20}) => realRequest(`/teacher-mobile/internship/employment?batchId=${encodeURIComponent(String(batchId||''))}&status=${encodeURIComponent(status)}&page=${page}&pageSize=${pageSize}`),
+  getEmploymentRegistration: id => realRequest(`/teacher-mobile/internship/employment/${encodeURIComponent(String(id||''))}`),
+  discloseEmploymentRegistration: (id,purpose) => realRequest(`/teacher-mobile/internship/employment/${encodeURIComponent(String(id||''))}/disclose`,{method:'POST',data:{purpose}}),
+  reviewEmploymentRegistration: (id,body) => realRequest(`/teacher-mobile/internship/employment/${encodeURIComponent(String(id||''))}/review`,{method:'POST',data:body}),
+  getInternshipWorkbenchTodos: ({ status='PENDING', group='ALL', page=1, pageSize=50 }={}) =>
+    realRequest(`/teacher-mobile/internship/workbench/todos?status=${encodeURIComponent(status)}&group=${encodeURIComponent(group)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
+  getInternshipWorkbenchMessages: ({ category='ALL', readStatus='', page=1, pageSize=20 }={}) =>
+    realRequest(`/teacher-mobile/internship/workbench/messages?category=${encodeURIComponent(category)}&readStatus=${encodeURIComponent(readStatus)}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
+  readInternshipWorkbenchMessage: (messageId) =>
+    realRequest(`/teacher-mobile/internship/workbench/messages/${encodeURIComponent(String(messageId||''))}/read`, { method:'POST' }),
+  getInternshipMessageTarget: messageId =>
+    realRequest(`/teacher-mobile/internship/workbench/messages/${encodeURIComponent(String(messageId||''))}/target`),
+  getMyInternshipCheckins: (batchId, limit = 31, month = '') => realRequest(`/teacher-mobile/internship/activity/checkins?batchId=${encodeURIComponent(String(batchId || ''))}&limit=${encodeURIComponent(limit)}${month ? '&month='+encodeURIComponent(month) : ''}`),
+  getMyInternshipCheckinRule: batchId => realRequest(`/teacher-mobile/internship/activity/checkin-rule?batchId=${encodeURIComponent(String(batchId || ''))}`),
+  createMyInternshipCheckin: (body) => realRequest('/teacher-mobile/internship/activity/checkins', { method: 'POST', data: body || {} }),
+  getMyInternshipMakeups: (batchId, status = '') => realRequest(`/teacher-mobile/internship/activity/makeups?batchId=${encodeURIComponent(String(batchId || ''))}${status ? '&status='+encodeURIComponent(status) : ''}`),
+  applyMyInternshipMakeup: (body) => realRequest('/teacher-mobile/internship/activity/makeups', { method: 'POST', data: body || {} }),
+  withdrawMyInternshipMakeup: (id) => realRequest(`/teacher-mobile/internship/activity/makeups/${encodeURIComponent(String(id || ''))}/withdraw`, { method: 'POST' }),
+  getMyInternshipWorkReports: (batchId, page = 1, pageSize = 20) => realRequest(`/teacher-mobile/internship/activity/work-reports?batchId=${encodeURIComponent(String(batchId || ''))}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
+  saveMyInternshipWorkReport: (body) => realRequest('/teacher-mobile/internship/activity/work-reports', { method: 'POST', data: body || {} }),
+  getMyInternshipPeriodReports: (batchId, page = 1, pageSize = 20) => realRequest(`/teacher-mobile/internship/activity/period-reports?batchId=${encodeURIComponent(String(batchId || ''))}&page=${encodeURIComponent(page)}&pageSize=${encodeURIComponent(pageSize)}`),
+  saveMyInternshipPeriodReport: (body) => realRequest('/teacher-mobile/internship/activity/period-reports', { method: 'POST', data: body || {} }),
+  getInternshipEmergencyNotices: (batchId, includeWithdrawn = true) => realRequest(`/teacher-mobile/internship/emergency-notices?batchId=${encodeURIComponent(String(batchId || ''))}&includeWithdrawn=${includeWithdrawn ? 'true' : 'false'}`),
+  getPendingInternshipEmergencyNotices: (batchId) => realRequest(`/teacher-mobile/internship/emergency-notices/pending?batchId=${encodeURIComponent(String(batchId || ''))}`),
+  acknowledgeInternshipEmergencyNotice: (id, batchId) => realRequest(`/teacher-mobile/internship/emergency-notices/${encodeURIComponent(String(id || ''))}/ack?batchId=${encodeURIComponent(String(batchId || ''))}`, { method: 'POST' }),
+  publishInternshipEmergencyNotice: (body) => realRequest('/teacher-mobile/internship/emergency-notices', { method: 'POST', data: body || {} }),
+  withdrawInternshipEmergencyNotice: (id, reason) => realRequest(`/teacher-mobile/internship/emergency-notices/${encodeURIComponent(String(id || ''))}/withdraw`, { method: 'POST', data: { reason } })
 }
 export default teacherApi

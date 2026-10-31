@@ -43,13 +43,27 @@
               <div><span>{{ selectedMetric.definition?.denominatorLabel || '分母' }}</span><strong>{{ selectedMetric.denominator ?? '—' }}</strong></div>
             </div>
             <div class="definition">
-              <h3>如何计算</h3><p>{{ selectedMetric.note || selectedMetric.definition?.note || '当前未提供进一步的口径说明。' }}</p>
+              <h3>如何计算</h3><p>{{ selectedMetric.note || selectedMetric.definition?.note || '暂无补充说明。' }}</p>
               <p>比率 = 分子 ÷ 分母 × 100%；无统计对象时不计算比率。</p>
               <p v-if="selectedMetric.anomaly" class="warning-text">分子大于分母，当前口径存在异常，请核对统计来源。</p>
               <p v-else-if="selectedMetric.rate == null">当前范围暂无可计算的数据，不计为达标或未达标。</p>
               <p v-else-if="selectedMetric.warn" class="warning-text">当前值低于参考阈值，可据此安排跟进。阈值不代表审批结论。</p>
             </div>
             <AppButton variant="secondary" @click="closeMetric">返回原筛选结果</AppButton>
+            <div v-if="selectedMetric.drilldownAvailable" class="drill-workspace">
+              <AppButton variant="ghost" @click="loadDrill('numerator')">查看分子明细</AppButton>
+              <AppButton variant="ghost" @click="loadDrill('denominator')">查看分母明细</AppButton>
+              <AppExportButton :export-fn="exportDrill" :has-permission="canBtn('internship.stats.export')" :disabled="drill.loading || !!drill.error || !drill.subset">导出当前明细</AppExportButton>
+              <LoadingState v-if="drill.loading" />
+              <ErrorState v-else-if="drill.error" :description="drill.error" @retry="loadDrill(drill.subset,drill.page)" />
+              <template v-else-if="drill.subset">
+                <p>{{ drill.subset==='numerator'?'分子':'分母' }}计入 {{ drill.totalValue }}，涉及 {{ drill.total }} 名学生；每行显示该学生对本指标的计入数量。</p>
+                <DataTable :columns="drillColumns" :rows="drill.items" row-key="internshipId" />
+                <AppButton variant="ghost" :disabled="drill.page<=1" @click="loadDrill(drill.subset,drill.page-1)">上一页明细</AppButton>
+                <span>第 {{ drill.page }} 页</span>
+                <AppButton variant="ghost" :disabled="drill.page*20>=drill.total" @click="loadDrill(drill.subset,drill.page+1)">下一页明细</AppButton>
+              </template>
+            </div>
           </template>
           <div v-else class="state" role="alert">当前统计结果中没有该指标。<AppButton variant="ghost" @click="closeMetric">返回统计总览</AppButton></div>
         </section>
@@ -76,14 +90,14 @@
           </section>
 
           <div class="chart-grid">
-            <AppChartCard title="实习过程趋势" subtitle="最近 6 个月的业务发生量" :min-height="280">
+            <AppChartCard title="实习过程趋势" subtitle="最近6个月的建档、周报提交与指导巡访登记量" :min-height="280">
               <div v-if="trendError" class="state is-error" role="alert">{{ trendError }}<AppButton variant="ghost" size="sm" @click="load">重新加载</AppButton></div>
               <template v-else-if="trendRows.length">
                 <AppG2Chart :spec="trendChartSpec" :height="250" />
                 <details class="chart-values"><summary>查看趋势数据</summary><div class="table-scroll"><table><caption>每月业务发生量</caption><thead><tr><th>月份</th><th>业务</th><th>数量</th></tr></thead><tbody><tr v-for="(row, index) in trendRows" :key="index"><td>{{ row.month }}</td><td>{{ row.series }}</td><td>{{ row.value }}</td></tr></tbody></table></div></details>
               </template>
               <div v-else class="state">当前范围暂无过程数据</div>
-              <template #footer><span class="chart-note">按建档、报告提交及指导巡访记录的发生时间汇总。</span></template>
+              <template #footer><span class="chart-note">按学校自然月统计建档、当前已提交周报和指导巡访登记；补录的登记时间与实际开展日期可能不同。</span></template>
             </AppChartCard>
             <AppChartCard title="成绩分布" subtitle="已发布综合成绩" :empty="!scoreTotal" empty-text="当前范围暂无已发布成绩" :min-height="280">
               <AppG2Chart :spec="scoreChartSpec" :height="250" />
@@ -91,7 +105,23 @@
               <template #footer><span class="chart-note">已发布 {{ scoreTotal }} 人；未发布成绩不计入分布。</span></template>
             </AppChartCard>
           </div>
-          <div v-if="partial.length" class="notice" role="status"><span v-for="item in partial" :key="item.key">{{ item.label }}：{{ item.reason }}</span></div>
+          <div v-if="partial.length" class="notice" role="status"><span v-for="item in partial" :key="item.key">{{ item.message || '部分统计来源尚未配置' }}</span></div>
+          <section class="indicator-panel" aria-label="质量与工资统计">
+            <header class="section-head"><h2>质量与工资统计</h2><AppExportButton :export-fn="exportQuality" :has-permission="canBtn('internship.stats.export')" :disabled="!!qualityError || !quality">导出质量与工资统计</AppExportButton></header>
+            <ErrorState v-if="qualityError" :description="qualityError" @retry="load" />
+            <template v-else-if="quality">
+              <p v-for="item in qualityRatios" :key="item.key">{{ item.label }}：{{ item.rate==null?'暂无数据':item.rate+'%' }}（{{ item.numerator }} / {{ item.denominator }}）</p>
+              <DataTable :columns="wageColumns" :rows="wages" row-key="currency" />
+              <p>{{ quality.wageNote }}</p>
+            </template>
+          </section>
+          <ProcessAnalyticsPanel
+            :batch-id="batchStore.selectedBatchId"
+            :can-export="canBtn('internship.stats.export')"
+            :filters="appliedDim"
+            :initial-state="processState"
+            @state-change="processState=$event"
+          />
         </template>
       </template>
     </div>
@@ -105,35 +135,44 @@ import { AppButton } from '@/components/ui'
 import { statsApi } from '@/modules/internship/api/stats.api'
 import { canCode } from '@/modules/internship/composables/permission'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import ProcessAnalyticsPanel from '@/modules/internship/components/ProcessAnalyticsPanel.vue'
 
 const emptyDimensions = () => ({ colleges: [], majors: [], classes: [] })
 const emptyFilters = () => ({ college: '', major: '', className: '' })
 const queryText = value => typeof value === 'string' ? value : ''
+const emptyDrill=()=>({subset:'',page:1,items:[],total:0,totalValue:0,loading:false,error:''})
 
 export default {
   name: 'StatsView',
-  components: { ModulePageShell, LoadingState, ErrorState, DataTable, AppExportButton, AppChartCard, AppG2Chart, AppStatusTag, AppButton },
+  components: { ModulePageShell, LoadingState, ErrorState, DataTable, AppExportButton, AppChartCard, AppG2Chart, AppStatusTag, AppButton, ProcessAnalyticsPanel },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
       loading: false, loaded: false, error: '', trendError: '', dimsError: '', dimsLoading: false,
       requestSeq: 0, dimsSeq: 0, contextEpoch: 0, requestKey: '', onlyAttention: false,
+      drill:emptyDrill(),drillSeq:0,quality:null,qualityError:'',
+      processState:{},
+      drillColumns:[{key:'studentName',title:'学生姓名'},{key:'studentNo',title:'学号'},{key:'college',title:'院系'},{key:'major',title:'专业'},{key:'className',title:'班级'},{key:'contribution',title:'本指标计入数量'}],
+      wageColumns:[{key:'currencyLabel',title:'币种'},{key:'count',title:'已审核工资记录数'},{key:'averageActualAmount',title:'平均实际工资'},{key:'totalActualAmount',title:'实际工资合计'}],
       dim: emptyFilters(), dims: emptyDimensions(),
       dimensionFields: [{ key: 'college', label: '学院', options: 'colleges' }, { key: 'major', label: '专业', options: 'majors' }, { key: 'className', label: '班级', options: 'classes' }],
       metricColumns: [{ key: 'label', title: '指标', width: '190px' }, { key: 'rate', title: '当前值', width: '130px' }, { key: 'basis', title: '分子 / 分母', width: '125px' }, { key: 'threshold', title: '参考阈值', width: '100px' }, { key: 'actions', title: '操作', width: '100px' }],
       counters: [], metrics: [], scoreDistribution: [], trendSeries: [], partial: [], generatedAt: '',
-      scopeHint: '指导教师仅本人指导学生；管理员全校'
+      scopeHint: '按当前身份已配置的师生、班级或院系范围统计'
     }
   },
   computed: {
     batchStore() { return useInternshipBatchStore() },
     selectedKey() { return queryText(this.$route.query.metric) },
     selectedMetric() { return this.metrics.find(item => item.key === this.selectedKey) },
+    appliedDim(){return Object.fromEntries(Object.keys(emptyFilters()).map(key=>[key,queryText(this.$route.query[key])]))},
     hasFilters() { return Object.values(this.dim).some(Boolean) },
-    filterLabel() { return Object.values(this.dim).filter(Boolean).join(' / ') || '当前批次 · 全部可见范围' },
+    filterLabel() { return Object.values(this.appliedDim).filter(Boolean).join(' / ') || '当前批次 · 全部可见范围' },
     attentionCount() { return this.metrics.filter(item => item.warn || item.anomaly).length },
     visibleMetrics() { return this.onlyAttention ? this.metrics.filter(item => item.warn || item.anomaly) : this.metrics },
-    contextKey() { return JSON.stringify([this.contextEpoch, String(this.batchStore.selectedBatchId || ''), this.dim]) },
+    contextKey() { return JSON.stringify([this.contextEpoch, String(this.batchStore.selectedBatchId || ''), this.appliedDim]) },
+    qualityRatios(){return [...(this.quality?.ratios||[]),...(this.quality?.stabilityRatios||[])]},
+    wages(){return (this.quality?.wageByCurrency||[]).map(row=>({...row,currencyLabel:({CNY:'人民币',USD:'美元',EUR:'欧元',HKD:'港币',JPY:'日元'})[row.currency]||'币种待确认'}))},
     scoreTotal() { return this.scoreDistribution.reduce((sum, item) => sum + item.count, 0) },
     scoreChartSpec() {
       return buildBarChartSpec({ data: this.scoreDistribution.map(item => ({ label: item.bucket, value: item.count })), horizontal: true, valueLabel: '学生数', unit: '人', color: '#2563eb', maxLabelLength: 14 })
@@ -142,20 +181,40 @@ export default {
     trendChartSpec() { return { type: 'line', data: this.trendRows, encode: { x: 'month', y: 'value', color: 'series' }, shape: 'smooth', style: { lineWidth: 2.5, point: true }, legend: { color: { position: 'bottom' } } } }
   },
   watch: {
-    selectedKey() { this.focusSection() },
-    '$route.query'() { this.restoreQuery(); if (this.requestKey !== this.contextKey) this.load() },
+    selectedKey() { this.drillSeq++;this.drill=emptyDrill();this.focusSection() },
+    '$route.query'() { this.restoreQuery(); if (this.requestKey !== this.contextKey) {this.processState={...this.processState,page:1};this.load()} },
     'batchStore.selectedBatchId'(value, previous) {
       if (previous && String(value) !== String(previous)) {
+        this.processState={}
         this.dim = emptyFilters(); this.onlyAttention = false
         this.navigate({ college: undefined, major: undefined, className: undefined, metric: undefined, attention: undefined }, true)
       } else this.restoreQuery()
       this.loadDims(); this.load()
     },
-    ctx: { deep: true, handler() { this.contextEpoch++; this.loadDims(); this.load() } }
+    ctx: { deep: true, handler() { this.processState={};this.contextEpoch++; this.loadDims(); this.load() } }
   },
   created() { this.restoreQuery(); this.loadDims(); this.load() },
   beforeUnmount() { this.contextEpoch++; this.requestSeq++; this.dimsSeq++; this.clearData(); this.dims = emptyDimensions() },
   methods: {
+    async loadDrill(subset,page=1){
+      if(!this.selectedMetric?.drilldownAvailable)return
+      const seq=++this.drillSeq,key=this.contextKey,metric=this.selectedKey
+      this.drill={...emptyDrill(),subset,page,loading:true}
+      const res=await statsApi.getMetricDrilldown(metric,this.batchParams({...this.appliedDim,subset,page,pageSize:20}))
+      if(seq!==this.drillSeq || key!==this.contextKey || metric!==this.selectedKey)return
+      this.drill=res.code===0 ? {...emptyDrill(),...res.data,subset,page} : {...this.drill,loading:false,error:res.message||'明细读取失败'}
+    },
+    async exportDrill(){
+      const key=this.contextKey,metric=this.selectedKey,subset=this.drill.subset
+      if(!subset || this.drill.loading || this.drill.error)return {code:1,message:'请先读取当前明细'}
+      const res=await statsApi.exportMetricDrilldown(metric,this.batchParams({...this.appliedDim,subset}))
+      return key===this.contextKey && metric===this.selectedKey && subset===this.drill.subset ? res : {code:1,message:'统计明细范围已切换，请重新导出'}
+    },
+    async exportQuality(){
+      const key=this.contextKey
+      const res=await statsApi.exportProcurementOverview(this.batchParams(this.appliedDim))
+      return key===this.contextKey ? res : {code:1,message:'统计范围已切换，请重新导出'}
+    },
     focusSection() {
       this.$nextTick?.(() => {
         const heading = this.$el?.querySelector(this.selectedKey ? '#metric-detail-title' : '#indicator-title')
@@ -175,7 +234,7 @@ export default {
     openMetric(item) { return this.navigate({ metric: item.key }) },
     closeMetric() { return this.navigate({ metric: undefined }) },
     batchParams(extra = {}) { return { ...extra, batchId: this.batchStore.selectedBatchId || undefined } },
-    clearData() { this.counters = []; this.metrics = []; this.scoreDistribution = []; this.trendSeries = []; this.partial = []; this.generatedAt = ''; this.loaded = false; this.trendError = '' },
+    clearData() { this.drillSeq++;this.drill=emptyDrill();this.quality=null;this.qualityError='';this.counters = []; this.metrics = []; this.scoreDistribution = []; this.trendSeries = []; this.partial = []; this.generatedAt = ''; this.loaded = false; this.trendError = '' },
     async loadDims() {
       const seq = ++this.dimsSeq, batchId = this.batchStore.selectedBatchId, epoch = this.contextEpoch
       this.dims = emptyDimensions(); this.dimsError = ''; this.dimsLoading = false
@@ -192,7 +251,7 @@ export default {
       if (!this.batchStore.selectedBatchId) return { code: 1, message: '请先选择批次' }
       if (!this.canBtn('internship.stats.export')) return { code: 1, message: '无统计导出权限' }
       const key = this.contextKey
-      const res = await statsApi.exportStats(this.batchParams({ ...this.dim }))
+      const res = await statsApi.exportStats(this.batchParams({ ...this.appliedDim }))
       if (key !== this.contextKey) return { code: 1, message: '统计范围已切换，请在当前范围重新导出' }
       return res
     },
@@ -202,15 +261,17 @@ export default {
       if (!this.batchStore.selectedBatchId) { this.error = '请先选择实习批次'; return }
       if (!this.canBtn('internship.stats.view')) { this.error = '无实习统计查看权限'; return }
       this.loading = true
-      const params = this.batchParams(Object.fromEntries(Object.entries(this.dim).map(([name, value]) => [name, value || undefined])))
-      const results = await Promise.allSettled([statsApi.getOverview(params), statsApi.getTrends({ ...params, months: 6 })])
+      const params = this.batchParams(Object.fromEntries(Object.entries(this.appliedDim).map(([name, value]) => [name, value || undefined])))
+      const results = await Promise.allSettled([statsApi.getOverview(params), statsApi.getTrends({ ...params, months: 6 }),statsApi.getProcurementOverview(params)])
       if (seq !== this.requestSeq || key !== this.contextKey) return
       this.loading = false
-      const [ov, tr] = results.map(result => result.status === 'fulfilled' ? result.value : { code: 1, message: result.reason?.message })
+      const [ov, tr,quality] = results.map(result => result.status === 'fulfilled' ? result.value : { code: 1, message: result.reason?.message })
       if (ov?.code !== 0) { this.error = ov?.message || '统计数据加载失败'; return }
       this.counters = ov.data.counters || []; this.metrics = ov.data.metrics || []
       this.scoreDistribution = ov.data.scoreDistribution || []; this.partial = ov.data.partial || []
       this.generatedAt = ov.data.generatedAt || ''; this.loaded = true
+      if(quality?.code===0){const groups=quality.data.groups||[];this.quality={...(groups.find(item=>item.key==='quality')||{}),stabilityRatios:groups.find(item=>item.key==='destination')?.ratios||[]}}
+      else this.qualityError=quality?.message||'质量与工资统计加载失败'
       if (tr?.code === 0) this.trendSeries = tr.data.series || []
       else this.trendError = tr?.message || '趋势数据加载失败'
       if (this.selectedKey) this.focusSection()

@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from fastapi import APIRouter, Depends, File, Path, UploadFile
+from fastapi import APIRouter, Depends, File, Path, Query, UploadFile
 
 from app.core.permissions import require_any_permission, require_permission
 from app.core.response import paginate, success
@@ -140,9 +140,10 @@ def reg_batch_create(body: RegBatchCreate,
 
 @router.get("/registration-batches", summary="注册批次列表（registerType 可收窄为入学/学年注册视图）")
 def reg_batches(status: Optional[str] = None, registerType: Optional[str] = None,
-                page: int = 1, pageSize: int = 20,
+                page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=100),
+                keyword: Optional[str] = Query(None, max_length=200),
                 user=Depends(require_permission("academicAffairs.registration.view"))):
-    items, total = svc.list_registration_batches(user, status, page, pageSize, registerType)
+    items, total = svc.list_registration_batches(user, status, page, pageSize, registerType, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 
@@ -202,8 +203,9 @@ def reg_eligibility_verify(body: EligibilityVerifyBody, batchId: int = Path(...)
 
 @router.get("/registration/unregistered", summary="未注册学生名单（已判定 UNREGISTERED + 逾期待扫描）")
 def reg_unregistered_list(batchId: Optional[int] = None, page: int = 1, pageSize: int = 20,
+                          keyword: Optional[str] = Query(None, max_length=200),
                           user=Depends(require_permission(_REG_UNREG_VIEW))):
-    items, total = svc.list_unregistered_students(user, batchId, page, pageSize)
+    items, total = svc.list_unregistered_students(user, batchId, page, pageSize, keyword=keyword)
     return success(paginate(items, total, page, pageSize))
 
 

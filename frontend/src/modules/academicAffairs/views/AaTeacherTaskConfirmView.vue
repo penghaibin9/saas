@@ -12,7 +12,7 @@
       <button class="mp-btn mp-btn--ghost" :disabled="loading" @click="load">刷新</button>
     </template>
 
-    <div class="teacher-task mp-stack">
+    <div class="teacher-task mp-stack task-workspace">
       <AaOperationReceipt :receipt="receipt" />
       <div v-if="receipt && receipt.pending === false" class="teacher-task__next">
         <span>本次办理已形成正式状态；后续进度会回到“今日教学”的办理中。</span>
@@ -20,35 +20,6 @@
         <button v-if="primaryRow?.status === 'READY'" class="mp-btn mp-btn--ghost" @click="$router.push('/admin/academic-affairs/schedule/teacher')">查看个人课表</button>
       </div>
       <button v-if="pendingCommand" class="mp-btn mp-btn--ghost" :disabled="loading || Boolean(acting)" @click="queryPending">查询原办理结果（不会重复提交）</button>
-      <AaTeachingTaskObjectBar
-        v-if="focusTaskId && primaryRow"
-        :name="`${primaryRow.courseName || '课程'} · ${primaryRow.teachingClassName || '教学班'}`"
-        :identity="`本人教学任务编号 ${primaryRow.taskId} · ${primaryRow.courseCode || '课程代码待提供'}`"
-        source="来源：学院已分配至当前登录教师的稳定工号；本入口不能代办他人任务。"
-        :status="statusLabel(primaryRow.status)"
-        :owner="currentOwner(primaryRow)"
-        :next-owner="nextOwner(primaryRow)"
-      />
-      <AaTeachingTaskStageRail v-if="focusTaskId && primaryRow" :current="taskStage(primaryRow)" :current-note="stageNote(primaryRow)" />
-      <section v-if="!loading && !error" class="teacher-task__summary">
-        <article>
-          <span>等待本人确认</span>
-          <strong>{{ counts.assigned }}</strong>
-        </article>
-        <article>
-          <span>已确认</span>
-          <strong>{{ counts.confirmed }}</strong>
-        </article>
-        <article>
-          <span>已退回学院</span>
-          <strong>{{ counts.rejected }}</strong>
-        </article>
-        <article>
-          <span>已就绪</span>
-          <strong>{{ counts.ready }}</strong>
-        </article>
-      </section>
-
       <section class="teacher-task__notice">
         <strong>{{ showHistory ? '历史教学任务' : '当前学期教学任务' }}</strong>
         <span>{{ showHistory ? '历史任务仅供查询；默认工作队列只显示当前学期。' : `当前学期：${currentTermName || '待确认'}` }}</span>
@@ -60,9 +31,9 @@
           :key="item.value"
           type="button"
           :class="{ active: statusFilter === item.value }"
-          @click="statusFilter = item.value"
-        >{{ item.label }} <span>{{ item.count }}</span></button>
-        <input v-model.trim="keyword" class="teacher-task__search" placeholder="搜索课程或教学班" />
+          @click="changeStatus(item.value)"
+        >{{ item.label }}</button>
+        <input v-model.trim="keyword" class="teacher-task__search" placeholder="搜索课程或教学班" aria-label="搜索课程或教学班" @keyup.enter="changePage(1)" /><button type="button" @click="changePage(1)">查询</button>
       </section>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
@@ -72,7 +43,8 @@
         :title="statusFilter === 'ASSIGNED' ? '当前没有待确认任务' : '没有符合条件的教学任务'"
         description="学院分配并绑定您的稳定教师工号后，任务会出现在这里"
       />
-      <DataTable v-else :columns="columns" :rows="filteredRows" row-key="taskId">
+      <div v-else class="task-workspace__split">
+      <DataTable :columns="columns" :rows="filteredRows" row-key="taskId" :row-class="row => String(row.taskId) === String(primaryRow?.taskId) ? 'task-workspace__selected' : ''" :pagination="pagination" @page-change="changePage">
         <template #cell-course="{ row }">
           <div class="mp-cell-main">{{ row.courseName || '未命名课程' }}</div>
           <div class="mp-cell-sub">{{ row.courseCode || '无课程代码' }}</div>
@@ -89,14 +61,17 @@
           <AppStatusTag :status="row.status" :type="taskColor(row.status)" dot />
           <div v-if="row.rejectReason" class="mp-cell-sub is-danger">此前退回：{{ row.rejectReason }}</div>
         </template>
-        <template #cell-actions="{ row }">
-          <template v-if="row.status === 'ASSIGNED'">
-            <button class="mp-link" :disabled="Boolean(acting || pendingCommand)" @click="openConfirm(row)">确认接受</button>
-            <button class="mp-link is-danger" :disabled="Boolean(acting || pendingCommand)" @click="openReject(row)">提出异议</button>
-          </template>
-          <span v-else class="mp-cell-sub">{{ rowProgress(row) }}</span>
-        </template>
+        <template #cell-actions="{ row }"><button class="mp-link" :disabled="Boolean(acting || pendingCommand)" @click="selectTask(row)">{{ String(row.taskId) === String(primaryRow?.taskId) ? '正在核对' : '核对安排' }}</button></template>
       </DataTable>
+      <aside v-if="primaryRow" class="task-workspace__panel" aria-label="核对本次教学安排">
+        <h3>核对本次教学安排</h3>
+        <dl class="task-workspace__facts"><div><dt>课程</dt><dd>{{ primaryRow.courseName }}</dd></div><div><dt>任课教师</dt><dd>{{ primaryRow.teacherName || '本人' }}</dd></div><div><dt>教学班</dt><dd>{{ primaryRow.teachingClassName || primaryRow.className || '教学班待核对' }}</dd></div><div><dt>周学时</dt><dd>{{ primaryRow.weeklyHours ?? '—' }}学时</dd></div><div><dt>总学时</dt><dd>{{ primaryRow.totalHours ?? '—' }}学时</dd></div><div><dt>教学周次</dt><dd>第{{ primaryRow.startWeek ?? '—' }}—{{ primaryRow.endWeek ?? '—' }}周</dd></div><div><dt>预计人数</dt><dd>{{ primaryRow.expectedStudents ?? '—' }}人</dd></div></dl>
+        <p class="task-workspace__notice">确认的是教学任务安排，具体上课时间以发布课表为准。</p>
+        <AppButton v-if="primaryRow.teachingClassCode && primaryRow.termId" :disabled="Boolean(acting || pendingCommand)" @click="openTeachingClass(primaryRow)">查看教学班名单</AppButton>
+        <p v-if="primaryRow.rejectReason" class="task-workspace__notice task-workspace__notice--warning">退回原因：{{ primaryRow.rejectReason }}</p>
+        <div v-if="primaryRow.status === 'ASSIGNED' && !showHistory" class="task-workspace__actions"><AppButton variant="primary" :disabled="Boolean(acting || pendingCommand)" @click="openConfirm(primaryRow)">确认本人任务</AppButton><AppButton :disabled="Boolean(acting || pendingCommand)" @click="openReject(primaryRow)">退回学院</AppButton></div>
+        <p>{{ stageNote(primaryRow) }}</p><p class="mp-cell-sub">本人确认后，由学院核对，再交校教务终审。</p>
+      </aside></div>
     </div>
 
     <AppConfirmDialog
@@ -137,24 +112,24 @@
 </template>
 
 <script>
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
 import { AppStatusTag, AppConfirmDialog, AppQuickPhrases } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
-import { readTaskPages, taskConfirmationEvidence } from '../components/parallel-a/taskFacts'
+import { taskConfirmationEvidence } from '../components/parallel-a/taskFacts'
 import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 import { toast } from '@/utils/toast'
-import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
-import AaTeachingTaskObjectBar from '../components/teaching-tasks/AaTeachingTaskObjectBar.vue'
 
 export default {
   name: 'AaTeacherTaskConfirmView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases, AaOperationReceipt, AaTeachingTaskStageRail, AaTeachingTaskObjectBar },
+  components: { AppButton, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases, AaOperationReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      selectedId: '', pagination: { page: 1, pageSize: 20, total: 0 },
       loading: true,
       error: '',
       rows: [],
@@ -168,7 +143,6 @@ export default {
       columns: [
         { key: 'course', title: '课程' },
         { key: 'class', title: '教学班' },
-        { key: 'hours', title: '学时 / 周次 / 人数' },
         { key: 'status', title: '状态' },
         { key: 'actions', title: '本人操作', width: '170px' }
       ]
@@ -176,7 +150,7 @@ export default {
   },
   computed: {
     focusTaskId() { return String(this.$route?.query?.taskId || '') },
-    primaryRow() { return this.filteredRows[0] || this.rows[0] || null },
+    primaryRow() { return this.filteredRows.find(row => String(row.taskId) === this.selectedId) || this.filteredRows[0] || null },
     counts() {
       const count = (status) => this.rows.filter((row) => row.status === status).length
       return {
@@ -195,24 +169,23 @@ export default {
         { value: '', label: '全部', count: this.rows.length }
       ]
     },
-    filteredRows() {
-      if (this.focusTaskId) return this.rows.filter(row => String(row.taskId) === this.focusTaskId)
-      const keyword = this.keyword.toLowerCase()
-      return this.rows.filter((row) => {
-        if (this.statusFilter && row.status !== this.statusFilter) return false
-        if (!keyword) return true
-        return [row.courseName, row.courseCode, row.teachingClassName, row.teachingClassCode]
-          .some((value) => String(value || '').toLowerCase().includes(keyword))
-      })
-    }
+    filteredRows() { return this.rows }
   },
-  created() { this.load() },
+  created() { this.restoreQuery(); this.load() },
   watch: {
     ctx() { this.confirmDialog = { visible: false, taskId: '', row: null }; this.rejectDialog = { visible: false, taskId: '', reason: '' }; this.receipt = null; this.pendingCommand = null; this.acting = ''; this.keyword = ''; this.currentTermId = ''; this.currentTermName = ''; this.showHistory = false; this.load() },
-    '$route.query.taskId'() { this.keyword = ''; this.load() }
+    '$route.fullPath'() { this.restoreQuery(); this.load() }
   },
   beforeUnmount() { this.revision++; this.disposed = true },
   methods: {
+    openTeachingClass(row) {
+      if (!row?.teachingClassCode || !row.termId || this.acting || this.pendingCommand) return
+      return this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', termId: String(row.termId), keyword: String(row.teachingClassCode), returnTo: this.$route.fullPath } })
+    },
+    restoreQuery() { const q = this.$route.query; this.keyword = String(q.keyword || ''); this.statusFilter = typeof q.status === 'string' ? q.status : 'ASSIGNED'; this.showHistory = q.history === '1'; this.selectedId = String(q.selected || ''); this.pagination.page = Math.max(1, Number(q.page) || 1) },
+    selectTask(row) { if (this.acting || this.pendingCommand) return; this.selectedId = String(row.taskId); return this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, selected: this.selectedId } }) },
+    changeStatus(status) { if (this.acting || this.pendingCommand) return; this.statusFilter = status; return this.changePage(1) },
+    async changePage(page) { if (this.acting || this.pendingCommand) return; this.pagination.page = page; const before = this.$route.fullPath; await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, taskId: undefined, selected: undefined, keyword: this.keyword || undefined, status: this.statusFilter, page: String(page), history: this.showHistory ? '1' : undefined } }); if (before === this.$route.fullPath) await this.load() },
     taskColor,
     statusLabel(status) { return TASK_STATUS[status] || '状态待核对' },
     currentOwner(row) {
@@ -229,7 +202,7 @@ export default {
       const status = String(row?.status || '').toUpperCase()
       const batch = String(row?.batchStatus || '').toUpperCase()
       if (status === 'ASSIGNED') return '学院教学任务核对岗'
-      if (status === 'TEACHER_CONFIRMED' && batch === 'COLLEGE_CONFIRMED') return '终审通过后进入个人课表'
+      if (status === 'TEACHER_CONFIRMED' && batch === 'COLLEGE_CONFIRMED') return '终审通过后可进入排课'
       if (status === 'TEACHER_CONFIRMED') return '学院确认后转学校教务终审'
       if (status === 'READY') return '进入个人课表与后续教学执行'
       if (status === 'REJECTED_BY_TEACHER') return '学院调整后重新分配教师'
@@ -279,7 +252,7 @@ export default {
       this.showHistory = !this.showHistory
       this.statusFilter = this.showHistory ? '' : 'ASSIGNED'
       this.keyword = ''
-      await this.load()
+      await this.changePage(1)
     },
     async load() {
       const revision = ++this.revision, context = this.ctx
@@ -293,7 +266,7 @@ export default {
           })
           if (revision !== this.revision || context !== this.ctx || this.disposed) return false
           if (exact?.code === 0) {
-            this.rows = exact.data?.list || []
+            this.rows = exact.data?.list || []; this.pagination.total = Number(exact.data?.total || 0)
             if (!this.rows.length) this.error = '该教学任务不存在或已不在本人数据范围内'
             return !this.error
           }
@@ -304,16 +277,9 @@ export default {
           if (!(await this.ensureCurrentTerm(revision, context))) return false
         }
         if (revision !== this.revision || context !== this.ctx || this.disposed) return false
-        const res = await readTaskPages(
-          page => academicAffairsApi.listAllTasks({
-            mine: true,
-            ...(this.showHistory ? {} : { termId: this.currentTermId }),
-            ...page
-          }),
-          () => revision === this.revision && context === this.ctx && !this.disposed
-        )
+        const res = await academicAffairsApi.listAllTasks({ mine: true, ...(this.showHistory ? {} : { termId: this.currentTermId }), status: this.statusFilter || undefined, keyword: this.keyword || undefined, page: this.pagination.page, pageSize: this.pagination.pageSize })
         if (revision !== this.revision || context !== this.ctx || this.disposed) return false
-        if (res?.code === 0) { this.rows = res.data.list; return true }
+        if (res?.code === 0) { this.rows = res.data.list; this.pagination.total = Number(res.data.total || 0); return true }
         this.handleFailure(res, '我的教学任务加载失败')
         if (!this.error) this.error = res?.message || '任务未完整读取，请重试。'
         return false
@@ -396,7 +362,10 @@ export default {
       if (!pending) return
       const loaded = await this.load()
       if (!current() || !loaded || this.pendingCommand !== pending) return
-      const row = this.rows.find(item => String(item.taskId) === String(pending.taskId))
+      const exact = await academicAffairsApi.listAllTasks({ mine: true, taskId: pending.taskId, page: 1, pageSize: 1 })
+      if (!current() || this.pendingCommand !== pending) return
+      if (exact.code !== 0) { this.handleFailure(exact, '原办理结果查询失败'); return }
+      const row = exact.data?.list?.find(item => String(item.taskId) === String(pending.taskId))
       const evidenceMatches = row && taskConfirmationEvidence(row) === pending.evidence
       const confirmed = evidenceMatches && (pending.action === 'CONFIRM' ? ['TEACHER_CONFIRMED', 'READY'].includes(row.status) : row.status === 'REJECTED_BY_TEACHER' && String(row.rejectReason || '') === pending.reason)
       this.receipt = { object: pending.object, title: '办理回执', status: confirmed ? TASK_STATUS[row.status] : '结果待确认', pending: !confirmed, next: confirmed ? pending.action === 'CONFIRM' ? '由学院和教务继续核对；正式就绪后进入排课。' : '学院将查看异议并重新分配。' : '尚未读到与原办理一致的正式状态。只查询原操作，不会再次提交；请联系学院核对。' }
@@ -414,6 +383,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/teaching-task-workspace.css';
 .teacher-task__next { display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:12px 14px; border:1px solid var(--primary-100); border-radius:10px; background:var(--primary-50); color:var(--gray-600); font-size:12px; }
 .teacher-task__next span { flex:1 1 280px; }
 .teacher-task__summary { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }

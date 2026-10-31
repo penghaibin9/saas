@@ -6,9 +6,9 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="$router.push(returnPath)">返回来源批次</AppButton>
+      <AppButton @click="$router.push(returnPath)">返回来源列表</AppButton>
       <AppButton v-if="batch?.orderBatchId && batch?.classId" :disabled="loading || !!error || !!acting" @click="openAppend">补充未发放学生</AppButton>
-      <AppButton variant="primary" @click="$router.push('/admin/academic-affairs/textbooks?tab=fee')">处理费用台账</AppButton>
+      <AppButton v-if="canManageFees" variant="primary" @click="$router.push('/admin/academic-affairs/textbooks?tab=fee')">处理费用台账</AppButton>
     </template>
 
     <div class="mp-stack">
@@ -21,7 +21,7 @@
       <AppInlineAlert
         type="info"
         title="退领规则"
-        description="未实收的教材可退领并减免应收；已发生实收时必须先完成正式退款或冲正，系统不会直接改写财务记录。"
+        description="未实收的教材可直接退领；已实收教材须由费用岗位确认实际全额退款并登记后，再办理退领。登记不会发起线上退款。"
       />
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
@@ -42,13 +42,14 @@
           <AppStatusTag :status="row.status" :label="distributionStatusLabel(row.status)" dot />
         </template>
         <template #cell-fee="{ row }">
-          <AppStatusTag v-if="row.feeStatus" :status="row.feeStatus" />
+          <span v-if="row.feeMismatch">费用归属不一致，请核对</span>
+          <AppStatusTag v-else-if="row.feeStatus" :status="row.feeStatus" :label="row.feeStatus === 'REFUNDED' ? '已退款待退领' : row.feeStatus === 'WAIVED' ? (row.feeVisible ? (row.refundAmount ? '已退款退领' : '已减免') : '费用已收口') : ''" />
           <span v-else class="mp-cell-sub">未生成</span>
-          <div v-if="row.amount != null" class="mp-cell-sub">¥{{ row.paidAmount || 0 }} / ¥{{ row.amount }}</div>
+          <div v-if="row.amount != null && !row.feeMismatch" class="mp-cell-sub">原已收 ¥{{ row.paidAmount || 0 }} / 原应收 ¥{{ row.amount }}<span v-if="row.refundAmount"> · 已退款 ¥{{ row.refundAmount }}</span></div>
         </template>
         <template #cell-actions="{ row }">
           <button v-if="row.status === 'PENDING'" class="mp-link" :disabled="acting === row.recordId" @click="sign(row)">登记签收</button>
-          <button v-if="row.status === 'RECEIVED'" class="mp-link is-danger" :disabled="acting === row.recordId" @click="openReturn(row)">办理退领</button>
+          <button v-if="row.status === 'RECEIVED'" class="mp-link is-danger" :disabled="acting === row.recordId || row.feeMismatch" @click="openReturn(row)">办理退领</button>
           <span v-if="!['PENDING','RECEIVED'].includes(row.status)" class="mp-cell-sub">—</span>
         </template>
       </DataTable>
@@ -76,6 +77,7 @@ import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 import { systemConfirm } from '@/services/systemDialog'
 import { textbookReturnPath } from '../components/textbooks/textbookNavigation.js'
+import { matchPermission } from '@/config/navPlan'
 
 export default {
   name: 'AaTextbookDistributionDetailView',
@@ -111,6 +113,7 @@ export default {
     }
   },
   computed: {
+    canManageFees() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.textbook.fee.manage') },
     returnPath() { return textbookReturnPath(this.$route.query.returnTo) },
     identityKey() { return JSON.stringify([currentUserFromToken(), this.ctx]) },
     batchId() { return String(this.$route.params.batchId || '') },
@@ -171,7 +174,7 @@ export default {
       finally { if (current()) this.acting = '' }
     },
     openReturn(row) {
-      if (this.acting || row.status !== 'RECEIVED') return
+      if (this.acting || row.status !== 'RECEIVED' || row.feeMismatch) return
       this.returnDialog = { visible: true, recordId: row.recordId, batchId: this.batchId, identity: this.identityKey }
     },
     async submitReturn({ reason }) {

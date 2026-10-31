@@ -51,6 +51,32 @@
 
         <section class="mp-card">
           <div class="mp-card__head">
+            <span class="mp-card__title">岗位实习适用学院</span>
+            <span class="ef-aside">{{ scopePolicy.schoolWideAllowed ? '不选择学院 = 全校通用' : '按当前账号学院范围锁定' }}</span>
+          </div>
+          <div class="mp-card__body">
+            <p class="ef-scope-note">
+              这里决定学院经办人做实习分配时能否看到该企业。全校通用企业对所有学院可见；限定学院企业只在对应学院范围内出现。
+            </p>
+            <div v-if="scopePolicy.items?.length" class="ef-scope-grid">
+              <label v-for="college in scopePolicy.items" :key="college.id" class="ef-scope-option">
+                <input v-model="form.collegeScopeIds" type="checkbox" :value="String(college.id)" :disabled="readonly || submitting" />
+                <span>{{ college.name }}</span>
+              </label>
+            </div>
+            <AppInlineAlert
+              v-else-if="scopePolicy.mode === 'SCOPED'"
+              type="warning"
+              title="当前账号没有可用学院范围"
+              description="请先由校级管理员配置该账号的学院/专业/班级数据范围，再维护企业适用学院。"
+            />
+            <p v-if="scopePolicy.schoolWideAllowed && !form.collegeScopeIds.length" class="ef-schoolwide">当前企业将作为「全校通用」企业。</p>
+            <p v-else-if="form.collegeScopeIds.length" class="ef-schoolwide">当前选择 {{ form.collegeScopeIds.length }} 个适用学院。</p>
+          </div>
+        </section>
+
+        <section class="mp-card">
+          <div class="mp-card__head">
             <span class="mp-card__title">对接信息</span>
             <span class="ef-aside">便于学校联系企业、推进合作</span>
           </div>
@@ -109,7 +135,7 @@ import { toast } from '@/utils/toast'
 
 const blankForm = () => ({
   name: '', creditCode: '', industry: '', source: '', region: '',
-  scale: '', address: '', contactPerson: '', contactPhone: '', remark: ''
+  scale: '', address: '', contactPerson: '', contactPhone: '', collegeScopeIds: [], remark: ''
 })
 
 export default {
@@ -127,6 +153,7 @@ export default {
       error: '',
       submitting: false,
       detail: null,
+      scopePolicy: { mode: '', items: [], schoolWideAllowed: false },
       form: blankForm()
     }
   },
@@ -139,10 +166,24 @@ export default {
       return p.endsWith('/new') || p.endsWith('/edit')
     },
     readonly() {
-      return this.ctx?.permissionActions?.[this.isEdit ? 'editEnterprise' : 'createEnterprise']?.allowed !== true || this.detail?.coopStatus === 'ARCHIVED'
+      const permissionDenied = this.ctx?.permissionActions?.[this.isEdit ? 'editEnterprise' : 'createEnterprise']?.allowed !== true
+      if (permissionDenied || this.detail?.coopStatus === 'ARCHIVED') return true
+      if (this.scopePolicy.mode === 'SCOPED' && !this.scopePolicy.items?.length) return true
+      if (this.isEdit && this.scopePolicy.mode === 'SCOPED') {
+        if (this.detail?.schoolWide) return true
+        const allowed = new Set((this.scopePolicy.items || []).map((item) => String(item.id)))
+        if ((this.detail?.collegeScopeIds || []).some((id) => !allowed.has(String(id)))) return true
+      }
+      return false
     },
     readonlyReason() {
       if (this.detail?.coopStatus === 'ARCHIVED') return '企业已归档，可返回详情查看历史资料与办理记录。'
+      if (this.scopePolicy.mode === 'SCOPED' && !this.scopePolicy.items?.length) return '当前账号没有可用学院数据范围，不能维护企业。'
+      if (this.isEdit && this.scopePolicy.mode === 'SCOPED' && this.detail?.schoolWide) return '这是全校通用企业，只能由校级管理员维护。'
+      if (this.isEdit && this.scopePolicy.mode === 'SCOPED') {
+        const allowed = new Set((this.scopePolicy.items || []).map((item) => String(item.id)))
+        if ((this.detail?.collegeScopeIds || []).some((id) => !allowed.has(String(id)))) return '该企业同时适用于其他学院，当前账号不能修改跨院企业。'
+      }
       return this.ctx?.permissionActions?.[this.isEdit ? 'editEnterprise' : 'createEnterprise']?.reason || '当前角色没有企业资料维护权限。'
     },
     industryOptions() {
@@ -193,36 +234,49 @@ export default {
       this.error = ''
       this.detail = null
       this.form = blankForm()
-      if (!this.isEdit) {
-        this.detail = null
-        this.form = blankForm()
-        this.loading = false
-        return
-      }
+      this.scopePolicy = { mode: '', items: [], schoolWideAllowed: false }
       this.loading = true
-      const id = this.$route.params.id
-      const res = await internshipApi.getEnterpriseDetail(id)
-      if (sequence !== this.loadSequence || id !== this.$route.params.id) return
-      this.loading = false
-      if (res.code !== 0) {
-        this.error = res.message || '企业不存在或无权查看'
-        return
-      }
-      const d = res.data
-      this.detail = d
-      this.form = {
-        name: d.name || '',
-        creditCode: d.creditCode || '',
-        industry: d.industry || '',
-        source: d.source || '',
-        region: d.region || '',
-        scale: d.scale || '',
-        address: d.address || '',
-        contactPerson: d.contactPerson || '',
-        contactPhone: '',
-        remark: d.remark || ''
+      try {
+        const scopeRes = await internshipApi.getEnterpriseScopeColleges()
+        if (sequence !== this.loadSequence) return
+        if (scopeRes.code !== 0) {
+          this.error = scopeRes.message || '企业适用学院范围读取失败'
+          return
+        }
+        this.scopePolicy = scopeRes.data || { mode: '', items: [], schoolWideAllowed: false }
+        if (!this.isEdit) {
+          if (this.scopePolicy.mode === 'SCOPED') {
+            this.form.collegeScopeIds = (this.scopePolicy.items || []).map((item) => String(item.id))
+          }
+          return
+        }
+        const id = this.$route.params.id
+        const res = await internshipApi.getEnterpriseDetail(id)
+        if (sequence !== this.loadSequence || id !== this.$route.params.id) return
+        if (res.code !== 0) {
+          this.error = res.message || '企业不存在或无权查看'
+          return
+        }
+        const d = res.data
+        this.detail = d
+        this.form = {
+          name: d.name || '',
+          creditCode: d.creditCode || '',
+          industry: d.industry || '',
+          source: d.source || '',
+          region: d.region || '',
+          scale: d.scale || '',
+          address: d.address || '',
+          contactPerson: d.contactPerson || '',
+          contactPhone: '',
+          collegeScopeIds: (d.collegeScopeIds || []).map(String),
+          remark: d.remark || ''
+        }
+      } finally {
+        if (sequence === this.loadSequence) this.loading = false
       }
     },
+
     async onSubmit() {
       if (this.submitting || this.loading || this.error || this.readonly) return
       const sequence = this.loadSequence
@@ -240,6 +294,7 @@ export default {
         scale: (f.scale || '').trim(),
         address: (f.address || '').trim(),
         contactPerson: (f.contactPerson || '').trim(),
+        collegeScopeIds: [...(f.collegeScopeIds || [])],
         remark: (f.remark || '').trim()
       }
       if (!this.isEdit || (f.contactPhone || '').trim()) body.contactPhone = (f.contactPhone || '').trim()
@@ -284,6 +339,11 @@ export default {
   font-size: var(--font-size-xs);
   color: var(--text-tertiary);
 }
+.ef-scope-note { margin: 0 0 12px; color: var(--text-secondary); font-size: 12px; line-height: 1.65; }
+.ef-scope-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 14px; }
+.ef-scope-option { display: flex; align-items: center; gap: 8px; min-height: 34px; padding: 7px 10px; border: 1px solid var(--border-base); border-radius: 8px; font-size: 13px; cursor: pointer; }
+.ef-scope-option input { accent-color: var(--primary-500); }
+.ef-schoolwide { margin: 12px 0 0; color: var(--text-secondary); font-size: 12px; }
 @media (max-width: 960px) {
   .ef-form { grid-template-columns: 1fr; }
   .ef-grid {

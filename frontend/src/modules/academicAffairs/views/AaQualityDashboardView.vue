@@ -53,7 +53,7 @@
             <div v-for="i in indicators" :key="i.key" class="aaql-indicator-row"><span>{{ i.label }}</span><b>{{ i.value }}{{ i.unit }}</b><small v-if="i.numerator != null">{{ i.numerator }} / {{ i.denominator }}</small></div>
           </aside>
         </div>
-        <details class="aaql-history"><summary>质量报告导出历史（{{ reports.length }}）</summary><EmptyState v-if="!reports.length" title="暂无导出记录" description="导出质量报告后在此保留审计记录" /><DataTable v-else :columns="reportColumns" :rows="reports" row-key="exportId"><template #cell-occurredAt="{ row }">{{ fmt(row.occurredAt) }}</template></DataTable></details>
+        <details class="aaql-history"><summary>质量报告导出历史（{{ reports.length }}）</summary><EmptyState v-if="!reports.length" title="暂无导出记录" description="导出质量报告后在此保留审计记录" /><DataTable v-else :columns="reportColumns" :rows="reports" row-key="exportId"><template #cell-occurredAt="{ row }">{{ fmtUtc(row.occurredAt) }}</template></DataTable></details>
       </template>
     </div>
 
@@ -88,7 +88,7 @@
           <section class="aaql-panel"><header><h3>历史记录</h3><AppSelect v-model="recStatusFilter" :options="recStatusOptions" placeholder="全部状态" @change="searchRecords" /></header><p>{{ recRows.length }} 条当前页记录；选择对象可继续确认、关闭或发起整改。</p></section>
         </aside>
       </section>
-      <details v-if="recRows.length" class="aaql-history" open><summary>历史{{ recMeta.label }}记录（{{ recRows.length }}）</summary><DataTable :columns="recColumns" :rows="recRows" row-key="recordId" row-clickable @row-click="viewRecDetail"><template #cell-status="{ row }"><StatusTag :type="recStatusType(row.status)" :label="recStatusLabel(row.status)" dot /></template><template #cell-needRectify="{ row }"><span v-if="row.needRectify" class="aaql-flag">需整改</span></template><template #cell-ops="{ row }"><button class="mp-link" @click.stop="viewRecDetail(row)">详情</button><button v-if="row.status === 'SUBMITTED'" class="mp-link" :disabled="writeLocked" @click.stop="askRecTransition('confirm', row)">确认</button><button v-if="row.status === 'CONFIRMED'" class="mp-link" :disabled="writeLocked" @click.stop="askRecTransition('close', row)">关闭</button><button v-if="row.status === 'SUBMITTED'" class="mp-link is-danger" :disabled="writeLocked" @click.stop="askRecTransition('cancel', row)">撤销</button><button v-if="row.status === 'CONFIRMED'" class="mp-link" :disabled="writeLocked" @click.stop="openRectifyFromRecord(row)">发起整改</button></template></DataTable></details>
+      <details v-if="recRows.length" class="aaql-history" open><summary>历史{{ recMeta.label }}记录（{{ recRows.length }}）</summary><DataTable :columns="recColumns" :rows="recRows" row-key="recordId" row-clickable @row-click="viewRecDetail"><template #cell-status="{ row }"><StatusTag :type="recStatusType(row.status)" :label="recStatusLabel(row.status)" dot /></template><template #cell-needRectify="{ row }"><span :class="{ 'aaql-flag': row.needRectify === true }">{{ row.needRectify === true ? '需整改' : row.needRectify === false ? '无需整改' : '待核对' }}</span></template><template #cell-ops="{ row }"><button class="mp-link" @click.stop="viewRecDetail(row)">详情</button><button v-if="row.status === 'SUBMITTED'" class="mp-link" :disabled="writeLocked" @click.stop="askRecTransition('confirm', row)">确认</button><button v-if="row.status === 'CONFIRMED'" class="mp-link" :disabled="writeLocked" @click.stop="askRecTransition('close', row)">关闭</button><button v-if="row.status === 'SUBMITTED'" class="mp-link is-danger" :disabled="writeLocked" @click.stop="askRecTransition('cancel', row)">撤销</button><button v-if="row.status === 'CONFIRMED'" class="mp-link" :disabled="writeLocked" @click.stop="openRectifyFromRecord(row)">发起整改</button></template></DataTable></details>
     </div>
 
     <!-- AA-231：必须从正式问题生成的整改看板。 -->
@@ -107,7 +107,7 @@
       <AppInlineAlert v-if="rectPartial" type="warning" :description="rectPartial" />
       <div class="aaql-bar"><AppSelect v-model="rectStatusFilter" :options="rectStatusOptions" placeholder="未关闭任务" @change="searchRectifications" /></div>
       <ErrorState v-if="panelError" :description="panelError" @retry="loadRectifications" /><LoadingState v-else-if="rectLoading" /><EmptyState v-else-if="!displayRectRows.length" title="本页暂无待跟进整改任务" description="可翻页继续查找，或指定状态筛选待整改、整改中和待复核任务" />
-      <section v-else class="aaql-follow-layout"><aside class="aaql-panel aaql-follow-queue"><header><h3>责任队列</h3><span>{{ displayRectRows.length }} 项</span></header><button v-for="row in displayRectRows" :key="row.rectId" :class="['aaql-follow-item',{ 'is-active': String(rectCurrent?.rectId) === String(row.rectId) }]" @click="selectRect(row)"><strong>{{ row.title }}</strong><span>{{ rectSourceText(row.sourceTitle) }}</span><StatusTag :type="rectStatusType(row)" :label="rectStatusLabel(row)" /></button></aside><main class="aaql-follow-main"><LoadingState v-if="detailLoading" /><ErrorState v-else-if="detailError" :description="detailError" @retry="reloadRectCurrent" /><EmptyState v-else-if="!rectCurrent" title="选择一项整改任务" description="核对来源证据后追加当前对象的整改进度" /><template v-else><section class="aaql-object-context"><div><span>当前整改对象</span><h3>{{ rectCurrent.title }}</h3><p>来源：{{ rectSourceText(rectCurrent.sourceTitle) }}</p></div><div><small>当前责任</small><strong>{{ rectCurrent.responsibleName || '整改责任人待明确' }}</strong></div><div><small>下一责任</small><strong>{{ rectCurrent.status === 'SUBMITTED' ? '质量复核岗' : '整改责任人 → 质量复核岗' }}</strong></div></section><section class="aaql-panel"><header><h3>来源证据与最近跟进</h3><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" /></header><AppTimeline :items="rectTimelineItems" /><footer class="aaql-detail-actions"><AppButton variant="ghost" @click="returnToRectify(rectCurrent)">返回整改看板</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" :disabled="writeLocked" @click="openProgress(rectCurrent)">追加进度</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" variant="primary" :disabled="writeLocked" @click="openSubmitRect(rectCurrent)">提交复核</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED' && rectCurrent.reviewAllowed === true" variant="primary" :disabled="writeLocked" @click="openReview(rectCurrent,'APPROVE')">复核通过并关闭</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED' && rectCurrent.reviewAllowed === true" variant="danger" :disabled="writeLocked" @click="openReview(rectCurrent,'REJECT')">驳回整改</AppButton></footer></section></template></main></section>
+      <section v-else class="aaql-follow-layout"><aside class="aaql-panel aaql-follow-queue"><header><h3>责任队列</h3><span>{{ displayRectRows.length }} 项</span></header><button v-for="row in displayRectRows" :key="row.rectId" :class="['aaql-follow-item',{ 'is-active': String(rectCurrent?.rectId) === String(row.rectId) }]" @click="selectRect(row)"><strong>{{ row.title }}</strong><span>{{ rectSourceText(row.sourceTitle) }}</span><StatusTag :type="rectStatusType(row)" :label="rectStatusLabel(row)" /></button></aside><main class="aaql-follow-main"><LoadingState v-if="detailLoading" /><ErrorState v-else-if="detailError" :description="detailError" @retry="reloadRectCurrent" /><EmptyState v-else-if="!rectCurrent" title="选择一项整改任务" description="核对来源证据后追加当前对象的整改进度" /><template v-else><section class="aaql-object-context"><div><span>当前整改对象</span><h3>{{ rectCurrent.title }}</h3><p>来源：{{ rectSourceText(rectCurrent.sourceTitle) }}</p></div><div><small>当前责任</small><strong>{{ rectCurrent.responsibleName || '整改责任人待明确' }}</strong></div><div><small>下一责任</small><strong>{{ rectCurrent.status === 'CLOSED' ? '质量归档岗（只读查阅）' : rectCurrent.status === 'SUBMITTED' ? '质量复核岗' : '整改责任人 → 质量复核岗' }}</strong></div></section><section class="aaql-panel"><header><h3>来源证据与最近跟进</h3><StatusTag :type="rectStatusType(rectCurrent)" :label="rectStatusLabel(rectCurrent)" /></header><AppTimeline :items="rectTimelineItems" /><footer class="aaql-detail-actions"><AppButton variant="ghost" @click="returnToRectify(rectCurrent)">返回整改看板</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" :disabled="writeLocked" @click="openProgress(rectCurrent)">追加进度</AppButton><AppButton v-if="['PENDING','IN_PROGRESS'].includes(rectCurrent.status)" variant="primary" :disabled="writeLocked" @click="openSubmitRect(rectCurrent)">提交复核</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED' && rectCurrent.reviewAllowed === true" variant="primary" :disabled="writeLocked" @click="openReview(rectCurrent,'APPROVE')">复核通过并关闭</AppButton><AppButton v-if="rectCurrent.status === 'SUBMITTED' && rectCurrent.reviewAllowed === true" variant="danger" :disabled="writeLocked" @click="openReview(rectCurrent,'REJECT')">驳回整改</AppButton></footer></section></template></main></section>
     </div>
 
     <!-- AA-233：真实闭环记录与聚合统计。 -->
@@ -122,7 +122,7 @@
       <template v-else>
         <AppInlineAlert type="info" description="质量档案来自已关闭问题与整改闭环；原记录只读，后续纠错通过新版本或正式业务流程办理。" /><AppInlineAlert v-if="archivePartial" type="warning" :description="archivePartial" />
         <div class="aaql-grid aaql-grid--archive"><article class="aaql-card"><div class="aaql-value">{{ archiveData.total ?? '待核对' }}</div><div class="aaql-label">质量问题总数</div></article><article class="aaql-card"><div class="aaql-value">{{ archiveData.rectification?.total ?? '待核对' }}</div><div class="aaql-label">整改任务总数</div></article><article class="aaql-card"><div class="aaql-value">{{ archiveData.rectification?.closed ?? '待核对' }}</div><div class="aaql-label">闭环归档</div></article><article class="aaql-card"><div class="aaql-value aaql-danger">{{ archiveData.rectification?.overdue ?? '待核对' }}</div><div class="aaql-label">逾期未关闭</div></article></div>
-        <section class="aaql-panel"><header><h3>质量档案 · 原记录与正式凭证</h3><span>{{ archiveRows.length }} 条当前读取结果</span></header><EmptyState v-if="!archiveRows.length" title="当前范围暂无闭环档案" description="已关闭记录或整改任务会进入此处" /><DataTable v-else :columns="archiveColumns" :rows="archiveRows" row-key="archiveKey"><template #cell-source="{ row }">{{ row.sourceTitle }}<small class="aaql-cell-note">{{ row.sourceTypeLabel }}</small></template><template #cell-rectification="{ row }">{{ row.rectTitle || '未形成整改任务' }}</template><template #cell-conclusion="{ row }">{{ row.conclusion || '复核结论待核对' }}</template><template #cell-closedAt="{ row }">{{ fmt(row.closedAt) || '关闭时间未提供' }}</template><template #cell-archiveStatus><StatusTag type="success" label="已归档" /></template><template #cell-ops="{ row }"><button class="mp-link" @click="openArchiveEvidence(row)">查看封存证据</button></template></DataTable></section>
+        <section class="aaql-panel"><header><h3>质量档案 · 原记录与正式凭证</h3><span>{{ archiveRows.length }} 条当前读取结果</span></header><EmptyState v-if="!archiveRows.length" title="当前范围暂无闭环档案" description="已关闭记录或整改任务会进入此处" /><DataTable v-else :columns="archiveColumns" :rows="archiveRows" row-key="archiveKey"><template #cell-source="{ row }">{{ row.sourceTitle }}<small class="aaql-cell-note">{{ row.sourceTypeLabel }}</small></template><template #cell-rectification="{ row }">{{ row.rectTitle || '未形成整改任务' }}</template><template #cell-conclusion="{ row }">{{ row.conclusion || '复核结论待核对' }}</template><template #cell-closedAt="{ row }">{{ fmtUtc(row.closedAt) || '关闭时间未提供' }}</template><template #cell-archiveStatus><StatusTag type="success" label="已归档" /></template><template #cell-ops="{ row }"><button class="mp-link" @click="openArchiveEvidence(row)">查看封存证据</button></template></DataTable></section>
       </template>
     </div>
 
@@ -353,7 +353,6 @@ export default {
     /** 服务端先按状态分页；当前页将逾期任务排到最前，不再二次过滤改变页数口径。 */
     displayRectRows() {
       let rows = this.rectRows
-
       if (this.tab === 'followUp') {
         rows = [...rows].sort((a, b) => (b.overdue === a.overdue ? 0 : b.overdue ? 1 : -1))
       }
@@ -378,7 +377,7 @@ export default {
       items.push({ label: '详细描述', value: r.description || '—', span: 2 })
       if (r.handlingNote) items.push({ label: '处理意见', value: r.handlingNote, span: 2 })
       items.push({ label: '记录人', value: r.recorderName || '—' })
-      if (r.confirmedByName) items.push({ label: '确认人', value: `${r.confirmedByName}（${this.fmt(r.confirmedAt)}）` })
+      if (r.confirmedByName) items.push({ label: '确认人', value: `${r.confirmedByName}（${this.fmtUtc(r.confirmedAt)}）` })
       return items
     },
     /** 整改任务详情键值 → AppDescriptionList items（status/deadline 用具名插槽保留标签与逾期红色）。 */
@@ -450,10 +449,11 @@ export default {
       this.$nextTick(() => applyInsertion(el, selStart, selEnd))
     },
     fmt(s) { return s ? String(s).replace('T', ' ').slice(0, 16) : '' },
+    fmtUtc(s) { return s ? formatDateTime(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(String(s)) ? `${s}Z` : s, '') : '' },
     recTypeLabel(rt) { const m = Object.values(_REC_TYPE_META).find((x) => x.type === rt); return m ? m.label : rt },
     recStatusLabel(s) { return _REC_STATUS_LABEL[s] || (s ? '状态待确认' : '—') },
     recStatusType(s) { return _REC_STATUS_TYPE[s] || 'default' },
-    rectStatusLabel(r) { return r.overdue && r.status !== 'CLOSED' ? '已逾期' : (_RECT_STATUS_LABEL[r.status] || r.status) },
+    rectStatusLabel(r) { return r.overdue && r.status !== 'CLOSED' ? '已逾期' : (_RECT_STATUS_LABEL[r.status] || '状态待确认') },
     rectStatusType(r) { return r.overdue && r.status !== 'CLOSED' ? 'danger' : (_RECT_STATUS_TYPE[r.status] || 'default') },
     rectSourceText(value) {
       const text = String(value || '').trim()
@@ -466,7 +466,7 @@ export default {
       const actionType = { CREATE: 'primary', RECEIVE: 'primary', ACCEPT: 'primary', UPDATE: 'processing', PROGRESS: 'processing', SUBMIT: 'warning', APPROVE: 'success', REJECT: 'danger' }
       return (Array.isArray(log) ? log : []).map((item) => ({
         // 进度日志由服务端 utcnow 写入；兼容旧日志未带时区的值。
-        time: item.time ? formatDateTime(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?$/.test(String(item.time)) ? `${item.time}Z` : item.time, '') : '',
+        time: this.fmtUtc(item.time),
         title: actionLabel[item.action] || '过程记录',
         operator: item.operator || '操作人待核对',
         description: item.note || '未提供说明',
@@ -870,7 +870,7 @@ export default {
         const action = mode === 'progress' ? 'PROGRESS' : 'SUBMIT'
         const matchedLog = log.some(item => item.action === action && String(item.note || '').trim() === note)
         if (res?.code === 0 && after?.code === 0 && String(after.data?.rectId) === id && after.data?.status === expectedAfter && matchedLog) {
-          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: mode === 'submit' ? '质量复核岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(mode === 'submit' ? '已提交复核并重新读取状态' : '已记录进度并重新读取状态'); this.rectNoteVisible = false; await this.loadRectifications(); return
+          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: mode === 'submit' ? '质量复核岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(mode === 'submit' ? '已提交复核并重新读取状态' : '已记录进度并重新读取状态'); this.rectNoteVisible = false; await this.refreshRectQueueAfterWrite(after.data); return
         }
         this.actionNotice = '操作结果待核实，当前读取不足以证明进度或提交复核已经入库；请勿重复提交。'
       } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改操作尚未确认，请保留说明并刷新查看。') } }
@@ -898,7 +898,7 @@ export default {
         const after = await api.getRectification(id)
         if (!this.currentWrite(command)) return
         if (res?.code === 0 && after?.code === 0 && String(after.data?.rectId) === id && after.data?.status === expectedAfter) {
-          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: action === 'APPROVE' ? '质量归档岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(action === 'APPROVE' ? '复核通过并已关闭' : '已驳回至整改责任人'); this.reviewVisible = false; await this.loadRectifications(); return
+          this.pendingWrite = null; this.actionReceipt = { verified: true, objectLabel: `${snapshot.title} · #${id}`, next: action === 'APPROVE' ? '质量归档岗' : (after.data?.responsibleName || '整改责任人') }; this.actionNotice = `正式整改状态：${this.rectStatusLabel(after.data)}。`; toast.success(action === 'APPROVE' ? '复核通过并已关闭' : '已驳回至整改责任人'); this.reviewVisible = false; await this.refreshRectQueueAfterWrite(after.data); return
         }
         this.actionNotice = '复核结果待核实，当前读取不足以证明状态已经迁移；请勿重复提交。'
       } catch (error) { if (this.alive && command.identity === this.identityKey) { if (!command.sent) this.actionNotice = ''; this.rectFormError = this.failureText(error, '整改复核尚未确认，请保留结论并刷新查看。') } }

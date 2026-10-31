@@ -49,7 +49,7 @@
 
       <!-- 组织树 -->
       <template v-else-if="tab === 'tree'">
-      <AaOrgReferencePanel :college-options="collegeOptions" @view-organization="viewCheckedOrganization" />
+      <AaOrgReferencePanel ref="referencePanel" :college-options="collegeOptions" :can-view-students="canViewOrganizations" @view-organization="viewCheckedOrganization" @view-students="viewCheckedStudents" />
       <section class="mp-card">
         <div class="mp-card__body">
           <h2>组织关系</h2>
@@ -227,16 +227,16 @@
       <!-- 列表类页签（学院/专业/行政班/年级/教学班/审计/班级学生）-->
       <template v-else>
         <div :class="{ 'aa-org-ledger-layout': masterDetailTabs.includes(tab) }">
-        <aside v-if="masterDetailTabs.includes(tab)" class="aa-org-master">
-          <div class="aa-org-master__head"><strong>组织与引用</strong><span>{{ treeNodeCount }} 个组织节点</span></div>
+        <details v-if="masterDetailTabs.includes(tab)" class="aa-org-master">
+          <summary class="aa-org-master__head"><strong>按学院、专业查找</strong><span>{{ treeNodeCount }} 个组织节点 · 点击展开或收起</span></summary>
           <LoadingState v-if="optionsLoading" />
           <ul v-else class="aa-org-master__tree">
             <li v-for="college in tree.colleges || []" :key="college.id">
-              <strong>{{ college.collegeName }}</strong>
-              <ul><li v-for="major in college.majors || []" :key="major.id"><span>{{ major.majorName }}</span><small>{{ (major.classes || []).length }} 个班</small></li></ul>
+              <button class="mp-link" :disabled="busy" :aria-label="`查看${college.collegeName}的专业`" @click="goToOrganization('major', { collegeId: String(college.id) })">{{ college.collegeName }}</button>
+              <ul><li v-for="major in college.majors || []" :key="major.id"><button class="mp-link" :disabled="busy" :aria-label="`查看${major.majorName}的行政班`" @click="goToOrganization('class', { majorId: String(major.id) })">{{ major.majorName }}</button><small>{{ (major.classes || []).length }} 个班</small></li></ul>
             </li>
           </ul>
-        </aside>
+        </details>
         <section class="mp-card aa-org-list">
         <AppInlineAlert v-if="masterDetailTabs.includes(tab)" type="info" :description="pageMeta.notice" />
         <div class="aa-list-heading"><h2>{{ tabLabel }}列表</h2><span v-if="!loading && !error">共 {{ pagination.total }} 条</span></div>
@@ -264,7 +264,15 @@
         >
           <template #cell-trainingLevel="{ row }">{{ trainingLevelLabel(row.trainingLevel) }}</template>
           <template #cell-referenceStatus="{ row }"><StatusTag :type="row.referenceStatus === 'IN_USE' ? 'warning' : 'success'" :label="row.referenceStatus === 'IN_USE' ? '已有正式引用' : '暂无正式引用'" dot /></template>
-          <template #cell-majorNames="{ row }">{{ (row.majorNames || []).join('、') || '—' }}</template>
+          <template #cell-majorNames="{ row }">
+            <details v-if="row.majorNames?.length" class="aa-grade-majors"><summary>查看关联专业</summary><p>{{ row.majorNames.join('、') }}</p></details>
+            <span v-else>—</span>
+          </template>
+          <template #cell-majorCount="{ row }"><button class="mp-link" :disabled="busy" @click="goToOrganization('major', { collegeId: String(row.id) })">查看 {{ row.majorCount }} 个专业</button></template>
+          <template #cell-classCount="{ row }">
+            <button v-if="tab === 'major'" class="mp-link" :disabled="busy" @click="goToOrganization('class', { majorId: String(row.id) })">查看 {{ row.classCount }} 个班</button>
+            <span v-else>{{ row.classCount }}</span>
+          </template>
           <template #cell-teacherNames="{ row }">{{ (row.teacherNames || []).join('、') || '待配置' }}</template>
           <template #cell-rosterStatus="{ row }"><StatusTag :type="row.rosterStatus === 'LOCKED' ? 'success' : 'warning'" :label="row.rosterStatus === 'LOCKED' ? `正式名单 V${row.rosterVersion}` : '名单待正式化'" dot /></template>
           <template #cell-secretaryId="{ row }">
@@ -403,6 +411,7 @@
       <AppPagination v-if="!students.error && students.total" :total="students.total" :page="students.page" :page-size="students.pageSize" :disabled="students.loading || busy" @change="pageStudentDrawer" />
       <template #footer>
         <AppButton @click="students.visible = false">关闭</AppButton>
+        <AppButton v-if="referenceReturn" :disabled="busy" @click="returnToReference">返回并重新核对</AppButton>
       </template>
     </AppDrawer>
 
@@ -438,6 +447,7 @@
         <AppButton v-if="adjust.receipt" variant="primary" @click="viewTransferredClass">查看目标班名册</AppButton>
         <AppButton v-else-if="!adjust.preview" variant="primary" :disabled="!adjust.targetClassId || adjust.previewing || adjust.submitting" :loading="adjust.previewing" @click="previewTransfer">核对转班</AppButton>
         <AppButton v-else variant="primary" :loading="adjust.submitting" @click="submitAdjust">确认转班</AppButton>
+        <AppButton v-if="adjust.receipt && referenceReturn" :disabled="busy" @click="returnToReference">返回并重新核对</AppButton>
       </template>
     </AppDrawer>
 
@@ -565,6 +575,7 @@ import { matchPermission } from '@/config/navPlan'
 import { ACADEMIC_STUDENT_STATUS_LABELS } from '@/modules/academicAffairs/config/academicStudentLabels'
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
+import { routeScalar } from '../academicFlowContext.js'
 
 const CLASS_STATUS = { NORMAL: '在读', GRADUATED: '已毕业', DISBANDED: '已解散' }
 
@@ -591,6 +602,7 @@ export default {
       form: { visible: false, mode: 'create', kind: 'college', submitting: false, model: {}, originalParentId: '', error: '' },
       secretary: { visible: false, submitting: false, row: null, secretaryId: '', reviewing: false, review: null, receipt: null, error: '', needsReload: false },
       students: { visible: false, loading: false, error: '', rows: [], className: '', classId: null, page: 1, pageSize: 20, total: 0 },
+      referenceReturn: null,
       adjust: { visible: false, submitting: false, student: null, targetClassId: '', reason: '', previewing: false, preview: null, receipt: null, error: '', origin: null },
       del: { visible: false, submitting: false, row: null, message: '' },
       // 专业方向（06号卡）
@@ -620,7 +632,7 @@ export default {
   computed: {
     pageMeta() {
       return {
-        college: { title: '学院管理', subtitle: '维护学院稳定身份、负责人和下游引用。', notice: '学院代码作为稳定身份参与专业、权限和统计关联；调整名称不会改变既有对象 ID。' },
+        college: { title: '学院管理', subtitle: '维护学院信息、负责人和下属专业。', notice: '点击学院的专业数可继续维护下属专业。修改学院名称会保留原有专业、权限和统计关系。' },
         major: { title: '专业管理', subtitle: '按学院维护专业主档、学制和招生状态。', notice: '专业主档被培养方案、班级和招生业务引用；停招保留历史关系，不删除正式记录。' },
         grade: { title: '年级管理', subtitle: '按入学年度查看专业、班级与学生规模。', notice: '' },
         class: { title: '行政班管理', subtitle: '维护专业年级下的行政班、班主任和在班人数。', notice: '行政班连接学籍归属与教学任务；变更状态前必须核对在籍学生和未归档任务。' },
@@ -647,6 +659,7 @@ export default {
     roleName() { return this.ctx.currentRole?.roleName || '' },
     dataScopeName() { return this.ctx.dataScope?.scopeName || '' },
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.org.manage') && ['SCHOOL', 'TENANT_ALL', 'COLLEGE'].includes(this.ctx.dataScope?.scope) },
+    canViewOrganizations() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.org.view') },
     canViewTeachingTasks() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.view') },
     canViewTerms() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.term.view') },
     canManageSchool() { return this.canManage && ['SCHOOL', 'TENANT_ALL'].includes(this.ctx.dataScope?.scope) },
@@ -739,6 +752,7 @@ export default {
   created() {
     const q = this.$route && this.$route.query && this.$route.query.tab
     if (q && this.tabs.some((t) => t.key === q)) this.tab = q
+    this.restoreListQuery()
     this.loadOptions()
     if (this.tab === 'stats') this.loadStats()
     else if (this.tab === 'tree') this.loadTree()
@@ -750,18 +764,56 @@ export default {
   watch: {
     'form.model.classStatus'() { this.invalidateClassStatePreview() },
     'secretary.secretaryId'() { this.invalidateSecretaryReview() },
-    '$route.query.tab'(v) {
-      this.switchTab(this.tabs.some(t => t.key === v) ? v : 'college')
+    '$route.fullPath'() {
+      const nextTab = this.tabs.some(t => t.key === this.$route.query.tab) ? this.$route.query.tab : 'college'
+      if (nextTab !== this.tab) this.switchTab(nextTab)
+      else if (this.restoreListQuery()) this.reload()
     }
   },
   beforeUnmount() { this.invalidateReads(true) },
   beforeRouteUpdate(to, from, next) { if (this.busy) { toast.warning('正在保存组织信息，请稍候再切换'); next(false) } else next() },
   beforeRouteLeave(to, from, next) { if (this.busy) { toast.warning('正在保存组织信息，请稍候再离开'); next(false) } else next() },
   methods: {
+    goToOrganization(tab, filters) {
+      if (this.busy || !['college', 'major', 'class'].includes(tab)) return
+      this.$router.push({ path: '/admin/academic-affairs/orgs', query: { tab, ...filters } })
+    },
+    restoreListQuery() {
+      const query = this.$route.query
+      const before = JSON.stringify([this.filters, this.pagination.page])
+      this.filters = {
+        collegeId: this.tab === 'major' ? routeScalar(query.collegeId) : '',
+        majorId: ['class', 'grade'].includes(this.tab) ? routeScalar(query.majorId) : '',
+        keyword: routeScalar(query.keyword),
+        termId: this.tab === 'teaching' ? routeScalar(query.termId) : ''
+      }
+      const page = Number(routeScalar(query.page))
+      this.pagination.page = Number.isSafeInteger(page) && page > 0 ? page : 1
+      return before !== JSON.stringify([this.filters, this.pagination.page])
+    },
+    persistListQuery() {
+      const query = { ...this.$route.query, tab: this.tab, page: String(this.pagination.page) }
+      for (const key of ['collegeId', 'majorId', 'keyword', 'termId']) {
+        if (this.filters[key]) query[key] = this.filters[key]
+        else delete query[key]
+      }
+      this.$router.replace({ path: this.$route.path, query })
+    },
     viewCheckedOrganization(report) {
       const tab = { COLLEGE: 'college', MAJOR: 'major', CLASS: 'class' }[report.targetType]
       if (!tab || this.busy) return
-      this.switchTab(tab); this.filters.keyword = report.targetName; this.search()
+      this.goToOrganization(tab, { keyword: report.targetName })
+    },
+    viewCheckedStudents(report) {
+      if (this.busy || !this.canViewOrganizations || report?.targetType !== 'CLASS' || !report.targetId) return
+      return this.openStudents({ id: report.targetId, className: report.targetName }, { targetType: 'CLASS', targetId: report.targetId })
+    },
+    returnToReference() {
+      if (this.busy || !this.canViewOrganizations || !this.referenceReturn || !this.$refs.referencePanel) return
+      const target = this.referenceReturn
+      this.students.visible = false; this.adjust.visible = false; this.referenceReturn = null
+      this.$refs.referencePanel.changePage(this.$refs.referencePanel.pagination.page)
+      return this.$refs.referencePanel.openDetail(target)
     },
     invalidateReads(includeOptions = false) { for (const key of Object.keys(this.requestVersions)) if (includeOptions || key !== 'options') this.requestVersions[key]++ },
     displayTime(value) {
@@ -780,13 +832,15 @@ export default {
     switchTab(key) {
       if (this.busy || key === this.tab || !this.tabs.some(t => t.key === key)) return
       this.tab = key
+      this.referenceReturn = null
       this.invalidateReads()
       this.rows = []; this.error = ''; this.loading = false
       for (const state of [this.form, this.secretary, this.students, this.adjust, this.del, this.directionForm, this.directionConfirm, this.adjustCreateForm, this.adjustCheckResult, this.adjustActionConfirm]) state.visible = false
       this.filters = { collegeId: '', majorId: '', keyword: '', termId: '' }
       this.pagination.page = 1
       this.pagination.total = 0
-      if (this.$route.query.tab !== key) this.$router.replace({ query: { ...this.$route.query, tab: key } })
+      if (this.$route.query.tab === key) this.restoreListQuery()
+      else this.$router.replace({ query: { tab: key } })
       if (key === 'stats') this.loadStats()
       else if (key === 'tree') this.loadTree()
       else if (key === 'direction') this.loadDirectionToggle()
@@ -811,9 +865,9 @@ export default {
       this.majorOptions = colleges.flatMap(c => (c.majors || []).map(m => ({ value: String(m.id), label: m.majorName, collegeId: String(c.id) })))
       this.classOptions = colleges.flatMap(c => (c.majors || []).flatMap(m => (m.classes || []).map(k => ({ value: String(k.id), label: k.className, majorId: String(m.id) }))))
     },
-    search() { this.pagination.page = 1; this.reload() },
+    search() { this.pagination.page = 1; this.persistListQuery(); this.reload() },
     resetFilters() { this.filters = { collegeId: '', majorId: '', keyword: '', termId: '' }; this.search() },
-    onPageChange(p) { this.pagination.page = p; this.reload() },
+    onPageChange(p) { this.pagination.page = p; this.persistListQuery(); this.reload() },
     async reload() {
       if (['tree', 'stats', 'direction', 'students', 'adjust'].includes(this.tab)) return
       const version = ++this.requestVersions.list
@@ -1007,8 +1061,9 @@ export default {
         if (res.bizCode === 'DATA_CONFLICT') { form.needsReload = true; form.error += '。请关闭后重新打开最新学院记录。'; this.reload() }
       }
     },
-    async openStudents(row) {
+    async openStudents(row, referenceReturn = null) {
       if (this.busy) return
+      this.referenceReturn = referenceReturn
       this.students = { visible: true, loading: false, error: '', rows: [], className: row.className, classId: row.id, page: 1, pageSize: 20, total: 0 }
       await this.reloadStudentDrawer()
     },
@@ -1064,7 +1119,7 @@ export default {
       if (this.busy || !this.adjust.receipt) return
       const row = this.adjust.receipt
       this.adjust.visible = false
-      return this.openStudents({ id: row.toClassId, className: row.toClassName })
+      return this.openStudents({ id: row.toClassId, className: row.toClassName }, this.referenceReturn)
     },
     async submitAdjust() {
       if (!this.canManage || this.busy || !this.adjust.visible || !this.adjust.preview || !this.adjust.targetClassId) return
@@ -1451,8 +1506,10 @@ export default {
 .aa-stat-bar-row > div { height: 8px; overflow: hidden; border-radius: 999px; background: var(--bg-page); }
 .aa-stat-bar-row i { display: block; height: 100%; border-radius: inherit; background: var(--primary-500, #356fd1); }
 .aa-stat-bar-row strong { text-align: right; }
-.aa-org-ledger-layout { display: grid; grid-template-columns: 230px minmax(0, 1fr); gap: 16px; align-items: start; }
-.aa-org-master { position: sticky; top: 12px; max-height: 650px; overflow: auto; border: 1px solid var(--border-200); border-radius: var(--radius-md); background: var(--bg-card); }
+.aa-org-ledger-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.aa-org-master { max-height: 320px; overflow: auto; border: 1px solid var(--border-200); border-radius: var(--radius-md); background: var(--bg-card); }
+.aa-org-master summary { cursor: pointer; }
+.aa-org-master summary:focus-visible { outline: 2px solid var(--pri); outline-offset: -2px; }
 .aa-org-master__head { display: flex; justify-content: space-between; gap: 8px; padding: 15px 16px; border-bottom: 1px solid var(--border-200); }
 .aa-org-master__head span, .aa-org-master__tree small { font-size: 12px; color: var(--text-500); }
 .aa-org-master__tree, .aa-org-master__tree ul { list-style: none; margin: 0; padding: 0; }
@@ -1460,6 +1517,10 @@ export default {
 .aa-org-master__tree li:last-child { border-bottom: 0; }
 .aa-org-master__tree ul { margin-top: 9px; display: grid; gap: 7px; }
 .aa-org-master__tree ul li { display: flex; justify-content: space-between; gap: 8px; color: var(--text-500); font-size: 13px; }
+.aa-org-master__tree .mp-link { text-align: left; min-height: 28px; }
+.aa-org-master__tree small { flex-shrink: 0; align-self: center; }
+.aa-grade-majors summary { cursor: pointer; color: var(--pri); padding: 6px 0; white-space: nowrap; }
+.aa-grade-majors p { max-width: 600px; white-space: normal; line-height: 1.7; }
 .aa-tree { list-style: none; padding-left: var(--space-2); }
 .aa-tree ul { list-style: none; padding-left: var(--space-4); }
 .mp-link + .mp-link { margin-left: var(--space-2); }

@@ -47,6 +47,18 @@ def _scope(user):
     return _current_scope(user), _rec_in_scope
 
 
+def _scope_check(db, record, student, user):
+    from app.modules.internship.services.internship_batch_context import resolve_batch
+    if (not record or not student or record.is_deleted or student.is_deleted
+            or record.tenant_id != _tid() or student.tenant_id != _tid()
+            or record.student_id != student.id):
+        raise not_found("变更申请关联的学生或批次不存在")
+    resolve_batch(db, record.batch_id)
+    scope, in_scope = _scope(user)
+    if not in_scope(scope, db, record, student):
+        raise no_permission("不在数据范围内")
+
+
 def _next_record_status(record: InternshipRecord | None) -> str:
     return "READY" if record and record.eligibility_status == "QUALIFIED" else "PREPARING"
 
@@ -77,20 +89,74 @@ def _impact_preview(change: InternshipChangeRequest, record: InternshipRecord | 
     }
 
 
-def _row(c, rec, stu):
+def _approved_history(change, trails):
+    """Only an atomic approval for this request can establish its historical route."""
+    if change.status != "APPROVED":
+        return None
+    for trail in trails:
+        if (trail.tenant_id != change.tenant_id or trail.target_id != change.id
+                or trail.target_type != "CHANGE_REQ" or trail.action != "APPROVE"):
+            continue
+        detail = trail.detail_json
+        if not isinstance(detail, dict) or detail.get("atomic") is not True:
+            continue
+        snapshots = [detail.get("recordBefore"), detail.get("recordAfter")]
+        if not all(isinstance(item, dict)
+                   and type(item.get("recordVersion")) is int and item["recordVersion"] >= 0
+                   and all(isinstance(item.get(key), str) for key in
+                           ("enterpriseId", "positionId", "enterpriseName", "positionName"))
+                   and all(not item[key] or (item[key].isascii() and item[key].isdigit()
+                                            and int(item[key]) > 0)
+                           for key in ("enterpriseId", "positionId"))
+                   for item in snapshots):
+            continue
+        before, after = snapshots
+        if after["recordVersion"] != before["recordVersion"] + 1:
+            continue
+        keys = ("enterpriseId", "positionId", "enterpriseName", "positionName", "recordVersion")
+        return {
+            "auditId": str(trail.id),
+            "before": {key: before[key] for key in keys},
+            "after": {key: after[key] for key in keys},
+            "applicationBasisMatched": before["recordVersion"] == change.record_version_snapshot,
+        }
+    return None
+
+
+def _approved_histories(db, changes):
+    approved = {change.id: change for change in changes if change.status == "APPROVED"}
+    if not approved:
+        return {}
+    trails = db.scalars(select(InternshipAuditTrail).where(
+        InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "CHANGE_REQ",
+        InternshipAuditTrail.action == "APPROVE", InternshipAuditTrail.target_id.in_(approved)
+    ).order_by(InternshipAuditTrail.id.desc())).all()
+    grouped = {}
+    for trail in trails:
+        grouped.setdefault(trail.target_id, []).append(trail)
+    return {cid: _approved_history(change, grouped.get(cid, [])) for cid, change in approved.items()}
+
+
+def _row(c, rec, stu, approved_history=None):
     impact = _impact_preview(c, rec)
     return {
         "id": str(c.id), "internId": str(c.internship_id),
         "studentName": stu.real_name if stu else "-", "studentNo": stu.student_no if stu else "-",
         "changeType": c.change_type, "changeTypeLabel": TYPE_LABEL.get(c.change_type, c.change_type),
         "reason": c.reason,
+        "targetEnterpriseId": str(c.target_enterprise_id) if c.target_enterprise_id else "",
+        "targetPositionId": str(c.target_position_id) if c.target_position_id else "",
         "targetEnterpriseName": c.target_enterprise_name or "",
         "targetPositionName": c.target_position_name or "",
         "currentEnterprise": rec.enterprise_name if rec else "",
         "currentPosition": rec.position_name if rec else "",
+        "approvedHistory": approved_history,
         "recordStatus": rec.status if rec else "",
         "recordStatusLabel": stu_svc.STATUS_LABEL.get(rec.status, rec.status) if rec else "",
         "status": c.status, "statusLabel": STATUS_LABEL.get(c.status, c.status),
+        "reviewComment": c.review_comment or "",
+        "reviewedBy": c.reviewed_by_name or "",
+        "reviewedAt": _iso(c.reviewed_at) or "",
         "version": int(c.version or 0),
         "recordVersion": int(rec.version or 0) if rec else None,
         "recordVersionSnapshot": int(c.record_version_snapshot or 0),
@@ -123,7 +189,7 @@ def _target_position_truth(db, change, record=None, student=None) -> dict | None
     return {
         "id": str(position.id), "exists": True, "title": position.title,
         "companyId": str(position.company_id),
-        "companyName": (company.name if company else None) or position.company_name or "",
+        "companyName": (company.name if company and not company.is_deleted and company.tenant_id == _tid() else None) or position.company_name or "",
         "status": position.status, "headcount": int(position.headcount or 0),
         "allocatedCount": int(position.allocated_count or 0), "remaining": remaining,
         "capacityAvailable": bool(position.status == "PUBLISHED" and remaining > 0 and rights.get("passed")),
@@ -140,14 +206,14 @@ def validate_target_position(db, record: InternshipRecord, student: StudentProfi
     if not position or position.is_deleted or position.tenant_id != _tid():
         raise not_found("目标岗位不存在或不在当前数据范围内")
     if record.position_id == position.id:
-        raise AppException("DATA_CONFLICT", "目标岗位不能与当前岗位相同")
+        raise AppException("DATA_CONFLICT", "目标岗位不能与当前岗位相同", http_status=409)
     if not record.batch_id or not position.batch_id or int(record.batch_id) != int(position.batch_id):
-        raise AppException("DATA_CONFLICT", "目标岗位不属于当前实习批次")
+        raise AppException("DATA_CONFLICT", "目标岗位不属于当前实习批次", http_status=409)
     company = db.get(EmpCompany, position.company_id)
     if not company or company.is_deleted or company.tenant_id != _tid():
         raise not_found("目标岗位所属企业不存在")
     if change_type == "CHANGE_ENTERPRISE" and record.enterprise_id and int(record.enterprise_id) == int(company.id):
-        raise AppException("DATA_CONFLICT", "换实习单位必须选择不同企业的目标岗位")
+        raise AppException("DATA_CONFLICT", "换实习单位必须选择不同企业的目标岗位", http_status=409)
     batch = tenant_get(db, InternshipBatch, record.batch_id)
     from app.modules.internship.services.internship_position_rights import evaluate_position_publishability
     rights = evaluate_position_publishability(
@@ -158,11 +224,12 @@ def validate_target_position(db, record: InternshipRecord, student: StudentProfi
         raise AppException(
             "DATA_CONFLICT",
             "目标岗位当前不可申请" + ("：" + "；".join(reasons) if reasons else ""),
+            http_status=409,
         )
     return position, company
 
 
-def list_changes(page, page_size, status=None, keyword=None, batch_id=None, user=None):
+def list_changes(page, page_size, status=None, keyword=None, batch_id=None, user=None, *, change_id=None):
     from app.modules.internship.services.internship_batch_context import resolve_batch
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
 
@@ -188,15 +255,22 @@ def list_changes(page, page_size, status=None, keyword=None, batch_id=None, user
             InternshipRecord.is_deleted.is_(False),
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False),
+            InternshipChangeRequest.student_id == InternshipRecord.student_id,
         )
-        if status:
-            query = query.where(InternshipChangeRequest.status == status)
+        if change_id is not None:
+            query = query.where(InternshipChangeRequest.id == _as_id(change_id))
+        status_value = str(status or "ALL").strip().upper()
+        if status_value == "REVIEWED":
+            query = query.where(InternshipChangeRequest.status.in_(("APPROVED", "REJECTED")))
+        elif status_value in STATUS_LABEL:
+            query = query.where(InternshipChangeRequest.status == status_value)
+        elif status_value != "ALL":
+            raise AppException("VALIDATION_ERROR", "不支持的实习变更审核状态")
         term = str(keyword or "").strip()
         if term:
-            like = f"%{term}%"
             query = query.where(or_(
-                StudentProfile.real_name.like(like),
-                StudentProfile.student_no.like(like),
+                StudentProfile.real_name.contains(term, autoescape=True),
+                StudentProfile.student_no.contains(term, autoescape=True),
             ))
         total = int(db.scalar(select(func.count()).select_from(query.subquery())) or 0)
         size = max(0, int(page_size or 0))
@@ -207,7 +281,53 @@ def list_changes(page, page_size, status=None, keyword=None, batch_id=None, user
             .offset((max(1, int(page or 1)) - 1) * size)
             .limit(size)
         ).all()
-        return [_row(change, record, student) for change, record, student in rows], total
+        histories = _approved_histories(db, [change for change, _, _ in rows])
+        return [_row(change, record, student, histories.get(change.id))
+                for change, record, student in rows], total
+
+
+def export_changes(*, status=None, keyword=None, batch_id=None, user=None):
+    from app.modules.internship.services.internship_export_util import load_export_rows, write_export_audit
+    from app.modules.internship.services.internship_report_quality_service import format_report_time
+    from app.services import xlsx_util
+
+    items, total = load_export_rows(
+        list_changes, status=status, keyword=keyword, batch_id=batch_id, user=user)
+    headers = [
+        "申请编号", "学号", "姓名", "变更类型", "状态", "申请时间", "申请原因",
+        "申请目标单位", "申请目标岗位", "本次变更前单位", "本次变更前岗位",
+        "本次变更后单位", "本次变更后岗位", "历史依据说明", "当前实习单位", "当前实习岗位",
+        "审核人", "审核时间", "审核意见",
+    ]
+    rows = []
+    for item in items:
+        history = item.get("approvedHistory")
+        before, after = (history["before"], history["after"]) if history else ({}, {})
+        if history:
+            explanation = ("审批前去向与本申请依据的实习记录版本一致" if history["applicationBasisMatched"]
+                           else "仅记录本次审批前后去向，不能确认申请时去向")
+        else:
+            explanation = ("历史去向未记录，无法核实本次审批前后去向" if item["status"] == "APPROVED"
+                           else "尚未通过审批，无变更生效记录")
+        rows.append([
+            item["id"], item["studentNo"], item["studentName"], item["changeTypeLabel"],
+            item["statusLabel"], format_report_time(item["createdAt"]), item["reason"],
+            item["targetEnterpriseName"], item["targetPositionName"],
+            before.get("enterpriseName", ""), before.get("positionName", ""),
+            after.get("enterpriseName", ""), after.get("positionName", ""), explanation,
+            item["currentEnterprise"], item["currentPosition"], item.get("reviewedBy", ""),
+            format_report_time(item.get("reviewedAt")), item["reviewComment"],
+        ])
+    content = xlsx_util.build_ledger_xlsx(
+        "实习变更台账", headers, rows,
+        watermark=f"岗位实习中心·实习变更台账 · {_op_name(user)} · {datetime.now():%Y-%m-%d %H:%M}")
+    with session() as db:
+        write_export_audit(db, "实习变更台账", total, user=user, filters={
+            "batchId": str(batch_id or ""), "status": str(status or "ALL").strip().upper(),
+            "keyword": str(keyword or "").strip(),
+        })
+        db.commit()
+    return xlsx_util.pack_xlsx_result(content, "实习变更台账.xlsx", total)
 
 
 def get_change(cid, user=None):
@@ -217,14 +337,12 @@ def get_change(cid, user=None):
             raise not_found("变更申请不存在")
         rec = db.get(InternshipRecord, c.internship_id)
         stu = db.get(StudentProfile, c.student_id)
-        scope, in_scope = _scope(user)
-        if not in_scope(scope, db, rec, stu):
-            raise no_permission("不在数据范围内")
+        _scope_check(db, rec, stu, user)
         trail = db.scalars(select(InternshipAuditTrail).where(
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == "CHANGE_REQ",
             InternshipAuditTrail.target_id == c.id).order_by(InternshipAuditTrail.id)).all()
         return {
-            **_row(c, rec, stu),
+            **_row(c, rec, stu, _approved_history(c, reversed(trail))),
             "targetPosition": _target_position_truth(db, c, rec, stu),
             "reviewComment": c.review_comment or "",
             "auditTrail": [{"action": t.action, "operator": t.operator_name or "",
@@ -239,7 +357,8 @@ def list_my_changes(rec, stu):
             InternshipChangeRequest.tenant_id == _tid(), InternshipChangeRequest.internship_id == rec.id,
             InternshipChangeRequest.student_id == stu.id, InternshipChangeRequest.is_deleted.is_(False)
         ).order_by(InternshipChangeRequest.id.desc())).all()
-        return [_row(c, rec, stu) for c in rows]
+        histories = _approved_histories(db, rows)
+        return [_row(c, rec, stu, histories.get(c.id)) for c in rows]
 
 
 def student_apply(rec, stu, body) -> dict:
@@ -282,6 +401,8 @@ def student_apply(rec, stu, body) -> dict:
             db.rollback()
             raise AppException("DATA_CONFLICT", _DUP_PENDING_MSG) from exc
         _trail(db, c.id, "APPLY", {"changeType": ctype})
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.push_change_todo(db, c, rec)
         try:
             db.commit()
         except IntegrityError as exc:
@@ -304,6 +425,8 @@ def withdraw_change(cid, rec, stu) -> dict:
             raise AppException("DATA_CONFLICT", "仅待审核申请可撤回")
         c.status = "WITHDRAWN"
         _trail(db, c.id, "WITHDRAW", {})
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=c.id, todo_type=ix_todo.change_todo_type(c))
         db.commit()
         return {"id": str(c.id), "status": "WITHDRAWN"}
 
@@ -351,7 +474,7 @@ def review_change(cid, action: str, comment: str = "", user=None, *, expected_ve
         change = db.scalar(select(InternshipChangeRequest).where(
             InternshipChangeRequest.id == _as_id(cid),
             InternshipChangeRequest.tenant_id == _tid(),
-            InternshipChangeRequest.is_deleted.is_(False)).with_for_update())
+            InternshipChangeRequest.is_deleted.is_(False)))
         if not change:
             raise not_found("变更申请不存在")
         if change.status != "PENDING":
@@ -362,13 +485,19 @@ def review_change(cid, action: str, comment: str = "", user=None, *, expected_ve
             InternshipRecord.is_deleted.is_(False)).with_for_update())
         if not record:
             raise not_found("实习主记录不存在")
+        # 学生提交、撤回、补正和教师办理统一先锁主记录，再锁变更单。
+        change = db.scalar(select(InternshipChangeRequest).where(
+            InternshipChangeRequest.id == change.id,
+            InternshipChangeRequest.tenant_id == _tid(),
+            InternshipChangeRequest.is_deleted.is_(False),
+        ).with_for_update().execution_options(populate_existing=True))
+        if not change or change.status != "PENDING":
+            raise AppException("DATA_CONFLICT", "申请状态已变化，请刷新后重试")
         student = db.scalar(select(StudentProfile).where(
             StudentProfile.id == change.student_id,
             StudentProfile.tenant_id == _tid(),
             StudentProfile.is_deleted.is_(False)))
-        scope, in_scope = _scope(user)
-        if not in_scope(scope, db, record, student):
-            raise no_permission("不在数据范围内")
+        _scope_check(db, record, student, user)
         if expected_batch_id is not None and int(record.batch_id or 0) != int(_as_id(expected_batch_id)):
             raise AppException("DATA_CONFLICT", "申请已不属于当前所选批次，请刷新批次后重试")
 
@@ -430,6 +559,7 @@ def review_change(cid, action: str, comment: str = "", user=None, *, expected_ve
                 record.enterprise_mentor_name = None
                 record.destination_type = "SELF_ARRANGED"
                 record.current_placement_snapshot_id = None
+                record.current_application_id = None
                 record.status = _next_record_status(record)
                 record.intern_start_date = None
                 stu_svc._trail(db, record.id, "SET_SELF_ARRANGED_BY_CHANGE", {
@@ -465,6 +595,8 @@ def review_change(cid, action: str, comment: str = "", user=None, *, expected_ve
             } if action == "APPROVE" else before,
             "atomic": True,
         }, operator=_op_name(user))
+        from app.modules.internship.services import internship_todo_helper as ix_todo
+        ix_todo.todo_done(db, biz_id=change.id, todo_type=ix_todo.change_todo_type(change))
         db.commit()
         receipt_impact = _impact_preview(change, record) if action == "APPROVE" else {
             "requiresReonboard": False,

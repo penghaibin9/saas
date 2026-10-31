@@ -39,6 +39,11 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     # 家长门户公网根地址，例如 https://school.example.com；监护人确认短信使用。
     GUARDIAN_PORTAL_BASE_URL: str = ""
+    # 岗位实习招标新增能力；外部回执默认关闭，须完成真实平台接入后配置。
+    CHECKIN_WATERMARK_FONT_PATH: str = ""
+    ENTERPRISE_PORTAL_BASE_URL: str = ""
+    REGULATORY_RECEIPT_ADAPTER_ENABLED: bool = False
+    REGULATORY_RECEIPT_ADAPTER_NAME: str = ""
 
     # ── 认证（开发可用安全默认 JWT；生产由 assert_* 强制强密钥 + 关 mock-login）──
     JWT_SECRET: str = "school-lifecycle-dev-secret-change-me-please-32"

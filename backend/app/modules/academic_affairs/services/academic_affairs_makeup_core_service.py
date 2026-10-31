@@ -88,16 +88,18 @@ def _student(db):
 
 def _mb_dto(b):
     return {"batchId": str(b.id), "batchName": b.batch_name, "termCode": b.term_code,
+            "scoreVersion": int(b.score_version or 0),
             "kind": getattr(b, "kind", "MAKEUP") or "MAKEUP",
             "targetGrades": [x for x in (b.target_grades or "").split(",") if x] if getattr(b, "target_grades", None) else [],
             "examBatchRef": str(b.exam_batch_ref) if b.exam_batch_ref else None,
             "scoreRule": b.score_rule, "status": b.status, "publishedAt": _iso(b.published_at)}
 
 
-def _get_mb(db, bid):
+def _get_mb(db, bid, *, for_update=False):
     from app.models import AaMakeupBatch
-    b = db.query(AaMakeupBatch).filter(AaMakeupBatch.id == bid, AaMakeupBatch.tenant_id == _tid(),
-                                       AaMakeupBatch.is_deleted.is_(False)).first()
+    query = db.query(AaMakeupBatch).filter(AaMakeupBatch.id == bid, AaMakeupBatch.tenant_id == _tid(),
+                                       AaMakeupBatch.is_deleted.is_(False))
+    b = (query.with_for_update() if for_update else query).first()
     if not b:
         raise not_found("补考批次不存在")
     return b

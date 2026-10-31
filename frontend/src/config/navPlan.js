@@ -466,7 +466,7 @@ export const NAV_PLAN = [
     mod('aa-exam', '考务管理', '/admin/academic-affairs/exam', [
       academicEntry('aa.exam.exam', I('考务控制台（批次/课程/考场/座位/监考/巡考/异常/统计）', '/admin/academic-affairs/exam', 'academicAffairs.exam.view')),
       academicEntry('aa.exam.exam.print.seating', I('座位表/准考证/门贴打印', '/admin/academic-affairs/exam/print/seating', 'academicAffairs.exam.view')),
-      academicEntry('aa.exam.exam.tab.defer', I('缓考审批（并入控制台/学生小程序申请）', '/admin/academic-affairs/exam?tab=defer', 'academicAffairs.deferredExam.review')),
+      academicEntry('aa.exam.exam.tab.defer', I('缓考审批（并入控制台/学生小程序申请）', '/admin/academic-affairs/exam?tab=defer', null, 'TASK_QUEUE', { permissionAny: ['academicAffairs.deferredExam.counselorReview', 'academicAffairs.deferredExam.review'] })),
       academicEntry('aa.exam.exam.tab.archive', I('考务归档', '/admin/academic-affairs/exam?tab=archive', 'academicAffairs.exam.view')),
       academicEntry('aa.exam.level.exams', I('等级考务（四六级/普通话/技能证书）', '/admin/academic-affairs/level-exams', 'academicAffairs.levelExam.view'))
     ]),
@@ -634,6 +634,7 @@ export const NAV_PLAN = [
       I('批次管理', '/admin/internship/batches?panel=list', 'internship.batch.view', 'WORKBENCH'),
       I('学生名单', '/admin/internship/students?panel=roster', 'internship.student.view', 'WORKBENCH'),
       I('资格认定', '/admin/internship/students?panel=eligibility', 'internship.student.eligibility.review', 'TASK_QUEUE'),
+      I('请假审批配置', '/admin/internship/leave-policy', 'internship.leave.policy.view', 'CONFIG_VIEW'),
       H('批次详情', '/admin/internship/batches?panel=list', 'internship.batch.view', 'DETAIL'),
       H('参与学生配置', '/admin/internship/batches?panel=participants', 'internship.batch.manage', 'CONFIG_VIEW'),
       H('阶段与规则配置', '/admin/internship/batches?panel=configuration', 'internship.batch.manage', 'CONFIG_VIEW'),
@@ -684,6 +685,11 @@ export const NAV_PLAN = [
       I('报告批阅', '/admin/internship/reports?panel=review', 'internship.report.view', 'TASK_QUEUE', { workspacePaths: ['/admin/internship/process-reports'] }),
       I('指导巡访', '/admin/internship/guidance?panel=guidance', 'internship.guidance.view', 'WORKBENCH'),
       I('指导计划', '/admin/internship/guidance-plan', 'internship.guidance.view', 'CONFIG_VIEW'),
+      I('月度工资台账', '/admin/internship/payroll', 'internship.payroll.view', 'WORKBENCH'),
+      I('我的指导报告', '/admin/internship/my-reports', 'internship.guidance.view', 'WORKBENCH'),
+      I('教师本人报告', '/admin/internship/teacher-reports', 'internship.stats.view', 'WORKBENCH'),
+      I('教师工作台账', '/admin/internship/teacher-management', 'internship.stats.view', 'WORKBENCH'),
+      I('通知公告', '/admin/internship/notices', 'internship.communication.view', 'WORKBENCH'),
       H('补卡申请台账', '/admin/internship/attendance?panel=makeup-apply', 'internship.makeup.view', 'WORKBENCH'),
       H('补卡审批', '/admin/internship/attendance?panel=makeup-review', 'internship.makeup.review', 'TASK_QUEUE'),
       H('连续未打卡', '/admin/internship/exceptions?status=PENDING_HANDLE', 'internship.attendance.review', 'TASK_QUEUE'),
@@ -707,6 +713,7 @@ export const NAV_PLAN = [
     mod('in-risk', '风险与变更', '/admin/internship/risks', [
       I('风险预警', '/admin/internship/risks?panel=board', 'internship.risk.view', 'WORKBENCH'),
       I('风险处置', '/admin/internship/risk-disposal?stage=pending', 'internship.risk.handle', 'TASK_QUEUE'),
+      I('学生意见反馈', '/admin/internship/feedback', 'internship.complaint.view', 'WORKBENCH'),
       I('调岗退岗', '/admin/internship/changes?panel=pending', 'internship.change.view', 'TASK_QUEUE'),
       I('事故与应急', '/admin/internship/compliance?tab=incidents', 'internship.incident.handle', 'TASK_QUEUE'),
       H('风险提醒', '/admin/internship/risks', 'internship.risk.view', 'TASK_QUEUE'),
@@ -735,6 +742,10 @@ export const NAV_PLAN = [
     mod('in-employment-archive-stats', '归档与分析', '/admin/internship/archive', [
       { ...I('材料归档', '/admin/internship/archive?panel=records', 'internship.archive.view', 'WORKBENCH'), workspacePaths: ['/admin/internship/material-center'] },
       I('实习统计', '/admin/internship/stats?dimension=overview', 'internship.stats.view', 'ANALYTICS_VIEW'),
+      I('材料收件要求', '/admin/internship/material-requirements', 'internship.archive.view', 'CONFIG_VIEW'),
+      I('正式文书', '/admin/internship/formal-documents', 'internship.archive.view', 'WORKBENCH'),
+      I('监管上报', '/admin/internship/regulatory-reporting', 'internship.reporting.view', 'WORKBENCH'),
+      I('实习转就业预审', '/admin/internship/employment', 'internship.employment.view', 'TASK_QUEUE'),
       I('就业衔接', '/admin/employment/students?source=internship', 'internship.employment.view', 'CROSS_MODULE'),
       H('未就业帮扶', '/admin/employment/unemployed?source=internship', 'internship.employment.view', 'CROSS_MODULE'),
       H('实习档案包', '/admin/internship/archive?panel=packages', 'internship.archive.package.generate', 'ACTION'),

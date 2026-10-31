@@ -3,6 +3,10 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.modules.internship.services.internship_student_age import (
+    minimum_age_item, student_age_years, policy_today,
+)
+
 from app.modules.internship.services.internship_compliance_rules import (
     get_batch_compliance_rules, rule_version_label,
 )
@@ -17,22 +21,13 @@ def _issue(code, label, reason, *, severity="BLOCK", field=None):
             "severity": severity, "field": field}
 
 
-def _minor(student) -> bool | None:
-    birth = getattr(student, "birth_date", None) if student else None
-    if birth is None:
-        return None
-    if hasattr(birth, "date"):
-        birth = birth.date()
-    try:
-        today = datetime.utcnow().date()
-        years = today.year - birth.year - ((today.month, today.day) < (birth.month, birth.day))
-        return years < 18
-    except Exception:
-        return None
+def _minor(student, *, today=None) -> bool | None:
+    age = student_age_years(student, today=today)
+    return None if age is None else age < 18
 
 
 def evaluate_position_publishability(position, company, batch, student=None,
-                                     operation="PUBLISH", db=None) -> dict:
+                                     operation="PUBLISH", db=None, *, today=None, record=None) -> dict:
     rules = get_batch_compliance_rules(db, batch)
     cfg = rules.get("workRights") or {}
     required_fields = [
@@ -41,6 +36,11 @@ def evaluate_position_publishability(position, company, batch, student=None,
         "accommodationProvided", "mealProvided", "hazardousFlag",
     ]
     blockers, warnings, unknowns = [], [], []
+    today = today or policy_today()
+    if student is not None or str(operation).upper() != "PUBLISH":
+        age = minimum_age_item(student, record=record, today=today)
+        if age["status"] != "VALID":
+            (unknowns if age["status"] == "PENDING" else blockers).append(age)
     facts = {
         "companyId": str(getattr(company, "id", "") or ""),
         "batchId": str(getattr(batch, "id", "") or ""),
@@ -93,11 +93,18 @@ def evaluate_position_publishability(position, company, batch, student=None,
         "accommodationProvided": "accommodation_provided",
         "mealProvided": "meal_provided", "hazardousFlag": "hazardous_flag",
     }
+    field_labels = {
+        "workContent": "工作内容", "dailyHours": "每日工时", "weeklyHours": "每周工时",
+        "nightShift": "夜班安排", "overtimeAllowed": "加班安排", "restDaysPerWeek": "每周休息天数",
+        "remunerationType": "报酬方式", "accommodationProvided": "住宿安排",
+        "mealProvided": "用餐安排", "hazardousFlag": "危险岗位情况",
+    }
     for api_name, attr in field_map.items():
         value = _fact(position, attr)
         if value is None or (isinstance(value, str) and not value.strip()):
-            unknowns.append(_issue("REQUIRED_UNKNOWN", api_name,
-                                   f"{api_name} 未录入，不能解释为安全", field=api_name))
+            label = field_labels[api_name]
+            unknowns.append(_issue("REQUIRED_UNKNOWN", label,
+                                   f"{label}未录入，须先核实岗位条件", field=api_name))
     maximum = float(cfg.get("maxDailyHours", 8))
     if facts["dailyHours"] is not None and float(facts["dailyHours"]) > maximum:
         blockers.append(_issue("DAILY_HOURS_EXCEEDED", "每日工时",
@@ -109,7 +116,7 @@ def evaluate_position_publishability(position, company, batch, student=None,
     if facts["nightShift"] is True:
         if not cfg.get("nightShiftAllowed", False):
             blockers.append(_issue("NIGHT_SHIFT_FORBIDDEN", "夜班", "当前批次规则不允许夜班"))
-        if _minor(student) is True:
+        if _minor(student, today=today) is True:
             blockers.append(_issue("MINOR_NIGHT_SHIFT", "未成年人夜班", "未成年人不得安排夜班"))
         warnings.append(_issue("NIGHT_SHIFT_FILING", "夜班备案", "夜班须完成特殊备案", severity="WARN"))
     if facts["overtimeAllowed"] is True and not cfg.get("overtimeAllowed", False):

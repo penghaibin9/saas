@@ -1,7 +1,8 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar title="安全教育课程" subtitle="系统计时 · 教师审核" show-back />
-    <MobileGlobalState :state="state" @retry="load">
+  <view class="internship-surface mobile-page mobile-student page-wrap">
+    <MobileNavBar title="安全教育课程" show-back :fallback-url="safetyReturnUrl" />
+    <view v-if="!id" class="page-pad"><MobileGlobalState state="empty" title="尚未选择课程" description="请从安全教育课程列表进入。"><template #actions><navigator :url="safetyReturnUrl" open-type="redirect" class="btn btn-primary sc__recovery">从安全教育选择课程</navigator></template></MobileGlobalState></view>
+    <MobileGlobalState v-else :state="state" @retry="load">
       <view class="page-pad stack" v-if="state === 'ready' && course">
         <view class="card sc__head">
           <view class="row-between">
@@ -14,7 +15,7 @@
           <view class="sc__metrics">
             <view><text class="sc__metric-val">{{ trustedMinutes }}</text><text class="sc__metric-label">已学习分钟</text></view>
             <view><text class="sc__metric-val">{{ course.requiredMinutes }}</text><text class="sc__metric-label">要求分钟</text></view>
-            <view><text class="sc__metric-val">{{ course.remainingAttempts }}</text><text class="sc__metric-label">剩余尝试</text></view>
+            <view v-if="completionStatus !== 'PASSED'"><text class="sc__metric-val">{{ course.remainingAttempts }}</text><text class="sc__metric-label">剩余尝试</text></view>
           </view>
         </view>
 
@@ -29,23 +30,23 @@
             <MobileStatusTag :label="commitmentConfirmed ? '已确认' : '待确认'" :type="commitmentConfirmed ? 'success' : 'warning'" />
           </view>
           <text class="sc__commit-text">本人已阅读本课程，承诺遵守岗位安全操作规程，发现风险立即停止作业并向企业导师、校内指导教师报告。</text>
-          <button v-if="completionStatus === 'IN_PROGRESS' && !commitmentConfirmed" class="btn btn-ghost" :disabled="submitting" @click="commitment">确认安全承诺</button>
+          <button v-if="completionStatus === 'IN_PROGRESS' && !commitmentConfirmed" class="mobile-control btn btn-ghost" :disabled="submitting" @click="commitment">确认安全承诺</button>
           <text v-else-if="needsStart" class="sc__hint">开始或重新学习后，才能确认本次课程版本的安全承诺。</text>
         </view>
 
         <MobileInlineAlert v-if="completionStatus === 'PENDING_REVIEW'" type="info" description="学习结果已提交，等待指导教师审核。审核完成后会在此显示结果。" />
-        <MobileInlineAlert v-if="completionStatus === 'FAILED'" type="warning" description="本次审核未通过。点击重新学习后，系统会重置本次时长和承诺，旧审核结果仍保留在审计记录中。" />
+        <MobileInlineAlert v-if="completionStatus === 'FAILED'" type="warning" description="本次审核未通过。重新学习需重新完成时长和安全承诺，原审核记录保留。" />
         <MobileInlineAlert v-if="completionStatus === 'PASSED'" type="success" description="本课程已通过。只有当前批次全部必修课程通过后，上岗安全教育才算完成。" />
         <MobileInlineAlert v-if="completionStatus === 'IN_PROGRESS' && trustedMinutes < Number(course.requiredMinutes || 0)" type="warning"
-          :description="`系统记录的学习时长尚差 ${Number(course.requiredMinutes || 0) - trustedMinutes} 分钟；切换页面或修改本机时间不会绕过系统计时。`" />
+          :description="`还需学习 ${Number(course.requiredMinutes || 0) - trustedMinutes} 分钟，请完成课程要求后提交审核。`" />
       </view>
     </MobileGlobalState>
 
     <MobileSafeAreaBar v-if="state === 'ready' && course && completionStatus !== 'PASSED' && completionStatus !== 'PENDING_REVIEW'">
-      <button v-if="needsStart" class="btn btn-primary flex-1" :disabled="submitting || noAttemptsLeft" @click="start">
+      <button v-if="needsStart" class="mobile-control btn btn-primary flex-1" :disabled="submitting || noAttemptsLeft" @click="start">
         {{ completionStatus === 'FAILED' ? (noAttemptsLeft ? '已无剩余尝试次数' : '重新学习') : '开始学习' }}
       </button>
-      <button v-else class="btn btn-primary flex-1" :disabled="!canSubmit || submitting" @click="submit">
+      <button v-else class="mobile-control btn btn-primary flex-1" :disabled="!canSubmit || submitting" @click="submit">
         {{ submitting ? '提交中…' : (canSubmit ? '提交学习结果' : '完成学习时长和安全承诺后提交') }}
       </button>
     </MobileSafeAreaBar>
@@ -60,9 +61,10 @@ import { getDeviceDigest } from '@/utils/deviceInfo'
 
 export default {
   data() {
-    return { id: '', course: null, state: 'loading', submitting: false, now: Date.now(), timer: null }
+    return { id: '', batchId: '', course: null, state: 'loading', submitting: false, now: Date.now(), timer: null }
   },
   computed: {
+    safetyReturnUrl() { return '/pages/student-internship/safety/index' + (this.batchId ? '?batchId=' + encodeURIComponent(this.batchId) : '') },
     completion() { return this.course?.completion || null },
     completionStatus() { return this.completion?.status || this.course?.completionStatus || 'NOT_STARTED' },
     commitmentConfirmed() { return !!this.completion?.commitmentConfirmed },
@@ -82,7 +84,7 @@ export default {
     },
     statusLabel() {
       return ({ NOT_STARTED: '未开始', IN_PROGRESS: '学习中', PENDING_REVIEW: '待审核',
-        PASSED: '已通过', FAILED: '未通过' })[this.completionStatus] || this.completionStatus
+        PASSED: '已通过', FAILED: '未通过' })[this.completionStatus] || '状态待核对'
     },
     statusTone() {
       if (this.completionStatus === 'PASSED') return 'success'
@@ -92,6 +94,7 @@ export default {
   },
   onLoad(options) {
     this.id = options?.id || ''
+    this.batchId = String(options?.batchId || '')
     this.timer = setInterval(() => { this.now = Date.now() }, 15000)
     this.load()
   },
@@ -164,12 +167,12 @@ export default {
 
 <style scoped>
 .sc__head, .sc__body, .sc__commit { display: flex; flex-direction: column; gap: var(--space-3); }
-.sc__sub { display: block; margin-top: 3px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
+.sc__sub { display: block; margin-top: 3px; font-size: var(--font-size-base); color: var(--text-tertiary); }
 .sc__metrics { display: flex; justify-content: space-around; text-align: center; background: var(--gray-50); border-radius: var(--radius-md); padding: var(--space-3); }
 .sc__metric-val { display: block; font-size: var(--font-size-xl); font-weight: var(--font-weight-semibold); color: var(--brand-primary); }
-.sc__metric-label { display: block; font-size: var(--font-size-xs); color: var(--text-tertiary); margin-top: 2px; }
+.sc__metric-label { display: block; font-size: var(--font-size-base); color: var(--text-tertiary); margin-top: 2px; }
 .sc__body-title { font-size: var(--font-size-md); font-weight: var(--font-weight-semibold); }
 .sc__content { white-space: pre-wrap; line-height: 1.8; color: var(--text-secondary); }
-.sc__commit-text { font-size: var(--font-size-sm); color: var(--text-secondary); line-height: 1.7; }
-.sc__hint { font-size: var(--font-size-xs); color: var(--text-tertiary); }
-</style>
+.sc__commit-text { font-size: var(--font-size-base); color: var(--text-secondary); line-height: 1.7; }
+.sc__hint { font-size: var(--font-size-base); color: var(--text-tertiary); }
+.sc__recovery{min-height:44px;line-height:1.5}.sc__head>.row-between{align-items:flex-start;gap:12px}.sc__metrics{gap:10px;flex-wrap:wrap}.sc__metric-val{font-size:20px}.sc__content{font-size:15px;overflow-wrap:anywhere}.sc__commit-text{font-size:14px}.sc__body-title{font-size:16px}</style>

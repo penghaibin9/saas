@@ -1,17 +1,9 @@
 <template>
   <section class="assw" aria-label="统计快照工作区">
     <div class="assw-head">
-      <div>
-        <div class="assw-title">统计快照</div>
-        <p>把当前教务总览冻结为可追溯历史证据；后续实时源数据变化不会回写已冻结快照。</p>
-      </div>
+      <p>快照保存冻结时的统计结果。</p>
       <AppButton v-if="canCreate" variant="primary" :disabled="loading || saving" @click="openCreate">冻结当前统计</AppButton>
     </div>
-
-    <AppInlineAlert
-      type="info"
-      description="快照保存当时的统计结果，便于期末留档和历史对照；后续数据更新不会改变已保存的快照。"
-    />
 
     <div v-if="canView" class="assw-filter">
       <label>
@@ -31,43 +23,57 @@
       </div>
     </div>
 
-    <AppInlineAlert
-      v-if="!canView"
-      type="warning"
-      description="当前身份没有查看统计快照的权限，请联系学校管理员。"
-    />
-    <ErrorState v-else-if="error" title="统计快照加载失败" :description="error" @retry="load" />
-    <LoadingState v-else-if="loading && !loadedOnce" />
-    <EmptyState v-else-if="!rows.length" title="暂无统计快照" description="有创建权限的教务管理员可冻结当前教务总览作为历史证据" />
-    <DataTable
-      v-else
-      :columns="columns"
-      :rows="rows"
-      row-key="snapshotId"
-      :pagination="pagination"
-      @page-change="onPageChange"
-    >
-      <template #cell-type="{ row }">{{ snapshotTypeLabel(row.snapshotType) }}</template>
-      <template #cell-scope="{ row }">
-        <div>{{ scopeLabel(row) }}</div>
-        <div class="mp-cell-sub">{{ filterLabel(row) }}</div>
-      </template>
-      <template #cell-generated="{ row }">
-        <div>{{ formatTime(row.generatedAt) }}</div>
-        <div class="mp-cell-sub">源数据截至 {{ formatTime(row.sourceAsOf) }}</div>
-      </template>
-      <template #cell-operator="{ row }"><span class="assw-mono">{{ row.generatedBy || '—' }}</span></template>
-      <template #cell-hash="{ row }"><span class="assw-hash" :title="row.payloadHash">{{ shortHash(row.payloadHash) }}</span></template>
-      <template #cell-status="{ row }"><StatusTag type="success" :label="academicStatusLabel(row.status)" dot /></template>
-      <template #cell-integrity="{ row }">
-        <StatusTag
-          :type="verified[row.snapshotId] ? 'success' : 'default'"
-          :label="verified[row.snapshotId] ? '系统校验通过' : '待本次复核'"
-          dot
-        />
-      </template>
-      <template #cell-actions="{ row }"><AppButton size="small" variant="ghost" @click="openDetail(row)">详情 / 校验</AppButton></template>
-    </DataTable>
+    <div class="assw-layout" :class="{ 'has-detail': detailVisible }">
+      <section class="assw-list" aria-label="统计快照列表">
+        <h2>统计快照<span v-if="loadedOnce && !loading && !error && canView"> · 共{{ pagination.total }}条</span></h2>
+        <AppInlineAlert v-if="!canView" type="warning" description="当前身份没有查看统计快照的权限，请联系学校管理员。" />
+        <ErrorState v-else-if="error" title="统计快照加载失败" :description="error" @retry="load" @back="resetSearch" />
+        <LoadingState v-else-if="loading" />
+        <EmptyState @back="resetSearch" v-else-if="!rows.length" title="暂无统计快照" description="当前查询范围内没有已保存的快照。" />
+        <DataTable v-else :columns="columns" :rows="rows" row-key="snapshotId"
+          :row-class="snapshotRowClass"
+          :pagination="pagination.total > pagination.pageSize || pagination.page > 1 ? pagination : null"
+          @page-change="onPageChange">
+          <template #cell-type="{ row }">{{ snapshotTypeLabel(row.snapshotType) }}</template>
+          <template #cell-scope="{ row }"><div>{{ scopeName(row) }}</div><div class="mp-cell-sub">{{ filterName(row) }}</div></template>
+          <template #cell-generated="{ row }">{{ formatTime(row.generatedAt) }}</template>
+          <template #cell-status="{ row }"><StatusTag type="success" :label="academicStatusLabel(row.status)" dot /></template>
+          <template #cell-integrity="{ row }"><StatusTag :type="verified[row.snapshotId] ? 'success' : 'default'" :label="verified[row.snapshotId] ? '系统校验通过' : '待本次复核'" dot /></template>
+          <template #cell-actions="{ row }"><AppButton size="small" variant="ghost" :aria-expanded="detailVisible && String(row.snapshotId) === selectedSnapshotId" aria-controls="stats-snapshot-detail" @click="openDetail(row)">查看详情</AppButton></template>
+        </DataTable>
+        <AppButton v-if="!loading && !error && canView && !rows.length && pagination.page > 1" variant="ghost" @click="onPageChange(pagination.page - 1)">上一页</AppButton>
+      </section>
+
+      <aside v-if="detailVisible" id="stats-snapshot-detail" ref="detailPanel" class="assw-detail" aria-label="快照详情" tabindex="-1">
+        <header class="assw-detail-head"><h2>快照详情</h2><AppButton variant="ghost" :disabled="verifying" @click="closeDetail">关闭</AppButton></header>
+        <LoadingState v-if="detailLoading" />
+        <ErrorState v-else-if="detailError" title="快照详情读取失败" :description="detailError" @retry="reloadDetail" @back="closeDetail" />
+        <template v-else-if="detail">
+          <dl class="assw-kv">
+            <div><dt>类型</dt><dd>{{ snapshotTypeLabel(detail.snapshotType) }}</dd></div>
+            <div><dt>范围</dt><dd>{{ scopeName(detail) }}</dd></div>
+            <div><dt>学期</dt><dd>{{ detail.termId ? detail.termName || '名称待核对' : '全部学期' }}</dd></div>
+            <div v-if="detail.majorId"><dt>专业</dt><dd>{{ detail.majorName || '名称待核对' }}</dd></div>
+            <div><dt>冻结时间</dt><dd>{{ formatTime(detail.generatedAt) }}</dd></div>
+            <div><dt>源数据截至</dt><dd>{{ formatTime(detail.sourceAsOf) }}</dd></div>
+            <div><dt>状态</dt><dd><StatusTag type="success" :label="academicStatusLabel(detail.status)" /></dd></div>
+            <div><dt>完整性</dt><dd>{{ verified[detail.snapshotId] ? '系统校验通过' : '待本次复核' }}</dd></div>
+            <div><dt>冻结原因</dt><dd>{{ detail.reason || '历史记录未提供' }}</dd></div>
+          </dl>
+          <AppSectionCard title="实施详情（实施人员使用）" compact collapsible default-collapsed>
+            <dl class="assw-kv assw-technical">
+              <div><dt>快照编号</dt><dd>{{ detail.snapshotId }}</dd></div>
+              <div><dt>原快照类型</dt><dd>{{ detail.snapshotType }}</dd></div>
+              <div><dt>原筛选标识</dt><dd>{{ scopeLabel(detail) }} · {{ filterLabel(detail) }}</dd></div>
+              <div><dt>操作人标识</dt><dd>{{ detail.generatedBy || '—' }}</dd></div>
+            </dl>
+            <div class="assw-section"><div class="assw-section__title">内容校验码</div><code class="assw-code">{{ detail.payloadHash || '—' }}</code></div>
+            <div class="assw-section"><div class="assw-section__title">冻结数据原文</div><pre class="assw-json">{{ prettyPayload }}</pre></div>
+          </AppSectionCard>
+          <footer v-if="canManage" class="assw-detail-actions"><AppButton variant="primary" :loading="verifying" @click="verifyDetail">重新校验完整性</AppButton></footer>
+        </template>
+      </aside>
+    </div>
 
     <AppDrawer :visible="createVisible" title="冻结当前教务统计" mode="modal" size="large" @close="closeCreate">
       <div class="assw-form">
@@ -115,49 +121,11 @@
       @confirm="submitCreate"
     />
 
-    <AppDrawer :visible="detailVisible" title="统计快照详情" mode="modal" size="large" @close="closeDetail">
-      <LoadingState v-if="detailLoading" />
-      <ErrorState v-else-if="detailError" title="快照详情读取失败" :description="detailError" @retry="reloadDetail" />
-      <template v-else-if="detail">
-        <div class="assw-detail-head">
-          <div>
-            <strong>快照编号 {{ detail.snapshotId }} · {{ snapshotTypeLabel(detail.snapshotType) }}</strong>
-            <div class="mp-cell-sub">冻结于 {{ formatTime(detail.generatedAt) }} · 源数据截至 {{ formatTime(detail.sourceAsOf) }}</div>
-          </div>
-          <StatusTag type="success" label="不可变" dot />
-        </div>
-
-        <div class="assw-kv">
-          <div><span>筛选范围</span><strong>{{ scopeLabel(detail) }} · {{ filterLabel(detail) }}</strong></div>
-          <div><span>操作人标识</span><strong class="assw-mono">{{ detail.generatedBy || '—' }}</strong></div>
-          <div><span>冻结原因</span><strong>{{ detail.reason || '历史记录未回填原因' }}</strong></div>
-          <div><span>状态</span><strong>{{ academicStatusLabel(detail.status) }}</strong></div>
-        </div>
-
-        <div class="assw-section">
-          <div class="assw-section__title">payloadHash</div>
-          <code class="assw-code">{{ detail.payloadHash || '—' }}</code>
-        </div>
-        <div class="assw-section">
-          <div class="assw-section__title">冻结 payload</div>
-          <pre class="assw-json">{{ prettyPayload }}</pre>
-        </div>
-        <AppInlineAlert
-          v-if="verified[detail.snapshotId]"
-          type="success"
-          description="系统已重新计算并确认快照内容与保存的校验码一致；本次复核未修改快照。"
-        />
-      </template>
-      <template #footer>
-        <AppButton variant="ghost" :disabled="verifying" @click="closeDetail">关闭</AppButton>
-        <AppButton v-if="canManage && detail" variant="primary" :loading="verifying" @click="verifyDetail">重新校验完整性</AppButton>
-      </template>
-    </AppDrawer>
   </section>
 </template>
 
 <script>
-import { AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AppCollegePicker, AppMajorPicker } from '@/components/common'
+import { AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AppCollegePicker, AppMajorPicker, AppSectionCard } from '@/components/common'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { DataTable, EmptyState, ErrorState, LoadingState, StatusTag } from '@/components/business'
 import { matchPermission } from '@/config/navPlan.js'
@@ -167,11 +135,12 @@ import { academicStatusLabel } from '@/modules/academicAffairs/constants/academi
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 import { academicIdentity } from '../academicFlowContext'
+import { formatDateTime } from '@/utils/dateUtils.js'
 
 export default {
   name: 'AaStatsSnapshotWorkspace',
   components: {
-    AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AppCollegePicker, AppMajorPicker,
+    AppConfirmDialog, AppInlineAlert, AppTermEntityPicker, AppCollegePicker, AppMajorPicker, AppSectionCard,
     AppButton, AppDrawer, DataTable, EmptyState, ErrorState, LoadingState, StatusTag
   },
   props: {
@@ -200,15 +169,12 @@ export default {
       verifying: false,
       verified: {},
       columns: [
-        { key: 'snapshotId', title: '快照 ID' },
         { key: 'type', title: '类型' },
         { key: 'scope', title: '范围' },
         { key: 'generated', title: '冻结时间' },
-        { key: 'operator', title: '操作人' },
-        { key: 'hash', title: 'payloadHash' },
         { key: 'status', title: '状态' },
         { key: 'integrity', title: '完整性' },
-        { key: 'actions', title: '操作' }
+        { key: 'actions', title: '查看' }
       ]
     }
   },
@@ -242,15 +208,15 @@ export default {
     identity() { return academicIdentity(currentUserFromToken(), this.ctx) },
     current(id, identity, key) { return !this.disposed && id === this[key] && identity === this.identity() },
     invalidate() { this.listRequestId++; this.detailRequestId++; this.commandRequestId++; this.loading = false; this.detailLoading = false; this.saving = false; this.verifying = false },
-    snapshotTypeLabel(value) { return String(value || '').toUpperCase() === 'OVERVIEW' ? '教务总览' : (value || '—') },
+    snapshotTypeLabel(value) { return String(value || '').toUpperCase() === 'OVERVIEW' ? '教务总览' : (value ? '类型待核对' : '—') },
     formatTime(value) {
-      if (!value) return '—'
-      const date = new Date(value)
-      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
+      if (value == null || String(value).trim() === '') return '—'
+      return formatDateTime(value, '时间待核对')
     },
-    shortHash(value) {
-      const text = String(value || '')
-      return text ? `${text.slice(0, 10)}…${text.slice(-8)}` : '—'
+    snapshotRowClass(row) { return this.detailVisible && String(row.snapshotId) === this.selectedSnapshotId ? 'assw-selected' : '' },
+    scopeName(row) { return row.collegeId ? row.collegeName || '指定学院（名称待核对）' : '全校 / 当前授权范围' },
+    filterName(row) {
+      return [row.termId ? row.termName || '学期名称待核对' : '', row.majorId ? row.majorName || '专业名称待核对' : ''].filter(Boolean).join(' · ') || '无额外筛选'
     },
     scopeLabel(row) {
       if (row.collegeId) return `学院编号 ${row.collegeId}`
@@ -264,6 +230,7 @@ export default {
     },
     async load() {
       if (!this.canView) return
+      this.closeDetail()
       const id = ++this.listRequestId, identity = this.identity()
       this.loading = true
       this.error = ''
@@ -362,6 +329,9 @@ export default {
       this.detailLoading = true
       this.detailError = ''
       this.detail = null
+      this.$nextTick?.(() => {
+        if (this.current(id, identity, 'detailRequestId') && this.detailVisible) this.$refs?.detailPanel?.focus()
+      })
       try {
         const res = await academicStatsSnapshotApi.detail(snapshotId)
         if (!this.current(id, identity, 'detailRequestId')) return
@@ -384,6 +354,7 @@ export default {
     closeDetail() {
       this.detailRequestId++; this.detailLoading = false; this.verifying = false
       this.detailVisible = false
+      this.selectedSnapshotId = ''
       this.detail = null
       this.detailError = ''
     },
@@ -411,32 +382,39 @@ export default {
 
 <style scoped>
 .assw { min-width: 0; }
-.assw-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 16px; margin-bottom: 12px; }
-.assw-title { font-size: 18px; font-weight: 700; color: var(--t1); }
-.assw-head p { margin: 5px 0 0; color: var(--t3); font-size: 13px; line-height: 1.6; }
-.assw-filter { display: grid; grid-template-columns: minmax(220px, 1fr) 180px auto; gap: 10px; align-items: end; margin: 14px 0; }
+.assw-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; margin-bottom: 16px; }
+.assw-head p { margin: 0; color: var(--text-secondary); font-size: 14px; }
+.assw-filter { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(160px, 1fr) auto; gap: 16px; align-items: end; padding: 16px; margin: 0 0 16px; border: 1px solid var(--border-base); border-radius: 8px; background: var(--bg-card); }
 .assw-filter label, .assw-form label { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
-.assw-filter label > span, .assw-form label > span { color: var(--t3); font-size: 12px; }
-.assw-filter select, .assw-form select, .assw-form textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--card-b); border-radius: 9px; background: var(--bg-card); color: var(--t1); padding: 8px 10px; font: inherit; }
+.assw-filter label > span, .assw-form label > span { color: var(--text-secondary); font-size: 13px; }
+.assw-filter select, .assw-form select, .assw-form textarea { width: 100%; box-sizing: border-box; border: 1px solid var(--border-base); border-radius: 8px; background: var(--bg-card); color: var(--text-primary); padding: 8px 10px; font: inherit; }
 .assw-filter select, .assw-form select { min-height: 36px; }
-.assw-filter__actions { display: flex; gap: 6px; }
+.assw-filter__actions { display: flex; gap: 8px; }
+.assw-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; align-items: start; }
+.assw-layout.has-detail { grid-template-columns: minmax(0, 1.7fr) minmax(320px, 1fr); }
+.assw-list, .assw-detail { min-width: 0; padding: 18px; border: 1px solid var(--border-base); border-radius: 8px; background: var(--bg-card); }
+.assw-list h2, .assw-detail h2 { margin: 0; font-size: 18px; color: var(--text-primary); }
+.assw-list > h2 { margin-bottom: 16px; }
+.assw-list h2 span { font-size: 14px; color: var(--text-secondary); font-weight: 400; }
+.assw-list :deep(.dt) { box-shadow: none; border-radius: 6px; }
+.assw-list :deep(.dt__table) { min-width: 640px; }
+.assw-list :deep(.assw-selected) { background: var(--pri-bg, #eef4ff); box-shadow: inset 3px 0 var(--pri, #2b5eb4); }
 .assw-form { display: grid; gap: 14px; }
-.assw-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
-.assw-kv { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
-.assw-kv > div { background: var(--bg-section); border-radius: 10px; padding: 12px; min-width: 0; }
-.assw-kv span { display: block; color: var(--t3); font-size: 12px; margin-bottom: 5px; }
-.assw-kv strong { overflow-wrap: anywhere; }
+.assw-detail-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.assw-kv { margin: 0 0 18px; }
+.assw-kv > div { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 12px; padding: 13px 0; border-bottom: 1px solid var(--border-base); }
+.assw-kv dt { color: var(--text-secondary); }
+.assw-kv dd { margin: 0; color: var(--text-primary); overflow-wrap: anywhere; }
+.assw-detail-actions { margin-top: 16px; }
 .assw-section { margin-top: 16px; }
 .assw-section__title { font-weight: 650; margin-bottom: 8px; }
-.assw-code, .assw-hash, .assw-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace; }
 .assw-code { display: block; padding: 10px; background: var(--bg-section); border-radius: 8px; overflow-wrap: anywhere; }
-.assw-json { max-height: 380px; overflow: auto; margin: 0; padding: 12px; border-radius: 9px; background: var(--bg-section); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-@media (max-width: 900px) {
-  .assw-filter { grid-template-columns: 1fr 1fr; }
-  .assw-filter__actions { grid-column: 1 / -1; }
-}
+.assw-json { max-height: 380px; overflow: auto; margin: 0; padding: 12px; border-radius: 8px; background: var(--bg-section); font-size: 12px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
+@media (max-width: 1100px) { .assw-layout.has-detail { grid-template-columns: minmax(0, 1fr); } }
 @media (max-width: 600px) {
-  .assw-head { flex-direction: column; }
-  .assw-filter, .assw-kv { grid-template-columns: 1fr; }
+  .assw-head { align-items: flex-start; flex-direction: column; }
+  .assw-filter { grid-template-columns: minmax(0, 1fr); }
+  .assw-list, .assw-detail { padding: 12px; }
+  .assw-kv > div { grid-template-columns: 88px minmax(0, 1fr); gap: 8px; }
 }
 </style>

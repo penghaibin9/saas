@@ -3,9 +3,13 @@ import { readFileSync } from 'node:fs'
 import vm from 'node:vm'
 import test from 'node:test'
 import { STATS_TOPICS, statsTopic } from '../src/modules/academicAffairs/config/academicNavigation.js'
+import { academicRoleAllows } from '../src/modules/academicAffairs/config/academicRoleNavigation.js'
 import { matchPermission } from '../src/config/navPlan.js'
 import { academicIdentity } from '../src/modules/academicAffairs/academicFlowContext.js'
 import { statsGroupLabel, STATS_INDICATOR_TOPICS } from '../src/modules/academicAffairs/views/parallel-c/stats-presentation.js'
+import { formatDateTime } from '../src/utils/dateUtils.js'
+import { COURSE_CATEGORY } from '../src/modules/academicAffairs/constants/course-program.js'
+import { GRAD_ITEM_LABEL } from '../src/modules/academicAffairs/constants/grade-graduation.js'
 
 function page(api = {}, query = {}) {
   const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaStatsOverviewView.vue', import.meta.url), 'utf8')
@@ -13,7 +17,7 @@ function page(api = {}, query = {}) {
     .replace(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm, (_, binding) => `const ${binding} = dependencies${binding.startsWith('{') ? '' : '.' + binding}`)
     .replace('export default', 'component =')
   const messages = [], destinations = []
-  const sandbox = { dependencies: { statsGroupLabel, STATS_INDICATOR_TOPICS, STATS_TOPICS, statsTopic, matchPermission, academicIdentity, currentUserFromToken: () => ({ tenantId: 'test-school', userId: 'test-user', currentRoleCode: 'ACADEMIC_ADMIN' }), academicAffairsApi: api, toast: { error: message => messages.push(message), success() {} } } }
+  const sandbox = { dependencies: { academicRoleAllows, GRAD_ITEM_LABEL, formatDateTime, COURSE_CATEGORY, statsGroupLabel, STATS_INDICATOR_TOPICS, STATS_TOPICS, statsTopic, matchPermission, academicIdentity, currentUserFromToken: () => ({ tenantId: 'test-school', userId: 'test-user', currentRoleCode: 'ACADEMIC_ADMIN' }), academicAffairsApi: api, toast: { error: message => messages.push(message), success() {} } } }
   vm.runInNewContext(script, sandbox)
   const component = sandbox.component
   const state = { ctx: { ctxKey: 'school-a', permissionPatterns: ['*'] }, $route: { path: '/admin/academic-affairs/stats', query }, $router: { push: to => destinations.push(to) } }
@@ -31,6 +35,24 @@ test('未确认统计保留任务已就绪状态，并解释缺失的是确认�
   assert.match(state.detail.rows[0].confirmationEvidence, /缺少教师确认时间/)
   assert.equal(state.detail.pagination.total, 1)
 })
+
+test('确认依据直达精确任务，失去权限或旧行不得继续跳转', async () => {
+  const row = { taskId: '9007199254740993123', batchId: '9007199254740993124', status: 'READY' }
+  const { state, destinations } = page({ getStatsTeachingTaskPending: async () => ({ code: 0, data: { list: [row], total: 1 } }) }, { tab: 'teachingTask', termId: '51', detail: '1', detailPage: '2' })
+  state.tab = 'teachingTask'; state.academicFlow = { captureReturn: () => 'stats-source' }
+  await state.loadDetail()
+  state.openTaskSource(state.detail.rows[0])
+  assert.equal(destinations[0].path, '/admin/academic-affairs/teaching-tasks/9007199254740993124')
+  assert.equal(destinations[0].query.teachingTaskId, row.taskId)
+  assert.equal(destinations[0].query.returnToken, 'stats-source')
+  state.openTaskSource(row)
+  assert.equal(destinations.length, 1)
+  state.ctx.permissionPatterns = []; state.openTaskSource(state.detail.rows[0])
+  assert.equal(destinations.length, 1)
+  state.ctx.permissionPatterns = ['*']; state.detail.rows[0].batchId = null
+  state.openTaskSource(state.detail.rows[0]); assert.equal(destinations.length, 1)
+})
+
 
 test('indicator topic preserves the displayed scope rather than unsent edits', () => {
   const { state, destinations } = page()
@@ -190,6 +212,7 @@ test('teacher drilldown and page survive refresh without coercing the teacher ke
   await new Promise((resolve) => setTimeout(resolve, 0))
   assert.equal(state.detail.open, true)
   assert.equal(calls[0].teacherKey, '9007199254740993123')
+  assert.doesNotMatch(state.detail.title, /9007199254740993123/)
   assert.equal(calls[0].page, 3)
   assert.equal(calls[0].termId, 'term-a')
 })
@@ -235,20 +258,147 @@ test('overview records the actual source time and rejects a missing indicator li
   assert.match(invalid.error, /统计指标回执不完整/)
 })
 
+test('统计设计：总览只突出业务指标，关注项沿已返回分子分母计算', () => {
+  const { state } = page()
+  state.updatedAt = '20:30:00'
+  state.indicators = [
+    { key: 'registration', label: '注册完成率', rate: 80, numerator: 8, denominator: 10, unit: '%' },
+    { key: 'teachingTask', label: '任务完成率', rate: 100, numerator: 2, denominator: 2, unit: '%' },
+    { key: 'warning', label: '预警', value: 3 },
+    { key: 'future', label: '新增指标', value: 7 }
+  ]
+  assert.equal(state.analyticsCards.length, 2)
+  assert.equal(state.analyticsCards[0].value, '80%')
+  assert.equal(state.analyticsCards.some(c => /范围|更新时间|指标数/.test(c.label)), false)
+  assert.equal(JSON.stringify(state.attentionItems.map(c => c.attentionValue)), '[2,3]')
+  assert.equal(state.overviewRows.length, 4)
+  state.indicators[0].numerator = undefined
+  state.indicators[2].status = 'MODULE_NOT_ENABLED'
+  assert.equal(state.attentionItems.length, 0)
+})
 
-test('确认依据直达精确任务，失去权限或旧行不得继续跳转', async () => {
-  const row = { taskId: '9007199254740993123', batchId: '9007199254740993124', status: 'READY' }
-  const { state, destinations } = page({ getStatsTeachingTaskPending: async () => ({ code: 0, data: { list: [row], total: 1 } }) }, { tab: 'teachingTask', termId: '51', detail: '1', detailPage: '2' })
-  state.tab = 'teachingTask'; state.academicFlow = { captureReturn: () => 'stats-source' }
-  await state.loadDetail()
-  state.openTaskSource(state.detail.rows[0])
-  assert.equal(destinations[0].path, '/admin/academic-affairs/teaching-tasks/9007199254740993124')
-  assert.equal(destinations[0].query.teachingTaskId, row.taskId)
-  assert.equal(destinations[0].query.returnToken, 'stats-source')
-  state.openTaskSource(row)
-  assert.equal(destinations.length, 1)
-  state.ctx.permissionPatterns = []; state.openTaskSource(state.detail.rows[0])
-  assert.equal(destinations.length, 1)
-  state.ctx.permissionPatterns = ['*']; state.detail.rows[0].batchId = null
-  state.openTaskSource(state.detail.rows[0]); assert.equal(destinations.length, 1)
+test('统计设计：未知不是零，合法零和无分母保持原含义', () => {
+  const { state } = page()
+  state.tab = 'registration'; state.sSummary = { expected: '', registered: null, rate: null }
+  assert.equal(state.displayMetric(state.analyticsCards[0]), '—')
+  assert.equal(state.analyticsDistribution.length, 0)
+  state.sSummary = { expected: 0, registered: 0, rate: null }
+  assert.equal(state.displayMetric(state.analyticsCards[0]), '0')
+  assert.equal(state.analyticsCards[3].value, '—')
+  assert.equal(state.analyticsLedgerRows[0].share, '—')
+  assert.equal(state.percentage('23:12'), '—')
+})
+
+test('统计设计：时间和比例不回退为分布，汇总仍保留单位', () => {
+  const { state } = page()
+  state.tab = 'resource'; state.updatedAt = '20:30:00'; state.sSummary = { classroomTotal: 8, bookingTotal: 2 }
+  assert.equal(state.analyticsDistribution.length, 0)
+  assert.equal(state.analyticsLedgerRows.length, 0)
+  assert.equal(state.analyticsCards[0].label, '教室总数')
+  assert.equal(state.analyticsCards[0].unit, '间')
+  state.sSummary = { byStatus: [{ key: 'AVAILABLE', count: 0 }, { key: 'UNKNOWN', count: '20:30' }] }
+  assert.equal(state.analyticsDistribution.length, 1)
+  assert.equal(state.analyticsDistribution[0].value, 0)
+})
+
+test('统计设计：只有未完成分组指向对应异常明细', () => {
+  const { state, destinations } = page()
+  for (const [tab, summary] of [
+    ['registration', { expected: 10, registered: 8 }],
+    ['teachingTask', { expected: 10, confirmed: 8 }],
+    ['grade', { failDenominator: 10, failNumerator: 2 }]
+  ]) {
+    state.tab = tab; state.sSummary = summary
+    assert.equal(state.analyticsLedgerRows[0].canDetail, false)
+    assert.equal(state.analyticsLedgerRows[1].canDetail, true)
+    assert.equal(state.analyticsLedgerRows[1].share, '20%')
+  }
+  state.tab = 'warning'; state.sSummary = { total: 4, byLevel: [{ key: 'LOW', count: 4 }] }
+  assert.equal(state.analyticsLedgerRows[0].canDetail, false)
+  assert.equal(state.analyticsLedgerRows[0].share, '100%')
+  assert.equal(state.analyticsCards[1].label, '低风险')
+  delete state.sSummary.total
+  assert.equal(state.analyticsLedgerRows[0].share, '—')
+  state.openDetail()
+  assert.equal(destinations.at(-1).query.detail, '1')
+})
+
+test('统计设计：批次、异常项和成绩记录不混称人数', () => {
+  const { state } = page()
+  state.tab = 'courseSelection'; state.sSummary = { byBatchStatus: [{ key: 'OPEN', count: 2 }] }
+  assert.equal(state.analyticsLedgerRows[0].value, '2个批次')
+  state.tab = 'graduation'; state.sSummary = { byAbnormalItem: [{ label: '必修课', count: 2 }] }
+  assert.equal(state.analyticsLedgerRows[0].value, '2项')
+  state.tab = 'grade'; state.sSummary = { failNumerator: 2, failDenominator: 10 }
+  assert.equal(state.analyticsCards[1].label, '不及格成绩记录')
+  assert.equal(state.analyticsCards[1].unit, '条')
+  assert.equal(state.analyticsCards[2].value, '20%')
+})
+
+test('统计设计：冲突和违纪不掺入课程或批次构成', () => {
+  const { state } = page()
+  state.tab = 'schedule'; state.sSummary = { totalBatches: 7, published: 4, unresolvedConflicts: 99 }
+  assert.equal(state.analyticsDistribution.reduce((n, r) => n + r.value, 0), 7)
+  state.tab = 'exam'; state.sSummary = { confirmedCourses: 10, arranged: 8, absentCount: 3, violationCount: 4 }
+  assert.equal(state.analyticsDistribution.reduce((n, r) => n + r.value, 0), 10)
+  assert.equal(state.analyticsCards[2].value, 7)
+})
+
+test('统计设计：教师检索分页只作用于已授权名单，汇总仍用原完整列表', () => {
+  const { state } = page()
+  state.tab = 'workload'
+  state.sSummary = { ranking: Array.from({ length: 45 }, (_, n) => ({ teacherKey: `teacher-${n}`, teacherName: `老师${n}`, taskCount: 1, totalHours: 4, combinedHours: 6 })) }
+  state.workloadPage = 2
+  assert.equal(state.workloadRows.length, 20)
+  assert.equal(state.workloadRows[0].teacherKey, 'teacher-20')
+  state.workloadSearch = '老师44'
+  assert.equal(state.workloadRows.length, 1)
+  assert.equal(state.workloadPagination.page, 1)
+  assert.equal(state.analyticsCards[0].value, 45)
+  assert.equal(state.analyticsCards[2].value, 270)
+  state.workloadSearch = '不存在'
+  assert.equal(state.workloadRows.length, 0)
+})
+
+test('统计设计：筛选摘要不泄露内部编号，不把未查询名称当已应用', () => {
+  const { state } = page()
+  state.appliedFilters.termId = '9007199254740999'
+  state.rememberFilter('termId', '9007199254740999', [{ label: '2026学年第一学期' }])
+  assert.match(state.appliedScopeLabel, /2026学年第一学期/)
+  state.rememberFilter('termId', 'different', [{ label: '尚未查询的学期' }])
+  assert.doesNotMatch(state.appliedScopeLabel, /尚未查询|9007199254740999/)
+  state.tab = 'resource'
+  assert.doesNotMatch(state.appliedScopeLabel, /学期/)
+})
+
+test('统计设计：课程名仅筛选成绩明细，不把草稿学期带入明细', () => {
+  const { state, destinations } = page({}, { tab: 'grade', termId: 'applied' })
+  state.tab = 'grade'; state.appliedFilters.termId = 'applied'; state.filters.termId = 'draft'
+  state.detailCourseName = ' 软件测试 '
+  state.searchGradeDetail()
+  assert.equal(destinations[0].query.termId, 'applied')
+  assert.equal(destinations[0].query.courseName, '软件测试')
+  assert.equal(destinations[0].query.detail, '1')
+})
+
+test('统计设计：分布与明细复用中文业务状态，未知不外露内部代码', () => {
+  const { state } = page()
+  assert.equal(state.groupLabel('AVAILABLE'), '可用')
+  assert.equal(state.groupLabel('PENDING_REGISTER'), '待注册')
+  assert.equal(state.groupLabel(null), '未提供')
+  assert.equal(state.groupLabel('MEDIUM'), '中风险')
+  assert.equal(state.groupLabel('COURSE_ELECTIVE'), '选修课程')
+  assert.equal(state.groupLabel('NEW_INTERNAL_CODE'), '未分类')
+  state.tab = 'resource'; state.sSummary = { byStatus: [{ key: 'AVAILABLE', count: 8 }] }
+  assert.equal(state.analyticsLedgerRows[0].metric, '可用')
+  assert.equal(state.analyticsLedgerRows[0].value, '8间')
+})
+
+test('统计设计：同条件再次查询成绩明细会刷新，而不是重复路由后无动作', async () => {
+  let reads = 0
+  const { state } = page({ getStatsGradeDetail: async () => { reads++; return { code: 0, data: { list: [], total: 0 } } } }, { tab: 'grade', termId: 'term-a', courseName: '测试课', detail: '1' })
+  state.tab = 'grade'; state.appliedFilters.termId = 'term-a'; state.appliedFilters.courseName = '测试课'; state.detailCourseName = '测试课'
+  await state.searchGradeDetail()
+  await state.searchGradeDetail()
+  assert.equal(reads, 2)
 })

@@ -26,9 +26,51 @@ _P_TASK_VIEW = "internship.task.view"
 _P_TASK_REVIEW = "internship.task.review"
 
 
+@router.get("/plans/templates", summary="内置专业实习方案模板")
+def plan_templates(user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.list_plan_templates())
+
+
+@router.get("/plans/batch/{batch_id}/context", summary="实习计划批次基本信息与同源规则")
+def plan_context(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.get_plan_context(batch_id, user=user))
+
+
+@router.post("/plans/bulk-export.pdf", summary="批量导出实习计划 PDF")
+def plans_bulk_export_pdf(
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_PLAN_VIEW)),
+):
+    from app.modules.internship.services.internship_plan_export_options import record_export
+    ids = (body or {}).get("batchIds") or []
+    payload = plan_svc.bulk_export_plans_pdf(ids, user=user)
+    return success(record_export(user, ids, "pdf", payload))
+
+
+@router.post("/plans/bulk-export.xlsx", summary="批量导出实习计划 Excel")
+def plans_bulk_export_xlsx(
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_PLAN_VIEW)),
+):
+    from app.modules.internship.services.internship_plan_export_options import record_export
+    ids = (body or {}).get("batchIds") or []
+    payload = plan_svc.bulk_export_plans_xlsx(ids, user=user)
+    return success(record_export(user, ids, "xlsx", payload))
+
+
 @router.get("/plans/batch/{batch_id}", summary="按批次读取实习计划书")
 def plan_get(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
     return success(plan_svc.get_plan_by_batch(batch_id, user=user))
+
+
+@router.post("/plans/batch/{batch_id}/export.pdf", summary="导出正式实习计划 PDF")
+def plan_export_pdf(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.export_plan_pdf(batch_id, user=user))
+
+
+@router.post("/plans/batch/{batch_id}/export.xlsx", summary="导出正式实习计划 Excel")
+def plan_export_xlsx(batch_id: int, user=Depends(require_permission(_P_PLAN_VIEW))):
+    return success(plan_svc.export_plan_xlsx(batch_id, user=user))
 
 
 @router.put("/plans/batch/{batch_id}", summary="保存/更新实习计划书（草稿；任务清单校验）")
@@ -70,3 +112,14 @@ def plan_task_review(prog_id: int, body: dict = Body(...), user=Depends(require_
     b = body or {}
     return success(task_svc.review_progress(prog_id, b.get("action", ""), b.get("comment", ""),
                                              user=user, expected_version=b.get("expectedVersion")))
+
+
+@router.get('/plans/export-options', summary='批量导出计划选择器（同源权限、分页检索）')
+def plan_export_options(
+    page: int = Query(1, ge=1, le=100000),
+    pageSize: int = Query(20, ge=1, le=50),
+    keyword: str = Query('', max_length=100),
+    user=Depends(require_permission(_P_PLAN_VIEW)),
+):
+    from app.modules.internship.services.internship_plan_export_options import list_options
+    return success(list_options(user, page=page, page_size=pageSize, keyword=keyword))

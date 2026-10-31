@@ -911,7 +911,7 @@ export const academicAffairsApi = {
 
   /* ── 教务统计（只读聚合：11 项指标 + 多维筛选 + 下钻明细 + 导出） ── */
   getStatsOverview(params = {}) {
-    return call(() => request(`${BASE}/stats/overview`, { params }))
+    return call(() => request(`${BASE}/stats/overview`, { params, timeoutMs: 30000 }))
   },
   getStatsFilters() {
     return call(() => request(`${BASE}/stats/filters`))
@@ -936,29 +936,29 @@ export const academicAffairsApi = {
   },
 
   /* ── 教务统计 Tier1 10 项三级模块（02/03/04/05/06/10/11/12/13/15 号卡） ── */
-  getStatsStatusChangeSummary(params = {}) { return call(() => request(`${BASE}/stats/status-change/summary`, { params })) },
-  getStatsRegistrationSummary(params = {}) { return call(() => request(`${BASE}/stats/registration/summary`, { params })) },
-  getStatsCourse(params = {}) { return call(() => request(`${BASE}/stats/course`, { params })) },
+  getStatsStatusChangeSummary(params = {}) { return call(() => request(`${BASE}/stats/status-change/summary`, { params, timeoutMs: 30000 })) },
+  getStatsRegistrationSummary(params = {}) { return call(() => request(`${BASE}/stats/registration/summary`, { params, timeoutMs: 30000 })) },
+  getStatsCourse(params = {}) { return call(() => request(`${BASE}/stats/course`, { params, timeoutMs: 30000 })) },
   getStatsCourseDetail(params = {}) { return callList(`${BASE}/stats/course/detail`, params) },
-  getStatsTeachingTask(params = {}) { return call(() => request(`${BASE}/stats/teaching-task`, { params })) },
+  getStatsTeachingTask(params = {}) { return call(() => request(`${BASE}/stats/teaching-task`, { params, timeoutMs: 30000 })) },
   getStatsTeachingTaskPending(params = {}) { return callList(`${BASE}/stats/teaching-task/pending`, params) },
-  getStatsSchedule(params = {}) { return call(() => request(`${BASE}/stats/schedule`, { params })) },
+  getStatsSchedule(params = {}) { return call(() => request(`${BASE}/stats/schedule`, { params, timeoutMs: 30000 })) },
   getStatsScheduleConflicts(params = {}) { return callList(`${BASE}/stats/schedule/conflicts`, params) },
-  getStatsGrade(params = {}) { return call(() => request(`${BASE}/stats/grade`, { params })) },
+  getStatsGrade(params = {}) { return call(() => request(`${BASE}/stats/grade`, { params, timeoutMs: 30000 })) },
   getStatsGradeDetail(params = {}) { return callList(`${BASE}/stats/grade/detail`, params) },
-  getStatsWarningSummary(params = {}) { return call(() => request(`${BASE}/stats/warning/summary`, { params })) },
-  getStatsGraduation(params = {}) { return call(() => request(`${BASE}/stats/graduation`, { params })) },
+  getStatsWarningSummary(params = {}) { return call(() => request(`${BASE}/stats/warning/summary`, { params, timeoutMs: 30000 })) },
+  getStatsGraduation(params = {}) { return call(() => request(`${BASE}/stats/graduation`, { params, timeoutMs: 30000 })) },
   getStatsGraduationAbnormal(params = {}) { return callList(`${BASE}/stats/graduation/abnormal`, params) },
-  getStatsWorkload(params = {}) { return call(() => request(`${BASE}/stats/workload`, { params })) },
+  getStatsWorkload(params = {}) { return call(() => request(`${BASE}/stats/workload`, { params, timeoutMs: 30000 })) },
   getStatsWorkloadDetail(params = {}) { return callList(`${BASE}/stats/workload/detail`, params) },
 
   /* ── 教务统计第三轮续工（08/09/14 号卡：选课/考务/教学资源统计；07 调停课统计见独立页面
    *    schedule-change/stats，本模块 API 无需重复声明） ── */
-  getStatsCourseSelection(params = {}) { return call(() => request(`${BASE}/stats/course-selection`, { params })) },
+  getStatsCourseSelection(params = {}) { return call(() => request(`${BASE}/stats/course-selection`, { params, timeoutMs: 30000 })) },
   getStatsCourseSelectionDetail(params = {}) { return callList(`${BASE}/stats/course-selection/detail`, params) },
-  getStatsExam(params = {}) { return call(() => request(`${BASE}/stats/exam`, { params })) },
+  getStatsExam(params = {}) { return call(() => request(`${BASE}/stats/exam`, { params, timeoutMs: 30000 })) },
   getStatsExamDetail(params = {}) { return callList(`${BASE}/stats/exam/detail`, params) },
-  getStatsResource(params = {}) { return call(() => request(`${BASE}/stats/resource`, { params })) },
+  getStatsResource(params = {}) { return call(() => request(`${BASE}/stats/resource`, { params, timeoutMs: 30000 })) },
   getStatsResourceDetail(params = {}) { return callList(`${BASE}/stats/resource/detail`, params) },
 
   /* ── 教学资源 · 教室字典（R4 · /academic-affairs/classrooms/*；细粒度权限 academicAffairs.classroom.*） ── */
@@ -1177,7 +1177,7 @@ export const academicAffairsExamApi = {
   addPatrol(bid, body) { return call(() => request(`${BASE}/exam/batches/${bid}/patrols`, { method: 'POST', body })) },
   listPatrols(bid) { return call(() => request(`${BASE}/exam/batches/${bid}/patrols`)) },
   // 自动排考引擎：切考场→铺座位→配监考（dryRun 只算不落）；清除仅删 AUTO 考场，人工编排保留
-  autoArrange(bid, dryRun = false) { return call(() => request(`${BASE}/exam/batches/${bid}/auto-arrange`, { method: 'POST', params: { dryRun } })) },
+  autoArrange(bid, dryRun = false) { return call(() => request(`${BASE}/exam/batches/${bid}/auto-arrange`, { method: 'POST', params: { dryRun }, timeoutMs: 60000 })) },
   clearAutoArrange(bid) { return call(() => request(`${BASE}/exam/batches/${bid}/auto-arrange`, { method: 'DELETE' })) },
   // 异常 / 统计
   recordIncident(body) { return call(() => request(`${BASE}/exam/incidents`, { method: 'POST', body })) },
@@ -1187,8 +1187,8 @@ export const academicAffairsExamApi = {
   listArchived(params = {}) { return callList(`${BASE}/exam/archive`, params) },
   // 缓考
   deferList(params = {}) { return callList(`${BASE}/deferred-exams`, params) },
-  deferCounselorReview(id, action, reason = '') { return call(() => request(`${BASE}/deferred-exams/${id}/counselor-review`, { method: 'POST', body: { action, reason } })) },
-  deferReview(id, action, reason = '') { return call(() => request(`${BASE}/deferred-exams/${id}/review`, { method: 'POST', body: { action, reason } })) },
+  deferCounselorReview(id, action, reason = '', expectedVersion) { return call(() => request(`${BASE}/deferred-exams/${id}/counselor-review`, { method: 'POST', body: { action, reason, expectedVersion } })) },
+  deferReview(id, action, reason = '', expectedVersion) { return call(() => request(`${BASE}/deferred-exams/${id}/review`, { method: 'POST', body: { action, reason, expectedVersion } })) },
   // 学生
   deferApply(body) { return call(() => request(`${BASE}/deferred-exams`, { method: 'POST', body })) },
   deferMy(params = {}) { return call(() => request(`${BASE}/deferred-exams/my`, { params })) },
@@ -1206,11 +1206,11 @@ export const academicAffairsMakeupApi = {
   // 前端不再传 courseName/originScore（传了也会被 422 挡下）。
   enroll(bid, body) { return call(() => request(`${BASE}/makeup/batches/${bid}/enroll`, { method: 'POST', body })) },
   batchRecords(bid, params = {}) { return callList(`${BASE}/makeup/batches/${bid}/records`, params, true, { timeoutMs: 30000 }) },
-  publishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/publish`, { method: 'POST' })) },
+  publishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/publish`, { method: 'POST', timeoutMs: 60000 })) },
   score(mid, score) { return call(() => request(`${BASE}/makeup/records/${mid}/score`, { method: 'POST', body: { score } })) },
-  collegeReview(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST' })) },
+  collegeReview(bid, expectedVersion) { return call(() => request(`${BASE}/makeup/batches/${bid}/college-review`, { method: 'POST', body: { expectedVersion }, timeoutMs: 60000 })) },
   linkExam(bid, examBatchId) { return call(() => request(`${BASE}/makeup/batches/${bid}/link-exam`, { method: 'POST', body: { examBatchId } })) },
-  finishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/finish`, { method: 'POST' })) },
+  finishBatch(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/finish`, { method: 'POST', timeoutMs: 60000 })) },
   stats(params = {}) { return call(() => request(`${BASE}/makeup/stats`, { params })) },
   statsDetail(params = {}) { return callList(`${BASE}/makeup/stats/detail`, params, true) },
   async exportStats(body = {}) {
@@ -1222,8 +1222,8 @@ export const academicAffairsMakeupApi = {
   printData(bid) { return call(() => request(`${BASE}/makeup/batches/${bid}/print-data`)) },
   // 毕业清考（复用补考审核链；名单自动圈定，回写 source=CLEARANCE）
   createClearanceBatch(body) { return call(() => request(`${BASE}/makeup/clearance/batches`, { method: 'POST', body })) },
-  clearanceScan(bid, dryRun = false) { return call(() => request(`${BASE}/makeup/clearance/batches/${bid}/scan`, { method: 'POST', params: { dryRun } })) },
-  clearanceRecords(bid, params = {}) { return callList(`${BASE}/makeup/clearance/batches/${bid}/records`, params, true) },
+  clearanceScan(bid, dryRun = false) { return call(() => request(`${BASE}/makeup/clearance/batches/${bid}/scan`, { method: 'POST', params: { dryRun }, timeoutMs: 60000 })) },
+  clearanceRecords(bid, params = {}) { return callList(`${BASE}/makeup/clearance/batches/${bid}/records`, params, true, { timeoutMs: 30000 }) },
   // 重修
   retakeApply(body) { return call(() => request(`${BASE}/retake/apply`, { method: 'POST', body })) },
   retakeMy(params = {}) { return call(() => request(`${BASE}/retake/my`, { params })) },
@@ -1257,17 +1257,17 @@ export const academicAffairsTextbookApi = {
   withdrawSelection(id) { return call(() => request(`${BASE}/textbooks/selections/${id}/withdraw`, { method: 'POST' })) },
   // 审核
   listReviewBatches(params = {}) { return callList(`${BASE}/textbooks/review-batches`, params) },
-  createReviewBatch(body) { return call(() => request(`${BASE}/textbooks/review-batches`, { method: 'POST', body })) },
-  reviewAdvance(id, action, reason = '') { return call(() => request(`${BASE}/textbooks/review-batches/${id}/advance`, { method: 'POST', body: { action, reason } })) },
+  createReviewBatch(body) { return call(() => request(`${BASE}/textbooks/review-batches`, { method: 'POST', body, timeoutMs: 60000 })) },
+  reviewAdvance(id, action, reason = '') { return call(() => request(`${BASE}/textbooks/review-batches/${id}/advance`, { method: 'POST', body: { action, reason }, timeoutMs: 60000 })) },
   // 征订
   listOrderBatches(params = {}) { return callList(`${BASE}/textbooks/order-batches`, params) },
-  createOrderBatch(body) { return call(() => request(`${BASE}/textbooks/order-batches`, { method: 'POST', body })) },
+  createOrderBatch(body) { return call(() => request(`${BASE}/textbooks/order-batches`, { method: 'POST', body, timeoutMs: 60000 })) },
   orderItems(id) { return call(() => request(`${BASE}/textbooks/order-batches/${id}/items`)) },
   submitOrder(id) { return call(() => request(`${BASE}/textbooks/order-batches/${id}/submit`, { method: 'POST' })) },
   recordArrival(itemId, arrivedQty) { return call(() => request(`${BASE}/textbooks/order-items/${itemId}/arrival`, { method: 'POST', body: { arrivedQty } })) },
   archiveOrder(id) { return call(() => request(`${BASE}/textbooks/order-batches/${id}/archive`, { method: 'POST' })) },
   // 发放
-  generateDistribution(body) { return call(() => request(`${BASE}/textbooks/distribution-batches`, { method: 'POST', body })) },
+  generateDistribution(body) { return call(() => request(`${BASE}/textbooks/distribution-batches`, { method: 'POST', body, timeoutMs: 60000 })) },
   distributionRecords(id, params = {}) { return callList(`${BASE}/textbooks/distribution-batches/${id}/records`, params) },
   sign(rid) { return call(() => request(`${BASE}/textbooks/distribution-records/${rid}/sign`, { method: 'POST' })) },
   // 费用

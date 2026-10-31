@@ -172,7 +172,7 @@ def assign_teacher_tx(db, task_id, user, body) -> dict:
     ).first()
     if not t:
         raise not_found("教学任务不存在")
-    _require_college_task_action(db, t, user, "manage")
+    _require_college_task_action(db, t, user, "assign")
     db.refresh(t, with_for_update=True)
     if t.status not in ("PENDING_ASSIGN", "REJECTED_BY_TEACHER", "ASSIGNED"):
         raise AppException("APPROVAL_VERSION_CONFLICT", "该任务当前状态不可分配")

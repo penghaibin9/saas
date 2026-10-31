@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -6,8 +7,8 @@ const script = parse(fs.readFileSync(new URL('../src/modules/internship/views/Le
   .replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '')
   .replace(/ {2}components: \{[\s\S]*?\},\r?\n/, '').replace('export default', 'return')
 function view(api, files = {}) {
-  const def = new Function('leaveApi', 'guidanceVisitApi', 'emptyConflict', 'REJECT_LEAVE', script)(api, files, () => ({}), [])
-  const vm = { ...def.data(), batchStore: { selectedBatchId: '7' } }
+  const def = componentFactory('leaveApi', 'guidanceVisitApi', 'emptyConflict', 'REJECT_LEAVE', script)(api, files, () => ({}), [])
+  const vm = { ...def.data(), ctx:{ctxKey:'test'}, $route:{query:{}}, batchStore: { selectedBatchId: '7' } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   return vm
 }
@@ -35,7 +36,7 @@ test('leave approval blocks duplicate clicks and conflicted snapshots before req
 test('old leave approval response cannot clear or advance a new selection', async () => {
   let resolve
   const vm = view({ review: () => new Promise(done => { resolve = done }) }); vm.canBtn = () => true
-  vm.pending = { id: '1', action: 'APPROVE', expectedVersion: 3 }
+  vm.pending = { id: '1', action: 'APPROVE', expectedVersion: 3, batchId:'7', current:vm.captureContext() }; vm.selectedId='1'; vm.cd.visible=true
   const old = vm.onConfirm({ reason: '' }); vm.pending = null; vm.selectedId = '2'
   resolve({ code: 0, data: { id: '1', status: 'APPROVED' } }); await old
   assert.equal(vm.lastReceipt, null); assert.equal(vm.selectedId, '2')

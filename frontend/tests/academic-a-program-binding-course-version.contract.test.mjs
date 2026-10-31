@@ -17,6 +17,35 @@ const api = fs.readFileSync(
   'utf8'
 )
 
+test('方案专业显示可信名称，缺失信息不回退到内部编号', async () => {
+  const template = editor.match(/<div><span>专业(?:ID)?<\/span><b>[\s\S]*?<\/b><\/div>/)[0]
+  for (const [program, label] of [
+    [{ majorId: '9007199254740997', majorName: '软件技术' }, '软件技术'],
+    [{ majorId: '9007199254740997', majorName: '' }, '专业信息不可用'],
+    [{ majorId: '', majorName: '' }, '未设置']
+  ]) {
+    const html = await renderToString(createSSRApp({ data: () => ({ program }), render: compile(template) }))
+    assert.ok(html.includes(label))
+    assert.doesNotMatch(html, /9007199254740997|专业ID/)
+  }
+})
+
+test('课程表单底部只有一个保存入口，无维护权限时禁用', async () => {
+  const source = fs.readFileSync(path.join(root, 'src/modules/academicAffairs/views/AaCourseFormView.vue'), 'utf8')
+  const template = source.match(/<div class="aa-actions aa-form-footer">[\s\S]*?<\/div>/)[0]
+  const render = compile(template)
+  const button = { props: ['disabled'], setup: (props, { slots }) => () => h('button', { disabled: props.disabled }, slots.default?.()) }
+  for (const canManage of [true, false]) {
+    const html = await renderToString(createSSRApp({
+      data: () => ({ canManage, submitting: false }),
+      methods: { submit() {}, goBack() {} }, render, components: { AppButton: button }
+    }))
+    assert.equal((html.match(/保存/g) || []).length, 1)
+    assert.match(html, /取消/)
+    assert.equal(/<button disabled[^>]*>保存课程草稿/.test(html), !canManage)
+  }
+})
+
 test('A-W2 program binding UI exposes optional class override with exact scope query', () => {
   assert.match(editor, /AppClassPicker/)
   assert.match(editor, /majorId: program\.majorId/)

@@ -20,6 +20,7 @@ from app.modules.internship.schemas.internship_recruitment_campaign import (
 )
 from app.modules.internship.services import internship_campaign_enterprise_service as enterprise_svc
 from app.modules.internship.services import internship_enterprise_auth_service as enterprise_auth_svc
+from app.modules.internship.services.internship_enterprise_member_admin_service import require_school_manager
 from app.modules.internship.services import internship_recruitment_campaign_service as campaign_svc
 from app.modules.internship.services import internship_volunteer_group_service as group_svc
 from app.modules.internship.services import internship_school_volunteer_service as school_volunteer_svc
@@ -143,6 +144,7 @@ def list_campaign_enterprises(
 
 @router.post("/{campaign_id}/enterprises/invite")
 def invite_company(campaign_id: str, body: CampaignEnterpriseInvite, user=Depends(_INVITE)):
+    require_school_manager(user)
     result = enterprise_auth_svc.issue_company_invite(
         campaign_id,
         company_id=body.companyId,
@@ -150,13 +152,9 @@ def invite_company(campaign_id: str, body: CampaignEnterpriseInvite, user=Depend
         real_name=body.realName,
         phone=body.phone,
         member_role=body.memberRole,
+        contact_id=body.contactId,
         invite_source=body.inviteSource,
         actor_user_id=_actor_id(user),
-    )
-    audit_log.record(
-        "INVITE_RECRUITMENT_ENTERPRISE",
-        f"internship-recruitment-campaign:{campaign_id}:company:{body.companyId}",
-        detail={"memberId": result["memberId"], "inviteSource": body.inviteSource},
     )
     # inviteToken is intentionally returned only on this authenticated school write; DB stores hash only.
     return success(result, message="企业邀请已生成")

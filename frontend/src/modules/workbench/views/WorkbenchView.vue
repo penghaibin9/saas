@@ -288,6 +288,7 @@ import {
 } from '../api/workbenchPrefs'
 import { resolveRecipe, TODO_TYPE_ROUTES, TODO_TYPE_LABELS } from '../config/workbenchRecipes'
 import { safeLocalizedText, isTechnicalUiMessage } from '@/utils/presentationSafety'
+import { academicRoleModules, filterAcademicRoleLinks, hasAcademicRoleMenu } from '@/modules/academicAffairs/config/academicRoleNavigation'
 import { currentUserFromToken } from '@/services/http/client'
 
 const EMPTY_SUMMARY = Object.freeze({
@@ -348,7 +349,15 @@ export default {
       return matchPermission(this.ctx?.permissionPatterns || [], 'graduationDesign.dashboard.view')
     },
     recipe() {
-      return resolveRecipe(this.role)
+      const recipe = resolveRecipe(this.role)
+      if (!hasAcademicRoleMenu(this.ctx)) return recipe
+      const links = [...recipe.quickLinks, ...academicRoleModules(this.ctx).map(module => ({ label: module.label, to: module.path }))]
+      const seen = new Set()
+      return { ...recipe, quickLinks: filterAcademicRoleLinks(links, this.ctx).filter(link => {
+        if (seen.has(link.to)) return false
+        seen.add(link.to)
+        return true
+      }) }
     },
     scheduleLink() {
       const u = currentUserFromToken() || {}

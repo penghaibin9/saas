@@ -1,206 +1,97 @@
 <template>
-  <ModulePageShell
-    class="aa-statistics"
-    :title="statsPage.title"
-    :subtitle="statsPage.subtitle"
-    :role-name="ctx.currentRole.roleName"
-    :data-scope-name="ctx.dataScope.scopeName"
-  >
-    <template #actions>
-      <label class="stats-topic-select">统计专题
-        <select :value="currentTopic.key" @change="switchTopic($event.target.value)">
-          <option v-for="topic in visibleTopics" :key="topic.key" :value="topic.key">{{ topic.label }}</option>
-        </select>
-      </label>
-    </template>
-    <div class="stats-intro">
-      <p>{{ currentTopic.description }}</p>
-      <span v-if="updatedAt" role="status">更新于 {{ updatedAt }}</span>
-    </div>
+  <ModulePageShell class="aa-statistics" :title="statsPage.title" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName">
+    <template #actions><span v-if="updatedAt" class="stats-updated" role="status">更新于 {{ updatedAt }}</span></template>
     <nav v-if="topicTabs.length > 1" class="stats-dimensions" aria-label="本专题统计维度">
       <button v-for="item in topicTabs" :key="item.key" type="button" :aria-current="tab === item.key ? 'page' : undefined" :class="{ active: tab === item.key }" @click="switchTab(item.key)">{{ item.label }}</button>
     </nav>
-
-    <div class="mp-stack">
-      <!-- 多维筛选栏（导出报表 Tab 使用自己的表单，不复用此栏；教学资源为校级共享资产，
-           无学期/学院维度，见 resource_stats 后端注释，本栏对该 Tab 不适用） -->
-      <form v-if="tab !== 'export' && tab !== 'resource' && tab !== 'snapshot'" class="aa-filter" @submit.prevent="search">
-        <label class="aa-filter__item">学期
-          <AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" />
-        </label>
-        <label class="aa-filter__item">学院
-          <AppCollegePicker v-model="filters.collegeId" placeholder="全部学院" @change="filters.majorId = ''" />
-        </label>
-        <label v-if="tab === 'overview' || tab === 'registration'" class="aa-filter__item">专业
-          <AppMajorPicker v-model="filters.majorId" :query="{ collegeId: filters.collegeId || undefined }" placeholder="全部专业" />
-        </label>
-        <label v-if="tab === 'course'" class="aa-filter__item">类别
-          <input v-model="filters.category" class="aa-input aa-input--sm" placeholder="可空=全部" />
-        </label>
-        <label v-if="tab === 'grade'" class="aa-filter__item">课程名（下钻筛选）
-          <input v-model="filters.courseName" class="aa-input aa-input--sm" placeholder="可空=全部" />
-        </label>
-        <label v-if="tab === 'graduation'" class="aa-filter__item">预审批次
-          <AppGraduationBatchPicker v-model="filters.batchId" placeholder="全部批次" />
-        </label>
-        <AppButton :loading="loading" @click="search">更新统计</AppButton>
-        <AppButton v-if="tab === 'overview' && canExport" variant="ghost" :disabled="loading" @click="openExport">导出 Excel</AppButton>
-      </form>
-      <p v-if="tab !== 'snapshot' && tab !== 'export'" class="stats-scope">{{ tab === 'resource' ? '资源统计按当前授权范围汇总，不随学期筛选。' : '统计范围由当前账号权限限定；修改筛选后点击更新统计。' }} 比例显示“—”表示暂无统计基数。</p>
-      <p v-if="filtersDirty && tab !== 'export' && tab !== 'snapshot'" class="aa-scope-note" role="status">筛选条件尚未查询，下方指标、明细和导出仍使用上次查询范围。</p>
-
-      <ErrorState v-if="error" :description="error" @retry="loadTab" />
-      <LoadingState v-else-if="loading" />
-      <template v-else>
-        <p v-if="scopeBlocked" class="aa-scope-note">当前账号未配置教务数据范围，暂无可见统计数据（如为学院教务员请联系管理员配置本院范围）。</p>
-
-        <template v-else>
-        <section v-if="analyticsCards.length" class="stats-kpi-grid" aria-label="当前统计口径">
-          <article v-for="(card, index) in analyticsCards" :key="card.label" class="stats-kpi-card" :class="{ 'is-warning': index === 2 && card.tone === 'warning' }">
-            <span>{{ card.label }}</span>
-            <strong>{{ card.value }}</strong>
-            <small>{{ card.note }}</small>
-          </article>
+    <form v-if="!['export', 'snapshot', 'resource'].includes(tab)" class="aa-filter" @submit.prevent="search">
+      <label class="aa-filter__item">学期<AppTermEntityPicker v-model="filters.termId" placeholder="全部学期" @change="(value, items) => rememberFilter('termId', value, items)" /></label>
+      <label class="aa-filter__item">学院<AppCollegePicker v-model="filters.collegeId" placeholder="全部学院" @change="collegeChanged" /></label>
+      <label v-if="tab === 'overview' || tab === 'registration'" class="aa-filter__item">专业<AppMajorPicker v-model="filters.majorId" :query="{ collegeId: filters.collegeId || undefined }" placeholder="全部专业" @change="(value, items) => rememberFilter('majorId', value, items)" /></label>
+      <label v-if="tab === 'course'" class="aa-filter__item">课程类别<AppSelect v-model="filters.category" :options="courseCategoryOptions" /></label>
+      <label v-if="tab === 'graduation'" class="aa-filter__item">预审批次<AppGraduationBatchPicker v-model="filters.batchId" placeholder="全部批次" /></label>
+      <div class="stats-filter-actions"><AppButton type="submit" variant="primary" :loading="loading">查询</AppButton><AppButton variant="ghost" :disabled="loading" @click="resetFilters">重置</AppButton></div>
+      <p class="stats-applied">已应用：{{ appliedScopeLabel }}</p>
+    </form>
+    <p v-if="tab === 'resource'" class="stats-applied">资源按当前授权范围统计，不随学期筛选。<AppButton size="small" variant="ghost" :loading="loading" @click="loadTab">刷新</AppButton></p>
+    <p v-if="filtersDirty && !['export', 'snapshot', 'resource'].includes(tab)" class="stats-notice" role="status">筛选尚未查询，下方仍为上次查询结果。</p>
+    <ErrorState v-if="error" :description="error" @retry="loadTab" />
+    <LoadingState v-else-if="loading" />
+    <p v-else-if="scopeBlocked" class="stats-notice">当前账号未配置教务数据范围，请联系管理员。</p>
+    <template v-else>
+      <section v-if="analyticsCards.length" class="stats-kpi-grid" aria-label="业务指标">
+        <article v-for="card in analyticsCards" :key="card.label" class="stats-kpi-card" :class="{ 'is-warning': card.tone === 'warning' }">
+          <span>{{ card.label }}</span><strong>{{ displayMetric(card) }}<small v-if="card.unit && card.value !== null" class="stats-unit">{{ card.unit }}</small></strong><small v-if="card.note">{{ card.note }}</small>
+        </article>
+      </section>
+      <template v-if="tab === 'overview'">
+        <section v-if="attentionItems.length" class="stats-attention" aria-label="需要关注">
+          <strong>需要关注</strong><div v-for="item in attentionItems" :key="item.key"><span>{{ item.attentionLabel }}</span><b>{{ numberLabel(item.attentionValue) }}</b><AppButton size="small" variant="ghost" @click="drillable(item) ? onCardClick(item) : openIndicatorTopic(item)">{{ drillable(item) ? '查看明细' : '查看专题' }}</AppButton></div>
         </section>
-
-        <!-- AA-242：分布、同期趋势状态与正式指标下钻。 -->
-        <template v-if="tab === 'overview'">
-          <div class="stats-analysis-grid">
-            <section class="stats-analysis-panel">
-              <header><h2>教务统计总览 · 分布</h2><select v-if="distributionOptions.length" v-model="overviewMetricKey" aria-label="选择分布指标"><option v-for="item in distributionOptions" :key="item.key" :value="item.key">{{ item.label }}</option></select></header>
-              <p class="stats-analysis-caption">{{ distributionMetric?.label || '指标分布' }} · 当前查询范围</p>
-              <AppG2Chart v-if="distributionMetric" :spec="overviewDistributionSpec" :height="240" />
-              <EmptyState v-else title="当前指标未提供分组数据" description="下方保留正式指标结果；无分组回执时不推算学院分布。" />
-            </section>
-            <section class="stats-analysis-panel">
-              <header><h2>当期周期变化</h2></header>
-              <EmptyState title="当前统计未提供同期趋势" description="当前只返回某个时点的指标。需要相同学期、相同范围的连续时点数据后，才能显示周期变化。" />
-              <p class="stats-analysis-caption">数据截至 {{ sourceAsOf || '尚未提供' }}<br>历史快照按各自冻结范围留存，不直接拼接为同口径趋势。</p>
-              <AppButton v-if="canViewSnapshot" variant="ghost" @click="switchTab('snapshot')">查看历史统计快照</AppButton>
-            </section>
-          </div>
-          <section class="stats-analysis-panel stats-indicator-ledger">
-            <header><div><h2>同口径明细下钻</h2><p>选择指标查看其原始明细，保留当前查询范围。</p></div><span>{{ overviewRows.length }} 项正式指标</span></header>
-            <DataTable :columns="overviewColumns" :rows="overviewRows" row-key="key">
-              <template #cell-label="{ row }"><strong>{{ row.label }}</strong><small class="stats-cell-note">{{ row.sectionLabel }}</small></template>
-              <template #cell-value="{ row }"><strong>{{ indicatorValue(row) }}</strong><small v-if="row.unit === '%'" class="stats-cell-note">{{ row.denominator ? `${row.numerator ?? '—'} / ${row.denominator}` : '暂无统计基数' }}</small></template>
-              <template #cell-scope><span>{{ appliedScopeLabel }}</span></template>
-              <template #cell-time>{{ sourceAsOf || '尚未提供' }}</template>
-              <template #cell-status="{ row }"><span>{{ row.status === 'MODULE_NOT_ENABLED' ? '未启用' : row.message || '已返回统计结果' }}</span></template>
-              <template #cell-action="{ row }"><AppButton v-if="drillable(row)" size="small" variant="ghost" @click="onCardClick(row)">{{ activeDrill === row.key ? '收起明细' : '查看明细' }}</AppButton><AppButton v-else-if="indicatorTopic(row)" size="small" variant="ghost" @click="openIndicatorTopic(row)">查看专题与异常</AppButton><span v-else class="stats-cell-note">当前仅汇总统计</span></template>
-            </DataTable>
-          </section>
-          <div v-if="activeDrill" class="aa-drill">
-            <div class="aa-drill__head">
-              <strong>{{ drillTitle }}</strong>
-              <button class="mp-link" @click="closeDrill">收起</button>
-            </div>
-            <LoadingState v-if="drill.loading" />
-            <ErrorState v-else-if="drill.error" :description="drill.error" @retry="loadDrill" />
-            <EmptyState v-else-if="!drill.rows.length" title="无明细数据" description="当前范围内没有可下钻的记录" />
-            <DataTable v-else :columns="drillColumns" :rows="drill.rows" row-key="rowKey" :pagination="drill.pagination" @page-change="onDrillPage" />
-          </div>
-        </template>
-
-        <!-- AA-243～AA-255：统一的统计阅读顺序，指标和下钻字段仍由各业务真实 DTO 决定。 -->
-        <template v-else-if="isMetricTab">
-          <div class="stats-analysis-grid">
-            <section class="stats-analysis-panel">
-              <header><div><h2>{{ statsPage.title }} · 分布</h2><p>仅使用当前返回的分组与计数</p></div></header>
-              <AppG2Chart v-if="analyticsDistribution.length" :spec="analyticsDistributionSpec" :height="240" />
-              <EmptyState v-else title="当前口径没有分组数据" description="保留正式汇总结果，不根据明细页或样例数据推算分布。" />
-            </section>
-            <section class="stats-analysis-panel">
-              <header><div><h2>当前指标构成</h2><p>{{ sourceAsOf ? `数据截至 ${sourceAsOf}` : '当前未返回独立的数据时间' }}</p></div></header>
-              <AppG2Chart v-if="analyticsMetricSeries.length" :spec="analyticsMetricSpec" :height="240" />
-              <EmptyState v-else title="暂无可绘制指标" description="当前范围没有可用于图表的数值。" />
-              <p class="stats-analysis-caption">当前没有连续同口径的快照，本图显示本次查询的指标构成，不冒充周期趋势。</p>
-            </section>
-          </div>
-          <section class="stats-analysis-panel stats-indicator-ledger">
-            <header><div><h2>同口径明细下钻</h2><p>汇总口径、数据范围和办理入口保持一致。</p></div><span>{{ analyticsLedgerRows.length }} 项正式统计</span></header>
-            <DataTable :columns="analyticsLedgerColumns" :rows="analyticsLedgerRows" row-key="rowKey">
-              <template #cell-metric="{ row }"><strong>{{ row.metric }}</strong><small class="stats-cell-note">{{ row.note }}</small></template>
-              <template #cell-action><AppButton v-if="canOpenCurrentDetail" size="small" variant="ghost" @click="openDetail">{{ statsPage.primary }}</AppButton><span v-else class="stats-cell-note">只读统计</span></template>
-            </DataTable>
-          </section>
-        </template>
-
-        <!-- ══ 教师工作量统计（13，基础参考，非正式核算）══ -->
-        <template v-else-if="tab === 'workload'">
-          <AppInlineAlert type="warning" description="本页汇总教学任务数与计划学时，供教学安排参考，不作为绩效结算依据。" />
-          <EmptyState v-if="!sSummary.ranking || !sSummary.ranking.length" title="暂无数据" description="当前范围内没有可统计的教学任务" />
-          <DataTable v-else :columns="workloadColumns" :rows="sSummary.ranking" row-key="teacherKey">
-            <template #cell-ops="{ row }"><button class="mp-link" @click="viewWorkloadDetail(row)">查看明细</button></template>
+        <section class="stats-analysis-panel stats-indicator-ledger">
+          <header><h2>业务指标</h2><span>{{ overviewRows.length }} 项指标</span></header>
+          <DataTable :columns="overviewColumns" :rows="overviewRows" row-key="key">
+            <template #cell-label="{ row }"><strong>{{ indicatorLabel(row) }}</strong><small v-if="row.message" class="stats-cell-note">{{ row.message }}</small></template>
+            <template #cell-value="{ row }"><strong>{{ indicatorValue(row) }}</strong></template>
+            <template #cell-basis="{ row }">{{ indicatorBasis(row) }}</template>
+            <template #cell-action="{ row }"><AppButton v-if="drillable(row)" size="small" variant="ghost" @click="onCardClick(row)">{{ activeDrill === row.key ? '收起明细' : '查看明细' }}</AppButton><AppButton v-else-if="indicatorTopic(row)" size="small" variant="ghost" @click="openIndicatorTopic(row)">查看专题</AppButton><span v-else class="stats-cell-note">仅汇总</span></template>
           </DataTable>
-        </template>
-
-        <!-- ══ 统计冻结快照（W3）══ -->
-        <template v-else-if="tab === 'snapshot'">
-          <AaStatsSnapshotWorkspace :ctx="ctx" :context-filters="appliedFilters" />
-        </template>
-
-        <!-- ══ 导出报表（15）══ -->
-        <template v-else-if="tab === 'export'">
-          <ol class="stats-stage-rail" aria-label="统计导出流程">
-            <li class="is-done"><b>✓</b><span><strong>正式记录</strong><small>读取统计口径</small></span></li>
-            <li class="is-done"><b>✓</b><span><strong>范围与学期</strong><small>由系统裁定</small></span></li>
-            <li class="is-current"><b>3</b><span><strong>统计口径</strong><small>当前选择</small></span></li>
-            <li><b>4</b><span><strong>用途审计</strong><small>用途至少 5 字</small></span></li>
-            <li><b>5</b><span><strong>下载文件</strong><small>按本次状态导出</small></span></li>
-          </ol>
-          <div class="stats-export-grid">
-            <section class="stats-export-card">
-              <header><h2>导出范围与用途</h2></header>
-              <div class="aa-export-form">
-                <label class="aa-filter__item">导出维度
-                  <AppSelect v-model="exp.domain" :options="exportDomainOptions" />
-                </label>
-                <label class="aa-filter__item">学期
-                  <AppTermEntityPicker v-model="exp.termId" placeholder="全部学期" />
-                </label>
-                <label class="aa-filter__item">学院
-                  <AppCollegePicker v-model="exp.collegeId" placeholder="全部学院" />
-                </label>
-                <label class="aa-filter__item stats-export-purpose">导出用途（至少5个字）
-                  <textarea v-model="exp.purpose" rows="4" maxlength="500" placeholder="如：教务处月度汇报" />
-                </label>
-              </div>
-              <footer><span>完整导出由系统按当前权限与筛选生成，不放大列表每页条数。</span><AppButton :loading="exp.downloading" @click="doExport">生成并下载 Excel</AppButton></footer>
-            </section>
-            <aside class="stats-export-card stats-export-rules">
-              <header><h2>三种范围不要混淆</h2></header>
-              <dl>
-                <div><dt>本页记录</dt><dd>当前页面已经展示的汇总结果</dd></div>
-                <div><dt>已选记录</dt><dd>显式选择的业务对象集合</dd></div>
-                <div><dt>当前筛选全部</dt><dd>由系统按权限与筛选生成</dd></div>
-              </dl>
-            </aside>
-          </div>
-          <section class="stats-export-card stats-export-receipt">
-            <header><h2>文件结果与回执</h2></header>
-            <div v-if="exp.receipt"><strong>{{ exp.receipt.fileName }}</strong><span>已于 {{ exp.receipt.completedAt }} 收到系统生成的 Excel 文件</span></div>
-            <EmptyState v-else title="尚未执行导出" description="填写正式用途后生成文件；浏览器下载失败不会被报告为成功。" />
-          </section>
-        </template>
-
-        <!-- 通用下钻明细面板（除总览/工作量/导出外的 11 个 Tab 共用） -->
-        <div v-if="detail.open" class="aa-drill"><p v-if="tab === 'teachingTask'">本专题按教师确认时间是否已记录统计；缺少确认时间的历史任务仍可能显示“已就绪”。请核对确认依据，不据此重复要求教师确认或补写时间。</p>
-          <div class="aa-drill__head">
-            <strong>{{ detail.title }}</strong>
-            <button class="mp-link" @click="closeDetail">收起</button>
-          </div>
-          <LoadingState v-if="detail.loading" />
-          <ErrorState v-else-if="detail.error" :description="detail.error" @retry="loadDetail" />
-          <EmptyState v-else-if="!detail.rows.length" title="无明细数据" description="当前范围内没有可查看的记录" />
-          <DataTable v-else :columns="detail.columns" :rows="detail.rows" row-key="rowKey" :pagination="detail.pagination" @page-change="onDetailPage">
-            <template #cell-taskSource="{ row }"><AppButton v-if="canOpenTaskSource(row)" size="small" @click="openTaskSource(row)">核对原任务</AppButton><span v-else>请由教学任务管理岗核对</span></template><template #cell-abnormalItems="{ row }">{{ (row.abnormalItems || []).join('、') }}</template>
-            <template #cell-courses="{ row }">{{ (row.courses || []).map((c) => c.courseName).join('、') }}</template>
-          </DataTable>
-        </div>
-        </template>
+        </section>
+        <p class="stats-trend-note">暂无连续统计数据，可查看历史快照。<AppButton v-if="canViewSnapshot" size="small" variant="ghost" @click="switchTab('snapshot')">查看历史快照</AppButton></p>
+        <details class="stats-method"><summary>统计口径与数据时间</summary><p>{{ appliedScopeLabel }}；数据截至 {{ sourceTimeLabel }}。不同学期或范围的快照不能直接比较。</p></details>
+        <section v-if="activeDrill" class="aa-drill">
+          <header><h2>{{ drillTitle }}</h2><AppButton variant="ghost" @click="closeDrill">收起</AppButton></header>
+          <LoadingState v-if="drill.loading" /><ErrorState v-else-if="drill.error" :description="drill.error" @retry="loadDrill" @back="closeDrill" /><EmptyState v-else-if="!drill.rows.length" @back="closeDrill" title="当前范围没有明细" description="可调整查询条件后再查看。" />
+          <DataTable v-else :columns="drillColumns" :rows="drill.rows" row-key="rowKey" :pagination="drill.pagination" @page-change="onDrillPage"><template #cell-status="{ row }">{{ groupLabel(row.status) }}</template><template #cell-changeType="{ row }">{{ groupLabel(row.changeType) }}</template><template #cell-warnType="{ row }">{{ groupLabel(row.warnType) }}</template><template #cell-fromStatus="{ row }">{{ groupLabel(row.fromStatus) }}</template><template #cell-toStatus="{ row }">{{ groupLabel(row.toStatus) }}</template></DataTable>
+        </section>
       </template>
-    </div>
+      <template v-else-if="isMetricTab">
+        <p v-if="tab === 'registration'" class="stats-applied">按注册记录统计，同一学生跨批次分别计数。</p>
+        <p v-if="tab === 'teachingTask'" class="stats-applied">本专题按教师确认时间是否已记录统计；缺少确认时间的历史任务仍可能显示“已就绪”。请核对确认依据，不据此重复要求教师确认或补写时间。</p>
+        <section v-if="tab === 'teachingTask' && pendingTaskCount > 0" class="stats-attention"><strong>{{ numberLabel(pendingTaskCount) }} 条教学任务缺少确认时间记录</strong><AppButton variant="primary" @click="openDetail">核对确认依据</AppButton></section>
+        <div class="stats-analysis-grid" :class="{ 'has-secondary': tab === 'grade' }">
+          <section class="stats-analysis-panel">
+            <header><h2>{{ distributionTitle }}</h2><AppButton v-if="canOpenCurrentDetail && !['registration', 'teachingTask', 'grade'].includes(tab)" size="small" variant="ghost" @click="openDetail">{{ detailActionLabel }}</AppButton></header>
+            <div class="stats-distribution-body" :class="{ 'side-by-side': analyticsHasServerGroups }">
+            <div v-if="compositionTotal !== null && compositionTotal > 0" class="stats-completion">
+              <progress :value="analyticsDistribution[0].value" :max="compositionTotal" :aria-label="distributionTitle" />
+              <div class="stats-completion-labels"><span v-for="row in analyticsLedgerRows" :key="row.rowKey">{{ row.metric }} {{ row.value }} <small>{{ row.share }}</small></span></div>
+            </div>
+            <AppG2Chart v-else-if="analyticsDistribution.length && analyticsHasServerGroups" :spec="analyticsDistributionSpec" :height="240" />
+            <p v-else-if="!analyticsDistribution.length" class="stats-applied">本次未提供分组数据，汇总指标仍保留原值。</p>
+            <DataTable v-if="analyticsLedgerRows.length" :columns="analyticsLedgerColumns" :rows="analyticsLedgerRows" row-key="rowKey">
+              <template #cell-action="{ row }"><AppButton v-if="row.canDetail" size="small" variant="ghost" @click="openDetail">{{ detailActionLabel }}</AppButton><span v-else class="stats-cell-note">汇总</span></template>
+            </DataTable>
+            </div>
+          </section>
+          <section v-if="tab === 'grade'" class="stats-analysis-panel stats-grade-publish"><header><h2>成绩任务发布</h2></header><strong>{{ percentage(sSummary.entryPublishRate) }}</strong><p>已发布 {{ numberLabel(sSummary.publishNumerator) }} / 共 {{ numberLabel(sSummary.publishDenominator) }} 个任务</p><p class="stats-applied">按成绩任务计数，与成绩记录分开展示。</p></section>
+        </div>
+        <form v-if="tab === 'grade'" class="stats-detail-filter" @submit.prevent="searchGradeDetail"><label>课程名称（仅筛选明细）<input v-model="detailCourseName" class="aa-input" placeholder="输入课程名称" /></label><AppButton type="submit" variant="primary">查看不及格明细</AppButton></form>
+      </template>
+      <template v-else-if="tab === 'workload'">
+        <p class="stats-applied">用于教学安排参考，不作为绩效结算依据。</p>
+        <section class="stats-analysis-panel">
+          <header><h2>教师工作量明细</h2><label>搜索教师<input v-model="workloadSearch" class="aa-input" placeholder="教师姓名" @input="workloadPage = 1" /></label></header>
+          <EmptyState v-if="!filteredWorkload.length" @back="workloadSearch ? workloadSearch = '' : resetFilters()" :title="workloadSearch ? '没有匹配的教师' : '当前范围没有教学任务'" description="请核对学期、学院或教师检索条件。" />
+          <DataTable v-else :columns="workloadColumns" :rows="workloadRows" row-key="teacherKey" :pagination="workloadPagination" @page-change="workloadPage = $event"><template #cell-taskCount="{ row }">{{ numberLabel(row.taskCount) }}</template><template #cell-totalHours="{ row }">{{ numberLabel(row.combinedHours ?? row.totalHours) }}</template><template #cell-ops="{ row }"><AppButton size="small" variant="ghost" @click="viewWorkloadDetail(row)">查看明细</AppButton></template></DataTable>
+        </section>
+      </template>
+      <AaStatsSnapshotWorkspace v-else-if="tab === 'snapshot'" :ctx="ctx" :context-filters="appliedFilters" />
+      <template v-else-if="tab === 'export'">
+        <section class="stats-analysis-panel stats-export-card">
+          <header><h2>导出范围与用途</h2></header>
+          <div class="aa-export-form"><label>导出维度<AppSelect v-model="exp.domain" :options="exportDomainOptions" /></label><label>学期<AppTermEntityPicker v-model="exp.termId" placeholder="全部学期" /></label><label>学院<AppCollegePicker v-model="exp.collegeId" placeholder="全部学院" /></label><label class="stats-export-purpose">导出用途（至少5个字）<textarea v-model="exp.purpose" rows="3" maxlength="500" placeholder="如：教务处月度汇报" /></label></div>
+          <footer><span>按当前权限与所选范围导出全部结果。</span><AppButton variant="primary" :loading="exp.downloading" @click="doExport">生成并下载表格</AppButton></footer>
+          <p v-if="exp.receipt" class="stats-export-result" role="status">{{ exp.receipt.fileName }} · {{ exp.receipt.completedAt }} 已收到系统生成的表格文件</p>
+          <p v-else class="stats-applied">尚未生成文件。</p>
+        </section>
+      </template>
+      <section v-if="detail.open" class="aa-drill">
+        <header><h2>{{ detail.title }}</h2><AppButton variant="ghost" @click="closeDetail">收起</AppButton></header>
+        <LoadingState v-if="detail.loading" /><ErrorState v-else-if="detail.error" :description="detail.error" @retry="loadDetail" @back="closeDetail" /><EmptyState v-else-if="!detail.rows.length" @back="closeDetail" title="当前范围没有明细" description="可调整查询条件后再查看。" />
+        <DataTable v-else :columns="detail.columns" :rows="detail.rows" row-key="rowKey" :pagination="detail.pagination" @page-change="onDetailPage"><template #cell-taskSource="{ row }"><AppButton v-if="canOpenTaskSource(row)" size="small" variant="ghost" @click="openTaskSource(row)">核对原任务</AppButton><span v-else>请由教学任务管理岗核对</span></template><template #cell-status="{ row }">{{ groupLabel(row.status) }}</template><template #cell-category="{ row }">{{ groupLabel(row.category) }}</template><template #cell-level="{ row }">{{ groupLabel(row.level) }}</template><template #cell-warnType="{ row }">{{ groupLabel(row.warnType) }}</template><template #cell-incidentType="{ row }">{{ groupLabel(row.incidentType) }}</template><template #cell-abnormalItems="{ row }">{{ (row.abnormalItems || []).map(groupLabel).join('、') }}</template><template #cell-weekParity="{ row }">{{ groupLabel(row.weekParity) }}</template><template #cell-courses="{ row }">{{ (row.courses || []).map(c => c.courseName).join('、') }}</template><template #cell-changeType="{ row }">{{ groupLabel(row.changeType) }}</template><template #cell-fromStatus="{ row }">{{ groupLabel(row.fromStatus) }}</template><template #cell-toStatus="{ row }">{{ groupLabel(row.toStatus) }}</template></DataTable>
+      </section>
+    </template>
   </ModulePageShell>
 </template>
 
@@ -214,8 +105,9 @@
  * /admin/academic-affairs/schedule-change/stats（navPlan 直接指向该页），本页总览 Tab 的
  * 「调停课统计」卡片是学校/学院口径的全局计数，两者互不冲突（见后端 stats_service 模块头注释）。
  */
+import { academicRoleAllows } from '../config/academicRoleNavigation'
 import {
-  AppInlineAlert, AppG2Chart, AppSelect,
+  AppG2Chart, AppSelect,
   AppTermEntityPicker, AppCollegePicker, AppMajorPicker, AppGraduationBatchPicker
 } from '@/components/common'
 import { AppButton } from '@/components/ui'
@@ -227,6 +119,9 @@ import AaStatsSnapshotWorkspace from '@/modules/academicAffairs/components/AaSta
 import { toast } from '@/utils/toast'
 import { currentUserFromToken } from '@/services/http/client'
 import { academicIdentity } from '../academicFlowContext'
+import { formatDateTime } from '@/utils/dateUtils'
+import { COURSE_CATEGORY } from '../constants/course-program'
+import { GRAD_ITEM_LABEL } from '../constants/grade-graduation'
 import { statsGroupLabel, STATS_INDICATOR_TOPICS } from './parallel-c/stats-presentation.js'
 
 const TABS = [
@@ -250,13 +145,13 @@ const TABS = [
 const STATS_PAGE_META = {
   overview: { id: 'AA-242', title: '统计总览', subtitle: '核对教务运行指标的来源、范围与更新时间', primary: '下钻当前指标' },
   statusChange: { id: 'AA-243', title: '学籍统计', subtitle: '按正式生效结果核对学籍异动，不把申请量当作异动结果', primary: '下钻学籍明细' },
-  registration: { id: 'AA-244', aliases: ['AA-258'], title: '学籍与注册', subtitle: '明确注册类型、学期和当前授权范围', primary: '下钻注册明细' },
+  registration: { id: 'AA-244', aliases: ['AA-258'], title: '学籍与注册', subtitle: '明确注册类型、学期和当前授权范围', primary: '查看未完成明细' },
   course: { id: 'AA-245', title: '开课与教学运行', subtitle: '按课程供给和启用状态核对本期教学运行', primary: '下钻教学任务' },
   teachingTask: { id: 'AA-246', title: '教学任务统计', subtitle: '核对教师确认时间记录与任务业务状态', primary: '核对确认依据' },
   schedule: { id: 'AA-247', title: '课表统计', subtitle: '依据正式课表批次核对发布覆盖与冲突', primary: '查看课表版本' },
   courseSelection: { id: 'AA-249', title: '选课统计', subtitle: '按批次核对容量、报名与名单状态', primary: '查看名单状态' },
   exam: { id: 'AA-250', title: '考试与成绩', subtitle: '核对考试课程编排完成度与正式异常记录', primary: '下钻考务明细' },
-  grade: { id: 'AA-251', aliases: ['AA-259'], title: '成绩统计', subtitle: '只统计正式有效成绩，挂科人数不冒充预警条数', primary: '下钻有效成绩' },
+  grade: { id: 'AA-251', aliases: ['AA-259'], title: '成绩统计', subtitle: '只统计正式有效成绩，挂科人数不冒充预警条数', primary: '查看不及格明细' },
   warning: { id: 'AA-252', title: '学业与毕业', subtitle: '核对未闭环预警与毕业审核风险', primary: '查看风险明细' },
   graduation: { id: 'AA-253', title: '毕业资格统计', subtitle: '按批次与当前权限范围核对毕业决定', primary: '查看毕业决定' },
   workload: { id: 'AA-254', title: '师资与资源', subtitle: '教学任务工作量仅作安排参考，正式核算以学校规则为准', primary: '下钻工作量' },
@@ -271,38 +166,36 @@ const STATUS_NAMES = {
   REGISTERED: '已注册', UNREGISTERED: '未注册', PENDING: '待处理', CONFIRMED: '已确认',
   PUBLISHED: '已发布', OPEN: '开放', CLOSED: '已关闭', ACTIVE: '生效', FINISHED: '已完成',
   makeup: '补考', retake: '重修', conflict: '硬冲突', HIGH: '高风险', MEDIUM: '中风险',
-  LOW: '低风险', UNKNOWN: '未分类'
-}
-
-function strictNumber(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : null
-  return typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim()) ? Number(value.trim()) : null
-}
-function finite(value, fallback = 0) {
-  const result = Number(value)
-  return Number.isFinite(result) ? result : fallback
+  LOW: '低风险', UNKNOWN: '未分类', AVAILABLE: '可用', MAINTENANCE: '维修中', DISABLED: '停用', VIOLATION: '违纪', PENDING_REGISTER: '待注册'
 }
 
 function percent(value) {
-  return value === null || value === undefined || !Number.isFinite(Number(value)) ? '—' : `${Number(value)}%`
+  const n = numeric(value)
+  return n === null ? '—' : `${n}%`
 }
 
-function metricCards(tab, summary, scopeLabel, updatedAt) {
-  const scope = { label: '当前统计范围', value: scopeLabel, note: '由当前账号权限和筛选条件共同限定' }
-  const time = { label: '数据状态', value: updatedAt || '读取中', note: '显示本次成功查询时间' }
-  const pending = (total, done) => Math.max(0, finite(total) - finite(done))
+function numeric(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  return typeof value === 'string' && /^-?\d+(\.\d+)?$/.test(value.trim()) ? Number(value) : null
+}
+function remaining(total, done) { return numeric(total) === null || numeric(done) === null ? null : Math.max(0, numeric(total) - numeric(done)) }
+function countLabel(value, unit = '') { const n = numeric(value); return n === null ? '—' : `${n.toLocaleString('zh-CN')}${unit}` }
+function ratioLabel(numerator, denominator) { const n = numeric(numerator), d = numeric(denominator); return n === null || d === null || d <= 0 ? '—' : `${Math.round(n / d * 1000) / 10}%` }
+function basis(n, d) { return `${countLabel(n)} / ${countLabel(d)}` }
+function metricCards(tab, x) {
+  const card = (label, value, unit = '', note = '', tone = '') => ({ label, value, unit, note, tone })
   const maps = {
-    statusChange: [scope, { label: '已生效异动', value: finite(summary.total), note: '只计正式生效结果' }, { label: '异动类型', value: (summary.byType || []).length, note: '正式分类数' }, time],
-    registration: [scope, { label: '应注册', value: finite(summary.expected), note: '当前口径内应注册学生' }, { label: '未注册', value: pending(summary.expected, summary.registered), note: '应注册减已注册', tone: 'warning' }, { label: '完成比例', value: percent(summary.rate), note: `${finite(summary.registered)} / ${finite(summary.expected)}` }],
-    course: [scope, { label: '启用课程', value: finite(summary.total), note: '当前范围启用课程' }, { label: '课程类别', value: (summary.byCategory || []).length, note: '正式类别' }, { label: '覆盖学院', value: (summary.byCollege || []).length, note: '当前口径有课程的学院' }],
-    teachingTask: [scope, { label: '教学任务', value: finite(summary.expected), note: '当前范围任务总量' }, { label: '缺少确认时间', value: pending(summary.expected, summary.confirmed), note: '总任务减已记录教师确认时间任务', tone: 'warning' }, { label: '确认时间记录比例', value: percent(summary.rate), note: `${finite(summary.confirmed)} / ${finite(summary.expected)}` }],
-    schedule: [scope, { label: '课表批次', value: finite(summary.totalBatches), note: '当前范围批次总量' }, { label: '未解决冲突', value: finite(summary.unresolvedConflicts), note: '正式冲突检测结果', tone: 'warning' }, { label: '发布覆盖', value: percent(summary.publishedRate), note: `${finite(summary.published)} / ${finite(summary.totalBatches)}` }],
-    courseSelection: [scope, { label: '容量', value: finite(summary.totalCapacity ?? summary.capacity), note: '当前批次供给容量' }, { label: '低人数课程', value: finite(summary.lowEnrollCount), note: '低于正式开课下限', tone: 'warning' }, { label: '填充比例', value: percent(summary.fillRate), note: `${finite(summary.totalSelected ?? summary.selected)} / ${finite(summary.totalCapacity ?? summary.capacity)}` }],
-    exam: [scope, { label: '应考课程', value: finite(summary.courseTotal ?? summary.confirmedCourses), note: '当前范围考试课程' }, { label: '缺考与违纪', value: finite(summary.absentCount) + finite(summary.violationCount), note: '只计正式异常记录', tone: 'warning' }, { label: '编排完成', value: percent(summary.confirmRate ?? summary.rate), note: `${finite(summary.confirmedCount ?? summary.arranged)} / ${finite(summary.courseTotal ?? summary.confirmedCourses)}` }],
-    grade: [scope, { label: '有效成绩', value: finite(summary.failDenominator), note: '正式有效成绩统计基数' }, { label: '不及格人数', value: finite(summary.failNumerator), note: '不是学业预警条数', tone: 'warning' }, { label: '成绩发布', value: percent(summary.entryPublishRate), note: `${finite(summary.publishNumerator)} / ${finite(summary.publishDenominator)}` }],
-    warning: [scope, { label: '未闭环预警', value: finite(summary.total), note: '排除已关闭预警' }, { label: '风险等级', value: (summary.byLevel || []).length, note: '正式预警等级分布', tone: 'warning' }, { label: '预警来源', value: (summary.bySource || []).length, note: '真实规则命中来源' }],
-    graduation: [scope, { label: '应审人数', value: finite(summary.expected), note: '当前批次毕业审核对象' }, { label: '待核或异常', value: pending(summary.expected, summary.passed), note: '应审减已通过', tone: 'warning' }, { label: '通过比例', value: percent(summary.passRate), note: `${finite(summary.passed)} / ${finite(summary.expected)}` }],
-    resource: [scope, { label: '可用教室', value: finite(summary.availableRooms ?? summary.classroomTotal), note: '按资源正式状态统计' }, { label: '待审预约', value: finite(summary.pendingBookings ?? summary.bookingTotal), note: '需要资源管理员处理', tone: 'warning' }, { label: '资源类型', value: (summary.byRoomType || summary.byType || summary.byStatus || []).length, note: '资源分类' }]
+    statusChange: [card('已生效异动', numeric(x.total), '条')],
+    registration: [card('统计注册记录', numeric(x.expected), '条'), card('已完成注册', numeric(x.registered), '条'), card('未完成注册', remaining(x.expected, x.registered), '条', '', 'warning'), card('完成率', percent(x.rate), '', basis(x.registered, x.expected))],
+    course: [card('启用课程', numeric(x.total), '门'), card('覆盖学院', Array.isArray(x.byCollege) ? x.byCollege.length : null, '个')],
+    teachingTask: [card('任务总数', numeric(x.expected), '项'), card('已记录确认时间', numeric(x.confirmed), '项'), card('缺少确认时间', remaining(x.expected, x.confirmed), '项', '', 'warning'), card('确认时间记录率', percent(x.rate), '', basis(x.confirmed, x.expected))],
+    schedule: [card('课表批次', numeric(x.totalBatches), '个'), card('已发布批次', numeric(x.published), '个'), card('未解决冲突', numeric(x.unresolvedConflicts), '条', '', 'warning'), card('发布率', percent(x.publishedRate), '', basis(x.published, x.totalBatches))],
+    courseSelection: [card('选课容量', numeric(x.totalCapacity ?? x.capacity), '人次'), card('已选', numeric(x.totalSelected ?? x.selected), '人次'), card('低人数课程', numeric(x.lowEnrollCount), '门', '', 'warning'), card('填充率', percent(x.fillRate), '', basis(x.totalSelected ?? x.selected, x.totalCapacity ?? x.capacity))],
+    exam: [card('应考课程', numeric(x.courseTotal ?? x.confirmedCourses), '门'), card('已完成编排', numeric(x.confirmedCount ?? x.arranged), '门'), card('缺考与违纪', numeric(x.absentCount) === null || numeric(x.violationCount) === null ? null : numeric(x.absentCount) + numeric(x.violationCount), '条', '', 'warning'), card('编排完成率', percent(x.confirmRate ?? x.rate), '', basis(x.confirmedCount ?? x.arranged, x.courseTotal ?? x.confirmedCourses))],
+    grade: [card('有效成绩记录', numeric(x.failDenominator), '条'), card('不及格成绩记录', numeric(x.failNumerator), '条', '', 'warning'), card('不及格占比', ratioLabel(x.failNumerator, x.failDenominator), '', basis(x.failNumerator, x.failDenominator))],
+    warning: [card('未闭环预警', numeric(x.total), '条', '排除已关闭预警'), ...(x.byLevel || []).map(g => card(STATUS_NAMES[g.key] || statsGroupLabel(g), numeric(g.count), '条', '', g.key === 'LOW' ? '' : 'warning'))],
+    graduation: [card('应审人数', numeric(x.expected), '人'), card('已通过', numeric(x.passed), '人'), card('待核或异常', remaining(x.expected, x.passed), '人', '', 'warning'), card('通过率', percent(x.passRate), '', basis(x.passed, x.expected))],
+    resource: [card(x.classroomTotal != null ? '教室总数' : '可用教室', numeric(x.classroomTotal ?? x.availableRooms), '间', '资源状态不代表时段空闲'), card('待审预约', numeric(x.pendingBookings ?? x.bookingTotal), '条', '', 'warning')]
   }
   return maps[tab] || []
 }
@@ -375,7 +268,8 @@ const TAB_META = {
     detailTitle: '缺少确认时间的教学任务',
     detailColumns: [
       { key: 'courseName', title: '课程' }, { key: 'teachingClassName', title: '教学班' },
-      { key: 'teacherName', title: '教师' }, { key: 'status', title: '业务状态' }, { key: 'confirmationEvidence', title: '确认依据' }, { key: 'taskSource', title: '来源核对' }
+      { key: 'teacherName', title: '教师' }, { key: 'status', title: '业务状态' },
+      { key: 'confirmationEvidence', title: '确认依据' }, { key: 'taskSource', title: '处理入口' }
     ],
     detailFetch: (api, p) => api.getStatsTeachingTaskPending(p)
   },
@@ -454,11 +348,11 @@ const EXPORT_DOMAINS = [
 ]
 
 export default {
-  inject: { academicFlow: { default: null } },
   name: 'AaStatsOverviewView',
+  inject: { academicFlow: { default: null } },
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppButton,
-    AppInlineAlert, AppG2Chart, AppSelect, AppTermEntityPicker,
+    AppG2Chart, AppSelect, AppTermEntityPicker,
     AppCollegePicker, AppMajorPicker, AppGraduationBatchPicker, AaStatsSnapshotWorkspace
   },
   props: { ctx: { type: Object, required: true } },
@@ -466,7 +360,7 @@ export default {
     return {
       TABS, STATS_TOPICS, requestId: 0, detailRequestId: 0, exportRequestId: 0, updatedAt: '',
       sourceAsOf: '', overviewMetricKey: '',
-      overviewColumns: [{ key: 'label', title: '业务主题 / 指标' }, { key: 'value', title: '当前值' }, { key: 'scope', title: '统计范围' }, { key: 'time', title: '数据时间' }, { key: 'status', title: '结果说明' }, { key: 'action', title: '办理入口' }],
+      overviewColumns: [{ key: 'sectionLabel', title: '业务主题' }, { key: 'label', title: '指标' }, { key: 'value', title: '当前值' }, { key: 'basis', title: '统计基数' }, { key: 'action', title: '查看' }],
       tab: 'overview',
       loading: true,
       error: '',
@@ -483,10 +377,10 @@ export default {
       detail: { error: '', open: false, loading: false, title: '', rows: [], columns: [], pagination: { page: 1, pageSize: 20, total: 0 } },
       // 导出报表
       exp: { domain: 'overview', termId: '', collegeId: '', purpose: '', downloading: false, receipt: null },
-      workloadTeacherKey: '',
+      workloadTeacherKey: '', workloadSearch: '', workloadPage: 1, detailCourseName: '', filterLabels: {},
       workloadColumns: [
-        { key: 'teacherName', title: '教师' }, { key: 'totalHours', title: '学时合计' },
-        { key: 'taskCount', title: '任务数' }, { key: 'ops', title: '操作' }
+        { key: 'teacherName', title: '教师' }, { key: 'taskCount', title: '教学任务数（项）' },
+        { key: 'totalHours', title: '计划学时（学时）' }, { key: 'ops', title: '查看' }
       ]
     }
   },
@@ -494,108 +388,80 @@ export default {
     statsPage() { return STATS_PAGE_META[this.tab] || STATS_PAGE_META.overview },
     isMetricTab() { return !!TAB_META[this.tab] && this.tab !== 'overview' },
     canOpenCurrentDetail() { return !!TAB_META[this.tab]?.detailFetch },
+    courseCategoryOptions() { return [{ value: '', label: '全部类别' }, ...Object.entries(COURSE_CATEGORY).map(([value, label]) => ({ value, label }))] },
+    sourceTimeLabel() { return this.sourceAsOf ? formatDateTime(this.sourceAsOf, '时间待核对') : '未提供' },
     analyticsCards() {
-      if (this.tab === 'export' || this.tab === 'snapshot') return []
-      if (this.tab === 'overview') {
-        const available = this.indicators.filter(item => item.status !== 'MODULE_NOT_ENABLED')
-        return [
-          { label: '当前统计范围', value: this.appliedScopeLabel, note: '筛选与当前账号权限共同限定' },
-          { label: '正式指标', value: this.indicators.length, note: '本次返回的指标总数' },
-          { label: '可下钻指标', value: available.filter(item => this.drillable(item)).length, note: '可进入同口径正式明细' },
-          { label: '数据状态', value: this.updatedAt || '读取中', note: '显示本次成功查询时间' }
-        ]
-      }
+      if (['export', 'snapshot'].includes(this.tab)) return []
+      if (this.tab === 'overview') return ['registration', 'teachingTask', 'schedule', 'gradePublish'].map(key => this.indicators.find(x => x.key === key)).filter(Boolean).map(x => ({ label: this.indicatorLabel(x), value: this.indicatorValue(x), note: this.indicatorBasis(x) }))
       if (this.tab === 'workload') {
-        const rows = this.sSummary.ranking || []
-        return [
-          { label: '当前统计范围', value: this.appliedScopeLabel, note: '筛选与当前账号权限共同限定' },
-          { label: '授课教师', value: rows.length, note: '当前范围有任务的教师' },
-          { label: '教学任务', value: rows.reduce((sum, row) => sum + finite(row.taskCount), 0), note: '按教学任务聚合' },
-          { label: '计划学时', value: rows.reduce((sum, row) => sum + finite(row.combinedHours ?? row.totalHours), 0), note: '安排参考，非绩效结算' }
-        ]
+        const rows = this.sSummary.ranking
+        const sum = key => !Array.isArray(rows) || rows.some(r => numeric(r[key]) === null) ? null : rows.reduce((n, r) => n + numeric(r[key]), 0)
+        const hours = !Array.isArray(rows) || rows.some(r => numeric(r.combinedHours ?? r.totalHours) === null) ? null : rows.reduce((n, r) => n + numeric(r.combinedHours ?? r.totalHours), 0)
+        return [{ label: '授课教师', value: Array.isArray(rows) ? rows.length : null, unit: '人' }, { label: '教学任务（按教师汇总）', value: sum('taskCount'), unit: '项' }, { label: '计划学时', value: hours, unit: '学时' }]
       }
-      return metricCards(this.tab, this.sSummary, this.appliedScopeLabel, this.updatedAt)
+      return metricCards(this.tab, this.sSummary)
     },
+    attentionItems() {
+      return ['registration', 'teachingTask', 'warning'].map(key => {
+        const item = this.indicators.find(x => x.key === key && x.status !== 'MODULE_NOT_ENABLED')
+        if (!item) return null
+        const value = key === 'warning' ? numeric(item.value) : remaining(item.denominator, item.numerator)
+        return value > 0 ? { ...item, attentionValue: value, attentionLabel: { registration: '未完成注册记录', teachingTask: '缺少确认时间的教学任务', warning: '未闭环预警' }[key] } : null
+      }).filter(Boolean)
+    },
+    pendingTaskCount() { return remaining(this.sSummary.expected, this.sSummary.confirmed) },
+    distributionTitle() { return { registration: '注册完成情况', teachingTask: '确认情况', grade: '成绩记录分布', warning: '风险分布', resource: '资源状态分布', graduation: '资格审核结果' }[this.tab] || `${this.statsPage.title} · 分布` },
+    detailActionLabel() { return { registration: '查看未完成明细', teachingTask: '核对确认依据', grade: '查看不及格明细', schedule: '查看冲突明细', exam: '查看缺考与违纪明细', courseSelection: '查看低人数课程', resource: '查看待审预约', warning: '查看预警明细', graduation: '查看异常明细', course: '查看课程明细', statusChange: '查看异动明细' }[this.tab] || '查看明细' },
     analyticsDistribution() {
-      const summary = this.sSummary || {}
-      const candidates = [summary.byType, summary.byCategory, summary.byCollege, summary.byBatchStatus,
-        summary.byStatus, summary.byLevel, summary.bySource, summary.byAbnormalItem, summary.byRoomType]
-      const returned = candidates.find(rows => Array.isArray(rows) && rows.length)
-      if (returned) return returned.map(row => ({ name: STATUS_NAMES[row.key] || row.label || row.key, value: finite(row.count) }))
-      const compositions = {
-        registration: [
-          { name: '已注册', value: finite(summary.registered) },
-          { name: '未注册', value: Math.max(0, finite(summary.expected) - finite(summary.registered)) }
-        ],
-        teachingTask: [
-          { name: '已确认', value: finite(summary.confirmed) },
-          { name: '未确认', value: Math.max(0, finite(summary.expected) - finite(summary.confirmed)) }
-        ],
-        schedule: [
-          { name: '已发布批次', value: finite(summary.published) },
-          { name: '未发布批次', value: Math.max(0, finite(summary.totalBatches) - finite(summary.published)) },
-          { name: '未解决冲突', value: finite(summary.unresolvedConflicts) }
-        ],
-        courseSelection: [
-          { name: '已选人次', value: finite(summary.totalSelected ?? summary.selected) },
-          { name: '剩余容量', value: Math.max(0, finite(summary.totalCapacity ?? summary.capacity) - finite(summary.totalSelected ?? summary.selected)) }
-        ],
-        exam: [
-          { name: '已完成编排', value: finite(summary.confirmedCount ?? summary.arranged) },
-          { name: '待编排', value: Math.max(0, finite(summary.courseTotal ?? summary.confirmedCourses) - finite(summary.confirmedCount ?? summary.arranged)) },
-          { name: '正式异常', value: finite(summary.absentCount) + finite(summary.violationCount) }
-        ],
-        grade: [
-          { name: '及格记录', value: Math.max(0, finite(summary.failDenominator) - finite(summary.failNumerator)) },
-          { name: '不及格记录', value: finite(summary.failNumerator) }
-        ],
-        graduation: [
-          { name: '已通过', value: finite(summary.passed) },
-          { name: '待核或异常', value: Math.max(0, finite(summary.expected) - finite(summary.passed)) }
-        ]
+      const x = this.sSummary
+      const groups = [x.byType, x.byCategory, x.byStatus, x.byLevel, x.byBatchStatus, x.byAbnormalItem, x.byRoomType, x.bySource].find(rows => Array.isArray(rows) && rows.length)
+      if (groups) return groups.filter(g => numeric(g.count) !== null).map(g => ({ name: g.label ? statsGroupLabel(g) : this.groupLabel(g.key), value: numeric(g.count) }))
+      const pairs = {
+        registration: [['已完成注册', x.registered], ['未完成注册', remaining(x.expected, x.registered)]],
+        teachingTask: [['已记录确认时间', x.confirmed], ['缺少确认时间', remaining(x.expected, x.confirmed)]],
+        schedule: [['已发布批次', x.published], ['其他批次', remaining(x.totalBatches, x.published)]],
+        courseSelection: [['已选人次', x.totalSelected ?? x.selected], ['剩余容量', remaining(x.totalCapacity ?? x.capacity, x.totalSelected ?? x.selected)]],
+        exam: [['已完成编排', x.confirmedCount ?? x.arranged], ['待编排', remaining(x.courseTotal ?? x.confirmedCourses, x.confirmedCount ?? x.arranged)]],
+        grade: [['及格记录', remaining(x.failDenominator, x.failNumerator)], ['不及格记录', x.failNumerator]],
+        graduation: [['已通过', x.passed], ['待核或异常', remaining(x.expected, x.passed)]]
       }
-      if (compositions[this.tab]) return compositions[this.tab]
-      return this.analyticsMetricSeries
+      const rows = pairs[this.tab]
+      return rows && rows.every(([, value]) => numeric(value) !== null) ? rows.map(([name, value]) => ({ name, value: numeric(value) })) : []
     },
-    analyticsHasServerGroups() {
-      return [this.sSummary.byType, this.sSummary.byCategory, this.sSummary.byCollege, this.sSummary.byBatchStatus,
-        this.sSummary.byStatus, this.sSummary.byLevel, this.sSummary.bySource, this.sSummary.byAbnormalItem,
-        this.sSummary.byRoomType].some(rows => Array.isArray(rows) && rows.length)
-    },
-    analyticsMetricSeries() {
-      // 只用本身就是数字的指标画图；“20:30”“85%”这类文字不转成数字，避免时间变成 20、百分比丢单位
-      return this.analyticsCards.slice(1)
-        .filter(card => strictNumber(card.value) !== null)
-        .map(card => ({ name: card.label, value: strictNumber(card.value) }))
+    analyticsHasServerGroups() { return [this.sSummary.byType, this.sSummary.byCategory, this.sSummary.byStatus, this.sSummary.byLevel, this.sSummary.byBatchStatus, this.sSummary.byAbnormalItem, this.sSummary.byRoomType, this.sSummary.bySource].some(rows => Array.isArray(rows) && rows.length) },
+    compositionTotal() {
+      if (this.analyticsHasServerGroups || !['registration', 'teachingTask', 'grade', 'graduation', 'courseSelection'].includes(this.tab) || this.analyticsDistribution.length !== 2) return null
+      return this.analyticsDistribution.reduce((n, row) => n + row.value, 0)
     },
     analyticsDistributionSpec() {
-      return { type: 'interval', data: this.analyticsDistribution, encode: { x: 'name', y: 'value' }, coordinate: { transform: [{ type: 'transpose' }] }, axis: { x: { title: null }, y: { title: null } }, style: { radiusTopRight: 4, radiusBottomRight: 4 } }
+      const riskColors = this.tab === 'warning' ? { legend: false, scale: { color: { range: this.analyticsDistribution.map(row => row.name === '低风险' ? '#2b5eb4' : row.name === '中风险' ? '#b76700' : '#c23232') } } } : {}
+      return { type: 'interval', data: this.analyticsDistribution, encode: { x: 'name', y: 'value', ...(this.tab === 'warning' ? { color: 'name' } : {}) }, coordinate: { transform: [{ type: 'transpose' }] }, axis: { x: { title: null }, y: { title: null } }, ...riskColors }
     },
-    analyticsMetricSpec() {
-      return { type: 'interval', data: this.analyticsMetricSeries, encode: { x: 'name', y: 'value' }, axis: { x: { title: null }, y: { title: null } }, style: { radiusTopLeft: 4, radiusTopRight: 4 } }
-    },
-    analyticsLedgerColumns() {
-      return [{ key: 'metric', title: '统计项' }, { key: 'value', title: '本学期值' }, { key: 'scope', title: '统计范围' }, { key: 'time', title: '更新时间' }, { key: 'action', title: '办理入口' }]
-    },
+    ledgerTotal() { return this.compositionTotal ?? (this.tab === 'warning' && this.sSummary.byLevel?.length ? numeric(this.sSummary.total) : null) },
+    analyticsLedgerColumns() { return [{ key: 'metric', title: '统计项' }, { key: 'value', title: '当前值' }, ...(this.ledgerTotal !== null ? [{ key: 'share', title: '占比' }] : []), { key: 'action', title: '查看' }] },
     analyticsLedgerRows() {
-      // 明细保留原值和单位，不复用图表里的数字
-      const rows = this.analyticsDistribution.length ? this.analyticsDistribution : this.analyticsCards.slice(1).map(card => ({ name: card.label, value: card.value }))
-      return rows.map((row, index) => ({
-        rowKey: `${this.tab}-${index}-${row.name}`,
-        metric: row.name,
-        value: row.value,
-        scope: this.appliedScopeLabel,
-        time: this.sourceAsOf || this.updatedAt || '—',
-        note: this.analyticsHasServerGroups ? '正式分组结果' : '由本次正式汇总值构成，不跨口径推算'
-      }))
+      const units = { course: '门', registration: '条', teachingTask: '项', schedule: '个', grade: '条', warning: '条', graduation: '人', resource: '间', exam: '门', courseSelection: '人次', statusChange: '条' }
+      const target = { registration: '未完成注册', teachingTask: '缺少确认时间', grade: '不及格记录' }[this.tab]
+      const unit = this.tab === 'courseSelection' && this.sSummary.byBatchStatus?.length ? '个批次' : this.tab === 'graduation' && this.sSummary.byAbnormalItem?.length ? '项' : units[this.tab] || ''
+      return this.analyticsDistribution.map((r, i) => ({ rowKey: `${this.tab}-${i}-${r.name}`, metric: r.name, value: countLabel(r.value, unit), share: ratioLabel(r.value, this.ledgerTotal), canDetail: this.canOpenCurrentDetail && r.name === target }))
     },
+    // shortcut: 仅检索当前接口已返回的授权汇总；接口提供分页契约后改为服务端查询。
+    filteredWorkload() { const q = this.workloadSearch.trim().toLocaleLowerCase(); return (this.sSummary.ranking || []).filter(r => !q || String(r.teacherName || '').toLocaleLowerCase().includes(q)) },
+    workloadRows() { return this.filteredWorkload.slice((this.workloadPagination.page - 1) * 20, this.workloadPagination.page * 20) },
+    workloadPagination() { return { page: Math.min(Math.max(1, this.workloadPage), Math.max(1, Math.ceil(this.filteredWorkload.length / 20))), pageSize: 20, total: this.filteredWorkload.length } },
     overviewRows() { return this.overviewSections.flatMap(section => section.items.map(item => ({ ...item, sectionLabel: section.label }))) },
     distributionOptions() { return this.indicators.filter(item => item.status !== 'MODULE_NOT_ENABLED' && Array.isArray(item.groups) && item.groups.some(group => typeof group.count === 'number' && Number.isFinite(group.count))) },
     distributionMetric() { return this.distributionOptions.find(item => item.key === this.overviewMetricKey) || this.distributionOptions[0] || null },
     overviewDistributionSpec() {
       return { type: 'interval', data: (this.distributionMetric?.groups || []).filter(group => typeof group.count === 'number' && Number.isFinite(group.count)).map(group => ({ name: statsGroupLabel(group), value: group.count })), encode: { x: 'name', y: 'value' }, coordinate: { transform: [{ type: 'transpose' }] }, axis: { y: { title: null }, x: { title: null } } }
     },
-    appliedScopeLabel() { return [this.appliedFilters.termId ? `学期编号 ${this.appliedFilters.termId}` : '各指标原有学期范围', this.appliedFilters.collegeId ? `学院编号 ${this.appliedFilters.collegeId}` : '当前授权范围', this.appliedFilters.majorId ? `专业编号 ${this.appliedFilters.majorId}` : ''].filter(Boolean).join(' · ') },
+    appliedScopeLabel() {
+      if (this.tab === 'resource') return this.ctx.dataScope?.scopeName || '当前授权资源范围'
+      return [['termId', '学期', '默认学期口径'], ['collegeId', '学院', '全部授权学院'], ...(['overview', 'registration'].includes(this.tab) ? [['majorId', '专业', '全部专业']] : [])].map(([key, title, empty]) => {
+        const value = this.appliedFilters[key], saved = this.filterLabels[key]
+        return value ? saved?.value === String(value) && saved.label ? saved.label : `已选${title}` : empty
+      }).join(' · ')
+    },
     filtersDirty() { return JSON.stringify(this.filters) !== JSON.stringify(this.appliedFilters) },
     contextSignature() { return JSON.stringify([this.ctx.ctxKey, this.ctx.permissionPatterns, this.ctx.dataScope, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
     canExport() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.stats.export') },
@@ -628,24 +494,42 @@ export default {
     contextSignature() {
       this.requestId++; this.detailRequestId++; this.exportRequestId++
       this.updatedAt = ''; this.detail.open = false; this.detail.rows = []; this.drill.rows = []
-      this.activeDrill = ''; this.workloadTeacherKey = ''; this.exp.purpose = ''; this.exp.downloading = false; this.exp.receipt = null
+      this.activeDrill = ''; this.workloadSearch = ''; this.workloadPage = 1; this.filterLabels = {}; this.workloadTeacherKey = ''; this.exp.purpose = ''; this.exp.downloading = false; this.exp.receipt = null
       this.loadTab()
     }
   },
   methods: {
+    numberLabel: countLabel,
+    percentage: percent,
+    groupLabel(value) { return value == null || value === '' ? '未提供' : STATUS_NAMES[value] || GRAD_ITEM_LABEL[value] || statsGroupLabel({ key: value }) },
+    displayMetric(card) { return typeof card.value === 'string' ? card.value : countLabel(card.value) },
+    indicatorLabel(item) { return { teachingTask: '教学任务确认率', gradePublish: '成绩任务发布率', failRate: '不及格成绩记录占比' }[item.key] || item.label },
+    indicatorBasis(item) { return item.unit === '%' && numeric(item.denominator) !== null ? numeric(item.denominator) === 0 ? '暂无统计基数' : basis(item.numerator, item.denominator) : '—' },
+    rememberFilter(key, value, items) { const item = Array.isArray(items) ? items[0] : items; this.filterLabels[key] = { value: String(value || ''), label: typeof item?.label === 'string' ? item.label : '' } },
+    collegeChanged(value, items) { this.rememberFilter('collegeId', value, items); this.filters.majorId = ''; delete this.filterLabels.majorId },
+    resetFilters() { for (const key of Object.keys(this.filters)) this.filters[key] = ''; this.filterLabels = {}; this.detailCourseName = ''; this.search() },
+    searchGradeDetail() {
+      this.filters = { ...this.appliedFilters, courseName: this.detailCourseName.trim() }
+      const query = { ...this.routeQuery(), detail: '1' }
+      if (JSON.stringify(query) === JSON.stringify(this.$route.query)) { this.detail.pagination.page = 1; return this.loadDetail() }
+      return this.$router.push({ path: this.$route.path, query })
+    },
     indicatorValue(item) {
       if (item.status === 'MODULE_NOT_ENABLED') return '未启用'
       const value = item.unit === '%' ? item.rate : item.value
       return typeof value === 'number' && Number.isFinite(value) ? `${value}${item.unit || ''}` : '—'
     },
     identity() { return academicIdentity(currentUserFromToken(), this.ctx) },
-    allowedTab(tab) { return tab === 'export' ? this.canExport : tab === 'snapshot' ? this.canViewSnapshot : true },
+    allowedTab(tab) {
+      return academicRoleAllows({ path: '/admin/academic-affairs/stats', query: { tab } }, this.ctx)
+        && (tab === 'export' ? this.canExport : tab === 'snapshot' ? this.canViewSnapshot : true)
+    },
     restoreRoute() {
       const query = this.$route.query || {}
       const previous = JSON.stringify([this.tab, this.appliedFilters])
       this.tab = TABS.some(item => item.key === query.tab) ? query.tab : 'overview'
       for (const key of Object.keys(this.filters)) this.filters[key] = typeof query[key] === 'string' ? query[key] : ''
-      this.appliedFilters = { ...this.filters }
+      this.appliedFilters = { ...this.filters }; this.detailCourseName = this.appliedFilters.courseName
       this.activeDrill = ''; this.detail.open = false; this.detailRequestId++; this.workloadTeacherKey = ''
       if (!this.loading && this.updatedAt && !this.error && !this.scopeBlocked && previous === JSON.stringify([this.tab, this.appliedFilters])) this.restoreDetailRoute()
       else this.loadTab()
@@ -662,7 +546,7 @@ export default {
       } else if (this.tab === 'workload' && typeof query.teacherKey === 'string' && query.teacherKey.trim()) {
         this.workloadTeacherKey = query.teacherKey
         const row = (this.sSummary.ranking || []).find(item => String(item.teacherKey) === query.teacherKey)
-        this.detail.open = true; this.detail.title = `${row?.teacherName || query.teacherKey} · 授课明细`
+        this.detail.open = true; this.detail.title = `${row?.teacherName || '教师名称待核对'} · 授课明细`
         this.detail.columns = [
           { key: 'courseName', title: '课程' }, { key: 'teachingClassName', title: '教学班' },
           { key: 'weeklyHours', title: '周学时' }, { key: 'totalHours', title: '计划总学时' }, { key: 'status', title: '状态' }
@@ -734,7 +618,7 @@ export default {
       this.detailRequestId++
       this.loading = true; this.error = ''; this.updatedAt = ''
       this.sourceAsOf = ''
-      this.indicators = []; this.sSummary = {}; this.scopeBlocked = false
+      this.indicators = []; this.sSummary = {}; this.scopeBlocked = false; this.workloadPage = 1
       const tab = this.tab
       try {
         if (!this.allowedTab(tab)) throw new Error(tab === 'export' ? '当前账号没有报表导出权限' : '当前账号没有统计快照查看权限')
@@ -813,17 +697,6 @@ export default {
     onDetailPage(p) {
       this.detailRoute({ ...(this.workloadTeacherKey ? { teacherKey: this.workloadTeacherKey } : { detail: '1' }), detailPage: String(p) })
     },
-    canOpenTaskSource(row) {
-      return this.tab === 'teachingTask' && !this.detail.loading && !this.detail.error && this.detail.rows.includes(row) &&
-        matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.view') &&
-        /^[1-9]\d*$/.test(String(row?.batchId)) && /^[1-9]\d*$/.test(String(row?.taskId))
-    },
-    openTaskSource(row) {
-      if (!this.canOpenTaskSource(row)) return
-      const returnToken = this.academicFlow?.captureReturn()
-      this.$router.push({ path: `/admin/academic-affairs/teaching-tasks/${row.batchId}`,
-        query: { teachingTaskId: String(row.taskId), ...(returnToken ? { returnToken } : {}) } })
-    },
     async loadDetail() {
       const meta = this.tab === 'workload' && this.workloadTeacherKey
         ? { detailFetch: (api, params) => api.getStatsWorkloadDetail({ ...params, teacherKey: this.workloadTeacherKey }) }
@@ -861,6 +734,17 @@ export default {
     },
     viewWorkloadDetail(row) {
       if (row?.teacherKey) this.detailRoute({ teacherKey: String(row.teacherKey) })
+    },
+    canOpenTaskSource(row) {
+      return this.tab === 'teachingTask' && !this.detail.loading && !this.detail.error && this.detail.rows.includes(row) &&
+        matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.view') &&
+        /^[1-9]\d*$/.test(String(row?.batchId)) && /^[1-9]\d*$/.test(String(row?.taskId))
+    },
+    openTaskSource(row) {
+      if (!this.canOpenTaskSource(row)) return
+      const returnToken = this.academicFlow?.captureReturn()
+      this.$router.push({ path: `/admin/academic-affairs/teaching-tasks/${row.batchId}`,
+        query: { teachingTaskId: String(row.taskId), ...(returnToken ? { returnToken } : {}) } })
     },
     async openExport() {
       this.exp.domain = this.tab === 'snapshot' ? 'overview' : this.tab
@@ -915,119 +799,65 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.stats-kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 16px; }
-.stats-kpi-card { display: flex; min-width: 0; min-height: 108px; flex-direction: column; gap: 8px; padding: 16px 18px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
-.stats-kpi-card.is-warning { border-color: #efd19d; background: #fff8e9; }
-.stats-kpi-card > span { color: var(--text-secondary); font-size: 12px; }
-.stats-kpi-card > strong { overflow: hidden; color: var(--text-primary); font-size: 25px; line-height: 1.2; text-overflow: ellipsis; white-space: nowrap; }
-.stats-kpi-card.is-warning > strong { color: #9a5b00; }
-.stats-kpi-card > small { margin-top: auto; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
-.stats-stage-rail { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; padding: 15px 18px; margin: 0 0 16px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); list-style: none; }
-.stats-stage-rail li { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; }
-.stats-stage-rail li:not(:last-child)::after { position: absolute; top: 15px; right: 10px; width: calc(100% - 46px); height: 1px; background: var(--border-base); content: ''; transform: translateX(100%); }
-.stats-stage-rail b { z-index: 1; display: grid; width: 30px; height: 30px; flex: 0 0 30px; place-items: center; border: 1px solid var(--border-base); border-radius: 50%; background: var(--bg-card); color: var(--text-secondary); font-size: 12px; }
-.stats-stage-rail span { display: grid; gap: 3px; min-width: 0; }
-.stats-stage-rail strong { color: var(--text-primary); font-size: 12px; }
-.stats-stage-rail small { color: var(--text-secondary); font-size: 10px; }
-.stats-stage-rail .is-done b { border-color: #b8dbc8; background: #eef9f3; color: #2f8657; }
-.stats-stage-rail .is-current b { border-color: var(--stats-accent); background: var(--stats-accent); color: #fff; }
-.stats-export-grid { display: grid; grid-template-columns: minmax(0, 3fr) minmax(240px, 1fr); gap: 16px; }
-.stats-export-card { overflow: hidden; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
-.stats-export-card > header { padding: 15px 18px; border-bottom: 1px solid var(--border-base); }
-.stats-export-card h2 { margin: 0; color: var(--text-primary); font-size: 15px; }
-.stats-export-card .aa-export-form { border: 0; border-radius: 0; }
-.stats-export-purpose { min-width: 100% !important; max-width: none !important; }
-.stats-export-purpose textarea { min-height: 92px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border-base); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); font: inherit; line-height: 1.5; }
-.stats-export-card > footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 13px 18px; border-top: 1px solid var(--border-base); background: var(--bg-soft, #f5f8fd); color: var(--text-secondary); font-size: 11px; }
-.stats-export-rules dl { display: grid; gap: 0; margin: 0; }
-.stats-export-rules dl > div { padding: 15px 18px; border-bottom: 1px solid var(--border-base); }
-.stats-export-rules dl > div:last-child { border-bottom: 0; }
-.stats-export-rules dt { margin-bottom: 5px; color: var(--text-primary); font-size: 12px; font-weight: 650; }
-.stats-export-rules dd { margin: 0; color: var(--text-secondary); font-size: 11px; line-height: 1.55; }
-.stats-export-receipt { margin-top: 16px; }
-.stats-export-receipt > div { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 16px 18px; }
-.stats-export-receipt span { color: var(--text-secondary); font-size: 12px; }
-.stats-analysis-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-bottom: 16px; }
-.stats-analysis-panel { min-width: 0; overflow: hidden; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
-.stats-analysis-panel > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 15px 18px; border-bottom: 1px solid var(--border-base); }
-.stats-analysis-panel h2 { font-size: 15px; margin: 0; }
-.stats-analysis-panel header p, .stats-analysis-panel header > span, .stats-analysis-caption, .stats-cell-note { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
-.stats-analysis-panel header p { margin: 6px 0 0; }
-.stats-analysis-panel select { max-width: 220px; min-width: 120px; background: var(--bg-card); color: var(--text-primary); border: 1px solid var(--border-base); border-radius: 6px; padding: 6px; font: inherit; font-size: 12px; }
-.stats-analysis-caption { margin: 12px 18px; }
-.stats-analysis-panel > .app-button { margin: 0 18px 18px; }
-.stats-cell-note { display: block; margin-top: 4px; }
-.stats-indicator-ledger { margin-bottom: 16px; }
-@container academic-body (max-width: 900px) { .stats-kpi-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
-@container academic-body (max-width: 720px) { .stats-analysis-grid { grid-template-columns: minmax(0, 1fr); } }
-@container academic-body (max-width: 720px) { .stats-export-grid { grid-template-columns: minmax(0, 1fr); }.stats-stage-rail { grid-template-columns: minmax(0, 1fr); gap: 10px; }.stats-stage-rail li::after { display: none; } }
-@container academic-body (max-width: 430px) { .stats-kpi-grid { grid-template-columns: minmax(0, 1fr); } }
-.aa-tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border-200, #e5e6eb); margin-bottom: 14px; flex-wrap: wrap; }
-.aa-tab { padding: 8px 14px; border: none; background: none; cursor: pointer; font-size: 13px; color: var(--text-secondary, #64748b); border-bottom: 2px solid transparent; white-space: nowrap; }
-.aa-tab.is-active { color: var(--primary-color, #165dff); border-bottom-color: var(--primary-color, #165dff); font-weight: 600; }
-.aa-filter { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
-.aa-filter__item { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: var(--text-700, #4e5969); }
-.aa-input { height: 32px; padding: 0 10px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 13px; }
-.aa-input--sm { min-width: 160px; }
-.mp-btn--ghost { background: transparent; border: 1px solid var(--border-300, #d0d3d9); color: var(--text-700, #4e5969); }
-.aa-scope-note { margin: 4px 0; padding: 10px 12px; background: var(--warning-50, #fff7e8); border: 1px solid var(--warning-200, #ffcf8b); border-radius: 6px; color: var(--warning-700, #a86400); font-size: 13px; }
-.aa-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
-.aa-metric-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
-.aa-groups .app-g2-chart { margin-bottom: 8px; }
-.aa-card { display: flex; flex-direction: column; gap: 6px; padding: 16px; text-align: left; border: 1px solid var(--border-200, #e5e6eb); border-radius: 10px; background: var(--bg-white, #fff); cursor: default; transition: box-shadow .15s, border-color .15s; }
-.aa-card--drill { cursor: pointer; }
-.aa-card--drill:hover { border-color: var(--primary-400, #6aa1ff); box-shadow: 0 2px 10px rgba(22, 93, 255, .08); }
-.aa-card--active { border-color: var(--primary-500, #165dff); box-shadow: 0 2px 12px rgba(22, 93, 255, .14); }
-.aa-card--muted { background: var(--fill-50, #f7f8fa); }
-.aa-card--static { cursor: default; }
-.aa-card__label { font-size: 13px; color: var(--text-600, #6b7280); }
-.aa-card__value { font-size: 26px; font-weight: 700; color: var(--text-900, #1f2329); line-height: 1.1; }
-.aa-card__value em { font-size: 14px; font-weight: 500; margin-left: 2px; color: var(--text-500, #86909c); font-style: normal; }
-.aa-card__value--empty { color: var(--text-400, #c9cdd4); }
-.aa-card__sub { font-size: 12px; color: var(--text-500, #86909c); }
-.aa-card__na { font-size: 18px; font-weight: 600; color: var(--text-400, #c9cdd4); }
-.aa-card__drill-hint { font-size: 12px; color: var(--primary-500, #165dff); margin-top: 2px; }
-.aa-groups { margin-top: 12px; padding: 12px 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 8px; background: var(--bg-white, #fff); }
-.aa-groups__title { font-size: 12px; color: var(--text-500, #86909c); margin-bottom: 6px; }
-.aa-group-row { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-bottom: 1px dashed var(--border-100, #f0f1f3); }
-.aa-group-row:last-child { border-bottom: none; }
-.aa-drill { margin-top: 12px; padding: 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 10px; background: var(--bg-white, #fff); }
-.aa-drill__head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
-.aa-export-form { display: flex; gap: 16px; align-items: flex-end; flex-wrap: wrap; padding: 14px; border: 1px solid var(--border-200, #e5e6eb); border-radius: 10px; background: var(--bg-white, #fff); }
-.mp-link { margin-top: 10px; }
-
-/* Statistics stays inside the shared shell; styles are limited to this page. */
-.aa-statistics { --stats-accent: var(--pri, #285bb5); }
-.stats-topic-select { display: flex; align-items: center; gap: 10px; color: var(--text-secondary); font-size: 12px; white-space: nowrap; }
-.stats-topic-select select { max-width: 100%; height: 38px; padding: 0 30px 0 12px; border: 1px solid var(--border-base); border-radius: 7px; background: var(--bg-card); color: var(--text-primary); font: inherit; font-size: 13px; }
-.stats-intro { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-top: -10px; color: var(--text-secondary); font-size: 13px; }
-.stats-intro p { margin: 0; line-height: 1.6; }
-.stats-intro span { font-size: 12px; white-space: nowrap; }
-.stats-dimensions { display: flex; gap: 20px; border-bottom: 1px solid var(--border-base); overflow-x: auto; }
-.stats-dimensions button { flex: 0 0 auto; min-height: 40px; padding: 8px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; }
-.stats-dimensions button.active { border-bottom-color: var(--stats-accent); color: var(--stats-accent); font-weight: 650; }
-.aa-statistics .aa-filter { display: flex; align-items: flex-end; gap: 14px; padding: 16px; margin: 0; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
-.aa-statistics .aa-filter__item { display: flex; flex-direction: column; align-items: stretch; gap: 7px; min-width: 160px; max-width: 240px; flex: 1 1 170px; white-space: nowrap; font-size: 12px; }
-.aa-statistics .aa-filter__item :deep(.app-entity-picker) { width: 100%; min-width: 0; }
-.stats-scope { margin: 8px 0 16px; color: var(--text-secondary); font-size: 12px; line-height: 1.6; }
-.stats-section { margin-bottom: 22px; }
-.stats-section > header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin: 0 0 12px; }
-.stats-section h2 { margin: 0; font-size: 15px; color: var(--text-primary); font-weight: 650; }
-.stats-section header span { font-size: 12px; color: var(--text-secondary); }
-.aa-statistics .aa-cards, .aa-statistics .aa-metric-grid { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
-.aa-statistics .aa-card { min-height: 118px; padding: 16px 18px; gap: 10px; box-shadow: none; border-color: var(--border-base); background: var(--bg-card); }
-.aa-statistics .aa-card__value { font-size: 30px; font-variant-numeric: tabular-nums; letter-spacing: -.5px; }
-.aa-statistics .aa-card__label { font-size: 13px; }
-.aa-statistics .aa-card__sub { line-height: 1.5; }
-.aa-statistics .aa-card__drill-hint { margin-top: auto; }
-.aa-statistics :is(button, select, input):focus-visible { outline: 2px solid var(--stats-accent); outline-offset: 2px; }
-@container academic-body (max-width: 550px) {
-  .aa-statistics .aa-filter__item { max-width: none; min-width: 120px; flex-basis: 135px; }
-  .aa-statistics .aa-cards, .aa-statistics .aa-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .aa-statistics .aa-card { padding: 14px; }
-}
-@container academic-body (max-width: 350px) {
-  .aa-statistics .aa-cards, .aa-statistics .aa-metric-grid { grid-template-columns: minmax(0, 1fr); }
-}
-
+.aa-statistics { gap: 18px; }
+.stats-updated,.stats-applied,.stats-cell-note,.stats-trend-note,.stats-method { color: var(--text-secondary); font-size: 13px; }
+.stats-dimensions { display:flex; gap:24px; border-bottom:1px solid var(--border-base); overflow-x:auto; }
+.stats-dimensions button { flex-shrink:0; border:0; border-bottom:2px solid transparent; background:transparent; color:var(--text-secondary); padding:10px 2px; font:inherit; cursor:pointer; }
+.stats-dimensions button.active { color:var(--pri); border-bottom-color:var(--pri); font-weight:650; }
+.aa-filter { display:flex; align-items:end; gap:14px; flex-wrap:wrap; background:var(--bg-card); border:1px solid var(--border-base); border-radius:10px; padding:16px 20px; }
+.aa-filter__item { display:flex; flex:1 1 180px; flex-direction:column; gap:8px; font-size:13px; min-width:0; }
+.stats-filter-actions { display:flex; gap:10px; margin-left:auto; }
+.aa-statistics .aa-input { box-sizing:border-box; min-width:0; min-height:36px; border:1px solid var(--border-base); border-radius:8px; padding:8px 10px; font:inherit; background:var(--bg-card); color:var(--text-primary); }
+.stats-applied { margin:0; line-height:1.65; }
+.aa-filter .stats-applied { flex-basis:100%; }
+.stats-notice { background:var(--warning-bg, #fff8e8); color:var(--warning-color, #966109); border-radius:8px; padding:10px 14px; margin:0; }
+.stats-kpi-grid { display:flex; background:var(--bg-card); border:1px solid var(--border-base); border-radius:10px; padding:20px 8px; }
+.stats-kpi-card { flex:1; min-width:0; padding:0 20px; display:flex; flex-direction:column; gap:9px; border-right:1px solid var(--border-base); }
+.stats-kpi-card:last-child { border:0; }
+.stats-kpi-card > span { font-size:14px; color:var(--text-primary); }
+.stats-kpi-card > strong { color:var(--pri); font-size:30px; font-weight:700; line-height:1.3; overflow-wrap:anywhere; }
+.stats-kpi-card.is-warning > strong { color:var(--warning-color,#b76700); }
+.stats-kpi-card > small { color:var(--text-secondary); font-size:13px; }
+.stats-unit { margin-left:5px; font-size:15px; font-weight:400; }
+.stats-attention { display:flex; align-items:center; gap:16px; flex-wrap:wrap; padding:12px 18px; border:1px solid var(--warning-border,#efd5ae); border-radius:10px; background:var(--warning-bg,#fff8ed); }
+.stats-attention > div { display:flex; flex:1; align-items:center; flex-wrap:wrap; gap:10px; }
+.stats-attention b { color:var(--warning-color,#b76700); font-size:22px; }
+.stats-attention > :last-child { margin-left:auto; }
+.stats-analysis-panel,.aa-drill { min-width:0; background:var(--bg-card); border:1px solid var(--border-base); border-radius:10px; overflow:hidden; }
+.stats-analysis-panel > header,.aa-drill > header { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:12px; padding:16px 20px; }
+.stats-analysis-panel h2,.aa-drill h2 { margin:0; font-size:18px; line-height:1.4; }
+.stats-analysis-panel > header > span { color:var(--text-secondary); font-size:13px; }
+.stats-analysis-panel :deep(.dt),.aa-drill :deep(.dt) { border:0; border-radius:0; }
+.stats-analysis-panel :deep(.dt__table) { min-width:600px; }
+.stats-analysis-panel > .stats-applied { padding:8px 20px 16px; }
+.stats-analysis-grid { display:grid; grid-template-columns:minmax(0,1fr); gap:16px; }
+.stats-analysis-grid.has-secondary { grid-template-columns:minmax(0,1.6fr) minmax(260px,1fr); }
+.stats-distribution-body.side-by-side { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); align-items:center; gap:20px; padding:0 20px 18px; }
+.stats-distribution-body.side-by-side :deep(.dt__table) { min-width:360px; }
+.stats-distribution-body > .stats-applied { padding:10px 20px; }
+.stats-cell-note { display:block; margin-top:4px; }
+.aa-statistics :deep(.app-button--ghost) { color:var(--pri); }
+.stats-completion { padding:8px 20px 20px; }
+.stats-completion progress { display:block; width:100%; height:22px; border:0; border-radius:5px; overflow:hidden; background:#fff0d8; accent-color:var(--pri); }
+.stats-completion progress::-webkit-progress-bar { background:#fff0d8; }
+.stats-completion progress::-webkit-progress-value { background:var(--pri); }
+.stats-completion-labels { display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px; margin-top:10px; font-size:14px; }
+.stats-completion-labels small { color:var(--text-secondary); }
+.stats-grade-publish > strong { display:block; margin:10px 20px; color:var(--pri); font-size:36px; }
+.stats-grade-publish > p,.stats-grade-publish > button { margin:12px 20px; }
+.stats-detail-filter { display:flex; align-items:end; flex-wrap:wrap; gap:14px; padding:16px 20px; background:var(--bg-card); border:1px solid var(--border-base); border-radius:10px; }
+.stats-detail-filter label { display:flex; flex:1; flex-direction:column; gap:8px; min-width:180px; }
+.stats-analysis-panel header label { display:flex; align-items:center; flex-wrap:wrap; gap:8px; font-size:13px; }
+.stats-trend-note { display:flex; align-items:center; flex-wrap:wrap; gap:8px; margin:0; }
+.stats-method summary { cursor:pointer; }
+.stats-method p { line-height:1.7; }
+.aa-export-form { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; padding:0 20px 20px; }
+.aa-export-form label { display:flex; flex-direction:column; gap:8px; min-width:0; }
+.stats-export-purpose { grid-column:1/-1; }
+.aa-export-form textarea { font:inherit; resize:vertical; min-height:84px; border:1px solid var(--border-base); border-radius:6px; padding:10px; }
+.stats-export-card footer { display:flex; gap:12px; align-items:center; justify-content:space-between; flex-wrap:wrap; border-top:1px solid var(--border-base); padding:16px 20px; }
+.stats-export-card footer span,.stats-export-result { color:var(--text-secondary); font-size:13px; }
+.stats-export-result { padding:0 20px 16px; }
+@media(max-width:900px) { .stats-analysis-grid.has-secondary,.stats-distribution-body.side-by-side { grid-template-columns:1fr; } .stats-kpi-card { padding:0 12px; } .stats-kpi-card > strong { font-size:25px; } }
+@media(max-width:600px) { .aa-filter { padding:12px; } .aa-filter__item { flex-basis:100%; } .stats-filter-actions { width:100%; margin:0; } .stats-kpi-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px 0; } .stats-kpi-card:nth-child(2n) { border:0; } .stats-kpi-card > strong { font-size:22px; } .stats-attention > div { flex-basis:100%; } .aa-export-form { grid-template-columns:1fr; } .stats-analysis-panel > header,.aa-drill > header { padding:12px; } }
 </style>

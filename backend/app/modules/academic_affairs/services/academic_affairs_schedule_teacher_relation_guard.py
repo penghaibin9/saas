@@ -18,12 +18,13 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.core.affairs_security import _derive_keys
 from app.core.exceptions import AppException, no_data_scope, not_found
 
 from . import academic_affairs_schedule_service as schedule
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 
 
 def _keys(user) -> set[str]:
@@ -36,6 +37,17 @@ def _check_query_scope(user, teacher_key: str) -> None:
         return
     if str(teacher_key or "").strip() not in _keys(user):
         raise no_data_scope("任课教师仅可查看本人的正式课表")
+
+
+def _college_ids(db, user):
+    if str((user or {}).get("currentRoleCode") or "").upper() not in COLLEGE_ACADEMIC_ROLES:
+        return None
+    from app.core.affairs_security import build_affairs_context
+
+    context = build_affairs_context(user, db)
+    if context.scope_type != "COLLEGE" or not context.college_ids:
+        raise no_data_scope("当前身份未配置学院范围，不能查看教师课表")
+    return context.college_ids
 
 
 def _merge_windows(relations, default_end: int) -> tuple[list[tuple[int, int]], list[str], list[str]]:
@@ -65,15 +77,29 @@ def _merge_windows(relations, default_end: int) -> tuple[list[tuple[int, int]], 
     return [(start, end) for start, end in merged], relation_ids, sorted(role_types)
 
 
-def _teacher_items(db, batch, teacher_key: str) -> list[dict]:
+def _teacher_items(db, batch, teacher_key: str, college_ids) -> list[dict]:
     from app.models import AaScheduleItem, AaTeachingClass, AaTeachingClassTeacher, AaTerm
 
-    items = db.scalars(select(AaScheduleItem).where(
+    query = select(AaScheduleItem).where(
         AaScheduleItem.tenant_id == schedule._tid(),
         AaScheduleItem.batch_id == int(batch.id),
         AaScheduleItem.status == "EFFECTIVE",
         AaScheduleItem.is_deleted.is_(False),
-    ).order_by(AaScheduleItem.weekday, AaScheduleItem.slot_no, AaScheduleItem.id)).all()
+    )
+    if college_ids is not None:
+        from app.models import AaCourse, AaTeachingTask, AaTeachingTaskBatch
+
+        # 开课单位优先于任务批次；无有效归属链的历史课位不放宽到全校。
+        scoped_tasks = select(AaTeachingTask.id).join(
+            AaCourse, AaCourse.id == AaTeachingTask.course_id,
+        ).join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).where(
+            AaTeachingTask.tenant_id == schedule._tid(), AaTeachingTask.is_deleted.is_(False),
+            AaCourse.tenant_id == schedule._tid(), AaCourse.is_deleted.is_(False),
+            AaTeachingTaskBatch.tenant_id == schedule._tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+            func.coalesce(AaCourse.owner_college_id, AaTeachingTaskBatch.college_id).in_(sorted(college_ids)),
+        )
+        query = query.where(AaScheduleItem.task_id.in_(scoped_tasks))
+    items = db.scalars(query.order_by(AaScheduleItem.weekday, AaScheduleItem.slot_no, AaScheduleItem.id)).all()
     task_ids = sorted({int(row.task_id) for row in items if row.task_id})
     classes = []
     if task_ids:
@@ -156,6 +182,7 @@ def teacher_view(batch_id, user, teacher_key):
         raise AppException("VALIDATION_ERROR", "请选择教师")
     _check_query_scope(user, key)
     with schedule.session() as db:
+        college_ids = _college_ids(db, user)
         batch = db.query(AaScheduleBatch).filter(
             AaScheduleBatch.id == int(batch_id),
             AaScheduleBatch.tenant_id == schedule._tid(),
@@ -163,7 +190,7 @@ def teacher_view(batch_id, user, teacher_key):
         ).first()
         if not batch:
             raise not_found("课表批次不存在")
-        items = _teacher_items(db, batch, key)
+        items = _teacher_items(db, batch, key, college_ids)
         return {
             "items": items,
             "batchId": str(batch.id),
@@ -184,6 +211,7 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
         raise AppException("VALIDATION_ERROR", "请选择教师")
     _check_query_scope(user, key)
     with schedule.session() as db:
+        college_ids = _college_ids(db, user)
         batches = schedule._current_published_batches(db, term_id)
         if not batches:
             return {
@@ -193,8 +221,12 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
                 "note": "本学期暂无授课安排",
             }
         all_rows = []
+        batch_ids = []
         for batch in batches:
-            all_rows.extend(_teacher_items(db, batch, key))
+            items = _teacher_items(db, batch, key, college_ids)
+            if college_ids is None or items:
+                batch_ids.append(str(batch.id))
+            all_rows.extend(items)
         all_rows.sort(key=lambda row: (
             int(row.get("weekday") or 0),
             int(row.get("slotNo") or 0),
@@ -202,7 +234,6 @@ def teacher_schedule(user, teacher_key, term_id=None, week=None) -> dict:
             int(row.get("scheduleItemId") or row.get("itemId") or 0),
         ))
         rows = [row for row in all_rows if schedule._week_in_range(row, week)]
-        batch_ids = [str(batch.id) for batch in batches]
         return {
             "items": rows,
             "batchId": batch_ids[0] if len(batch_ids) == 1 else None,

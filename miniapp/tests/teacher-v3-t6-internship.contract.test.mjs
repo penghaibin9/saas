@@ -14,20 +14,18 @@ test('T6 internship evidence API stays on additive teacher-mobile routes', () =>
   assert.doesNotMatch(api, /\/mobile\/teacher\/internship\/visits\/.*POST/)
 })
 
-test('T6/T8 visit form carries exact plan/version, shared attachment contract and never captures teacher location', () => {
+test('巡访表单固定计划与学生版本，定位默认关闭并由教师主动选择', () => {
   const form = read('src/components/teacher/InternshipVisitEvidenceForm.vue')
-  assert.match(form, /teacherInternshipEvidenceV3Api\.visitTargets\(\)/)
+  assert.match(form, /teacherInternshipEvidenceV3Api\.visitTargets\(t\.batchId, \{ planId: t\.planId, internshipId: t\.internshipId \}\)/)
   assert.match(form, /expectedVersion/)
   assert.match(form, /planId/)
   assert.match(form, /location: null/)
   assert.match(form, /fileIds:/)
-  assert.match(form, /<MobileAttachmentPicker/)
-  assert.match(form, /biz-purpose="INTERNSHIP_VISIT"/)
-  assert.match(form, /@update:fileIds="evidenceFileIds = \$event"/)
-  assert.match(form, /@update:ready="evidenceReady = \$event"/)
-  assert.match(form, /先临时保存，保存巡访记录时才正式关联到本次巡访/)
-  assert.doesNotMatch(form, /fileSdk\.choose|fileSdk\.upload|fileSdk\.metadata/)
-  assert.doesNotMatch(form, /uni\.getLocation|getLocation\(|chooseLocation\(|latitude|longitude|captureLocation/)
+  assert.match(form, /expectedPlanVersion: p\.expectedPlanVersion/)
+  assert.match(form, /@click="captureLocation"/)
+  assert.match(form, /主动获取本次位置/)
+  assert.match(form, /location: this\.location \? \{ \.\.\.this\.location \} : null/)
+  assert.match(form, /if \(!this\.active/)
 })
 
 test('T6/T8 file evidence is uploaded first by shared picker but formal binding remains server owned', () => {
@@ -36,7 +34,9 @@ test('T6/T8 file evidence is uploaded first by shared picker but formal binding 
   assert.match(picker, /fileSdk\.upload/)
   assert.match(picker, /readyForBusiness/)
   assert.match(picker, /扫描/)
-  assert.match(form, /保存巡访记录时才正式关联到本次巡访/)
+  assert.match(form, /uploadBusinessFile/)
+  assert.match(read('src/services/fileApi.js'), /return fileSdk\.upload\(file, options\)/)
+  assert.match(form, /pendingEvidence\?\.readyForBusiness \? \[String\(this\.pendingEvidence\.fileId\)\] : \[\]/)
   assert.doesNotMatch(form, /bindFile|bind_file|\/files\/.*\/bind/)
 })
 
@@ -45,7 +45,7 @@ test('T6 internship review uses real reminder, visit evidence and high-risk comm
   assert.match(page, /InternshipVisitEvidenceForm/)
   assert.match(page, /teacherInternshipEvidenceV3Api\.remindWeekly/)
   assert.match(page, /teacherInternshipEvidenceV3Api\.createVisit/)
-  assert.match(page, /return this\.loadVisits\(\)/)
+  assert.match(page, /await Promise\.allSettled\(\[this\.load\(\), this\.loadVisits\(\)\]\)/)
   assert.match(page, /handleCheckinV3\(c\.id, action, r\.content\.trim\(\), 'HIGH'\)/)
   assert.match(page, /return this\.load\(\)\.then/)
   assert.doesNotMatch(page, /催交提醒将随消息推送功能开放/)

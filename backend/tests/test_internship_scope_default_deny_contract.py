@@ -46,5 +46,8 @@ def test_trends_mentor_scope_never_falls_back_to_advisor_name():
     text = open(source, encoding="utf-8").read()
     trends = text[text.index("def trends("):text.index("def export_stats(")]
 
-    assert "InternshipRecord.advisor_user_id.in_(advisor_user_ids)" in trends
+    assert '_visible(db,user,batch_id,college,major,class_name)' in trends
+    from app.modules.internship.services import internship_procurement_stats_service as procurement
+    import inspect
+    assert 'apply_internship_record_scope' in inspect.getsource(procurement._visible)
     assert "InternshipRecord.advisor_name" not in trends

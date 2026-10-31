@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from types import SimpleNamespace
 
 from sqlalchemy import and_, func, or_, select
@@ -495,7 +496,7 @@ def exam_defer_resubmit_my(user, defer_id, body=None) -> dict:
     from app.modules.academic_affairs.services import academic_affairs_exam_service as exam_svc
     payload = body or {}
     expected_version = payload.get("expectedVersion") if isinstance(payload, dict) else getattr(payload, "expectedVersion", None)
-    return exam_svc.defer_resubmit(user, defer_id, expected_version)
+    return exam_svc.defer_resubmit(user, defer_id, expected_version, reason=payload.get("reason") if isinstance(payload, dict) else getattr(payload, "reason", None))
 
 
 def _acad_student(db, stu):
@@ -931,7 +932,7 @@ def teacher_grade_tasks(user, status=None):
         raise no_permission("该接口仅教职工可用")
     role = (user.get("currentRoleCode") or "").upper()
     rows, total = grade.list_tasks(user, status=status, page=1, page_size=100)
-    if role not in grade._REVIEW_ROLES and role != "COLLEGE_ADMIN":
+    if role not in grade._REVIEW_ROLES and role not in COLLEGE_ACADEMIC_ROLES:
         keys = grade._user_keys(user)
         rows = [r for r in rows if r.get("teacherKey") and r["teacherKey"] in keys]
     return {"items": rows, "total": len(rows)}

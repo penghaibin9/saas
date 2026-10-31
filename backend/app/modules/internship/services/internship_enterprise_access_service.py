@@ -229,7 +229,7 @@ def resolve_active_grant_in_tx(
         raise AppException("VALIDATION_ERROR", "授权类型不合法")
     member = _get_member(db, member_id, tenant_id=scope_tenant_id)
     if member.status != "ACTIVE":
-        raise AppException("NO_PERMISSION", "企业成员已停用")
+        raise AppException("NO_PERMISSION", "企业成员已停用", http_status=403)
     grant = db.scalar(
         select(InternshipEnterpriseAccessGrant).where(
             InternshipEnterpriseAccessGrant.tenant_id == scope_tenant_id,
@@ -244,7 +244,7 @@ def resolve_active_grant_in_tx(
         )
     )
     if not grant or effective_grant_status(grant, now=now) != "ACTIVE":
-        raise AppException("NO_PERMISSION", "企业访问授权不存在、已撤销、未生效或已过期")
+        raise AppException("NO_PERMISSION", "企业访问授权不存在、已撤销、未生效或已过期", http_status=403)
     return grant
 
 
@@ -260,27 +260,29 @@ def revoke_grant(
     reason: str,
     revoked_by_user_id: int | None = None,
 ):
+    with session() as db:
+        grant = _get_grant(db, grant_id, tenant_id=_tid(), lock=True)
+        revoke_grant_in_tx(db, grant, expected_version=expected_version, reason=reason,
+            revoked_by_user_id=revoked_by_user_id)
+        db.commit()
+        return _row(grant)
+
+
+def revoke_grant_in_tx(db, grant, *, expected_version, reason, revoked_by_user_id=None):
+    """Caller holds member then grant locks and commits mandatory audit with the mutation."""
     reason = (reason or "").strip()
     if len(reason) < 2:
         raise AppException("VALIDATION_ERROR", "撤销授权必须填写原因")
-    tenant_id = _tid()
-    with session() as db:
-        grant = _get_grant(db, grant_id, tenant_id=tenant_id, lock=True)
-        current = int(grant.version or 0)
-        if int(expected_version) != current:
-            raise AppException("DATA_CONFLICT", "数据已被其他用户修改，请刷新后重试")
-        if grant.status == "REVOKED":
-            return _row(grant)
-        if effective_grant_status(grant) == "EXPIRED":
-            grant.status = "EXPIRED"
-        else:
-            grant.status = "REVOKED"
-            grant.revoked_at = datetime.utcnow()
-            grant.revoked_by_user_id = _as_id(revoked_by_user_id) if revoked_by_user_id is not None else None
-            grant.revoke_reason = reason
-        grant.version = current + 1
-        db.commit()
-        return _row(grant)
+    current = int(grant.version or 0)
+    if int(expected_version) != current:
+        raise AppException("DATA_CONFLICT", "数据已被其他用户修改，请刷新后重试", http_status=409)
+    if grant.status == "REVOKED":
+        return
+    grant.status = "REVOKED"
+    grant.revoked_at = datetime.utcnow()
+    grant.revoked_by_user_id = _as_id(revoked_by_user_id) if revoked_by_user_id is not None else None
+    grant.revoke_reason = reason
+    grant.version = current + 1
 
 
 def _row(grant: InternshipEnterpriseAccessGrant):

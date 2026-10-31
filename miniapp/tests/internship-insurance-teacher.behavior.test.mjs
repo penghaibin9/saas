@@ -5,10 +5,12 @@ import fs from 'node:fs'
 const script = fs.readFileSync(new URL('../src/pages/teacher-internship/insurance-verify/index.vue', import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
 const item = { id: '9007199254740999', studentName: '虚构学生', version: 3, fileId: '9', hasFile: true }
 function view({ open = async () => ({ fileId: '9', readyForBusiness: true, canPreview: true }), write = async () => {}, read = async () => ({ list: [] }) } = {}) {
-  const context = { restore() {}, load: async () => {}, selectedBatchId: '1', batches: [{ id: '1' }] }
-  const def = new Function('useInternshipContextStore', 'teacherInternshipInsurancePending', 'teacherInternshipInsuranceVerify', 'fileSdk', script)(() => context, read, write, { openInline: open })
+  const context = { restore() {}, load: async () => {}, selectedBatchId: '1', can:()=>true, batches: [{ id: '1' }] }
+  const deps={useInternshipContextStore:()=>context,teacherInternshipInsurancePending:read,teacherInternshipInsuranceVerify:write,fileSdk:{openInline:open},currentSessionGeneration:()=>1,normalizeError:e=>({kind:Number(e?.code)===409001?'conflict':'unknown',text:e?.message||'操作未完成'})}
+  const def = new Function(...Object.keys(deps),script)(...Object.values(deps))
   const vm = { ...def.data(), state: 'ready', batchId: '1', list: [item] }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
+  for (const [key,fn] of Object.entries(def.computed || {})) Object.defineProperty(vm,key,{get:()=>fn.call(vm)})
   return vm
 }
 

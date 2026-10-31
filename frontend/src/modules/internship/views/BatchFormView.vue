@@ -34,7 +34,7 @@
             <span>{{ section.order }}</span>{{ section.label }}
           </button>
         </nav>
-        <p>保存为草稿后，继续选择参与班级与学生。名单预览确认后，再启用批次。</p>
+        <p>先保存草稿，再核对评分规则、选择参与学生并预览名单，最后启用批次。启用前请确认本轮安排无误。</p>
       </aside>
       <AppForm
         ref="batchForm"
@@ -88,7 +88,7 @@
           <div class="mp-card__head">
             <h2 class="mp-card__title">阶段安排</h2>
             <button type="button" class="bf-mode" @click="toggleAdvanced">
-              {{ advancedJson ? '使用分组表单' : '高级配置' }}
+              {{ advancedJson ? '使用分组表单' : '实施人员使用：高级配置' }}
             </button>
           </div>
           <div class="mp-card__body bf-json">
@@ -139,9 +139,15 @@
           <div class="mp-card__body bf-json">
             <div v-if="!advancedJson" class="bf-rules">
               <div class="bf-rules__grp">
-                <div class="bf-rules__t">打卡规则</div>
+                <div class="bf-rules__t">学生打卡规则</div>
                 <AppFormItem label="每日必打卡">
                   <AppRadioGroup v-model="rulesForm.checkin.requireDaily" :options="boolOptions" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="当天未签到提醒时间" :error="reminderTimeError" hint="按学校当地时间；留空不自动发送，每名学生每天最多提醒一次。">
+                  <AppTextInput v-model="rulesForm.checkin.reminderTime" placeholder="例如 18:00；留空不发送" :disabled="readonly || !rulesForm.checkin.requireDaily" />
+                </AppFormItem>
+                <AppFormItem label="计划要求签到天数" hint="0 表示学校暂未配置；计划书与签到统计统一读取此规则">
+                  <AppNumberInput v-model="rulesForm.checkin.requiredDays" :min="0" :max="366" :step="1" :disabled="readonly" />
                 </AppFormItem>
                 <AppFormItem label="电子围栏半径（米）">
                   <AppNumberInput v-model="rulesForm.checkin.geofenceRadiusM" :min="50" :max="5000" :step="50" :disabled="readonly" />
@@ -152,18 +158,79 @@
               </div>
 
               <div class="bf-rules__grp">
+                <div class="bf-rules__t">教师签到范围</div>
+                <p class="bf-aside">可配置多个企业巡访或学校签到地点。未配置时只记录事实；低精度、围栏边界和坐标系不一致不会判为正常。启用批次后范围冻结。</p>
+                <AppFormItem label="教师最大定位误差（米）" v-slot="{ id }">
+                  <AppNumberInput :id="id" v-model="rulesForm.teacherCheckin.maxAccuracyM" :min="20" :max="2000" :disabled="readonly" />
+                </AppFormItem>
+                <div v-for="(site,index) in rulesForm.teacherCheckin.locations" :key="index" class="bf-teacher-site" :aria-label="`教师签到地点 ${index+1}`">
+                  <AppFormItem :label="`地点 ${index+1} 名称`" v-slot="{ id }"><AppTextInput :id="id" v-model.trim="site.name" :disabled="readonly" placeholder="例如：实习企业巡访点" /></AppFormItem>
+                  <AppFormItem label="地图坐标类型" v-slot="{ id }"><AppSelect :id="id" v-model="site.coordinateSystem" :options="teacherCoordinateOptions" :disabled="readonly" /></AppFormItem>
+                  <AppFormItem label="地点中心纬度" v-slot="{ id }"><AppNumberInput :id="id" v-model="site.centerLat" :min="-90" :max="90" :step="0.000001" :disabled="readonly" /></AppFormItem>
+                  <AppFormItem label="地点中心经度" v-slot="{ id }"><AppNumberInput :id="id" v-model="site.centerLng" :min="-180" :max="180" :step="0.000001" :disabled="readonly" /></AppFormItem>
+                  <AppFormItem label="允许签到半径（米）" v-slot="{ id }"><AppNumberInput :id="id" v-model="site.radiusM" :min="30" :max="5000" :disabled="readonly" /></AppFormItem>
+                  <AppButton variant="ghost" :disabled="readonly" @click="removeTeacherLocation(index)">移除此地点</AppButton>
+                </div>
+                <AppInlineAlert v-if="teacherLocationError" type="warning" :description="teacherLocationError" />
+                <AppButton variant="ghost" :disabled="readonly || rulesForm.teacherCheckin.locations.length>=50" @click="addTeacherLocation">添加教师签到地点</AppButton>
+              </div>
+
+              <div class="bf-rules__grp">
                 <div class="bf-rules__t">周报规则</div>
                 <AppFormItem label="提交频率">
                   <AppSelect v-model="rulesForm.weeklyReport.frequency" :options="frequencyOptions" :disabled="readonly" />
                 </AppFormItem>
                 <AppFormItem label="正文最少字数">
-                  <AppNumberInput v-model="rulesForm.weeklyReport.minWordCount" :min="0" :max="5000" :step="100" :disabled="readonly" />
+                  <AppNumberInput v-model="rulesForm.weeklyReport.minWordCount" :min="0" :max="5000" :step="10" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="本批次应交周报篇数" hint="0 表示学校暂未配置，学生端不会伪造完成率">
+                  <AppNumberInput v-model="rulesForm.weeklyReport.requiredCount" :min="0" :max="100" :step="1" :disabled="readonly" />
                 </AppFormItem>
                 <AppFormItem label="截止（周几前）">
                   <AppSelect v-model="rulesForm.weeklyReport.deadlineWeekday" :options="weekdayOptions" :disabled="readonly" />
                 </AppFormItem>
+                <AppFormItem label="准时批阅时限（小时）" hint="用于指导老师/班主任绩效中的准时批阅率">
+                  <AppNumberInput v-model="rulesForm.weeklyReport.reviewSlaHours" :min="1" :max="720" :step="1" :disabled="readonly" />
+                </AppFormItem>
               </div>
 
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">日报 / 月报 / 总结规则</div>
+                <AppFormItem label="日报最少字数">
+                  <AppNumberInput v-model="rulesForm.processReport.dailyMinWords" :min="1" :max="5000" :step="10" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="本批次应交日报篇数" hint="0 表示学校暂未配置">
+                  <AppNumberInput v-model="rulesForm.processReport.dailyRequiredCount" :min="0" :max="500" :step="1" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="月报最少字数">
+                  <AppNumberInput v-model="rulesForm.processReport.monthlyMinWords" :min="1" :max="10000" :step="10" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="本批次应交月报篇数" hint="0 表示学校暂未配置">
+                  <AppNumberInput v-model="rulesForm.processReport.monthlyRequiredCount" :min="0" :max="60" :step="1" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="总结最少字数">
+                  <AppNumberInput v-model="rulesForm.processReport.summaryMinWords" :min="1" :max="20000" :step="50" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="本批次应交总结篇数" hint="当前正式总结模型每名学生最多 1 份">
+                  <AppNumberInput v-model="rulesForm.processReport.summaryRequiredCount" :min="0" :max="1" :step="1" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="过程报告准时批阅时限（小时）">
+                  <AppNumberInput v-model="rulesForm.processReport.reviewSlaHours" :min="1" :max="720" :step="1" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="单次最多图片">
+                  <AppNumberInput v-model="rulesForm.processReport.maxImages" :min="0" :max="30" :step="1" :disabled="readonly" />
+                </AppFormItem>
+                <AppFormItem label="单次最多视频">
+                  <AppNumberInput v-model="rulesForm.processReport.maxVideos" :min="0" :max="10" :step="1" :disabled="readonly" />
+                </AppFormItem>
+              </div>
+
+              <div class="bf-rules__grp">
+                <div class="bf-rules__t">教师本人报告字数上限</div>
+                <AppFormItem label="教师周报最多字数"><AppNumberInput v-model="rulesForm.teacherReport.weeklyMaxWords" :min="30" :max="12000" :disabled="readonly" /></AppFormItem>
+                <AppFormItem label="教师月报最多字数"><AppNumberInput v-model="rulesForm.teacherReport.monthlyMaxWords" :min="100" :max="12000" :disabled="readonly" /></AppFormItem>
+                <AppFormItem label="教师总结最多字数"><AppNumberInput v-model="rulesForm.teacherReport.summaryMaxWords" :min="300" :max="12000" :disabled="readonly" /></AppFormItem>
+              </div>
               <div class="bf-rules__grp">
                 <div class="bf-rules__t">指导规则</div>
                 <AppFormItem label="每学期最少巡访次数">
@@ -175,37 +242,8 @@
               </div>
 
               <div class="bf-rules__grp">
-                <div class="bf-rules__t">评价权重（合计须为 100%）</div>
-                <AppFormItem label="企业评价 %">
-                  <AppNumberInput v-model="rulesForm.evaluation.enterpriseWeight" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <AppFormItem label="教师评价 %">
-                  <AppNumberInput v-model="rulesForm.evaluation.teacherWeight" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <AppFormItem label="学生自评 %">
-                  <AppNumberInput v-model="rulesForm.evaluation.selfWeight" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <p :class="evalWeightSum === 100 ? 'bf-preview__note' : 'bf-preview__err'">
-                  当前合计 {{ evalWeightSum }}%
-                </p>
-              </div>
-
-              <div class="bf-rules__grp">
-                <div class="bf-rules__t">成绩规则</div>
-                <AppFormItem label="及格线">
-                  <AppNumberInput v-model="rulesForm.score.passThreshold" :min="0" :max="100" :disabled="readonly" />
-                </AppFormItem>
-                <div class="bf-rows">
-                  <div v-for="(c, i) in rulesForm.score.components" :key="i" class="bf-row bf-row--score">
-                    <AppTextInput v-model="c.name" :disabled="readonly" placeholder="构成项名称" />
-                    <AppNumberInput v-model="c.weight" :min="0" :max="100" :disabled="readonly" placeholder="权重 %" />
-                    <AppButton variant="text" :disabled="readonly" @click="removeComponent(i)">删除</AppButton>
-                  </div>
-                  <AppButton variant="secondary" size="sm" :disabled="readonly" @click="addComponent">＋ 添加成绩构成项</AppButton>
-                  <p :class="componentWeightSum === 100 ? 'bf-preview__note' : 'bf-preview__err'">
-                    成绩构成合计 {{ componentWeightSum }}%（须为 100%）
-                  </p>
-                </div>
+                <div class="bf-rules__t">正式评分规则</div>
+                <p class="bf-preview__note">评分比例和及格线统一在“综合成绩 → 评分规则”维护。保存草稿后、启用批次前请先核对该处配置，再发布实习计划；计划与核分读取同一套规则。</p>
               </div>
 
               <div class="bf-rules__grp">
@@ -223,7 +261,7 @@
             </div>
             <AppFormItem
               v-else
-              label="规则 JSON"
+              label="实施人员使用：规则数据"
               prop="rulesJson"
               :error="rulesError"
               hint='JSON 对象，形如 {"checkin":{"geofenceRadiusM":500}}，未填写的分组沿用原有/默认规则'
@@ -281,9 +319,15 @@ import { formatDate } from '@/utils/dateUtils'
 import { withInternshipBatch, internshipBatchListReturn } from '../navigation.js'
 
 const RULE_LABELS = {
-  checkin: '打卡', weeklyReport: '周报', guidance: '指导', evaluation: '评价', score: '成绩',
-  requireDaily: '每日必打卡', geofenceRadiusM: '电子围栏半径（米）', maxAccuracyM: '最大定位误差（米）', frequency: '提交频率',
-  minWordCount: '正文最少字数', deadlineWeekday: '截止（周几前）',
+  teacherCheckin: '教师签到范围', locations: '允许签到地点', centerLat: '中心纬度', centerLng: '中心经度', radiusM: '允许半径', coordinateSystem: '地图坐标类型',
+  teacherReport: '教师本人报告', weeklyMaxWords: '教师周报最多字数', monthlyMaxWords: '教师月报最多字数', summaryMaxWords: '教师总结最多字数',
+  checkin: '打卡', weeklyReport: '周报', processReport: '日报/月报/总结', guidance: '指导', evaluation: '评价', score: '成绩',
+  requireDaily: '每日必打卡', requiredDays: '计划要求签到天数', geofenceRadiusM: '电子围栏半径（米）', maxAccuracyM: '最大定位误差（米）', frequency: '提交频率',
+  minWordCount: '正文最少字数', requiredCount: '应交周报篇数', deadlineWeekday: '截止（周几前）', reviewSlaHours: '准时批阅时限（小时）',
+  dailyMinWords: '日报最少字数', dailyRequiredCount: '应交日报篇数',
+  monthlyMinWords: '月报最少字数', monthlyRequiredCount: '应交月报篇数',
+  summaryMinWords: '总结最少字数', summaryRequiredCount: '应交总结篇数',
+  maxImages: '最多图片', maxVideos: '最多视频',
   minVisitsPerTerm: '每学期最少巡访次数', minCommunicationsPerMonth: '每月最少沟通次数',
   enterpriseWeight: '企业评价权重', teacherWeight: '教师评价权重', selfWeight: '学生自评权重',
   passThreshold: '及格线', components: '成绩构成'
@@ -298,8 +342,16 @@ const blankForm = () => ({
 
 /** 规则表单默认值（与后端 internship_service.DEFAULT_RULES 对齐；权重以百分数呈现）。 */
 const blankRulesForm = () => ({
-  checkin: { requireDaily: true, geofenceRadiusM: 500, maxAccuracyM: 200 },
-  weeklyReport: { frequency: 'WEEKLY', minWordCount: 800, deadlineWeekday: 7 },
+  teacherCheckin: { maxAccuracyM: 200, locations: [] },
+  checkin: { requireDaily: true, reminderTime: '', requiredDays: 0, geofenceRadiusM: 500, maxAccuracyM: 200 },
+  weeklyReport: { frequency: 'WEEKLY', minWordCount: 30, requiredCount: 0, deadlineWeekday: 7, reviewSlaHours: 48 },
+  teacherReport: { weeklyMaxWords: 12000, monthlyMaxWords: 12000, summaryMaxWords: 12000 },
+  processReport: {
+    dailyMinWords: 30, dailyRequiredCount: 0,
+    monthlyMinWords: 100, monthlyRequiredCount: 0,
+    summaryMinWords: 300, summaryRequiredCount: 1,
+    maxImages: 9, maxVideos: 3, reviewSlaHours: 48
+  },
   guidance: { minVisitsPerTerm: 2, minCommunicationsPerMonth: 2 },
   evaluation: { enterpriseWeight: 40, teacherWeight: 40, selfWeight: 20 },
   score: {
@@ -354,23 +406,38 @@ export default {
       stageRows: [],
       rulesForm: blankRulesForm(),
       boolOptions: BOOL_OPTIONS,
+      teacherCoordinateOptions: [{label:'国内地图坐标',value:'GCJ02'},{label:'国际通用坐标（境外及浏览器定位）',value:'WGS84'}],
       frequencyOptions: FREQUENCY_OPTIONS,
       weekdayOptions: WEEKDAY_OPTIONS
     }
   },
   computed: {
+    reminderTimeError() {
+      const value=String(this.rulesForm.checkin.reminderTime || '').trim()
+      return value && !/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(value) ? '提醒时间请填写小时和分钟，例如18:00，或留空不发送' : ''
+    },
+    teacherLocationError() {
+      const rule=this.rulesForm.teacherCheckin
+      if(!Number.isInteger(Number(rule.maxAccuracyM)) || Number(rule.maxAccuracyM)<20 || Number(rule.maxAccuracyM)>2000) return '教师定位误差须为20至2000米的整数'
+      if(rule.locations.length>50) return '教师签到地点最多50个'
+      const names=new Set()
+      for(const [index,site] of rule.locations.entries()) {
+        const name=String(site.name||'').trim()
+        if(!name || name.length>80 || names.has(name)) return `地点${index+1}名称须填写，最多80字且不能重复`
+        names.add(name)
+        if(!['GCJ02','WGS84'].includes(site.coordinateSystem)) return `请确认地点${index+1}的地图坐标类型`
+        for(const [key,min,max,label] of [['centerLat',-90,90,'纬度'],['centerLng',-180,180,'经度'],['radiusM',30,5000,'半径']]) {
+          const value=site[key]
+          if(value===null || value===undefined || value==='' || !Number.isFinite(Number(value)) || Number(value)<min || Number(value)>max || key==='radiusM' && !Number.isInteger(Number(value))) return `请填写地点${index+1}的有效${label}`
+        }
+      }
+      return ''
+    },
     formSections() { return [
       { key: 'basic', label: '基本信息', order: '01' },
       { key: 'stages', label: '阶段安排', order: '02' },
       { key: 'rules', label: '业务规则', order: '03' }
     ] },
-    evalWeightSum() {
-      const e = this.rulesForm.evaluation
-      return Number(e.enterpriseWeight || 0) + Number(e.teacherWeight || 0) + Number(e.selfWeight || 0)
-    },
-    componentWeightSum() {
-      return (this.rulesForm.score.components || []).reduce((s, c) => s + Number(c.weight || 0), 0)
-    },
     stageFormError() {
       const rows = this.stageRows.filter((s) => (s.name || '').trim() || (s.code || '').trim())
       if (rows.some((s) => !(s.name || '').trim())) return '每个阶段都必须填写阶段名称'
@@ -475,6 +542,13 @@ export default {
     this.init()
   },
   methods: {
+    addTeacherLocation() {
+      if(this.readonly || this.rulesForm.teacherCheckin.locations.length>=50) return
+      this.rulesForm.teacherCheckin.locations.push({name:'',centerLat:null,centerLng:null,radiusM:500,coordinateSystem:'GCJ02'})
+    },
+    removeTeacherLocation(index) {
+      if(!this.readonly) this.rulesForm.teacherCheckin.locations.splice(index,1)
+    },
     async loadContext() {
       this.contextLoading = true; this.contextError = ''; this.ctx = null
       try {
@@ -519,14 +593,6 @@ export default {
       window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
       this.stageRows.splice(i, 1)
     },
-    addComponent() {
-      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
-      this.rulesForm.score.components.push({ name: '', weight: 0 })
-    },
-    removeComponent(i) {
-      window.__SAAS_DIRTY_FORM_GUARD__?.markDirty()
-      this.rulesForm.score.components.splice(i, 1)
-    },
     /** 把后端返回的 stages / rules 回填到结构化表单（权重统一转百分数）。 */
     fillStructured(d) {
       this.stageRows = Array.isArray(d.stages)
@@ -538,8 +604,11 @@ export default {
       const base = blankRulesForm()
       const r = d.rules || {}
       this.rulesForm = {
+        teacherCheckin: { ...base.teacherCheckin, ...(r.teacherCheckin || {}), locations: (r.teacherCheckin?.locations || []).map(site=>({...site})) },
         checkin: { ...base.checkin, ...(r.checkin || {}) },
         weeklyReport: { ...base.weeklyReport, ...(r.weeklyReport || {}) },
+        teacherReport: { ...base.teacherReport, ...(r.teacherReport || {}) },
+        processReport: { ...base.processReport, ...(r.processReport || {}) },
         guidance: { ...base.guidance, ...(r.guidance || {}) },
         evaluation: {
           enterpriseWeight: toPercent(r.evaluation?.enterpriseWeight, base.evaluation.enterpriseWeight),
@@ -559,16 +628,36 @@ export default {
     buildRulesFromForm() {
       const f = this.rulesForm
       return {
+        teacherCheckin: { maxAccuracyM:Number(f.teacherCheckin.maxAccuracyM), locations:f.teacherCheckin.locations.map(site=>({
+          name:String(site.name||'').trim(),centerLat:site.centerLat===null||site.centerLat===''?null:Number(site.centerLat),
+          centerLng:site.centerLng===null||site.centerLng===''?null:Number(site.centerLng),radiusM:Number(site.radiusM),coordinateSystem:site.coordinateSystem
+        })) },
         checkin: {
           requireDaily: !!f.checkin.requireDaily,
+          requiredDays: Math.max(0, Number(f.checkin.requiredDays ?? 0)),
+          reminderTime: String(f.checkin.reminderTime || '').trim() || null,
           geofenceRadiusM: Number(f.checkin.geofenceRadiusM || 0),
           maxAccuracyM: Number(f.checkin.maxAccuracyM || 200)
         },
         weeklyReport: {
           frequency: f.weeklyReport.frequency,
-          minWordCount: Number(f.weeklyReport.minWordCount || 0),
-          deadlineWeekday: Number(f.weeklyReport.deadlineWeekday || 7)
+          minWordCount: Math.max(0, Number(f.weeklyReport.minWordCount ?? 30)),
+          requiredCount: Math.max(0, Number(f.weeklyReport.requiredCount || 0)),
+          deadlineWeekday: Number(f.weeklyReport.deadlineWeekday || 7),
+          reviewSlaHours: Math.min(720, Math.max(1, Number(f.weeklyReport.reviewSlaHours || 48)))
         },
+        processReport: {
+          dailyMinWords: Math.max(1, Number(f.processReport.dailyMinWords || 30)),
+          dailyRequiredCount: Math.max(0, Number(f.processReport.dailyRequiredCount || 0)),
+          monthlyMinWords: Math.max(1, Number(f.processReport.monthlyMinWords || 100)),
+          monthlyRequiredCount: Math.max(0, Number(f.processReport.monthlyRequiredCount || 0)),
+          summaryMinWords: Math.max(1, Number(f.processReport.summaryMinWords || 300)),
+          summaryRequiredCount: Math.max(0, Number(f.processReport.summaryRequiredCount ?? 1)),
+          maxImages: Math.max(0, Number(f.processReport.maxImages ?? 9)),
+          maxVideos: Math.max(0, Number(f.processReport.maxVideos ?? 3)),
+          reviewSlaHours: Math.min(720, Math.max(1, Number(f.processReport.reviewSlaHours || 48)))
+        },
+        teacherReport: { ...f.teacherReport },
         guidance: {
           minVisitsPerTerm: Number(f.guidance.minVisitsPerTerm || 0),
           minCommunicationsPerMonth: Number(f.guidance.minCommunicationsPerMonth || 0)
@@ -680,9 +769,9 @@ export default {
         if (this.stagesError) return toast.error('阶段时间轴 JSON 配置有误，请先修正')
         if (this.rulesError) return toast.error('规则配置 JSON 配置有误，请先修正')
       } else {
+        if(this.teacherLocationError) { this.focusSection('rules'); return toast.error(this.teacherLocationError) }
+        if(this.reminderTimeError) { this.focusSection('rules'); return toast.error(this.reminderTimeError) }
         if (this.stageFormError) { this.focusSection('stages'); return toast.error(this.stageFormError) }
-        if (this.evalWeightSum !== 100) { this.focusSection('rules'); return toast.error(`评价权重合计须为 100%，当前 ${this.evalWeightSum}%`) }
-        if (this.componentWeightSum !== 100) { this.focusSection('rules'); return toast.error(`成绩构成权重合计须为 100%，当前 ${this.componentWeightSum}%`) }
       }
       const f = this.form
       const body = {
@@ -869,6 +958,7 @@ export default {
 .bf-content .bf-rules__grp { border: 0; border-top: 1px solid var(--card-b); border-radius: 0; padding: 16px 0 0; }
 .bf-content .bf-rules { gap: 24px; }
 .bf-rules__t { font-size: 14px; color: var(--t1); }
+.bf-teacher-site { border:1px solid var(--card-b); border-radius:6px; padding:14px; display:grid; gap:12px; }
 .bf-save-error { padding: 14px 18px; border: 1px solid var(--danger-200); background: var(--danger-50); color: var(--danger-700); font-size: 13px; line-height: 1.7; border-radius: 6px; }
 @media (max-width: 1080px) { .bf-layout { grid-template-columns: 1fr; } .bf-guide { position: static; padding: 0; } .bf-guide nav { display: flex; } .bf-guide p, .bf-guide__label { display: none; } }
 @media (max-width: 800px) { .bf-content .bf-row { grid-template-columns: 1fr; } }

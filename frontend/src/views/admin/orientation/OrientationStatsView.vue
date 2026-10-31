@@ -31,14 +31,16 @@
 
         <!-- 环节漏斗 -->
         <section class="ost-card">
-          <div class="ost-card__title">报到环节完成漏斗</div>
+          <div class="ost-card__title">各环节完成人数</div>
           <div v-if="!data.stepFunnel.length" class="ost-empty">暂无环节数据</div>
-          <div v-for="s in data.stepFunnel" v-else :key="s.key" class="ost-funnel">
-            <span class="ost-funnel__label">{{ s.label }}</span>
-            <div class="ost-funnel__bar">
-              <div class="ost-funnel__fill" :style="{ width: barWidth(s.done) + '%' }" />
+          <div v-else class="ost-steps">
+            <div v-for="s in data.stepFunnel" :key="s.key" class="ost-funnel">
+              <span class="ost-funnel__label">{{ s.label }}</span>
+              <div class="ost-funnel__bar">
+                <div class="ost-funnel__fill" :style="{ width: barWidth(s.done) + '%' }" />
+              </div>
+              <span class="ost-funnel__num">{{ s.done }} 人</span>
             </div>
-            <span class="ost-funnel__num">{{ s.done }}</span>
           </div>
         </section>
 
@@ -197,16 +199,19 @@ export default {
 }
 .ost-kpis {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
-  gap: 12px;
-  margin-bottom: 18px;
-}
-.ost-kpi {
-  padding: 14px 16px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0;
   border: 1px solid var(--card-b);
   border-radius: 12px;
   background: var(--card);
+  margin-bottom: 16px;
 }
+.ost-kpi {
+  padding: 14px 16px;
+  min-width: 0;
+  border-right: 1px solid var(--card-b);
+}
+.ost-kpi:last-child { border-right: 0; }
 .ost-kpi__label {
   font-size: 12.5px;
   color: var(--t3);
@@ -255,7 +260,7 @@ export default {
 }
 .ost-funnel__bar {
   flex: 1;
-  height: 14px;
+  height: 8px;
   border-radius: 7px;
   background: var(--pri-bg);
   overflow: hidden;
@@ -267,7 +272,7 @@ export default {
   transition: width 0.3s ease;
 }
 .ost-funnel__num {
-  width: 44px;
+  width: 52px;
   text-align: right;
   font-size: 12.5px;
   color: var(--t1);
@@ -305,6 +310,11 @@ export default {
   font-size: 12.5px;
   color: var(--t3);
 }
+.ost-steps { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 32px; }
+.ost-funnel { margin: 0; min-width: 0; }
+.ost-head { padding: 12px 0; margin-bottom: 8px; }
+@media (max-width: 1100px) { .ost-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .ost-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); } .ost-steps { grid-template-columns: 1fr; } .ost-head { gap: 6px 12px; } .ost-head__time { margin-left: 0; width: 100%; } }
 .ost-export-form { display: grid; gap: 12px; }
 .ost-export-form p { margin: 0; color: var(--t2); font-size: 13px; line-height: 1.6; }
 </style>

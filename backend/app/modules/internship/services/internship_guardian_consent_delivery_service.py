@@ -180,6 +180,8 @@ def redeliver(consent_id, expected_version, user=None) -> dict:
         ).with_for_update())
         if not row:
             raise not_found("监护人确认任务不存在")
+        from app.modules.internship.services.internship_scope import assert_internship_record_scope
+        assert_internship_record_scope(db, row.internship_id, user, "重新发送监护人确认")
         if row.consent_type != "GUARDIAN":
             raise AppException("VALIDATION_ERROR", "仅监护人确认任务可重新发送")
         if row.status != "PENDING":

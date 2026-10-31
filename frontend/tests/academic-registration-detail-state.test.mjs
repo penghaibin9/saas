@@ -46,6 +46,20 @@ function ready(state) {
   state.rows = [{ studentId, realName: 'PRIVATE-STUDENT' }]; state.selectedIds = [studentId]
   state.preview = { batchId, previewToken: 'original-token', ready: 1, blocked: 0, items: [] }; state.previewSignature = state.selectionSignature; state.reviewed = true
 }
+
+test('注册名单显示已核实批次名称，不显示内部编号或上一批次名称', async () => {
+  const template = sources.detail.match(/<p class="mp-note">[\s\S]*?<\/p>/)[0]
+  for (const [batchContext, batchLoading, expected] of [
+    ['current', false, 'PRIVATE-ORIGINAL-BATCH'], ['old', true, '正在读取批次'], ['old', false, '批次信息未取得']
+  ]) {
+    const html = await renderToString(createSSRApp({
+      data: () => ({ batchId, batchRecord: batch('OPEN'), batchContext, detailContext: 'current', batchLoading }), render: compile(template)
+    }))
+    assert.ok(html.includes(expected))
+    assert.ok(!html.includes(batchId))
+    if (batchContext !== 'current') assert.doesNotMatch(html, /PRIVATE-ORIGINAL-BATCH/)
+  }
+})
 async function renderBulk(mounted) {
   const data = { ...mounted.state }
   for (const key of [...Object.keys(mounted.component.methods), 'batchId', 'batchState', 'ctx', '$emit']) delete data[key]

@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import test from 'node:test'
 import { parse } from '@vue/compiler-sfc'
 import { computed, ref } from 'vue'
+import { assertEvaluationReturnScope,evaluationReturnTarget } from '../src/services/evaluationNavigation.js'
 
 const deferred = () => { let resolve; const promise = new Promise(r => { resolve = r }); return {promise,resolve} }
 const preview = { inviteMode:'EXISTING_MEMBER',memberId:'7',campaignId:'2',companyName:'虚构企业' }
@@ -83,11 +84,11 @@ test('late inspect and acceptance never replace newer invitation selection',asyn
   assert.deepEqual(selected,[])
 })
 
-function selector(api = {}) {
+function selector(api = {}, redirect = '', tenantCode = 'fixture') {
   const source=parse(fs.readFileSync(new URL('../src/views/CampaignSelectView.vue',import.meta.url),'utf8')).descriptor.scriptSetup.content.replace(/^import.*$/gm,'')+'\nreturn {items,activeItems,historyItems,collaborationItems,waitingItems,enter,load,loading,error}'
   const selected=[],routes=[]
   let unmount
-  const vm=new Function('computed','ref','onMounted','onBeforeUnmount','useRouter','enterpriseInternshipApi','setSelectedCampaignId',source)(computed,ref,()=>{},fn=>{unmount=fn},()=>({push:r=>routes.push(r)}),api,id=>selected.push(id))
+  const vm=new Function('computed','ref','onMounted','onBeforeUnmount','useRouter','enterpriseInternshipApi','setSelectedCampaignId','useRoute','evaluationReturnTarget','assertEvaluationReturnScope','getTenantCode',source)(computed,ref,()=>{},fn=>{unmount=fn},()=>({push:r=>routes.push(r)}),api,id=>selected.push(id),()=>({query:{redirect}}),evaluationReturnTarget,assertEvaluationReturnScope,()=>tenantCode)
   vm.loading.value=false
   return {vm,selected,routes,unmount:()=>unmount()}
 }
@@ -110,9 +111,9 @@ test('selector rechecks context before selecting and reports expiry without navi
 
 test('selector preserves collaboration-only entry and never verifies it as recruitment',async()=>{
   let received
-  const {vm,selected}=selector({context:()=>assert.fail('recruitment call'),collaborationContext:async id=>{received=id;return {batchId:id}}})
+  const {vm,selected,routes}=selector({context:()=>assert.fail('recruitment call'),collaborationContext:async id=>{received=id;return {batchId:id}}})
   await vm.enter({...usableCampaign,recruitmentAvailable:false,collaborationAvailable:true},'COLLABORATION')
-  assert.equal(received,'23');assert.deepEqual(selected,['2'])
+  assert.equal(received,'23');assert.deepEqual(selected,['2']);assert.deepEqual(routes,['/students'])
 })
 
 test('selector ignores duplicate clicks and an unmounted late context response',async()=>{
@@ -128,4 +129,20 @@ test('selector isolates overlapping reloads and rejects a mismatched response sc
   const first=vm.load();await vm.load();pending.resolve([]);await first
   assert.equal(vm.items.value[0].id,'2')
   await vm.enter(usableCampaign);assert.deepEqual(selected,[]);assert.match(vm.error.value,/范围已变化/)
+})
+
+test('after login the selected authoritative campaign resumes the original QR evaluation task',async()=>{
+  const redirect='/evaluations?tenantCode=fixture&campaignId=2&batchId=23&internshipId=9007199254740993'
+  const {vm,routes}=selector({context:async()=>({campaignId:'2',batchId:'23',capabilities:{internshipCollab:true}})},redirect)
+  await vm.enter(usableCampaign)
+  assert.deepEqual(routes,[evaluationReturnTarget(redirect)])
+})
+
+test('QR return never switches the original task into a wrong campaign, school or missing grant',async()=>{
+  const redirect='/evaluations?tenantCode=fixture&campaignId=2&batchId=23&internshipId=33'
+  for(const [context,school] of [[{campaignId:'2',batchId:'24',capabilities:{internshipCollab:true}},'fixture'],[{campaignId:'2',batchId:'23',capabilities:{internshipCollab:false}},'fixture'],[{campaignId:'2',batchId:'23',capabilities:{internshipCollab:true}},'another-school']]){
+    const {vm,routes,selected}=selector({context:async()=>context},redirect,school)
+    await vm.enter(usableCampaign)
+    assert.deepEqual(routes,[]);assert.deepEqual(selected,[]);assert.match(vm.error.value,/不匹配/)
+  }
 })

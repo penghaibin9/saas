@@ -19,12 +19,12 @@ const studentId = '1000000000000063603'
 const row = (batchId = '4') => ({ studentId, batchId, realName: '测试学生', studentNo: 'TEST-3', kind: 'UNREGISTERED' })
 const result = (list, total = list.length) => ({ code: 0, data: { list, total } })
 
-test('one student in two batches has distinct queue identities and page search does not alter server total', () => {
+test('同一学生跨批次保持独立行，未提交的搜索词不改写已查询结果', () => {
   const page = setup({})
   page.unreg.rows = [row('4'), row('5')]; page.unreg.pagination.total = 120
   assert.equal(new Set(page.unregisteredRows.map(item => item.queueKey)).size, 2)
   page.unreg.keyword = 'missing'
-  assert.equal(page.unregisteredRows.length, 0)
+  assert.equal(page.unregisteredRows.length, 2)
   assert.equal(page.unreg.pagination.total, 120)
 })
 

@@ -410,7 +410,14 @@ export async function uploadFile(path, file, { auth = true, _retried = false } =
     const e = new Error(`响应结构异常（HTTP ${res.status}）`); e.status = res.status; throw e
   }
   if (payload.code !== 0) {
-    const e = new Error(payload.message || `业务错误 ${payload.code}`); e.code = payload.code; e.biz = true; throw e
+    const e = new Error(payload.message || `业务错误 ${payload.code}`)
+    e.code = payload.code
+    e.biz = true
+    e.bizCode = payload.bizCode
+    e.details = payload.details
+    e.traceId = payload.traceId
+    e.decisionTrace = payload.decisionTrace
+    throw e
   }
   if (String(path).includes('bizType=GRADUATION_MATERIAL') && payload.data?.fileId) {
     rememberTempFile(payload.data.fileId)

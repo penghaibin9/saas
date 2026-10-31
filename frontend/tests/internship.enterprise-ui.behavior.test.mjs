@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -6,11 +7,12 @@ import { formatDateTime } from '../src/utils/dateUtils.js'
 
 // Run the actual Options API methods, with network and UI feedback replaced.
 function view(file, api = {}, overrides = {}) {
+  api = {getEnterpriseScopeColleges:async()=>({code:0,data:{mode:'ADMIN_TENANT',items:[],schoolWideAllowed:true}}),...api}
   const script = parse(fs.readFileSync(new URL('../src/modules/internship/views/' + file, import.meta.url), 'utf8')).descriptor.script.content
     .replace(/^import[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
     .replace(/components:\s*\{[^}]*\},/, 'components: {},').replace('export default', 'return')
   const routes = []
-  const options = new Function('internshipApi', 'positionApi', 'complianceApi', 'toast', 'canCode', 'emptyConflict', 'window', 'formatDateTime', script)(
+  const options = componentFactory('internshipApi', 'positionApi', 'complianceApi', 'toast', 'canCode', 'emptyConflict', 'window', 'formatDateTime', script)(
     api, api, api, { success() {}, error() {} }, (ctx, code) => ctx.permissionPatterns?.includes(code), () => ({}), {}, formatDateTime)
   const instance = { ...options.data(), ctx: { permissionActions: { editEnterprise: { allowed: true }, createEnterprise: { allowed: true } } },
     $route: { params: { id: '1' }, path: '/admin/internship/enterprises/1/edit', query: { batchId: '23' } },
@@ -52,6 +54,7 @@ test('a late enterprise form response cannot overwrite a more recent load of the
   let calls = 0
   const { instance: page } = view('EnterpriseFormView.vue', { getEnterpriseDetail: () => ++calls === 1 ? old.promise : Promise.resolve(ok({ id: '1', name: '最新名称' })) })
   const pending = page.init()
+  await Promise.resolve() // 等待首个详情请求发出，再模拟重载相同对象。
   await page.init()
   old.resolve(ok({ id: '1', name: '旧名称' }))
   await pending

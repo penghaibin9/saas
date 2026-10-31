@@ -2,7 +2,7 @@
   <ModulePageShell title="学生与教师评价" subtitle="阅读学生自评，完善指导意见，再交由学校审核。"
     role-name="指导教师 / 管理员" :data-scope-name="scopeHint" :watermark="false">
     <template #actions>
-      <AppButton variant="ghost" @click="goEnterpriseEvals">企业评价</AppButton>
+      <AppButton v-if="canBtn('internship.eval.enterprise.view')" variant="ghost" @click="goEnterpriseEvals">企业评价</AppButton>
       <AppExportButton :export-fn="exportFn" :has-permission="canBtn('internship.eval.self.export')" @exported="onExported">导出鉴定台账</AppExportButton>
     </template>
 
@@ -30,7 +30,7 @@
                   <AppStatusTag :type="reviewTone(r.reviewStatus)">{{ r.reviewStatusLabel }}</AppStatusTag>
                 </div>
                 <div class="lv-item__sub">{{ r.studentNo }}<template v-if="r.advisorName"> · {{ r.advisorName }}</template></div>
-                <div class="lv-item__sub">{{ r.createdAt }} · 自评 {{ r.submitStatusLabel }}</div>
+                <div class="lv-item__sub">{{ formatDateTime(r.createdAt, '未记录') }} · 自评 {{ r.submitStatusLabel }}</div>
               </button>
             </li>
           </ul>
@@ -71,7 +71,7 @@
                 <p v-if="attachmentError" class="local-error" role="alert">{{ attachmentError }}</p>
               </div>
 
-              <template v-if="canComment || commentDirty">
+              <template v-if="(canComment && commentEditing) || commentDirty">
                 <h2 class="sec-t">指导教师意见</h2>
                 <AppInlineAlert v-if="commentConflict.active" type="warning" title="评价已更新，暂不能保存原意见" description="填写内容已保留。核对最新自评后，可恢复最新已保存意见并重新填写。">
                   <AppButton variant="ghost" @click="restoreComment">恢复最新已保存意见</AppButton>
@@ -95,7 +95,7 @@
                   </div>
                 </div>
               </template>
-              <template v-else><h2 class="sec-t">已保存的导师意见</h2><AppDescriptionList :items="opinionItems" :columns="1" /></template>
+              <template v-else><h2 class="sec-t">已保存的导师意见</h2><AppDescriptionList :items="opinionItems" :columns="1" /><AppButton v-if="canComment" variant="ghost" @click="commentEditing=true">修改指导意见</AppButton></template>
               <template v-if="detail.data.reviewStatus !== 'PENDING'">
                 <h2 class="sec-t">学校审核结果</h2><AppDescriptionList :items="reviewItems" :columns="2" />
               </template>
@@ -141,6 +141,7 @@ import { canCode } from '@/modules/internship/composables/permission'
 import { toast } from '@/utils/toast'
 import { ENTERPRISE_EVAL_COMMENT, REJECT_STUDENT_EVAL, ADVISOR_EVAL_COMMENT } from '@/modules/internship/constants/presetPrompts'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
+import { formatDateTime } from '@/utils/dateUtils'
 
 /* 右栏只渲染 /internship/student-evals/{id} 真实返回字段（见 internship_student_eval_service._row + _full + get_eval） */
 const DETAIL = [
@@ -172,7 +173,7 @@ export default {
       keyword: '', statusFilter: 'PENDING', statusOptions: STATUS_OPTIONS, viewFilter: '',
       selectedId: '', doneHint: false,
       detail: { loading: false, error: '', data: null },
-      cmtForm: { advisorOpinion: '', mentorOpinion: '' }, cmtSubmitting: false,
+      cmtForm: { advisorOpinion: '', mentorOpinion: '' }, cmtSubmitting: false, commentEditing: false,
       cmtVersion: null, commentDrafts: {}, commentError: '', commentConflict: emptyConflict(),
       downloading: false, attachmentError: '', conflict: emptyConflict(),
       cd: { visible: false, title: '', content: '', danger: false, confirmText: '确认', requireReason: false, submitting: false },
@@ -186,7 +187,7 @@ export default {
     commentDirty() { const d = this.detail.data; return !!d && (this.cmtForm.advisorOpinion !== (d.advisorOpinion || '') || this.cmtForm.mentorOpinion !== (d.mentorOpinion || '')) },
     feedbackItems() { return FEEDBACK.map(f => ({ label: f.label, value: this.detail.data?.[f.key] })) },
     opinionItems() { return OPINION.map(f => ({ label: f.label, value: this.detail.data?.[f.key] })) },
-    reviewItems() { const d = this.detail.data || {}; return [{ label: '审核结果', value: d.reviewStatusLabel }, { label: '审核人', value: d.reviewedByName }, { label: '审核时间', value: d.reviewedAt }, { label: '审核意见', value: d.reviewComment }] },
+    reviewItems() { const d = this.detail.data || {}; return [{ label: '审核结果', value: d.reviewStatusLabel }, { label: '审核人', value: d.reviewedByName }, { label: '审核时间', value: formatDateTime(d.reviewedAt, '未记录') }, { label: '审核意见', value: d.reviewComment }] },
     detailItems() {
       const d = this.detail.data || {}
       return DETAIL.map((f) => ({
@@ -231,6 +232,7 @@ export default {
   },
   beforeUnmount() { this.listSequence++; this.resetDetail(false); this.commentDrafts = {} },
   methods: {
+    formatDateTime,
     canBtn(code) { return canCode(this.ctx, code) },
     applyQuery() {
       const view = String(this.$route.query.view || '').toLowerCase()
@@ -256,7 +258,7 @@ export default {
       this.cmtForm.advisorOpinion = cur ? cur + '；' + text : text
     },
     reviewTone(s) { return s === 'APPROVED' ? 'success' : s === 'RETURNED' ? 'danger' : 'warning' },
-    goEnterpriseEvals() { this.$router.push({ path: '/admin/internship/enterprise-evals', query: this.batchStore.withBatchQuery() }) },
+    goEnterpriseEvals() { if (this.canBtn('internship.eval.enterprise.view')) this.$router.push({ path: '/admin/internship/enterprise-evals', query: this.batchStore.withBatchQuery() }) },
     exportFn() {
       if (!this.batchStore.selectedBatchId) return Promise.resolve({ code: 1, message: '请先选择批次' })
       return studentEvalApi.exportEvals({ keyword: this.keyword, reviewStatus: this.statusFilter, batchId: this.batchStore.selectedBatchId })
@@ -299,7 +301,7 @@ export default {
     resetDetail(preserveDraft = true) {
       if (preserveDraft) this.rememberComment()
       this.detail = { loading: false, error: '', data: null }
-      this.cmtForm = { advisorOpinion: '', mentorOpinion: '' }; this.cmtVersion = null; this.cmtSubmitting = false
+      this.cmtForm = { advisorOpinion: '', mentorOpinion: '' }; this.cmtVersion = null; this.cmtSubmitting = false; this.commentEditing=false
       this.commentError = ''; this.commentConflict = emptyConflict()
       this.pending = null; this.cd = { ...this.cd, visible: false, submitting: false }; this.conflict = emptyConflict()
       this.downloading = false; this.attachmentError = ''
@@ -310,6 +312,7 @@ export default {
       delete this.commentDrafts[String(d.id)]
       this.cmtForm = { advisorOpinion: d.advisorOpinion || '', mentorOpinion: d.mentorOpinion || '' }
       this.cmtVersion = d.version; this.commentConflict = emptyConflict(); this.commentError = ''
+      this.commentEditing=!d.advisorOpinion
     },
     clearSelection() {
       this.resetDetail(); this.selectedId = ''
@@ -334,6 +337,7 @@ export default {
       const draft = this.commentDrafts[String(id)]
       this.cmtForm = draft ? { ...draft.form } : { advisorOpinion: res.data.advisorOpinion || '', mentorOpinion: res.data.mentorOpinion || '' }
       this.cmtVersion = draft ? draft.version : res.data.version
+      this.commentEditing=!!draft||!res.data.advisorOpinion
       if (draft && String(draft.version) !== String(res.data.version)) this.commentConflict = { ...emptyConflict(), active: true }
     },
     async downloadAtt() {
@@ -361,6 +365,7 @@ export default {
         return
       }
       delete this.commentDrafts[String(workspace.data.id)]
+      this.commentEditing=false
       workspace.data = { ...workspace.data, ...res.data, mentorOpinion: form.mentorOpinion.trim() }
       this.cmtForm = { advisorOpinion: workspace.data.advisorOpinion, mentorOpinion: workspace.data.mentorOpinion }; this.cmtVersion = res.data.version
       this.lastReceipt = { actionLabel: '导师评价已保存', objectLabel: this.detail.data.studentName,

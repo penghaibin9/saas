@@ -1468,8 +1468,8 @@ export const acadExamDeferMy = (params = {}) =>
   })
 export const acadExamDeferApply = (examCourseId, reasonType, reason) =>
   realRequest('/mobile/academic/exam/defer/apply', { method: 'POST', data: { examCourseId, reasonType, reason } })
-export const acadExamDeferResubmit = (deferId, expectedVersion) =>
-  realRequest(`/mobile/academic/exam/defer/${deferId}/resubmit`, { method: 'POST', data: { expectedVersion } })
+export const acadExamDeferResubmit = (deferId, expectedVersion, reason) =>
+  realRequest(`/mobile/academic/exam/defer/${deferId}/resubmit`, { method: 'POST', data: { expectedVersion, reason } })
 
 /** 教师·成绩录入（真实接口） */
 export const teacherGradeTasks = (status) =>

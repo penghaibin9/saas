@@ -8,17 +8,7 @@
   >
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载活动统计..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
-      <section class="sa-summary-strip">
-        <div class="sa-summary-strip__content">
-          <span class="sa-summary-strip__eyebrow">活动运营结论</span>
-          <h2 class="sa-summary-strip__title">活动 {{ stats.totalActivities || 0 }} 场，报名 {{ stats.totalSignups || 0 }} 人次，签到 {{ stats.totalCheckins || 0 }} 人次，获学分学生 {{ stats.creditStudents || 0 }} 人</h2>
-          <p class="sa-summary-strip__text">先看活动状态判断待确认积压，再对比报名与签到人次，最后查看第二课堂学时、德育积分和志愿时长产出。</p>
-        </div>
-      </section>
-
-      <div class="sa-grid sa-grid--metrics">
-        <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-      </div>
+      <BusinessMetrics class="compact-metrics" :items="metricCards" />
 
       <div class="as-cols">
         <AppSectionCard title="按活动类型分布">
@@ -53,7 +43,8 @@
 </template>
 
 <script>
-import { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard } from '@/components/common'
+import BusinessMetrics from '@/components/workspace/BusinessMetrics.vue'
+import { AppGlobalState, AppPageShell, AppSectionCard } from '@/components/common'
 import { DataTable } from '@/components/business'
 import { studentAffairsApi } from '@/modules/studentAffairs/api/studentAffairs.api'
 
@@ -66,7 +57,7 @@ const CREDIT_COLUMNS = [{ key: 'label', title: '学分类型' }, { key: 'value',
 
 export default {
   name: 'ActivityStatsView',
-  components: { AppGlobalState, AppMetricCard, AppPageShell, AppSectionCard, DataTable },
+  components: { BusinessMetrics, AppGlobalState, AppPageShell, AppSectionCard, DataTable },
   data() { return { typeColumns: TYPE_COLUMNS, statusColumns: STATUS_COLUMNS, creditColumns: CREDIT_COLUMNS, loading: true, errorMessage: '', stats: {} } },
   computed: {
     pageState() { return this.loading ? 'loading' : (this.errorMessage ? 'error' : 'ready') },
@@ -77,9 +68,9 @@ export default {
       const s = this.stats
       return [
         { key: 'a', label: '活动总数', value: s.totalActivities || 0, accent: 'primary' },
-        { key: 'e', label: '报名人次', value: s.totalSignups || 0, accent: 'info' },
+        { key: 'e', label: '报名人次', value: s.totalSignups || 0, accent: 'primary' },
         { key: 'c', label: '签到人次', value: s.totalCheckins || 0, accent: 'success' },
-        { key: 's', label: '获学分学生', value: s.creditStudents || 0, accent: 'warning' }
+        { key: 's', label: '获学分学生', value: s.creditStudents || 0, accent: 'success' }
       ]
     }
   },
@@ -103,12 +94,16 @@ export default {
 </script>
 
 <style scoped>
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
-.as-cols { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
+@import '@/styles/module-page.css';
+.as-cols { min-width: 0; display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); margin-bottom: var(--space-4); }
 .activity-stats-hint { margin: 0 0 var(--space-3); color: var(--text-secondary); font-size: var(--font-size-sm); line-height: 1.65; }
 .activity-stat-number { color: var(--primary-700); font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
 .activity-credit-value { color: var(--success-700, #15803d); font-size: var(--font-size-lg); font-variant-numeric: tabular-nums; }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .as-cols { grid-template-columns: 1fr; } }
-@media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
-@import '@/styles/module-page.css';
+.as-cols > * { min-width: 0; }
+.as-cols :deep(.dt__table) { min-width: 0; }
+@media (max-width: 960px) { .as-cols { grid-template-columns: 1fr; } }
+.compact-metrics { flex: 1; min-width: 0; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); margin-bottom: 16px; gap: 12px 24px; }
+.compact-metrics :deep(> div) { display: flex; align-items: baseline; gap: 12px; min-width: 125px; }
+.compact-metrics :deep(dd) { margin: 0; font-size: 24px; }
+@media (max-width: 640px) { .compact-metrics { flex-basis: 100%; } }
 </style>

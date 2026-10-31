@@ -108,12 +108,15 @@ async def store_upload(
     user: dict | None = None,
     visibility: str = "BIZ_SCOPED",
     security_level: str = "NORMAL",
+    validation_biz_type: str | None = None,
 ) -> dict:
     """普通上传先锁定租户边界，再校验商业能力并进入物理写入。"""
     # 租户隔离是所有商业能力判断的前置条件。缺失 tenant context 时必须先
     # fail-closed 为 TENANT_CONTEXT_REQUIRED，不能拿 tenant=0 去查询商业套餐后
     # 误报 MODULE_NOT_AUTHORIZED。
     _legacy._require_tenant_id()
+    validation_options = ({"validation_biz_type": validation_biz_type}
+                          if validation_biz_type is not None else {})
     with storage_write_scope(biz_type):
         return await _legacy_store_upload(
             file,
@@ -122,6 +125,7 @@ async def store_upload(
             user=user,
             visibility=visibility,
             security_level=security_level,
+            **validation_options,
         )
 
 

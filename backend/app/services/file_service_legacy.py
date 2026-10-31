@@ -28,6 +28,7 @@ from app.services.storage import get_backend
 ALLOWED_EXT = {
     "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx",
     "png", "jpg", "jpeg", "gif", "zip", "txt", "csv",
+    "mp4", "webm", "rar",
 }
 BLOCKED_EXT = {"exe", "js", "bat", "sh", "php", "jsp", "html", "svg"}
 MAX_SIZE = 50 * 1024 * 1024
@@ -310,6 +311,7 @@ async def store_upload(
     user: dict | None = None,
     visibility: str = "BIZ_SCOPED",
     security_level: str = "NORMAL",
+    validation_biz_type: str | None = None,
 ) -> dict:
     """流式落盘并登记。高风险文件进入隔离区，由独立 ClamAV worker 扫描。"""
     filename = sanitize_filename(file.filename or "unnamed")
@@ -340,7 +342,7 @@ async def store_upload(
             declared_content_type=getattr(file, "content_type", None),
             path=target,
             ext=ext,
-            biz_type=biz_type,
+            biz_type=validation_biz_type or biz_type,
             source="USER",
         )
         backend.persist(key, target)
@@ -608,7 +610,7 @@ def get_file_meta(
         if require_ready:
             from app.services.file_scan_service import assert_file_ready_for_business
 
-            assert_file_ready_for_business(file_id, user=actor)
+            assert_file_ready_for_business(file_id, user=actor, access_action="meta")
         return _row_meta(row)
     if file_id in _MEM_REGISTRY:
         obj = _MemFile(file_id)

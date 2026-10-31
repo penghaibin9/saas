@@ -80,7 +80,7 @@ const selectedCount = computed(() => props.slots.filter((slot) => slot.positionI
 const statusLabel = computed(() => ({
   UNAVAILABLE: '暂不可用', DRAFT: '待提交', SUBMITTED: '已提交', LOCKED: '已锁定', NEEDS_REVISION: '可调整',
   APPROVED: '学校已确认', CONFIRMED: '学校已确认'
-}[props.group.status] || props.group.status || '待加载'))
+}[props.group.status] || '状态待学校核对'))
 
 function chineseNo(value) {
   return ({ 1: '一', 2: '二', 3: '三' })[Number(value)] || value

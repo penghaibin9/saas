@@ -49,7 +49,7 @@
 
         <template v-if="['events', 'holiday', 'makeup'].includes(tab)">
           <AppInlineAlert v-if="selectedTerm && isLocked" type="warning"
-                          description="所选学期已发布，校历事件保持锁定。如需调整，请联系教务处核对学校的变更流程。" />
+                          :description="`所选学期${statusLabel(selectedTerm.status)}，校历事件只读。如需调整，请联系教务处核对学校的变更流程。`" />
 
           <AaCalendarMonth v-if="['events', 'makeup'].includes(tab)" :term="selectedTerm" :title="tab === 'makeup' ? '补课日与被替代教学日' : '校历管理'" :events="filteredEvents" :loading="eventsLoading" :error="error"
             :can-create="canEditEvents && !busy" :authority-hint="currentContext?.switchHint || currentError || '当前学期由学校管理方式决定，请先核对启用方式。'"

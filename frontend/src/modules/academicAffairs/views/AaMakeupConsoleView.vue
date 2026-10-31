@@ -6,7 +6,7 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <div class="aamk-tabs">
-      <button v-for="t in tabs" :key="t.key" :class="['aamk-tab', { 'is-active': tab === t.key }]" :disabled="saving || !!pendingWrite" @click="switchTab(t.key)">{{ t.label }}</button>
+      <button v-for="t in visibleTabs" :key="t.key" :class="['aamk-tab', { 'is-active': tab === t.key }]" :disabled="saving || !!pendingWrite" @click="switchTab(t.key)">{{ t.label }}</button>
     </div>
 
     <section v-if="writeReceipt" class="aamk-receipt" role="status"><strong>{{ writeReceipt.verified ? '已重新读取正式记录' : '结果待核实' }}</strong><p>{{ writeReceipt.label }} · {{ writeReceipt.description }}</p><p v-if="writeReceipt.objectId">业务对象：#{{ writeReceipt.objectId }} · 操作时间：{{ formatMoment(writeReceipt.occurredAt) }}</p><p v-if="writeReceipt.status">实际状态：{{ writeReceipt.statusLabel || academicStatusLabel(writeReceipt.status) }}</p><p v-if="writeReceipt.next">下一步：{{ writeReceipt.next }}</p><AppButton v-if="pendingWrite" :disabled="saving" :loading="checkingWrite" @click="verifyWrite">刷新查看结果</AppButton><p v-if="pendingWrite">请勿重复提交；如详情弹窗遮挡，可先关闭弹窗再核对。</p></section>
@@ -42,12 +42,12 @@
         <EmptyState v-if="!rows.length" title="暂无补考批次" description="从不及格名单建批次" />
         <DataTable v-else :columns="batchColumns" :rows="rows" :pagination="pagination" @page-change="changePage" row-key="batchId">
           <template #cell-batchName="{ row }"><button class="aamk-focus" @click="focusProcess(row)">{{ row.batchName }}</button><small>#{{ row.batchId }} · {{ row.termCode || '学期待核对' }}</small></template>
-          <template #cell-status="{ row }"><StatusTag :type="mbType(row.status)" :label="mbLabel(row.status)" dot /></template>
+          <template #cell-status="{ row }"><StatusTag :type="mbType(row.status)" :label="mbLabel(row.status)" dot /><small v-if="row.reviewTotal > 0">当前范围已审核 {{ row.reviewedCount }} / {{ row.reviewTotal }} 条</small></template>
           <template #cell-ops="{ row }">
             <button class="mp-link" @click="openMakeupRecords(row)">名单/纳入</button>
             <button v-if="canManage && row.status === 'ARRANGED'" class="mp-link" @click="act('publishBatch', row.batchId, '发布')">发布</button>
-            <button v-if="canManage && row.status === 'SCORING'" class="mp-link" @click="act('collegeReview', row.batchId, '学院审核')">学院审核</button>
-            <button v-if="canManage && row.status === 'REVIEWED'" class="mp-link" @click="act('finishBatch', row.batchId, '教务发布回写')">教务发布回写</button>
+            <button v-if="canReviewBatch(row)" class="mp-link" @click="act('collegeReview', row.batchId, '本学院成绩审核')">本学院审核</button>
+            <button v-if="canManage && row.status === 'REVIEWED'" :disabled="!batchReviewComplete(row)" class="mp-link" @click="act('finishBatch', row.batchId, '教务发布回写')">教务发布回写</button>
             <button v-if="row.status !== 'DRAFT' && row.status !== 'ARRANGED'" class="mp-link" @click="printBatch(row.batchId)">打印安排表</button>
           </template>
         </DataTable>
@@ -107,14 +107,14 @@
         <DataTable v-else :columns="clearanceColumns" :rows="rows" :pagination="pagination" @page-change="changePage" row-key="batchId">
           <template #cell-batchName="{ row }"><button class="aamk-focus" @click="focusProcess(row)">{{ row.batchName }}</button><small>#{{ row.batchId }} · {{ row.termCode || '学期待核对' }}</small></template>
           <template #cell-grades="{ row }">{{ (row.targetGrades || []).join('、') || '—' }}</template>
-          <template #cell-status="{ row }"><StatusTag :type="mbType(row.status)" :label="mbLabel(row.status)" dot /></template>
+          <template #cell-status="{ row }"><StatusTag :type="mbType(row.status)" :label="mbLabel(row.status)" dot /><small v-if="row.reviewTotal > 0">当前范围已审核 {{ row.reviewedCount }} / {{ row.reviewTotal }} 条</small></template>
           <template #cell-ops="{ row }">
             <button v-if="canManage && ['DRAFT','ARRANGED'].includes(row.status)" class="mp-link" @click="scanClearance(row, true)">预览名单</button>
             <button v-if="canManage && ['DRAFT','ARRANGED'].includes(row.status)" class="mp-link" @click="scanClearance(row, false)">圈定名单</button>
             <button class="mp-link" @click="openClearanceRecords(row)">名单/录分</button>
             <button v-if="canManage && row.status === 'ARRANGED'" class="mp-link" @click="act('publishBatch', row.batchId, '发布清考')">发布</button>
-            <button v-if="canManage && row.status === 'SCORING'" class="mp-link" @click="act('collegeReview', row.batchId, '学院审核')">学院审核</button>
-            <button v-if="canManage && row.status === 'REVIEWED'" class="mp-link" @click="act('finishBatch', row.batchId, '清考成绩正式回写')">教务发布回写</button>
+            <button v-if="canReviewBatch(row)" class="mp-link" @click="act('collegeReview', row.batchId, '本学院成绩审核')">本学院审核</button>
+            <button v-if="canManage && row.status === 'REVIEWED'" :disabled="!batchReviewComplete(row)" class="mp-link" @click="act('finishBatch', row.batchId, '清考成绩正式回写')">教务发布回写</button>
           </template>
         </DataTable>
       </div>
@@ -284,6 +284,7 @@ import { AppButton, AppDrawer } from '@/components/ui'
 import { AppTextInput, AppNumberInput, AppFormItem, AppConfirmDialog, AppInlineAlert, AppTermCodePicker, AppMakeupBatchPicker, AppTeachingTaskPicker } from '@/components/common'
 import { academicAffairsMakeupApi as api } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { academicStatusLabel } from '@/modules/academicAffairs/constants/academic-display.constants'
+import { academicRoleAllows, academicRoleTabs } from '@/modules/academicAffairs/config/academicRoleNavigation'
 import { matchPermission } from '@/config/navPlan'
 import { currentUserFromToken } from '@/services/http/client'
 import { gradeError } from './parallel-c/grade-review'
@@ -333,8 +334,9 @@ export default {
     }
   },
   computed: {
+    visibleTabs() { return academicRoleTabs(this.tabs, '/admin/academic-affairs/makeup', this.ctx) },
     canViewGradeTranscript() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.grade.view') },
-    canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.makeup.manage') },
+    canManage() { return ['SCHOOL','TENANT_ALL'].includes(this.ctx.dataScope?.scope) && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.makeup.manage') },
     canReviewRetake() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.retake.review') },
     canReviewExemption() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.exemption.review') },
     identityKey() { const u = currentUserFromToken() || {}; return JSON.stringify([u.tenantId, u.userId, u.activeContextId, u.currentRoleCode, this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns]) },
@@ -350,8 +352,8 @@ export default {
     focusedProcessRow() { if (!this.examFlowMode) return null; const key = this.activeProcessKey; return this.rows.find(row => this.processKey(row) === key) || this.rows[0] || null },
     processStage() { const row = this.focusedProcessRow; if (!row) return 0; if (this.tab === 'deferred') return row.nextBatchRef ? 3 : 2; const status = String(row.status || '').toUpperCase(); if (this.tab === 'clearance') return ({ DRAFT: 0, ARRANGED: 1, PUBLISHED: 2, SCORING: 3, REVIEWED: 3, FINISHED: 4 })[status] ?? 0; return ({ DRAFT: 1, ARRANGED: 2, PUBLISHED: 3, SCORING: 3, REVIEWED: 3, FINISHED: 4 })[status] ?? 0 },
     processStatusLabel() { if (!this.focusedProcessRow) return '—'; return this.tab === 'deferred' ? (this.focusedProcessRow.nextBatchRef ? '已合流' : '待安排') : this.mbLabel(this.focusedProcessRow.status) },
-    processBlocker() { const row = this.focusedProcessRow; if (!row) return '当前范围没有可办理对象'; if (this.tab === 'deferred') return row.nextBatchRef ? '已合流，等待目标批次录分' : '需选择仍可接收名单的目标补考批次'; const status = String(row.status || '').toUpperCase(); if (this.tab === 'clearance') return ({ DRAFT: '需按学校政策核验并正式圈定名单', ARRANGED: '名单已圈定，等待考试安排或发布', PUBLISHED: '等待清考录分', SCORING: '存在待录入或待审核成绩', REVIEWED: '等待教务发布回写', FINISHED: '已回写，等待毕业资格重新核验' })[status] || '按正式批次状态核对'; return ({ DRAFT: '需从正式不及格成绩纳入名单', ARRANGED: '名单已编排，等待发布考试安排', PUBLISHED: '等待补考录分', SCORING: '存在待录入或待审核成绩', REVIEWED: '等待教务发布回写', FINISHED: '已归档为有效成绩结果' })[status] || '按正式批次状态核对' },
-    processNextOwner() { const row = this.focusedProcessRow; if (!row) return '待形成正式对象后确定'; if (this.tab === 'deferred') return row.nextBatchRef ? '补考录分岗' : '补考批次安排岗'; const status = String(row.status || '').toUpperCase(); if (status === 'FINISHED') return this.tab === 'clearance' ? '毕业资格审核岗' : '成绩与学业预警责任岗'; if (status === 'REVIEWED') return '教务成绩发布岗'; if (['PUBLISHED', 'SCORING'].includes(status)) return '补考 / 清考录分岗'; if (status === 'ARRANGED') return '考试安排发布岗'; return '补重修责任岗' },
+    processBlocker() { const row = this.focusedProcessRow; if (!row) return '当前范围没有可办理对象'; if (this.tab === 'deferred') return row.nextBatchRef ? '已合流，等待目标批次录分' : '需选择仍可接收名单的目标补考批次'; const status = String(row.status || '').toUpperCase(); if (status === 'REVIEWED' && !this.batchReviewComplete(row)) return '学院审核记录不完整，须由课程开课学院重新核验'; if (this.tab === 'clearance') return ({ DRAFT: '需按学校政策核验并正式圈定名单', ARRANGED: '名单已圈定，等待考试安排或发布', PUBLISHED: '等待清考录分', SCORING: '存在待录入或待审核成绩', REVIEWED: '等待教务发布回写', FINISHED: '已回写，等待毕业资格重新核验' })[status] || '按正式批次状态核对'; return ({ DRAFT: '需从正式不及格成绩纳入名单', ARRANGED: '名单已编排，等待发布考试安排', PUBLISHED: '等待补考录分', SCORING: '存在待录入或待审核成绩', REVIEWED: '等待教务发布回写', FINISHED: '已归档为有效成绩结果' })[status] || '按正式批次状态核对' },
+    processNextOwner() { const row = this.focusedProcessRow; if (!row) return '待形成正式对象后确定'; if (this.tab === 'deferred') return row.nextBatchRef ? '补考录分岗' : '补考批次安排岗'; const status = String(row.status || '').toUpperCase(); if (status === 'FINISHED') return this.tab === 'clearance' ? '毕业资格审核岗' : '成绩与学业预警责任岗'; if (status === 'REVIEWED') return '教务成绩发布岗'; if (status === 'SCORING') return '课程开课学院成绩审核岗'; if (status === 'PUBLISHED') return '补考 / 清考录分岗'; if (status === 'ARRANGED') return '考试安排发布岗'; return '补重修责任岗' },
     /** 只有草稿/已编排阶段能继续纳入；发布后名单已对学生成立，后端也会 409。 */
     canEnroll() { return this.canManage && !!this.mkBatch && ['DRAFT', 'ARRANGED'].includes(this.mkBatch.status) },
     canScoreMakeup() { return this.canManage && !!this.mkBatch && ['PUBLISHED', 'SCORING'].includes(this.mkBatch.status) },
@@ -467,6 +469,8 @@ export default {
       const params={page:1,pageSize:2}
       const res=tab==='retake'&&key==='applyId'?await api.retakeApplies({...params,applyId:String(id)})
         :tab==='exemption'&&key==='exemptionId'?await api.exemptionApplies({...params,exemptionId:String(id)})
+          :key==='batchId'&&['makeup','clearance'].includes(tab)?await api.listBatches({...params,batchId:String(id),kind:tab==='clearance'?'CLEARANCE':'MAKEUP'})
+          :tab==='deferred'&&key==='deferId'?await api.deferredPool({...params,deferId:String(id)})
           :await this.readTab(tab,page)
       if(res.code!==0)throw res
       return res.data?.list?.find(row=>String(row[key])===String(id)) || null
@@ -537,7 +541,7 @@ export default {
         const formal=await p.read(p.reply)
         if(!this.currentScope(p))return null
         if(!p.acknowledged){this.error='已重新读取当前正式记录，但尚未取得本次操作的回执，不能据此认定本次办理成功；请勿重复提交。';return null}
-        if(['batchId','applyId','exemptionId','makeupId','deferId'].some(key=>p.reply?.[key]!=null&&String(p.reply[key])!==String(formal?.[key]??''))){this.error='正式记录与操作回执的对象不一致，请重新核对原对象。';return null}
+        if(['batchId','applyId','exemptionId','makeupId','deferId'].some(key=>p.reply?.[key]!=null&&String(p.reply[key])!==String((key==='batchId'&&p.reply?.deferId&&formal?.deferId?formal.nextBatchRef:formal?.[key])??''))){this.error='正式记录与操作回执的对象不一致，请重新核对原对象。';return null}
         if(!p.accept(formal,p.reply)){this.error='结果待核实：正式记录尚未反映本次办理结果，请勿重复提交。';return null}
         this.forgetWrite(p)
         this.syncFormal(formal)
@@ -576,7 +580,7 @@ export default {
       if (/403|NO_PERMISSION|FORBIDDEN/.test(String(err?.bizCode || err?.code || ''))) this.resetScope()
       this.error=gradeError(err, fallback);this.detailError=this.error
     },
-    switchTab(k, updateRoute=true) { if(this.saving || this.pendingWrite || this.tab===k)return; this.resetScope(); this.tab=k; this.restoreWrite(); this.pagination.page=1; if(updateRoute)this.$router.replace({path:this.$route.path,query:{...this.$route.query,tab:k}}); this.reload() },
+    switchTab(k, updateRoute=true) { if(!academicRoleAllows({path:'/admin/academic-affairs/makeup',query:{tab:k}},this.ctx)||this.saving || this.pendingWrite || this.tab===k)return; this.resetScope(); this.tab=k; this.restoreWrite(); this.pagination.page=1; if(updateRoute)this.$router.replace({path:this.$route.path,query:{...this.$route.query,tab:k}}); this.reload() },
     changePage(page) { if(this.saving || this.pendingWrite)return;this.pagination.page=page;this.reload() },
     async readTab(tab, page=this.pagination.page) {
       const params={page,pageSize:this.pagination.pageSize}
@@ -616,17 +620,24 @@ export default {
       if(formal){this.batchVisible=false;this.pagination.page=1;this.reload()}
     },
     act(fn,id,label) {
-      if(!this.canManage||this.saving||this.pendingWrite)return
+      if(this.saving||this.pendingWrite)return
       const expected={publishBatch:['PUBLISHED','SCORING','REVIEWED','FINISHED'],collegeReview:['REVIEWED','FINISHED'],finishBatch:['FINISHED']}[fn]
       const row=this.rows.find(r=>String(r.batchId)===String(id));if(!row||!expected)return
+      if(fn==='collegeReview'?!this.canReviewBatch(row):!this.canManage)return
+      if(fn==='finishBatch'&&!this.batchReviewComplete(row))return
       const c=this.captureScope(),page=this.pagination.page,status=row.status
       this.confirmTitle=label;this.confirmMessage=`${row.batchName} · 当前${this.mbLabel(status)}。服务器将重新核对名单与成绩。`
       this.pendingAction=async()=>{
         if(!this.currentScope(c))return null
-        const formal=await this.runWrite({label,description:row.batchName,before:async()=>{const before=await this.findFormal(c.tab,'batchId',id,page);return before?.status===status},write:()=>api[fn](id),read:()=>this.findFormal(c.tab,'batchId',id,page),accept:row=>!!row&&expected.includes(row.status)})
+        const formal=await this.runWrite({label,description:row.batchName,before:async()=>{const before=await this.findFormal(c.tab,'batchId',id,page);return before?.status===status&&(fn!=='finishBatch'||this.batchReviewComplete(before))&&(fn!=='collegeReview'||(this.canReviewBatch(before)&&before.scoreVersion===row.scoreVersion))},write:()=>api[fn](id,...(fn==='collegeReview'?[row.scoreVersion]:[])),read:()=>this.findFormal(c.tab,'batchId',id,page),accept:row=>fn==='collegeReview'?!!row&&row.reviewTotal>0&&row.reviewedCount===row.reviewTotal:!!row&&expected.includes(row.status)})
         if(formal)this.reload();return formal
       }
       this.confirmVisible=true
+    },
+    batchReviewComplete(row) { return Number.isSafeInteger(row?.reviewTotal) && row.reviewTotal > 0 && row.reviewedCount === row.reviewTotal },
+    canReviewBatch(row) {
+      return row?.canCollegeReview === true && Number.isSafeInteger(row.scoreVersion) && ['SCORING','REVIEWED'].includes(row.status)
+        && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.grade.collegeReview')
     },
     printBatch(batchId) {
       this.$router.push(`/admin/academic-affairs/makeup/batches/${batchId}/print`)
@@ -741,10 +752,33 @@ export default {
         const formal=await this.runWrite({label:'圈定清考名单',description:batch.batchName,
           before:async()=>{const r=await this.findFormal('clearance','batchId',batch.batchId,page);return !!r&&['DRAFT','ARRANGED'].includes(r.status)},
           write:()=>api.clearanceScan(batch.batchId,false),
-          read:async()=>{const res=await api.clearanceRecords(batch.batchId,{page:1,pageSize:20});if(res?.code!==0)throw res;return res.data},
+          read:reply=>this.readClearanceScan(batch.batchId,reply,c),
           accept:(data,reply)=>!!reply&&Array.isArray(reply.items)&&Array.isArray(data?.list)&&reply.items.every(item=>data.list.some(r=>String(r.originGradeId)===String(item.gradeId)&&String(r.acadStudentId)===String(item.acadStudentId)))})
         if(formal)this.reload();return formal
       };this.confirmVisible=true
+    },
+    async readClearanceScan(batchId, reply, scope) {
+      if (!Array.isArray(reply?.items)) throw new Error('圈定回执不完整，请核对正式名单。')
+      const expected = new Set(reply.items.map(row => `${row.gradeId}:${row.acadStudentId}`))
+      const matched = new Map()
+      let page = 1, total = null, count = 0
+      do {
+        if (!this.currentScope(scope)) throw new Error('当前办理范围已变化。')
+        const res = await api.clearanceRecords(batchId, { page, pageSize: 200 })
+        if (res?.code !== 0) throw res
+        if (!this.currentScope(scope)) throw new Error('当前办理范围已变化。')
+        const data = res.data
+        if (!Array.isArray(data?.list) || !Number.isSafeInteger(data.total) || data.total < 0
+          || (total !== null && total !== data.total) || (!data.list.length && count < data.total)) throw new Error('名单已变化，请重新核对。')
+        total = data.total
+        for (const row of data.list) {
+          const key = `${row.originGradeId}:${row.acadStudentId}`
+          if (expected.has(key)) matched.set(key, row)
+        }
+        count += data.list.length
+        page++
+      } while (count < total && matched.size < expected.size)
+      return { list: [...matched.values()], total }
     },
     async readRecord(kind,batchId,recordId,page) {
       const res=await (kind==='clearance'?api.clearanceRecords:api.batchRecords)(batchId,{page,pageSize:20})
@@ -787,7 +821,7 @@ export default {
       const c=this.captureScope(),seq=++this.candidateSeq,bid=this.mkBatch.batchId
       const valid=()=>this.currentScope(c)&&seq===this.candidateSeq&&String(this.mkBatch?.batchId)===String(bid)
       this.candidatePagination.page=page;this.candidateLoading=true;this.candidateError='';this.mkCandidates=[];this.mkDebtCount=0
-      try{const res=await api.makeupPending({termCode:this.candidateTerm||undefined,page,pageSize:20});if(!valid())return;if(res?.code!==0)throw res;this.mkCandidates=res.data?.list||[];this.mkDebtCount=this.mkCandidates.filter(r=>!r.identityReady).length;this.candidatePagination.total=res.data?.total??this.mkCandidates.length}
+      try{const res=await api.makeupPending({term:this.candidateTerm||undefined,page,pageSize:20});if(!valid())return;if(res?.code!==0)throw res;this.mkCandidates=res.data?.list||[];this.mkDebtCount=this.mkCandidates.filter(r=>!r.identityReady).length;this.candidatePagination.total=res.data?.total??this.mkCandidates.length}
       catch(err){if(valid()){this.candidateError=gradeError(err);if(/403|NO_PERMISSION|FORBIDDEN/.test(String(err?.bizCode||err?.code||'')))this.readError(err)}}finally{if(valid())this.candidateLoading=false}
     },
     enrollCandidate(row) {

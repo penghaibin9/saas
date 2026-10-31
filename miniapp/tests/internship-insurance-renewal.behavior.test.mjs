@@ -1,12 +1,14 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import { normalizeFileReadiness,refreshFileReadiness } from '../src/services/fileReadiness.mjs'
 
 const source = fs.readFileSync(new URL('../src/pages/student-internship/insurance/index.vue', import.meta.url), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1].replace(/^import .*$/gm, '').replace('export default', 'return')
 function view(api = {}, upload = async () => ({ fileId: 'new-file' })) {
   const notices = []
-  const def = new Function('studentApi', 'chooseSingleFile', 'uploadBusinessFile', 'toast', source)(api, async () => ({ name: 'fixture.pdf' }), upload, message => notices.push(message))
-  const vm = def.data()
+  const deps={studentApi:api,chooseSingleFile:async()=>({name:'fixture.pdf'}),uploadBusinessFile:upload,toast:message=>notices.push(message),currentSessionGeneration:()=>1,normalizeFileReadiness,refreshFileReadiness,normalizeError:e=>({kind:Number(e?.code)===409001?'conflict':'unknown',text:e?.message||'操作未完成'}),fileSdk:{}}
+  const def = new Function(...Object.keys(deps), source)(...Object.values(deps))
+  const vm = {...def.data(), pageState:'ready',context:{batchId:'1',internshipId:'2'},attachment:{fileId:'old-file',readyForBusiness:true}}
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   for (const [key, fn] of Object.entries(def.computed)) Object.defineProperty(vm, key, { get: () => fn.call(vm) })
   vm.info = { id: '9007199254740999', version: 3, status: 'VERIFIED', canRenew: true }

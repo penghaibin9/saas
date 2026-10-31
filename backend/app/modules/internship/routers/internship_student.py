@@ -12,7 +12,7 @@
 from __future__ import annotations
 
 import io
-from typing import Optional
+from typing import Annotated, Optional
 
 from fastapi import APIRouter, Body, Depends, File, Query, UploadFile
 from fastapi.responses import StreamingResponse
@@ -23,9 +23,12 @@ from app.modules.internship.services.internship_import_upload import read_safe_x
 from app.modules.internship.schemas.internship_student import (AdvisorAssignmentRequest, AssignPositionRequest, DestinationRequest,
                                             EligibilityRequest, StudentImport,
                                             StudentRecordCreate, StudentRecordUpdate,
-                                            StudentStatusRequest, UnassignRequest)
+                                            StudentStatusRequest, StudentRosterQuery, UnassignRequest)
 from app.services import audit_log
 from app.modules.internship.services import internship_student_service as svc
+from app.modules.internship.services import internship_student_basic_info_service as basic_info
+from app.modules.internship.schemas.student_basic_info import StudentBasicInfoUpdate, StudentBasicInfoImport
+from app.modules.internship.services import internship_plan_assignment_service as plan_assignment_svc
 from app.services import xlsx_util
 
 router = APIRouter(prefix="/internship", tags=["岗位实习-实习学生"])
@@ -39,35 +42,81 @@ _P_EXPORT = "internship.student.export"
 _P_LOG = "internship.match.log.view"
 
 
+@router.get('/intern-students/basic-info-import/template', summary='基础资料导入模板')
+def basic_info_template(user=Depends(require_permission(_P_MANAGE))):
+    data = xlsx_util.build_template_xlsx(basic_info.IMPORT_HEADERS,
+        notes=['学号必须是当前批次的有效学生。', '生源地填写地区名称，不填写详细家庭住址。',
+               '民族与性别按已知资料填写；暂未采集请保持空白，不填写占位文字。',
+               '本次导入会按表内内容更新三个字段；确认前请核对，空白将清空原字段。',
+               '上传只预校验，确认才整批保存；其他页面更新后必须重新预校验。'], required=['学号'])
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA,
+                             headers={'Content-Disposition': 'attachment; filename=student_basic_info_template.xlsx'})
+
+
+@router.post('/intern-students/basic-info-import/xlsx', summary='基础资料电子表格解析与当前版本预校验')
+async def basic_info_upload(file: UploadFile = File(...), batchId: str = Query(...), user=Depends(require_permission(_P_MANAGE))):
+    rows = xlsx_util.read_xlsx(await read_safe_xlsx_upload(file), basic_info.IMPORT_MAP)
+    return success(basic_info.preview_import(user, batchId, rows))
+
+
+@router.post('/intern-students/basic-info-import/dry-run', summary='基础资料预校验，不写入')
+def basic_info_preview(body: StudentBasicInfoImport, user=Depends(require_permission(_P_MANAGE))):
+    return success(basic_info.preview_import(user, body.batchId, body.rows))
+
+
+@router.post('/intern-students/basic-info-import/confirm', summary='确认整批基础资料，版本冲突全部回滚')
+def basic_info_confirm(body: StudentBasicInfoImport, user=Depends(require_permission(_P_MANAGE))):
+    return success(basic_info.confirm_import(user, body.batchId, body.rows), message='基础资料导入完成')
+
+
+@router.post('/intern-students/basic-info-import/errors-xlsx', summary='基础资料导入错误行电子表格')
+def basic_info_errors(body: dict = Body(...), user=Depends(require_permission(_P_MANAGE))):
+    rows = body.get('rows') or []
+    if len(rows) > 1000:
+        from app.core.exceptions import AppException
+        raise AppException('VALIDATION_ERROR', '错误行下载每次最多1000行')
+    field_labels = {value: label for label, value in basic_info.IMPORT_MAP.items()}
+    errors = [{**error, 'field': field_labels.get(error.get('field'), '基础资料')}
+              for error in body.get('errors') or []]
+    data = xlsx_util.build_error_rows_xlsx(basic_info.IMPORT_HEADERS, rows, errors,
+             lambda row: [row.get(basic_info.IMPORT_MAP[name], '') for name in basic_info.IMPORT_HEADERS],
+             reimportable=True)
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA,
+                             headers={'Content-Disposition': 'attachment; filename=student_basic_info_errors.xlsx'})
+
+
+@router.get('/intern-students/{record_id}/basic-info', summary='范围内学生基础资料当前事实')
+def student_basic_info(record_id: str, batchId: str = Query(...), user=Depends(require_permission(_P_VIEW))):
+    return success(basic_info.get_school(user, record_id, batchId))
+
+
+@router.put('/intern-students/{record_id}/basic-info', summary='学校按主档版本维护学生基础资料')
+def update_student_basic_info(record_id: str, body: StudentBasicInfoUpdate, batchId: str = Query(...), user=Depends(require_permission(_P_MANAGE))):
+    return success(basic_info.save_school(user, record_id, batchId, body.model_dump()), message='学生基础资料已保存')
+
+
 @router.get("/intern-students", summary="实习学生列表（分页+筛选：状态/资格/去向/是否已分配岗位）")
-def intern_students(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, le=200),
-                    keyword: Optional[str] = None, classId: Optional[str] = None,
-                    status: Optional[str] = None, riskLevel: Optional[str] = None,
-                    eligibility: Optional[str] = None, destination: Optional[str] = None,
-                    hasPosition: Optional[bool] = None, batchId: Optional[str] = None,
-                    user=Depends(require_permission(_P_VIEW))):
-    items, total = svc.list_students(page, pageSize, keyword=keyword, class_id=classId,
-                                     status=status, risk_level=riskLevel, eligibility=eligibility,
-                                     destination=destination, has_position=hasPosition,
-                                     batch_id=batchId, user=user)
-    return success(paginate(items, total, page, pageSize))
+def intern_students(filters: Annotated[StudentRosterQuery, Query()], user=Depends(require_permission(_P_VIEW))):
+    items, total = svc.list_students(filters.page, filters.pageSize, **filters.service_filters(), user=user)
+    return success(paginate(items, total, filters.page, filters.pageSize))
 
 
 @router.get("/intern-students/stats", summary="实习学生统计（状态/是否分配/资格）")
 def intern_student_stats(keyword: Optional[str] = None, classId: Optional[str] = None,
                          status: Optional[str] = None, riskLevel: Optional[str] = None,
                          eligibility: Optional[str] = None, destination: Optional[str] = None,
-                         hasPosition: Optional[bool] = None, batchId: Optional[str] = None,
+                         hasPosition: Optional[bool] = None, hasAdvisor: Optional[bool] = None,
+                         batchId: Optional[str] = None,
                          user=Depends(require_permission(_P_VIEW))):
     return success(svc.student_stats(
         batch_id=batchId, keyword=keyword, class_id=classId, status=status,
         risk_level=riskLevel, eligibility=eligibility, destination=destination,
-        has_position=hasPosition, user=user))
+        has_position=hasPosition, has_advisor=hasAdvisor, user=user))
 
 
 @router.get("/intern-students/advisors", summary="可分配的在职指导教师账号")
 def intern_advisors(keyword: Optional[str] = None, user=Depends(require_permission(_P_MANAGE))):
-    return success(svc.list_advisors(keyword))
+    return success(svc.list_advisors(keyword, user=user))
 
 
 @router.get("/intern-students/assignment-logs", summary="岗位与指导教师分配审计台账")
@@ -77,9 +126,82 @@ def assignment_logs(page: int = Query(1, ge=1), pageSize: int = Query(20, ge=1, 
     return success(paginate(items, total, page, pageSize))
 
 
+@router.get("/intern-students/allocation-import/template", summary="实习分配导入·下载 Excel 模板")
+def allocation_import_template(user=Depends(require_permission(_P_MANAGE))):
+    data = xlsx_util.build_template_xlsx(
+        svc.ALLOCATION_IMPORT_HEADERS,
+        sample=svc.ALLOCATION_IMPORT_SAMPLE,
+        notes=svc.ALLOCATION_IMPORT_NOTES,
+        required=svc.ALLOCATION_IMPORT_REQUIRED,
+    )
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=internship_allocation_import_template.xlsx"
+    })
+
+
+@router.post("/intern-students/allocation-import/xlsx", summary="实习分配导入·解析并预校验")
+async def allocation_import_xlsx(
+    file: UploadFile = File(...),
+    batchId: Optional[str] = Query(None),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    content = await read_safe_xlsx_upload(file)
+    rows = xlsx_util.read_xlsx(content, svc.ALLOCATION_IMPORT_HEADER_MAP)
+    return success({
+        **svc.allocation_import_dry_run(rows, batch_id=batchId, user=user),
+    })
+
+
+@router.post("/intern-students/allocation-import/dry-run", summary="实习分配导入·预校验")
+def allocation_import_dry_run(
+    body: StudentImport,
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    return success(svc.allocation_import_dry_run(
+        body.rows, batch_id=body.batchId, user=user))
+
+
+@router.post("/intern-students/allocation-import/confirm", summary="实习分配导入·确认")
+def allocation_import_confirm(
+    body: StudentImport,
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    result = svc.allocation_import_confirm(
+        body.rows, batch_id=body.batchId, user=user)
+    audit_log.record(
+        "导入实习分配",
+        "internship-student:allocation-import",
+        detail={
+            "rowCount": result.get("processed"),
+            "advisorAssigned": result.get("advisorAssigned"),
+            "positionAssigned": result.get("positionAssigned"),
+            "batchId": result.get("batchId"),
+        },
+    )
+    return success(result, message="实习分配导入完成")
+
+
+@router.post("/intern-students/allocation-import/errors-xlsx", summary="实习分配导入·下载错误行 Excel")
+def allocation_import_errors_xlsx(
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    rows = body.get("rows") or []
+    errors = body.get("errors") or []
+    data = xlsx_util.build_error_rows_xlsx(
+        svc.ALLOCATION_IMPORT_HEADERS,
+        rows,
+        errors,
+        svc._allocation_row_values_for_error,
+    )
+    return StreamingResponse(io.BytesIO(data), media_type=_XLSX_MEDIA, headers={
+        "Content-Disposition": "attachment; filename=internship_allocation_import_errors.xlsx"
+    })
+
+
 @router.post("/intern-students/import/dry-run", summary="按学号建档·预校验（不写库）")
 def intern_import_dry_run(body: StudentImport, user=Depends(require_permission(_P_MANAGE))):
-    return success(svc.import_dry_run(body.rows, batch_id=body.batchId))
+    return success(svc.import_dry_run(body.rows, batch_id=body.batchId, user=user))
 
 
 @router.post("/intern-students/import/confirm", summary="按学号建档·确认（整批事务）")
@@ -104,7 +226,7 @@ async def intern_import_xlsx(file: UploadFile = File(...), batchId: Optional[str
                              user=Depends(require_permission(_P_MANAGE))):
     content = await read_safe_xlsx_upload(file)
     rows = xlsx_util.read_xlsx(content, svc.IMPORT_HEADER_MAP)
-    return success({**svc.import_dry_run(rows, batch_id=batchId), "rows": rows})
+    return success({**svc.import_dry_run(rows, batch_id=batchId, user=user), "rows": rows})
 
 
 @router.post("/intern-students/import/errors-xlsx", summary="下载错误行 Excel(.xlsx)")
@@ -117,18 +239,10 @@ def intern_import_errors_xlsx(body: dict = Body(...), user=Depends(require_permi
 
 
 @router.post("/intern-students/export", summary="实习学生台账导出 Excel(.xlsx)（脱敏+水印，写审计）")
-def intern_export(keyword: Optional[str] = None, status: Optional[str] = None,
-                  eligibility: Optional[str] = None, batchId: Optional[str] = None,
-                  classId: Optional[str] = None, riskLevel: Optional[str] = None,
-                  destination: Optional[str] = None, hasPosition: Optional[bool] = None,
-                  user=Depends(require_permission(_P_EXPORT))):
-    data = svc.export_students(
-        keyword=keyword, status=status, eligibility=eligibility, batch_id=batchId,
-        class_id=classId, risk_level=riskLevel, destination=destination,
-        has_position=hasPosition, user=user)
-    audit_log.record("导出实习学生", "internship-student:export",
-                     detail={"rowCount": data["rowCount"], "batchId": data.get("batchId"),
-                             "batchName": data.get("batchName")})
+def intern_export(filters: Annotated[StudentRosterQuery, Query()], user=Depends(require_permission(_P_EXPORT))):
+    data = svc.export_students(**filters.service_filters(), user=user)
+    audit_log.record('导出实习学生', 'internship-student:export',
+        detail={'rowCount':data['rowCount'], 'batchId':data.get('batchId'), 'batchName':data.get('batchName')})
     return success(data)
 
 
@@ -142,6 +256,68 @@ def create_intern_student(body: StudentRecordCreate, user=Depends(require_permis
 @router.get("/intern-students/{record_id}", summary="实习学生详情（企业/岗位/导师/资格/去向/审计）")
 def intern_student_detail(record_id: str, user=Depends(require_permission(_P_VIEW))):
     return success(svc.get_student(record_id, user=user))
+
+
+@router.get("/intern-students/{record_id}/plan-assignments", summary="学生已分配实习方案")
+def student_plan_assignments(
+    record_id: str,
+    user=Depends(require_permission(_P_VIEW)),
+):
+    return success(plan_assignment_svc.list_assignments(record_id, user=user))
+
+
+@router.get("/intern-students/{record_id}/plan-options", summary="学生可追加的已发布实习方案")
+def student_plan_options(
+    record_id: str,
+    keyword: Optional[str] = None,
+    user=Depends(require_permission(_P_VIEW)),
+):
+    return success(plan_assignment_svc.plan_options(
+        record_id, user=user, keyword=keyword or ""))
+
+
+@router.post("/intern-students/{record_id}/plan-assignments", summary="为学生追加一个或多个实习方案")
+def student_plan_assign(
+    record_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    result = plan_assignment_svc.assign_plans(
+        record_id, (body or {}).get("planIds") or [], user=user,
+        source=str((body or {}).get("source") or "MANUAL").upper(),
+    )
+    audit_log.record(
+        "分配实习方案",
+        f"internship-student:{record_id}",
+        detail={
+            "planIds": (body or {}).get("planIds") or [],
+            "added": result.get("added"),
+            "alreadyAssigned": result.get("alreadyAssigned"),
+        },
+    )
+    return success(result, message="实习方案已分配")
+
+
+@router.post("/intern-students/{record_id}/plan-assignments/{assignment_id}/remove", summary="移除未确认且未开始任务的附加实习方案")
+def student_plan_assignment_remove(
+    record_id: str,
+    assignment_id: str,
+    body: dict = Body(...),
+    user=Depends(require_permission(_P_MANAGE)),
+):
+    result = plan_assignment_svc.remove_assignment(
+        record_id,
+        assignment_id,
+        reason=(body or {}).get("reason") or "",
+        expected_version=(body or {}).get("expectedVersion"),
+        user=user,
+    )
+    audit_log.record(
+        "移除实习方案",
+        f"internship-student:{record_id}",
+        detail={"assignmentId": assignment_id, "reason": (body or {}).get("reason") or ""},
+    )
+    return success(result, message="附加实习方案已移除")
 
 
 @router.put("/intern-students/{record_id}", summary="编辑实习学生（已归档不可编辑）")

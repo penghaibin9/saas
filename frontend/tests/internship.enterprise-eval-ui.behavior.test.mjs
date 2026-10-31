@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -7,13 +8,14 @@ const descriptors = Object.fromEntries(['EnterpriseEvalView', 'EnterpriseEvalFor
 function setup(name, api = {}, files = {}) {
   const script = descriptors[name].script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '').replace(/ {2}components: \{[\s\S]*?\},\r?\n/, '').replace('export default', 'return')
   let saved = false
-  const def = new Function('enterpriseEvalApi', 'uploadAttachment', 'downloadAttachment', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', 'ENTERPRISE_EVAL_COMMENT', 'window', script)(api, files.upload, files.download, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} }, [], { __SAAS_DIRTY_FORM_GUARD__: { markSaved: () => { saved = true } } })
+  const def = componentFactory('enterpriseEvalApi', 'uploadAttachment', 'downloadAttachment', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', 'ENTERPRISE_EVAL_COMMENT', 'window', script)(api, files.upload, files.download, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} }, [], { __SAAS_DIRTY_FORM_GUARD__: { markSaved: () => { saved = true } } })
   const targets = []
   const vm = { ...def.data(), ctx: {}, $refs: {}, batchStore: { selectedBatchId: '1', withBatchQuery: q => ({ ...q, batchId: '1' }) }, $route: { query: {}, fullPath: '/enterprise-evals' }, $router: { push: t => targets.push(t), replace: t => targets.push(t), options: { history: { state: {} } } } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
+  if (def.computed.canReviewStage) Object.defineProperty(vm,'canReviewStage',{get:()=>def.computed.canReviewStage.call(vm)})
   return { vm, def, targets, isSaved: () => saved }
 }
-function reviewReady(vm) { vm.selectedId = '8'; vm.detail.data = { id: '8', reviewStatus: 'PENDING', version: 2 }; vm.openReview(vm.detail.data, 'APPROVE') }
+function reviewReady(vm) { vm.selectedId = '8'; vm.detail.data = { id: '8', reviewStatus: 'PENDING', internshipStatus: 'ASSESSING', version: 2 }; vm.openReview(vm.detail.data, 'APPROVE') }
 function fill(vm) { Object.assign(vm.form, { internshipId: '9007199254740999', mentorName: '测试导师', attendanceScore: 0, skillScore: 80, attitudeScore: 90, collaborationScore: 80, safetyScore: 90, fileId: 'file8' }) }
 
 test('enterprise evaluation list and form templates compile', () => {

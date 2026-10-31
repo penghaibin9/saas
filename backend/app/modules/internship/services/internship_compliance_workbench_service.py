@@ -16,6 +16,8 @@ from __future__ import annotations
 
 from datetime import datetime
 
+from app.modules.internship.services.internship_student_age import is_non_exemptible_check
+
 from sqlalchemy import and_, func, or_, select
 from app.core.permissions import is_super_admin
 from app.core.exceptions import AppException
@@ -32,7 +34,7 @@ GROUPS = ("consents", "safety", "filings", "incidents", "exemptions", "evidence"
 
 
 def _role(user) -> str:
-    return str((user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
+    return str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or (user or {}).get("roleCode") or "").upper()
 
 
 def _is_school_level(user) -> bool:
@@ -143,6 +145,7 @@ def _group_consents(db, record_map, students, record_ids) -> list[dict]:
             **_student_meta(record, students),
             "id": str(row.id), "consentType": row.consent_type,
             "status": row.status, "contentVersion": row.content_version or "",
+            "rejectionReason": row.revoke_reason if row.status == "REJECTED" else "",
             "viewedAt": _iso(row.viewed_at), "confirmedAt": _iso(row.confirmed_at),
             "participantName": row.participant_name or "",
             "participantRelation": row.participant_relation or "",
@@ -334,6 +337,7 @@ def _group_exemptions(db, record_map, students, record_ids) -> list[dict]:
         out.append({
             **_student_meta(record, students),
             "id": str(row.id), "checkCode": row.check_code,
+            "exemptible": not is_non_exemptible_check(row.check_code),
             "reason": row.reason, "status": row.status,
             "evidenceFileIds": row.evidence_file_ids or [],
             "validFrom": _iso(row.valid_from), "validUntil": _iso(row.valid_until),

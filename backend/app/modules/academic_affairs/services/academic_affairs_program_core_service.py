@@ -136,7 +136,7 @@ def _editable_formation(body):
 
 def get_program(program_id, user, *, review_node_reader=None) -> dict:
     with session() as db:
-        from app.models import (AaCourse, AaProgram, AaProgramCourse, NationalStandardDocument,
+        from app.models import (AaCourse, AaProgram, AaProgramCourse, Major, NationalStandardDocument,
                                 NationalStandardSection, SchoolMajorStandardBinding)
         p = db.get(AaProgram, int(program_id))
         if not p or p.is_deleted or p.tenant_id != _tid():
@@ -154,6 +154,13 @@ def get_program(program_id, user, *, review_node_reader=None) -> dict:
             AaCourse.is_deleted.is_(False))).all() if course_ids else []
         catalog_by_id = {c.id: c for c in catalog}
         d = _row(p)
+        d["majorName"] = ""
+        if p.major_id:
+            d["majorName"] = db.scalar(select(Major.major_name).where(
+                Major.id == p.major_id,
+                Major.tenant_id == _tid(),
+                Major.is_deleted.is_(False),
+            )) or ""
         if review_node is not None:
             d["reviewNode"] = review_node
         d["requirement"] = json.loads(p.requirement_json) if p.requirement_json else {}
@@ -404,6 +411,8 @@ def update_course(program_course_id, user, body) -> dict:
 
 
 def delete_course(program_course_id, user) -> dict:
+    if str((user or {}).get("currentRoleCode") or "").upper() == "COLLEGE_ACADEMIC":
+        raise AppException("NO_PERMISSION", "学院教务不能删除培养方案条目", http_status=403)
     with session() as db:
         from app.models import AaProgram, AaProgramCourse
         c = db.get(AaProgramCourse, int(program_course_id))
@@ -545,6 +554,8 @@ def update_graduation_requirement(requirement_id, user, body) -> dict:
 
 
 def delete_graduation_requirement(requirement_id, user) -> dict:
+    if str((user or {}).get("currentRoleCode") or "").upper() == "COLLEGE_ACADEMIC":
+        raise AppException("NO_PERMISSION", "学院教务不能删除培养方案条目", http_status=403)
     from app.models import AaProgram, AaProgramGraduationRequirement as Req
     with session() as db:
         r = db.get(Req, int(requirement_id))
@@ -736,6 +747,8 @@ def update_practice_segment(segment_id, user, body) -> dict:
 
 
 def delete_practice_segment(segment_id, user) -> dict:
+    if str((user or {}).get("currentRoleCode") or "").upper() == "COLLEGE_ACADEMIC":
+        raise AppException("NO_PERMISSION", "学院教务不能删除培养方案条目", http_status=403)
     from app.models import AaProgram, AaProgramPracticeSegment as Seg
     with session() as db:
         s = db.get(Seg, int(segment_id))

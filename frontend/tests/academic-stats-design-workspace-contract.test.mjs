@@ -16,17 +16,17 @@ test('AA-242 through AA-259 keep their design identities in the statistics works
   ]) assert.match(source, new RegExp(label))
 })
 
-test('analytics pages expose the design hierarchy without fabricating a time series', () => {
-  for (const token of ['stats-kpi-grid', 'stats-analysis-grid', '同口径明细下钻', 'analyticsDistributionSpec', 'analyticsMetricSpec']) {
-    assert.match(source, new RegExp(token))
-  }
-  assert.match(source, /当前没有连续同口径的快照/)
-  assert.match(source, /不冒充周期趋势/)
-  assert.match(source, /不及格人数[^\n]*不是学业预警条数/)
+test('analytics workspace separates business metrics, distributions and missing trends', () => {
+  for (const token of ['stats-kpi-grid', 'stats-analysis-grid', '业务指标', 'analyticsDistributionSpec', 'stats-attention']) assert.ok(source.includes(token))
+  assert.doesNotMatch(source, /Number\.parseFloat|analyticsMetricSpec|当前指标构成/)
+  assert.match(source, /暂无连续统计数据，可查看历史快照/)
+  assert.match(source, /不同学期或范围的快照不能直接比较/)
+  assert.match(source, /不及格成绩记录/)
+  assert.match(source, /课程名称（仅筛选明细）/)
 })
 
 test('report export records scope, purpose and an honest blob receipt', () => {
-  for (const token of ['统计导出流程', '三种范围不要混淆', '导出用途（至少5个字）', '收到系统生成的 Excel 文件']) {
+  for (const token of ['导出用途（至少5个字）', '按当前权限与所选范围导出全部结果', '已收到系统生成的表格文件']) {
     assert.match(source, new RegExp(token))
   }
   assert.match(source, /exportStats\(/)

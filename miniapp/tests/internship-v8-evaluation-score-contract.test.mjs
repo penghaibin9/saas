@@ -27,7 +27,7 @@ test('Student Mini preserves self-evaluation draft on 409 and never auto-replays
   assert.match(selfEval, /草稿已保留/)
   assert.match(selfEval, /系统不会自动重复提交/)
   assert.match(selfEval, /receipt/)
-  const conflict = selfEval.indexOf("if (String(e?.code || '').includes('409')")
+  const conflict = selfEval.indexOf("if (normalizeError(e).kind === 'conflict')")
   assert.ok(conflict >= 0)
   assert.equal(selfEval.slice(conflict, conflict + 500).includes('this.load()'), false)
 })
@@ -38,7 +38,7 @@ test('Student Mini binds evaluation, score appeal and help to one explicit inter
   assert.match(internshipApi, /studentInternshipHelp[\s\S]*studentContextPath\('\/mobile\/internship\/context\/help'/)
   assert.match(selfEval, /batchId: this\.dashboard\?\.batchId/)
   assert.match(selfEval, /internshipId: this\.dashboard\?\.recordId/)
-  assert.match(studentHelp, /\.\.\.this\.context/)
+  assert.match(studentHelp, /batchId:command\.batchId,internshipId:command\.internshipId/)
 })
 
 test('Student Mini result workspace exposes the published score, appeal state, archive result and employment handoff', () => {
@@ -47,5 +47,5 @@ test('Student Mini result workspace exposes the published score, appeal state, a
   assert.match(selfEval, /dashboard\.archive/)
   assert.match(selfEval, /\/pages\/student\/employment\/index/)
   assert.match(studentHome, /label: '鉴定与成绩'/)
-  assert.match(studentHome, /label: '就业衔接'/)
+  assert.match(studentHome, /label: '就业上报'/)
 })

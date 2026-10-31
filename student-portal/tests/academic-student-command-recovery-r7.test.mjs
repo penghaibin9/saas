@@ -45,9 +45,9 @@ function mount(name, api = {}, query = {}, browser = {}, session = defaultSessio
   return { ...component.setup({}, { expose() {} }), dispose: () => disposers.forEach((fn) => fn()) }
 }
 
-function seed(session, context, action, objectId, ackId = '') {
+function seed(session, context, action, objectId, ackId = '', parentId = '') {
   const guard = commandGuard.createStudentAcademicCommandGuard(() => commandGuard.studentAcademicIdentity(session), context)
-  const reference = guard.preparePersistentCommand({ action, objectId, reason: '不得保存', body: { secret: true }, answers: { score: 99 } })
+  const reference = guard.preparePersistentCommand({ action, objectId, parentId, reason: '不得保存', body: { secret: true }, answers: { score: 99 } })
   assert.ok(reference)
   return ackId ? guard.rememberPersistentAck(reference, ackId) : reference
 }
@@ -156,8 +156,8 @@ test('seven application pages recover exact ACK records by GET without replaying
   await makeup.load(); assert.deepEqual(makeup.uncertainKeys.value, [])
 
   seed(session, 'exam-defer', 'APPLY_DEFER', '401', '801')
-  seed(session, 'exam-defer', 'RESUBMIT_DEFER', '802', '802')
-  const exam = mount('Exam', { academicExam: async () => [], academicExamDeferOptions: async () => [], academicExamDefer: async () => [{ deferId: '801', examCourseId: '401', status: 'SUBMITTED' }, { deferId: '802', examCourseId: '402', status: 'SUBMITTED' }], academicExamDeferApply: async () => { posts += 1 }, academicExamDeferResubmit: async () => { posts += 1 } }, {}, {}, session)
+  seed(session, 'exam-defer', 'RESUBMIT_DEFER', '802', '802', '2')
+  const exam = mount('Exam', { academicExam: async () => [], academicExamDeferOptions: async () => [], academicExamDefer: async () => [{ deferId: '801', examCourseId: '401', status: 'SUBMITTED' }, { deferId: '802', examCourseId: '402', status: 'COUNSELOR_REVIEW', version: 2 }], academicExamDeferApply: async () => { posts += 1 }, academicExamDeferResubmit: async () => { posts += 1 } }, {}, {}, session)
   await exam.load(); assert.deepEqual(exam.uncertainKeys.value, [])
 
   seed(session, 'evaluation', 'SUBMIT_EVALUATION', '901', '901')

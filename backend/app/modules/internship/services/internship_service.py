@@ -9,10 +9,11 @@ from datetime import datetime, timedelta
 from sqlalchemy import case, func, or_, select
 
 from app.core.context import get_current_user_ctx
+from app.core.timeutil import UTC, tenant_tz
 from app.core.exceptions import AppException, not_found
 from app.models import (AttendanceException, InternshipAuditTrail, InternshipBatch,
-                        InternshipCheckin, InternshipRecord, RiskRecord, StudentContact,
-                        StudentProfile, WeeklyReport)
+                        InternshipCheckin, InternshipLeave, InternshipRecord, RiskRecord, StudentContact,
+                        StudentProfile, WeeklyReport, InternshipProcessReport)
 from app.modules.internship.schemas.internship import RulesConfig, StageItem
 from app.core.field_crypto import mask_phone_encrypted
 from app.services.db_service import _as_id, _iso, _tid, session
@@ -22,7 +23,7 @@ STATUS_LABEL = {"PREPARING": "准备中", "READY": "待上岗", "ONBOARD": "在�
 RISK_LABEL = {"NONE": "无", "LOW": "低风险", "MEDIUM": "中风险", "HIGH": "高风险"}
 RISK_TONE = {"HIGH": "danger", "MEDIUM": "warning", "LOW": "default", "NONE": "default"}
 EXC_TYPE_LABEL = {"OUT_OF_RANGE": "超范围", "LOW_ACCURACY": "定位精度不足",
-                  "LOCATION_UNCERTAIN": "围栏边界待核实", "MOCK_LOCATION": "模拟定位", "MISSING": "缺卡"}
+                  "LOCATION_UNCERTAIN": "定位待核实", "NO_LOCATION": "无定位", "MOCK_LOCATION": "模拟定位", "MISSING": "缺卡"}
 EXC_STATUS_LABEL = {"PENDING_HANDLE": "待核实", "COMPLETED": "已处理"}
 REPORT_STATUS_LABEL = {"PENDING_REVIEW": "待批阅", "APPROVED": "已通过",
                        "RETURNED": "已退回", "OVERDUE": "逾期未交"}
@@ -36,10 +37,20 @@ DEFAULT_STAGES = [
     {"code": "REVIEW", "name": "总结考核", "startDate": "", "endDate": ""},
 ]
 DEFAULT_RULES = {
-    "checkin": {"requireDaily": True, "geofenceRadiusM": 500, "maxAccuracyM": 200,
+    'teacherCheckin': {'maxAccuracyM': 200, 'locations': []},
+    "checkin": {"requireDaily": True, "requiredDays": 0, "geofenceRadiusM": 500, "maxAccuracyM": 200,
                 "allowedExceptionTypes": ["OUT_OF_RANGE", "LOW_ACCURACY", "LOCATION_UNCERTAIN",
                                           "MOCK_LOCATION", "MISSING"]},
-    "weeklyReport": {"frequency": "WEEKLY", "minWordCount": 800, "deadlineWeekday": 7},
+    "weeklyReport": {
+        "frequency": "WEEKLY", "minWordCount": 30, "requiredCount": 0,
+        "deadlineWeekday": 7, "reviewSlaHours": 48,
+    },
+    "processReport": {
+        "dailyMinWords": 30, "dailyRequiredCount": 0,
+        "monthlyMinWords": 100, "monthlyRequiredCount": 0,
+        "summaryMinWords": 300, "summaryRequiredCount": 1,
+        "maxImages": 9, "maxVideos": 3, "reviewSlaHours": 48,
+    },
     "guidance": {"minVisitsPerTerm": 2, "minCommunicationsPerMonth": 2},
     "evaluation": {"enterpriseWeight": 0.4, "teacherWeight": 0.4, "selfWeight": 0.2},
     "score": {"passThreshold": 60.0, "components": [
@@ -341,7 +352,7 @@ def get_internship_student_detail(record_id, user=None) -> dict:
         base.update({
             "phone": mask_phone_encrypted(phone.contact_value_encrypted if phone else None),
             "insurance": r.insurance_info or "", "agreement": r.agreement_info or "",
-            "checkins": [{"id": str(c.id), "date": _iso(c.exception_date)[:16] if c.exception_date else "",
+            "checkins": [{"id": str(c.id), "date": _iso(c.exception_date) if c.exception_date else "",
                           "result": EXC_TYPE_LABEL.get(c.exception_type, c.exception_type),
                           "tone": "danger" if c.status == "PENDING_HANDLE" else "success",
                           "note": c.student_note or "",
@@ -384,12 +395,12 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
     elif c.exception_type not in EXC_TYPE_LABEL:
         missing_facts.append("异常类型")
     return {
-        "id": str(c.id), "internId": str(c.internship_id),
+        "id": str(c.id), "internId": str(c.internship_id), "batchId": str(rec.batch_id) if rec else "",
         "studentName": stu.real_name if stu else "-",
         "className": class_name or "-",
         "enterpriseName": rec.enterprise_name if rec else "",
         "positionName": rec.position_name if rec else "",
-        "date": _iso(c.exception_date)[:16] if c.exception_date else "",
+        "date": _iso(c.exception_date) if c.exception_date else "",
         "type": c.exception_type, "typeLabel": EXC_TYPE_LABEL.get(c.exception_type, c.exception_type),
         "distance": f"{c.distance_km} km" if c.distance_km else "—",
         "accuracy": f"±{c.gps_accuracy} m" if c.gps_accuracy else "—",
@@ -408,7 +419,7 @@ def _exc_row(c: AttendanceException, rec: InternshipRecord | None, stu: StudentP
 # ═══ 打卡台账（PC 管理端只读，over t_internship_checkin；移动端学生写入，按数据范围收敛） ═══
 
 CHECKIN_RESULT_LABEL = {"RECORDED": "已记录", "NORMAL": "正常", "OUT_OF_RANGE": "超范围",
-                        "LOW_ACCURACY": "定位精度不足", "LOCATION_UNCERTAIN": "围栏边界待核实",
+                        "LOW_ACCURACY": "定位精度不足", "LOCATION_UNCERTAIN": "定位待核实",
                         "NO_LOCATION": "无定位", "LEAVE": "请假"}
 
 CHECKIN_RESULT_LABEL["MOCK_LOCATION"] = "设备/模拟定位风险"
@@ -423,6 +434,8 @@ def _checkin_row(c: InternshipCheckin, rec, stu) -> dict:
         "result": c.result, "resultLabel": CHECKIN_RESULT_LABEL.get(c.result, c.result),
         "tone": "danger" if c.result in ("OUT_OF_RANGE", "NO_LOCATION", "MOCK_LOCATION") else "success",
         "address": c.address or "", "note": c.note or "",
+        "photoFileId": c.evidence_file_id or "", "watermarkedFileId": c.watermarked_file_id or "",
+        "photoSha256": c.evidence_sha256 or "", "watermarkedSha256": c.watermarked_sha256 or "",
     }
 
 
@@ -561,21 +574,30 @@ def get_exception_detail(exception_id, user=None) -> dict:
             InternshipAuditTrail.target_id == c.id,
             InternshipAuditTrail.target_type == "EXCEPTION").order_by(
             InternshipAuditTrail.id)).all()
-        checkin_date = c.exception_date.date().isoformat() if c.exception_date else ""
+        exception_time = c.exception_date
+        if exception_time and exception_time.tzinfo is None:
+            exception_time = exception_time.replace(tzinfo=UTC)
+        checkin_date = exception_time.astimezone(tenant_tz()).date().isoformat() if exception_time else ""
         checkin = db.scalars(select(InternshipCheckin).where(
             InternshipCheckin.tenant_id == _tid(),
             InternshipCheckin.internship_id == c.internship_id,
             InternshipCheckin.checkin_date == checkin_date,
             InternshipCheckin.is_deleted.is_(False),
         ).order_by(InternshipCheckin.id.desc())).first()
-        from app.models import InternshipPosition
+        from app.models import InternshipPosition, SchoolClass
         from app.modules.internship.services import internship_checkin_trust_service as trust
         position = tenant_get(db, InternshipPosition, rec.position_id) if rec and rec.position_id else None
         rule = trust.resolve_rule(db, rec, position) if rec else {
             "configured": False, "radiusM": None, "maxAccuracyM": 200,
             "coordinateSystem": "GCJ02", "source": "UNAVAILABLE",
         }
-        row = _exc_row(c, rec, stu)
+        handling_labels = {'HANDLE_REASONABLE': ('标记合理', '已标记合理'),
+            'HANDLE_ABNORMAL': ('记为异常', '已记为异常'), 'HANDLE_TO_RISK': ('转风险跟进', '已转风险跟进')}
+        class_name = db.scalar(select(SchoolClass.class_name).where(
+            SchoolClass.id == stu.class_id, SchoolClass.tenant_id == _tid(),
+            SchoolClass.is_deleted.is_(False),
+        )) if stu and stu.class_id else None
+        row = _exc_row(c, rec, stu, class_name=class_name)
         row.update({
             "positionName": rec.position_name if rec else "", "address": c.address or "",
             "accuracy": f"±{c.gps_accuracy} m" if c.gps_accuracy else "—",
@@ -588,12 +610,16 @@ def get_exception_detail(exception_id, user=None) -> dict:
                 "accuracyM": checkin.gps_accuracy if checkin else c.gps_accuracy,
                 "fenceLat": rule.get("centerLat"), "fenceLng": rule.get("centerLng"),
                 "radiusM": rule.get("radiusM"), "maxAccuracyM": rule.get("maxAccuracyM"),
-                "coordinateSystem": rule.get("coordinateSystem"), "ruleSource": rule.get("source"),
+                "coordinateSystem": checkin.coordinate_system if checkin else None,
+                "fenceCoordinateSystem": rule.get("coordinateSystem"), "ruleSource": rule.get("source"),
                 "deviceSignal": (checkin.device_risk_flag if checkin else c.device_risk_flag) or "not_available",
                 "result": checkin.result if checkin else c.exception_type,
             },
-            "trail": [{"title": t.action, "desc": json.dumps(t.detail_json or {}, ensure_ascii=False),
-                       "time": _iso(t.occurred_at), "tone": "processing"} for t in trail],
+            "trail": [{"title": handling_labels.get(t.action, ('异常处理记录', ''))[0],
+                       "desc": (t.detail_json or {}).get('comment') or (t.detail_json or {}).get('reason') or '',
+                       "actor": t.operator_name or '',
+                       "resultLabel": handling_labels.get(t.action, ('异常处理记录', ''))[1],
+                       "time": _iso(t.occurred_at), "tone": "success" if t.action == 'HANDLE_REASONABLE' else "warning"} for t in trail],
         })
         return row
 
@@ -704,7 +730,8 @@ def _report_row(w: WeeklyReport, rec: InternshipRecord | None, stu: StudentProfi
     }
 
 
-def list_weekly_reports(page, page_size, status=None, keyword=None, batch_id=None, user=None):
+def list_weekly_reports(page, page_size, status=None, keyword=None, batch_id=None, user=None,
+                        start_date=None, end_date=None):
     with session() as db:
         from app.models import SchoolClass
         from app.modules.internship.services.internship_batch_context import resolve_batch
@@ -727,8 +754,10 @@ def list_weekly_reports(page, page_size, status=None, keyword=None, batch_id=Non
             StudentProfile.is_deleted.is_(False),
         )
         q = apply_internship_record_scope(q, user)
+        from app.modules.internship.services import internship_report_quality_service as quality
+        q = quality.filter_submission_dates(q, WeeklyReport, start_date, end_date)
         if status:
-            q = q.where(WeeklyReport.status == status)
+            q = q.where(WeeklyReport.status.in_(status) if isinstance(status, (tuple, list)) else WeeklyReport.status == status)
         if keyword:
             value = f"%{keyword.strip()}%"
             q = q.where(or_(
@@ -743,7 +772,8 @@ def list_weekly_reports(page, page_size, status=None, keyword=None, batch_id=Non
         ).offset(
             (max(1, int(page)) - 1) * int(page_size),
         ).limit(int(page_size))).all()
-        return [_report_row(w, rec, stu, class_name=class_name)
+        reviews = quality.latest_review_map(db, "WEEKLY", [w.id for w, *_ in rows])
+        return [{**_report_row(w, rec, stu, class_name=class_name), "review": reviews.get(w.id)}
                 for w, rec, stu, class_name in rows], total
 
 
@@ -761,6 +791,8 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
             InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_id == w.id,
             InternshipAuditTrail.target_type == "REPORT").order_by(InternshipAuditTrail.id)).all()
         row = _report_row(w, rec, stu)
+        from app.modules.internship.services import internship_report_quality_service as quality
+        immutable = quality.weekly_snapshot_view(db, w.id)
         row.update({
             # 教师移动端从统一待办进入周报队列时，需要先由服务端把待办对象
             # 解析回它所属的正式实习批次；客户端不能猜测或自行拼接批次。
@@ -770,6 +802,11 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
                         "plan": w.plan_content or ""},
             "reviewComment": w.review_comment or "",
             "versions": _report_versions(trail, w),
+            "immutableVersions": immutable.get("versions") or [],
+            "attachments": (
+                (immutable.get("versions") or [{}])[0].get("attachments") or []
+                if immutable.get("versions") else []
+            ),
             "trail": [{"who": t.operator_name or "系统", "time": _iso(t.occurred_at),
                        "action": t.action,
                        "affected": json.dumps(t.detail_json or {}, ensure_ascii=False)} for t in trail],
@@ -777,13 +814,17 @@ def get_weekly_report_detail(report_id, user=None) -> dict:
         return row
 
 
-def review_weekly_report(report_id, action: str, comment: str, user=None, *, expected_version=None) -> dict:
+def review_weekly_report(report_id, action: str, comment: str, user=None, *, expected_version=None,
+                         rating_level=None) -> dict:
     if action not in ("APPROVE", "RETURN"):
         raise AppException("VALIDATION_ERROR", "action 必须是 APPROVE/RETURN")
     if action == "RETURN" and (not comment or len(comment.strip()) < 5):
         raise AppException("VALIDATION_ERROR", "退回原因必填且不少于 5 字")
     with session() as db:
-        w = db.get(WeeklyReport, _as_id(report_id))
+        w = db.scalar(select(WeeklyReport).where(
+            WeeklyReport.id == _as_id(report_id), WeeklyReport.tenant_id == _tid(),
+            WeeklyReport.is_deleted.is_(False),
+        ).with_for_update())
         if not w or w.is_deleted or w.tenant_id != _tid():
             raise not_found("周报不存在")
         rec = tenant_get(db, InternshipRecord, w.internship_id)
@@ -798,12 +839,25 @@ def review_weekly_report(report_id, action: str, comment: str, user=None, *, exp
         )
         ver = extract_expected_version({"expectedVersion": expected_version})
         status = "APPROVED" if action == "APPROVE" else "RETURNED"
+        from app.modules.internship.services import internship_report_quality_service as quality
+        review_fact = quality.record_weekly_review(
+            db,
+            row=w,
+            action=action,
+            comment=comment,
+            user=user or {},
+            rating_level=rating_level,
+        )
         new_ver = versioned_update(
             db, WeeklyReport, entity_id=w.id, tenant_id=_tid(), expected_version=ver,
             expected_status=w.status, values={"status": status, "review_action": action,
                                                "review_comment": (comment or "").strip(),
                                                "reviewed_by_name": _op_name(), "reviewed_at": datetime.utcnow()})
-        detail = {"comment": (comment or "").strip()}
+        detail = {
+            "comment": (comment or "").strip(),
+            "ratingLevel": review_fact.rating_level,
+            "reportVersionId": str(review_fact.report_version_id),
+        }
         if action == "RETURN":
             # BUG-014：退回即冻结本版正文快照，学生重交后教师仍可逐版对比（版本记录数据源）
             detail["snapshot"] = _report_snapshot(w)
@@ -852,8 +906,13 @@ def review_weekly_report(report_id, action: str, comment: str, user=None, *, exp
         if outbox is not None:
             from app.services.message_event_outbox_service import try_process_pending_outbox
             try_process_pending_outbox(worker_id="internship-weekly-review", outbox_ids=[int(outbox.id)])
-        return {"id": str(w.id), "status": status, "version": new_ver,
-                "statusLabel": REPORT_STATUS_LABEL.get(status, status)}
+        return {
+            "id": str(w.id),
+            "status": status,
+            "version": new_ver,
+            "statusLabel": REPORT_STATUS_LABEL.get(status, status),
+            "ratingLevel": review_fact.rating_level,
+        }
 
 
 def batch_review_weekly_reports(body, user=None) -> dict:
@@ -881,7 +940,11 @@ def batch_review_weekly_reports(body, user=None) -> dict:
         rid = (it or {}).get("id")
         ver = (it or {}).get("expectedVersion", (it or {}).get("version"))
         try:
-            review_weekly_report(rid, action, comment, user=user, expected_version=ver)
+            rating = (it or {}).get("ratingLevel", b.get("ratingLevel"))
+            review_weekly_report(
+                rid, action, comment, user=user, expected_version=ver,
+                rating_level=rating,
+            )
             approved += 1
         except AppException as e:
             if e.code in ("DATA_CONFLICT", "VALIDATION_ERROR", "NOT_FOUND", "NO_PERMISSION", "FORBIDDEN"):
@@ -946,17 +1009,34 @@ def remind_weekly_report(report_id, channel="站内消息", user=None) -> dict:
         return {"id": str(w.id), "reminded": True, "channel": channel or "站内消息"}
 
 
-def export_weekly_reports(status=None, keyword=None, batch_id=None, user=None) -> dict:
+def export_weekly_reports(status=None, keyword=None, batch_id=None, user=None,
+                          start_date=None, end_date=None) -> dict:
     from app.services import xlsx_util
     from app.modules.internship.services.internship_export_util import load_export_rows
+    from app.modules.internship.services import internship_report_quality_service as quality
+
     items, total = load_export_rows(
-        list_weekly_reports, status=status, keyword=keyword, batch_id=batch_id, user=user)
+        list_weekly_reports, status=status, keyword=keyword, batch_id=batch_id, user=user,
+        start_date=start_date, end_date=end_date)
     from app.modules.internship.services.internship_export_util import pack_export_meta, require_exportable
     require_exportable(total)
-    headers = ["学生", "班级", "企业", "周次", "提交时间", "版本", "字数", "风险", "状态"]
-    rows = [[it["studentName"], it["className"], it["enterpriseName"], it["week"],
-             it["submitAt"], it["version"], it["wordCount"], it["riskFlag"],
-             it["statusLabel"]] for it in items]
+
+    headers = [
+        "学生", "班级", "企业", "周次", "提交时间", "提交版本", "字数", "风险", "状态",
+        "五级评价", "批阅教师", "批阅时间", "批阅意见",
+    ]
+    rows = []
+    for it in items:
+        review = it.get("review")
+        rows.append([
+            it["studentName"], it["className"], it["enterpriseName"], it["week"],
+            quality.format_report_time(it["submitAt"]), int(str(it["reportVersion"]).removeprefix("v")),
+            it["wordCount"], it["riskFlag"], it["statusLabel"],
+            review.get("ratingLevel") if review else "",
+            review.get("reviewerName") if review else "",
+            quality.format_report_time(review.get("reviewedAt")) if review else "",
+            review.get("comment") if review else "",
+        ])
     wm = f"岗位实习中心·周报台账 · 导出人：{_op_name()} · {datetime.now():%Y-%m-%d %H:%M} · 导出留痕"
     content = xlsx_util.build_ledger_xlsx("周报台账", headers, rows, watermark=wm)
     packed = xlsx_util.pack_xlsx_result(content, "周报台账.xlsx", len(items))
@@ -1008,6 +1088,7 @@ def list_risk_students(page, page_size, level=None, status=None, keyword=None,
                 "studentNo": stu.student_no if stu else "-",
                 "className": cn or "-",
                 "source": f"{k.risk_code} {k.risk_title}",
+                "riskTitle": k.risk_title or "",
                 "sourceDetail": k.source_module or "",
                 "sourceType": source.get("sourceType", ""),
                 "sourceId": source.get("sourceId", ""),
@@ -1077,21 +1158,6 @@ def _batch_detail_row(db, b: InternshipBatch) -> dict:
                         "detail": json.dumps(t.detail_json or {}, ensure_ascii=False)} for t in trail],
     })
     return row
-
-
-def _pick_current_batch(db):
-    """已废弃静默选批：多 RUNNING 时不得自动取第一条。
-    保留函数仅供内部诊断；业务入口必须显式传入 batchId。
-    返回：唯一 RUNNING → 该批次；0 个 RUNNING → None；多个 RUNNING → None。
-    """
-    rows = db.scalars(select(InternshipBatch).where(
-        InternshipBatch.tenant_id == _tid(),
-        InternshipBatch.is_deleted.is_(False),
-        InternshipBatch.status == "RUNNING",
-    ).order_by(InternshipBatch.id.desc())).all()
-    if len(rows) == 1:
-        return rows[0]
-    return None
 
 
 def _get_batch(db, bid) -> InternshipBatch:
@@ -1436,82 +1502,6 @@ def batch_readiness(bid, user=None) -> dict:
         return report
 
 
-def _batch_readiness_report(db, batch_id: int) -> dict:
-    """生成批次就绪报告（结束/归档共用）。"""
-    from app.models import (InternshipAgreement, InternshipEnterpriseEval, InternshipFinalScore,
-                            InternshipInsurance, InternshipStudentEval, WeeklyReport)
-
-    recs = db.scalars(select(InternshipRecord).where(
-        InternshipRecord.tenant_id == _tid(), InternshipRecord.is_deleted.is_(False),
-        InternshipRecord.batch_id == batch_id)).all()
-    ids = [r.id for r in recs] or [0]
-
-    def _cnt(model, *conds):
-        return int(db.scalar(select(func.count()).select_from(model).where(
-            model.tenant_id == _tid(), model.is_deleted.is_(False),
-            model.internship_id.in_(ids), *conds)) or 0)
-
-    no_position = sum(1 for r in recs if not r.position_id and r.status != "ARCHIVED")
-    open_high_risk = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]),
-                          RiskRecord.risk_level == "HIGH")
-    pending_weekly = _cnt(WeeklyReport, WeeklyReport.status == "PENDING_REVIEW")
-    # 协议未生效：无 EFFECTIVE 协议的学生数（近似：记录 agreement_info 非生效且未归档）
-    uneffective_agreement = 0
-    unverified_insurance = 0
-    missing_ent_eval = 0
-    missing_stu_eval = 0
-    unpublished_score = 0
-    not_archived = sum(1 for r in recs if r.status != "ARCHIVED")
-    for r in recs:
-        if r.status == "ARCHIVED":
-            continue
-        agr = db.scalars(select(InternshipAgreement).where(
-            InternshipAgreement.tenant_id == _tid(), InternshipAgreement.internship_id == r.id,
-            InternshipAgreement.is_deleted.is_(False)).order_by(InternshipAgreement.id.desc())).first()
-        if not agr or agr.status not in ("EFFECTIVE", "ARCHIVED"):
-            uneffective_agreement += 1
-        ins = db.scalars(select(InternshipInsurance).where(
-            InternshipInsurance.tenant_id == _tid(), InternshipInsurance.internship_id == r.id,
-            InternshipInsurance.is_deleted.is_(False)).order_by(InternshipInsurance.id.desc())).first()
-        if not ins or ins.status != "VERIFIED":
-            unverified_insurance += 1
-        ee = db.scalars(select(InternshipEnterpriseEval).where(
-            InternshipEnterpriseEval.tenant_id == _tid(), InternshipEnterpriseEval.internship_id == r.id,
-            InternshipEnterpriseEval.is_deleted.is_(False),
-            InternshipEnterpriseEval.submit_status == "SUBMITTED")).first()
-        if not ee:
-            missing_ent_eval += 1
-        se = db.scalars(select(InternshipStudentEval).where(
-            InternshipStudentEval.tenant_id == _tid(), InternshipStudentEval.internship_id == r.id,
-            InternshipStudentEval.is_deleted.is_(False),
-            InternshipStudentEval.submit_status == "SUBMITTED")).first()
-        if not se:
-            missing_stu_eval += 1
-        sc = db.scalars(select(InternshipFinalScore).where(
-            InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == r.id,
-            InternshipFinalScore.is_deleted.is_(False),
-            InternshipFinalScore.status == "PUBLISHED")).first()
-        if not sc:
-            unpublished_score += 1
-
-    checks = [
-        {"key": "noPosition", "label": "未落实岗位", "count": no_position, "blocking": True},
-        {"key": "uneffectiveAgreement", "label": "未生效协议", "count": uneffective_agreement, "blocking": False},
-        {"key": "unverifiedInsurance", "label": "未核验保险", "count": unverified_insurance, "blocking": True},
-        {"key": "openHighRisk", "label": "开放高风险", "count": open_high_risk, "blocking": True},
-        {"key": "pendingWeekly", "label": "待批周报", "count": pending_weekly, "blocking": True},
-        {"key": "missingEval", "label": "未完成评价", "count": missing_ent_eval + missing_stu_eval, "blocking": False},
-        {"key": "unpublishedScore", "label": "未发布成绩", "count": unpublished_score, "blocking": True},
-        {"key": "notArchived", "label": "未完成学生归档", "count": not_archived, "blocking": False},
-    ]
-    return {
-        "totalStudents": len(recs),
-        "checks": checks,
-        "blockingCount": sum(1 for c in checks if c["blocking"] and c["count"] > 0),
-        "warningCount": sum(1 for c in checks if (not c["blocking"]) and c["count"] > 0),
-    }
-
-
 def void_batch(bid, reason: str, user=None, *, expected_version=None) -> dict:
     from app.modules.internship.services.internship_version import (
         extract_expected_version, versioned_update,
@@ -1640,6 +1630,19 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
 
         pending_exc = _cnt(AttendanceException, AttendanceException.status == "PENDING_HANDLE")
         pending_rep = _cnt(WeeklyReport, WeeklyReport.status == "PENDING_REVIEW")
+        process_counts = {"DAILY": 0, "MONTHLY": 0, "SUMMARY": 0}
+        process_labels = {"DAILY": "日报", "MONTHLY": "月报", "SUMMARY": "实习总结"}
+        if _match("internship.report.view") and _match("internship.report.review"):
+            process_counts.update(dict(db.execute(select(
+                InternshipProcessReport.report_type, func.count(),
+            ).where(
+                InternshipProcessReport.tenant_id == _tid(),
+                InternshipProcessReport.is_deleted.is_(False),
+                InternshipProcessReport.internship_id.in_(scoped_id_select),
+                InternshipProcessReport.status == "PENDING_REVIEW",
+                InternshipProcessReport.report_type.in_(process_counts),
+            ).group_by(InternshipProcessReport.report_type)).all()))
+        pending_process = sum(process_counts.values())
         risk_cnt = _cnt(RiskRecord, RiskRecord.status.in_(["PENDING_HANDLE", "PROCESSING"]))
 
         # 真实开放风险提醒（同批次 + 数据范围），按等级与更新时间排序，最多 5 条
@@ -1699,6 +1702,15 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
             ).order_by(
                 WeeklyReport.submitted_at.asc(), WeeklyReport.id.asc(),
             ).limit(4)).all()
+        process_rows = []
+        if pending_process:
+            process_rows = db.scalars(select(InternshipProcessReport).where(
+                InternshipProcessReport.tenant_id == _tid(),
+                InternshipProcessReport.is_deleted.is_(False),
+                InternshipProcessReport.internship_id.in_(scoped_id_select),
+                InternshipProcessReport.status == "PENDING_REVIEW",
+                InternshipProcessReport.report_type.in_(process_counts),
+            ).order_by(InternshipProcessReport.submitted_at.asc(), InternshipProcessReport.id.asc()).limit(4)).all()
         exception_rows = []
         if _match("internship.attendance.review"):
             exception_rows = db.scalars(select(AttendanceException).where(
@@ -1712,8 +1724,29 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
                 AttendanceException.id.asc(),
             ).limit(4)).all()
 
+        leave_rows, return_rows = [], []
+        pending_leave = pending_return = 0
+        if _match('internship.leave.view') and _match('internship.leave.review'):
+            leave_query = select(InternshipLeave).join(InternshipRecord,
+                (InternshipRecord.id == InternshipLeave.internship_id) &
+                (InternshipRecord.student_id == InternshipLeave.student_id)).where(
+                InternshipLeave.tenant_id == _tid(), InternshipLeave.is_deleted.is_(False),
+                InternshipLeave.internship_id.in_(scoped_id_select))
+            from app.modules.internship.services.internship_leave_policy_service import pending_for_actor
+            review_query = leave_query.where(InternshipLeave.status == 'PENDING', pending_for_actor(user))
+            acknowledged = select(InternshipAuditTrail.id).where(
+                InternshipAuditTrail.tenant_id == _tid(), InternshipAuditTrail.target_type == 'LEAVE',
+                InternshipAuditTrail.target_id == InternshipLeave.id,
+                InternshipAuditTrail.action == 'ACK_OVERDUE_RETURN_VERSIONED').exists()
+            return_query = leave_query.where(InternshipLeave.status.in_(('RETURNED', 'OVERDUE')), ~acknowledged)
+            pending_leave = int(db.scalar(review_query.with_only_columns(func.count(), maintain_column_froms=True)) or 0)
+            pending_return = int(db.scalar(return_query.with_only_columns(func.count(), maintain_column_froms=True)) or 0)
+            leave_rows = db.scalars(review_query.order_by(InternshipLeave.updated_at.asc(), InternshipLeave.id.asc()).limit(4)).all()
+            return_rows = db.scalars(return_query.order_by(case((InternshipLeave.status == 'OVERDUE', 0), else_=1),
+                InternshipLeave.updated_at.asc(), InternshipLeave.id.asc()).limit(4)).all()
+
         work_internship_ids = {
-            int(row.internship_id) for row in [*report_rows, *exception_rows, *risk_rows]
+            int(row.internship_id) for row in [*report_rows, *process_rows, *exception_rows, *risk_rows, *leave_rows, *return_rows]
             if row.internship_id
         }
         work_rec_map = {}
@@ -1828,14 +1861,66 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
                     "resumeKey": f"internship:weekly-report:{row.id}:v{int(row.version or 0)}",
                 },
             ))
+        for row in [*leave_rows, *return_rows]:
+            record, student = _work_subject(row.internship_id)
+            student_name = student.real_name if student else '学生待核实'
+            reviewing = row.status == 'PENDING'
+            kind, panel = ('LEAVE_REVIEW', 'pending') if reviewing else ('LEAVE_RETURN', 'return')
+            state = '请假待审批' if reviewing else ('超期返岗待核实' if row.status == 'OVERDUE' else '返岗待确认')
+            work_candidates.append((1 if row.status == 'OVERDUE' else 2, row.updated_at or datetime.max, {
+                'id': f'leave:{row.id}', 'kind': kind, 'objectId': str(row.id),
+                'internshipId': str(row.internship_id), 'studentName': student_name,
+                'studentNo': student.student_no if student else '', 'tone': 'danger' if row.status == 'OVERDUE' else 'warning',
+                'title': f'{student_name} · {state}',
+                'summary': f'{row.start_date} 至 {row.end_date} · 第{int(row.version or 0)}版',
+                'whyHere': '学生提交了请假申请，需核对事由和证明后审批。' if reviewing else '请假尚未完成教师返岗确认，需核对实际返岗情况。',
+                'recentChange': f'{_iso(row.updated_at) or "时间待核实"} · {state}',
+                'waitingOn': '等待当前节点责任人审批' if reviewing else '等待指导教师核实返岗',
+                'nextActor': '本级通过后交下一责任人；末级通过或退回后由学生查看结果并继续原单。' if reviewing else '确认后交学生查看返岗核实结果。',
+                'receipt': '办理结果与说明写入原单审计；版本冲突时保留输入，核对原单后再办理。',
+                'primaryActionLabel': '审批请假' if reviewing else '核实返岗',
+                'route': f'/admin/internship/leaves?panel={panel}&id={row.id}&batchId={batch.id}',
+                'sourceVersion': int(row.version or 0), 'resumeKey': f'internship:leave:{row.id}:v{int(row.version or 0)}',
+            }))
+        for row in process_rows:
+            _record, student = _work_subject(row.internship_id)
+            student_name = student.real_name if student else "学生待核实"
+            label = process_labels[row.report_type]
+            period = "" if row.report_type == "SUMMARY" else f"{row.period_key} "
+            work_candidates.append((3, row.submitted_at or row.updated_at or datetime.max, {
+                "id": f"process-report:{row.id}", "kind": f"{row.report_type}_REPORT",
+                "objectId": str(row.id), "internshipId": str(row.internship_id),
+                "studentName": student_name, "studentNo": student.student_no if student else "",
+                "tone": "warning", "title": f"{student_name} · {period}{label}",
+                "summary": f"已提交 · {row.word_count} 字", "reportType": row.report_type,
+                "whyHere": f"学生已提交{label}，等待指导教师核对正文、附件及历史版本后批阅。",
+                "recentChange": f"{_iso(row.submitted_at or row.updated_at) or '时间待核实'} · 学生提交",
+                "waitingOn": "等待指导教师批阅", "nextActor": "通过后学生查看结果；退回后沿原单补充并重交。",
+                "receipt": "批阅结果、意见及历次版本保留在同一份原单中。",
+                "primaryActionLabel": f"批阅{label}",
+                "route": f"/admin/internship/process-reports/{row.id}?batchId={batch.id}",
+                "sourceVersion": int(row.version or 0),
+                "resumeKey": f"internship:process-report:{row.id}:v{int(row.version or 0)}",
+            }))
         work_candidates.sort(key=lambda item: (item[0], item[1], item[2]["id"]))
         work_items = [item[2] for item in work_candidates[:8]]
 
         todos = []
+        if pending_leave:
+            todos.append({'id': 'todo-leave', 'label': '请假待审批', 'count': pending_leave, 'tone': 'warning',
+                          'route': f'/admin/internship/leaves?panel=pending&batchId={batch.id}'})
+        if pending_return:
+            todos.append({'id': 'todo-leave-return', 'label': '返岗待确认', 'count': pending_return, 'tone': 'warning',
+                          'route': f'/admin/internship/leaves?panel=return&batchId={batch.id}'})
         if pending_rep > 0 and _match("internship.report.review"):
             todos.append({"id": "todo-report", "label": "待批阅周报", "count": pending_rep,
                           "tone": "danger",
                           "route": f"/admin/internship/reports?batchId={batch.id}"})
+        for kind, count in process_counts.items():
+            if count:
+                todos.append({"id": f"todo-{kind.lower()}-report", "label": f"待批阅{process_labels[kind]}",
+                              "count": count, "tone": "warning",
+                              "route": f"/admin/internship/reports?type={kind.lower()}&panel=review&batchId={batch.id}"})
         if pending_exc > 0 and _match("internship.attendance.review"):
             todos.append({"id": "todo-exc", "label": "待核实打卡异常", "count": pending_exc,
                           "tone": "warning",
@@ -1881,7 +1966,7 @@ def get_dashboard_summary(user=None, batch_id=None) -> dict:
                      for k, lbl in STATUS_LABEL.items()],
             "todos": todos,
             "workItems": work_items,
-            "workItemTotal": pending_rep + pending_exc + risk_cnt,
+            "workItemTotal": pending_rep + pending_process + pending_exc + risk_cnt + pending_leave + pending_return,
             "workItemLimit": 8,
             "riskAlerts": risk_alerts,
         }

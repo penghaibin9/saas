@@ -1,7 +1,7 @@
 <template>
   <ModulePageShell
     title="调停课申请"
-    subtitle="教师从本人正式课位发起，不直接修改课表"
+    :subtitle="isCollegeAssistant ? '学院教务协助登记本院调停课，提交后按现有流程审批' : '教师从本人正式课位发起，不直接修改课表'"
     :role-name="roleName"
     :data-scope-name="scopeName"
   >
@@ -21,13 +21,13 @@
         <div><small>当前结果</small><b>{{ receipt.statusLabel }}</b></div>
         <div><small>下一责任</small><b>学院教务审核人</b></div>
         <div class="sc-receipt__actions">
-          <AppButton size="small" variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学</AppButton>
+          <AppButton v-if="isAcademicTeacher" size="small" variant="ghost" @click="$router.push('/admin/academic-affairs/teacher/today?work=waiting')">返回今日教学</AppButton>
           <AppButton size="small" variant="ghost" @click="goReceipt">查看申请详情</AppButton>
           <AppButton size="small" @click="openMySchedule">继续从课表选择</AppButton>
         </div>
       </section>
       <section v-if="origin" class="sc-object-context" aria-label="当前调停课对象">
-        <div><strong>{{ origin.courseName || '课程待确认' }} · {{ origin.className || '教学班待确认' }}</strong><p>调停课申请 · {{ origin.batchName || '正式课表' }}<template v-if="!isAcademicTeacher"> · 原课表项 {{ origin.itemId || form.originItemId }}</template></p><p>来源：从本人正式课表选择 · 当前状态：{{ receipt ? receipt.statusLabel : '申请编辑中' }}</p></div>
+        <div><strong>{{ origin.courseName || '课程待确认' }} · {{ origin.className || '教学班待确认' }}</strong><p>调停课申请 · {{ origin.batchName || '正式课表' }}<template v-if="!isAcademicTeacher"> · 原课表项 {{ origin.itemId || form.originItemId }}</template></p><p>来源：{{ isCollegeAssistant ? '本院正式课表，由学院教务协助登记' : '本人正式课表' }} · 当前状态：{{ receipt ? receipt.statusLabel : '申请编辑中' }}</p></div>
         <dl><div><dt>当前责任</dt><dd>{{ receipt ? '学院教务审核人' : '任课教师 / 当前审核岗' }}</dd></div><div><dt>下一责任</dt><dd>{{ receipt ? '教务审核岗 → 课表生效 → 师生通知' : '学院教务审核人' }}</dd></div></dl>
       </section>
       <ol class="sc-flow-rail" aria-label="调停课申请流程">
@@ -234,13 +234,14 @@ export default {
       ]
     },
     isAcademicTeacher() { return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER' },
+    isCollegeAssistant() { return this.ctx?.currentRole?.roleCode === 'COLLEGE_ACADEMIC' },
     roleName() { return this.ctx?.currentRole?.roleName || '任课教师' },
     lockedOccurrenceWeek() {
       if (this.form.changeType !== 'ADJUST' || !this.origin) return null
       const week = Number(this.$route?.query?.occurrenceWeek || 0)
       return week >= Number(this.origin.startWeek || 0) && week <= Number(this.origin.endWeek || 0) ? week : null
     },
-    scopeName() { return this.ctx?.dataScope?.scopeName || '本人课位' },
+    scopeName() { return this.ctx?.dataScope?.scopeName || (this.isCollegeAssistant ? '本院课位' : '本人课位') },
     stages() { return ['正式课位', '发起申请', '冲突预检', '审批生效', '通知回执'] },
     flowIndex() {
       if (this.receipt) return 4
@@ -356,7 +357,7 @@ export default {
       if (!current()) return
       if (res.code !== 0) {
         this.origin = null
-        this.originError = res.message || '原课位已发生变化，请返回本人课表重新选择'
+        this.originError = res.message || '原课位已发生变化，请返回正式课表重新选择'
         return
       }
       this.origin = res.data
@@ -434,7 +435,7 @@ export default {
     },
     validate() {
       this.normalizeOccurrenceFields()
-      if (!this.form.originItemId || !this.origin) return '请从本人课表重新选择要变更的课位'
+      if (!this.form.originItemId || !this.origin) return '请从正式课表重新选择要变更的课位'
       if (!this.form.reason || this.form.reason.length < 5) return '原因必填且不少于 5 字'
       if (this.form.changeType !== 'STOP' && (!this.form.targetWeekday || !this.form.targetSlotNo)) return '调课/补课须填写目标星期与节次'
       if (this.form.changeType === 'ADJUST' && !this.adjustScope && !this.lockedOccurrenceWeek) return '请选择“只调整一次课”或“调整周期课表”'

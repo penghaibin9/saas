@@ -10,7 +10,7 @@ test('Enterprise evaluation submit uses server identity, CAS on resubmit and pla
   assert.match(view, /freezeEvaluationTarget/)
   assert.match(view, /payload\.expectedPlacementSnapshotId=target\.expectedPlacementSnapshotId/)
   assert.match(view, /placementSnapshotId:result\?\.placementSnapshotId/)
-  assert.match(view, /安置快照/)
+  assert.match(view, /评价编号/)
   assert.match(view, /系统自动留痕/)
   assert.doesNotMatch(view, /companyId:Number\(form|mentorId:Number\(form/)
 })

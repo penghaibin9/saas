@@ -1,3 +1,4 @@
+import { academicRoleAllows, academicRoleTabs } from '../src/modules/academicAffairs/config/academicRoleNavigation.js'
 import * as makeupEvidence from '../src/modules/academicAffairs/views/parallel-c/makeup-evidence.js'
 import test from 'node:test'
 import { setImmediate } from 'node:timers'
@@ -11,8 +12,8 @@ const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve
 function testRuntime(){const entries=new Map();return {crypto:globalThis.crypto,sessionStorage:{getItem:key=>entries.get(key)??null,setItem:(key,value)=>entries.set(key,String(value)),removeItem:key=>entries.delete(key)}}}
 function mount(api={},runtime=testRuntime()){
  const script=source.match(/<script>([\s\S]*?)<\/script>/)[1].replace(/import [\s\S]*? from ['"][^'"\n]+['"]\s*\n/g,'').replace(/ {2}components: \{[\s\S]*?\n {2}\},/,'').replace('export default','return')
- const options=new Function('api','academicStatusLabel','currentUserFromToken','gradeError','matchPermission',...Object.keys(makeupEvidence),'globalThis',script)(api,s=>s,()=>({}),gradeError,(patterns,key)=>patterns.includes('*')||patterns.includes(key),...Object.values(makeupEvidence),runtime)
- const vm={...options.data(),ctx:{currentRole:{},dataScope:{},permissionPatterns:['*']},identityKey:'I1',$route:{query:{},path:'/makeup'},$router:{replace(){}}}
+ const options=new Function('academicRoleAllows','academicRoleTabs','api','academicStatusLabel','currentUserFromToken','gradeError','matchPermission',...Object.keys(makeupEvidence),'globalThis',script)(academicRoleAllows,academicRoleTabs,api,s=>s,()=>({}),gradeError,(patterns,key)=>patterns.includes('*')||patterns.includes(key),...Object.values(makeupEvidence),runtime)
+ const vm={...options.data(),ctx:{currentRole:{},dataScope:{scope:'TENANT_ALL'},permissionPatterns:['*']},identityKey:'I1',$route:{query:{},path:'/makeup'},$router:{replace(){}}}
  for(const [key,value] of Object.entries(options.methods))vm[key]=value.bind(vm)
  for(const [key,value] of Object.entries(options.computed))if(key!=='identityKey')Object.defineProperty(vm,key,{get:()=>value.call(vm)})
  return vm
@@ -88,16 +89,23 @@ test('没有管理权限即使手动调用也不能录分或建批次',async()=>
 test('名单和候选只请求当前分页，旧候选返回不影响新页',async()=>{
  const a=deferred();const calls=[];const vm=mount({makeupPending:p=>{calls.push(p);return p.page===1?a.promise:Promise.resolve(list({gradeId:'new',identityReady:true}))}})
  vm.mkBatch={...batch,termCode:'2026-1'};vm.candidateTerm='2025-2';const old=vm.loadMakeupCandidates(1);await vm.loadMakeupCandidates(2);a.resolve(list({gradeId:'old'}));await old
- assert.equal(vm.mkCandidates[0].gradeId,'new');assert.equal(vm.candidatePagination.page,2);assert.ok(calls.every(p=>p.pageSize===20&&p.termCode==='2025-2'))
+ assert.equal(vm.mkCandidates[0].gradeId,'new');assert.equal(vm.candidatePagination.page,2);assert.ok(calls.every(p=>p.pageSize===20&&p.term==='2025-2'))
 })
 
 test('补考候选默认跨原成绩学期，读取失败保留筛选并可重试',async()=>{
  let fail=true;const calls=[];const vm=mount({makeupPending:async p=>{calls.push(p);if(fail)throw new Error('network');return list({gradeId:'g',identityReady:true})},batchRecords:async()=>{if(fail)throw new Error('network');return list(record)}})
  vm.mkBatch={...batch,termCode:'2026-1'}
- await vm.loadMakeupCandidates(3);assert.equal(calls[0].termCode,undefined);assert.ok(vm.candidateError);assert.equal(vm.candidatePagination.page,3)
+ await vm.loadMakeupCandidates(3);assert.equal(calls[0].term,undefined);assert.ok(vm.candidateError);assert.equal(vm.candidatePagination.page,3)
  await vm.loadMakeupRecords(2);assert.ok(vm.mkReadError);assert.equal(vm.mkPagination.page,2)
  fail=false;await vm.loadMakeupCandidates();await vm.loadMakeupRecords()
  assert.equal(vm.candidateError,'');assert.equal(vm.mkReadError,'');assert.equal(vm.mkCandidates[0].gradeId,'g');assert.equal(calls[1].page,3)
+})
+
+test('从挂科清单精确打开补考批次与原成绩，错误批次不回退到其他对象',async()=>{
+ const calls=[];const vm=mount({listBatches:async p=>{calls.push(p);return list({...batch,status:'PUBLISHED'})},batchRecords:async (id,p)=>{calls.push({id,...p});return list({...record,originGradeId:'31'})}})
+ vm.tab='makeup';vm.$route.query={tab:'makeup',batchId:'101',originGradeId:'31'}
+ await vm.reload();assert.equal(vm.mkVisible,true);assert.equal(calls[0].batchId,'101');assert.equal(calls[1].originGradeId,'31');assert.equal(vm.mkRows[0].originGradeId,'31')
+ vm.mkVisible=false;vm.$route.query.batchId='102';await vm.reload();assert.match(vm.error,/指定补考批次/);assert.equal(vm.mkVisible,false)
 })
 
 test('超时后当前评分变化仍不能证明上次提交成功，保留草稿与未决引用',async()=>{
@@ -170,9 +178,70 @@ test('刷新后错误对象的上次提交回执不能解锁重修操作',async(
 })
 
 
-test('从挂科清单精确打开补考批次与原成绩，错误批次不回退到其他对象',async()=>{
- const calls=[];const vm=mount({listBatches:async p=>{calls.push(p);return list({...batch,status:'PUBLISHED'})},batchRecords:async (id,p)=>{calls.push({id,...p});return list({...record,originGradeId:'31'})}})
- vm.tab='makeup';vm.$route.query={tab:'makeup',batchId:'101',originGradeId:'31'}
- await vm.reload();assert.equal(vm.mkVisible,true);assert.equal(calls[0].batchId,'101');assert.equal(calls[1].originGradeId,'31');assert.equal(vm.mkRows[0].originGradeId,'31')
- vm.mkVisible=false;vm.$route.query.batchId='102';await vm.reload();assert.match(vm.error,/指定补考批次/);assert.equal(vm.mkVisible,false)
+test('清考超过第一页时按页核验所有精确名单，不误锁为待核实', async()=>{
+ const items=Array.from({length:205},(_,i)=>({gradeId:String(i+1),acadStudentId:String(i+501)}))
+ const records=items.map((r,i)=>({makeupId:String(i+1),originGradeId:r.gradeId,acadStudentId:r.acadStudentId}))
+ const calls=[]
+ const vm=mount({clearanceRecords:async(_bid,p)=>{calls.push(p);return {code:0,data:{list:records.slice((p.page-1)*p.pageSize,p.page*p.pageSize),total:records.length}}}})
+ vm.tab='clearance'
+ const result=await vm.readClearanceScan('1',{items},vm.captureScope())
+ assert.equal(result.list.length,205);assert.deepEqual(calls.map(r=>r.page),[1,2])
+})
+
+test('清考回读期间总数变化或换身份不得当作成功', async()=>{
+ const items=Array.from({length:201},(_,i)=>({gradeId:String(i+1),acadStudentId:'1'}))
+ const records=items.map(r=>({originGradeId:r.gradeId,acadStudentId:'1'}))
+ const vm=mount({clearanceRecords:async(_bid,p)=>({code:0,data:{list:records.slice((p.page-1)*200,p.page*200),total:p.page===1?201:200}})})
+ await assert.rejects(()=>vm.readClearanceScan('1',{items},vm.captureScope()),/名单已变化/)
+ const scope=vm.captureScope();vm.identityKey='other'
+ await assert.rejects(()=>vm.readClearanceScan('1',{items},scope),/范围已变化/)
+})
+
+test('学院部分审核后批次仍录分中，也能以本院审核事实确认成功', async()=>{
+ let written=false
+ const row={batchId:'1',batchName:'跨学院补考',scoreVersion:1,status:'SCORING',canCollegeReview:true,reviewTotal:2,reviewedCount:0}
+ const vm=mount({listBatches:async()=>list({...row,reviewedCount:written?2:0,canCollegeReview:!written}),collegeReview:async()=>{written=true;return {code:0,data:{...row,reviewedCount:2}}}})
+ vm.ctx.permissionPatterns=['academicAffairs.grade.collegeReview'];vm.rows=[row]
+ vm.act('collegeReview','1','本学院成绩审核');await vm.onConfirm()
+ assert.equal(written,true);assert.equal(vm.writeReceipt.verified,true);assert.equal(vm.pendingWrite,null)
+})
+
+test('缺学院审核许可不发请求，学校管理权限不能代替学院审核许可', async()=>{
+ let writes=0
+ const row={batchId:'1',status:'SCORING',canCollegeReview:false}
+ const vm=mount({collegeReview:async()=>{writes++}});vm.rows=[row]
+ vm.act('collegeReview','1','本学院成绩审核');await vm.onConfirm()
+ assert.equal(writes,0)
+})
+
+
+test('旧已审核状态缺少学院审核事实时，不开放教务发布回写', async()=>{
+ let writes=0
+ const row={batchId:'1',status:'REVIEWED',reviewTotal:2,reviewedCount:0}
+ const vm=mount({finishBatch:async()=>{writes++}});vm.rows=[row]
+ vm.act('finishBatch','1','教务发布回写');await vm.onConfirm()
+ assert.equal(writes,0);assert.equal(vm.batchReviewComplete(row),false)
+ assert.equal(vm.batchReviewComplete({...row,reviewedCount:2}),true)
+})
+
+
+test('补考和缓考合流回读使用精确编号，不受原列表页码影响', async()=>{
+ const calls=[];const vm=mount({listBatches:async p=>{calls.push(p);return list({batchId:'101'})},deferredPool:async p=>{calls.push(p);return list({deferId:'701'})}})
+ assert.equal((await vm.findFormal('makeup','batchId','101',4)).batchId,'101')
+ assert.equal((await vm.findFormal('deferred','deferId','701',4)).deferId,'701')
+ assert.equal(calls[0].page,1);assert.equal(calls[0].batchId,'101');assert.equal(calls[1].deferId,'701')
+})
+
+test('旧审核记录不全时进度仍为数字，阻断原因单独展示',()=>{
+ const vm=mount();vm.rows=[{batchId:'1',status:'REVIEWED',reviewTotal:2,reviewedCount:0}];vm.activeProcessKey='1'
+ assert.equal(typeof vm.processStage,'number');assert.match(vm.processBlocker,/审核记录不完整/)
+})
+
+
+test('缓考合流使用真实回执的批次编号核验目标批次，可以正常解锁',async()=>{
+ let merged=false
+ const row={deferId:'701',nextBatchRef:null,studentName:'虚构学生',courseName:'虚构课程'}
+ const vm=mount({deferredPool:async()=>list({...row,nextBatchRef:merged?'101':null,makeupId:merged?'901':null}),mergeDeferred:async()=>{merged=true;return {code:0,data:{deferId:'701',batchId:'101',makeupId:'901',merged:true}}}})
+ vm.tab='deferred';vm.openMerge(row);vm.mergeBatchId='101';await vm.submitMerge()
+ assert.equal(vm.pendingWrite,null);assert.equal(vm.writeReceipt.verified,true);assert.equal(vm.mergeVisible,false)
 })

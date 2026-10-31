@@ -3,7 +3,7 @@ const CONSOLE = '/admin/academic-affairs/textbooks'
 export function textbookReturnPath(value, fallback = `${CONSOLE}?tab=distribution`) {
   if (typeof value !== 'string' || !value.startsWith(`${CONSOLE}?`)) return fallback
   const url = new URL(value, 'http://workspace.local')
-  return url.pathname === CONSOLE && ['order', 'distribution'].includes(url.searchParams.get('tab'))
+  return url.pathname === CONSOLE && ['order', 'distribution', 'fee'].includes(url.searchParams.get('tab'))
     ? url.pathname + url.search : fallback
 }
 

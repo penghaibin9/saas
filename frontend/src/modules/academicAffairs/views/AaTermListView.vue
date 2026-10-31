@@ -1,6 +1,6 @@
 <template>
   <ModulePageShell
-    class="aa-foundation-workspace"
+    class="aa-foundation-workspace aa-term-workspace"
     title="学期管理"
     subtitle="建立并维护学期定义，再进入校历与节次。"
     :role-name="ctx.currentRole.roleName"
@@ -12,6 +12,17 @@
     </template>
 
     <div class="mp-stack">
+      <p class="aa-term-intro">维护学年学期、起止日期和教学周，衔接校历、作息与教学安排。</p>
+      <section v-if="!currentLoading && !currentError && currentContext?.termId" class="aa-term-summary" aria-label="全校当前学期">
+        <div class="aa-term-summary__main">
+          <span class="aa-term-summary__eyebrow">全校当前学期</span>
+          <h2>{{ currentContext.yearCode }} 第 {{ currentContext.termNo }} 学期</h2>
+          <p v-if="currentContext.startDate && currentContext.endDate">{{ dateText(currentContext.startDate) }} 至 {{ dateText(currentContext.endDate) }}<span v-if="currentContext.teachingWeeks" class="aa-term-summary__weeks">教学周数：{{ currentContext.teachingWeeks }} 周</span></p>
+        </div>
+        <AppStatusTag :status="currentContext.status" dot>{{ statusLabel(currentContext.status) }}</AppStatusTag>
+        <AppButton v-if="hasPermission('academicAffairs.calendar.view')" @click="goCalendar(currentContext)">查看本学期校历</AppButton>
+        <AppButton v-if="hasPermission('academicAffairs.timeslot.view')" @click="$router.push({ path: '/admin/academic-affairs/time-slots', query: returnQuery() })">核对作息时间</AppButton>
+      </section>
       <section class="aa-term-ledger" aria-label="正式学期定义台账">
       <div class="aa-foundation-section-heading"><h2>正式学期定义 · 台账</h2><span>{{ loading ? '正在查询' : error ? '查询未完成' : `共 ${pagination.total} 个学期` }}</span></div>
       <AdvancedFilter
@@ -27,12 +38,13 @@
       </p>
       <p v-else-if="governanceManaged" class="mp-note aa-authority-note">
         学期发布后，由学校在「学年学期与业务日历」统一启用为当前学期。
-        <button v-if="canViewGovernance" class="mp-link" type="button" @click="goGovernance">前往统一治理</button>
+        <button v-if="canViewGovernance" class="mp-link" type="button" @click="goGovernance">设置学校当前学期</button>
       </p>
       <p v-else-if="directSwitchAllowed" class="mp-note aa-authority-note">
         本校发布学期时会同步设为当前学期，请在操作前核对日期与教学周。
       </p>
 
+      <p v-if="!loading && !error && rows.length" class="aa-term-scroll-hint">左右滑动表格，可查看学期状态和办理入口。</p>
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <EmptyState
@@ -61,7 +73,7 @@
           <span v-else class="mp-cell-sub">未配置</span>
         </template>
         <template #cell-current="{ row }">
-          <div>{{ currentLoading || currentError ? '权威待核对' : governanceManaged ? '学校统一日历治理' : currentContext?.canDirectSwitch === true ? '教务学期管理' : '权威待核对' }}</div>
+          <div>{{ currentLoading || currentError ? '启用情况待核对' : governanceManaged ? '由学校统一设置' : currentContext?.canDirectSwitch === true ? '由教务设置' : '启用情况待核对' }}</div>
           <AppStatusTag v-if="isResolvedCurrent(row)" type="success" dot>当前学期</AppStatusTag>
           <span v-else-if="currentError" class="mp-cell-sub">待核对</span>
           <span v-else class="mp-cell-sub">—</span>
@@ -70,7 +82,8 @@
           <AppStatusTag :status="row.status" dot>{{ statusLabel(row.status) }}</AppStatusTag>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" type="button" @click="goDetail(row)">打开</button>
+          <button class="mp-link" type="button" @click="goDetail(row)">查看详情</button>
+          <button v-if="hasPermission('academicAffairs.calendar.view')" class="mp-link" type="button" @click="goCalendar(row)">查看校历</button>
           <span v-if="isResolvedCurrent(row)" class="mp-cell-sub">当前学期</span>
           <button
             v-else-if="row.status === 'DRAFT' && publishAllowed"
@@ -89,7 +102,7 @@
             class="mp-link"
             type="button"
             @click="goGovernance"
-          >统一治理切换</button>
+          >设置学校当前学期</button>
           <span v-else-if="currentError" class="mp-cell-sub">已禁用</span>
           <span v-else-if="row.status === 'FROZEN'" class="mp-cell-sub">请先解冻</span>
           <span v-else class="mp-cell-sub">—</span>
@@ -156,9 +169,9 @@ export default {
         { key: 'term', title: '学年学期' },
         { key: 'range', title: '起止日期' },
         { key: 'weeks', title: '教学周数' },
-        { key: 'status', title: '定义状态' },
-        { key: 'current', title: '当前权威' },
-        { key: 'actions', title: '办理入口', width: '180px' }
+        { key: 'status', title: '学期状态' },
+        { key: 'current', title: '启用情况' },
+        { key: 'actions', title: '办理入口', width: '220px' }
       ]
     }
   },
@@ -181,7 +194,6 @@ export default {
           type: 'select',
           placeholder: '全部',
           options: [
-            { value: '', label: '全部' },
             { value: 'DRAFT', label: '草稿' },
             { value: 'PUBLISHED', label: '已发布' },
             { value: 'FROZEN', label: '已冻结' },
@@ -216,6 +228,10 @@ export default {
     returnQuery() { const returnToken = this.academicFlow?.captureReturn(); return returnToken ? { returnToken } : {} },
     dateText(value) { return value ? String(value).slice(0, 10) : '未设置' },
     goDetail(row) { this.$router.push({ name: 'aa-term-detail', params: { termId: row.termId }, query: this.returnQuery() }) },
+    goCalendar(row) {
+      if (!this.hasPermission('academicAffairs.calendar.view')) return
+      this.$router.push({ path: '/admin/academic-affairs/calendar', query: { termId: String(row.termId), ...this.returnQuery() } })
+    },
     statusLabel(s) {
       return STATUS_LABEL[s] || (s ? '状态待确认' : '')
     },
@@ -337,6 +353,15 @@ export default {
 .aa-term-ledger .aa-foundation-section-heading { padding: 15px 17px; border-bottom: 1px solid var(--border-base); }
 .aa-term-ledger .aa-foundation-section-heading h2 { font-size: 14px; }
 .aa-term-ledger .aa-authority-note { margin: 0; padding: 10px 16px; }
+.aa-term-ledger :deep(.af) { justify-content: flex-start; align-items: center; }
+.aa-term-ledger :deep(.af__fields) { flex: 0 1 260px; }
+.aa-term-ledger :deep(.af__field) { min-width: 0; flex-direction: row; align-items: center; gap: 10px; }
+.aa-term-ledger :deep(.af__label) { white-space: nowrap; }
+.aa-term-ledger :deep(.dt__table) { min-width: 900px; }
+.aa-term-scroll-hint { display: none; }
+@media (max-width: 760px) {
+  .aa-term-scroll-hint { display: block; margin: 0; padding: 8px 16px; color: var(--text-secondary); font-size: 12px; }
+}
 .aa-term-ledger :deep(.mp-link) { margin-right: 10px; }
 .aa-term-related { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 13px 16px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
 .aa-term-related > span { color: var(--text-secondary); font-size: 12px; }
@@ -361,5 +386,30 @@ export default {
   background: var(--bg-white, #fff);
   color: var(--text-900, #1f2329);
   font-size: 13px;
+}
+.aa-term-workspace { padding: 24px; border: 1px solid var(--border-base); border-radius: 10px; background: var(--bg-card); }
+.aa-term-workspace :deep(.mps__head) { border-bottom: 0; padding-bottom: 0; }
+.aa-term-workspace :deep(.mps__title) { font-size: 28px; font-weight: 700; }
+.aa-term-workspace :deep(.mps__subtitle) { display: none; }
+.aa-term-intro { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary); line-height: 1.7; }
+.aa-term-summary { padding: 22px 20px; min-height: 138px; border-left: 1px solid var(--border-base); gap: 16px; }
+.aa-term-summary__eyebrow { display: inline-block; padding: 3px 8px; border-radius: 4px; background: var(--pri-50, var(--bg-page)); margin-bottom: 8px; }
+.aa-term-summary h2 { font-size: 23px; margin: 0 0 10px; line-height: 1.5; }
+.aa-term-summary__weeks { display: inline-block; margin-left: 18px; }
+.aa-term-summary > button { min-height: 42px; }
+.aa-term-ledger { border-radius: 8px; }
+.aa-term-ledger :deep(.af) { box-shadow: none; border: 0; border-radius: 0; padding: 16px; }
+.aa-term-ledger :deep(.dt__th) { font-size: 13px; padding: 14px 18px; background: var(--bg-page); }
+.aa-term-ledger :deep(.dt__td) { font-size: 14px; padding: 18px; }
+.aa-term-ledger :deep(.dt__td .mp-link) { display: inline-block; padding-block: 4px; }
+.aa-term-name { font-size: 14px; }
+.aa-term-ledger .aa-authority-note { border-block: 1px solid var(--border-base); background: var(--bg-page); font-size: 12px; }
+@media (max-width: 760px) {
+  .aa-term-workspace { padding: 14px; }
+  .aa-term-workspace :deep(.mps__title) { font-size: 23px; }
+  .aa-term-summary { padding: 16px; min-height: 0; }
+  .aa-term-summary__main { min-width: 0; flex-basis: 100%; }
+  .aa-term-summary h2 { font-size: 19px; }
+  .aa-term-summary__weeks { display: block; margin: 6px 0 0; }
 }
 </style>

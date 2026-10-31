@@ -95,12 +95,10 @@ def test_review_relay_scopes_and_terminal_return_guard(db_mode):
     with pytest.raises(AppException) as error:
         _call({**school, "tenantId": str(TID + 1)}, svc.review_batch_advance, bid, "APPROVE")
     assert error.value.code == "DATA_NOT_FOUND"
-    for _ in range(2):
-        _call(college, svc.review_batch_advance, bid, "APPROVE")
+    assert _call(college, svc.review_batch_advance, bid, "APPROVE")["status"] == "COLLEGE_APPROVED"
     with pytest.raises(AppException):
         _call(college, svc.review_batch_advance, bid, "RETURN", "不能跨级学校审核")
-    for _ in range(2):
-        result = _call(school, svc.review_batch_advance, bid, "APPROVE")
+    result = _call(school, svc.review_batch_advance, bid, "APPROVE")
     assert result["status"] == "PUBLISHED" and not any(result["actions"].values())
     for action in ["RETURN", "APPROVE"]:
         with pytest.raises(AppException):
@@ -111,7 +109,7 @@ def test_review_relay_scopes_and_terminal_return_guard(db_mode):
         assert saved.college_reviewer == college["userId"]
         assert saved.academic_reviewer == school["userId"]
         audits = db.query(AffairsAuditTrail).filter_by(biz_type="AA_TEXTBOOK_REVIEW", biz_id=bid, action="TEXTBOOK_REVIEW_ADVANCE").order_by(AffairsAuditTrail.id).all()
-        assert [row.operator for row in audits] == [college["userId"]] * 2 + [school["userId"]] * 2
+        assert [row.operator for row in audits] == [college["userId"], school["userId"]]
         assert db.get(AaTextbookSelection, ids["own_selection"]).status == "APPROVED"
         db.get(AaTextbookSelection, ids["own_selection"]).status = "ORDERED"
         db.commit()
@@ -173,8 +171,6 @@ def test_review_sources_and_selection_writes_fail_closed(db_mode):
             _call(college, svc.review_batch_advance, old_id, "APPROVE")
     with get_sessionmaker()() as db:
         assert all(db.get(AaTextbookReviewBatch, old_id).status == "DRAFT" for old_id in old_ids)
-
-
 def test_selection_officer_uses_unique_same_tenant_account_even_when_names_match(db_mode):
     from app.db.session import get_sessionmaker
     from app.models import AaTextbookSelection, User

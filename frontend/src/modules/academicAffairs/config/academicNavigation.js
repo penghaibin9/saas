@@ -152,7 +152,10 @@ export function buildAcademicNavigation(sourceModules) {
     const statisticsTab = target.key === 'aa-stats' && leaf.path.startsWith('/admin/academic-affairs/stats')
       ? new URL(leaf.path, 'http://navigation.local').searchParams.get('tab') || 'overview' : null
     const topic = statisticsTab && statsTopic(statisticsTab)
-    target.children.push({ ...leaf, label, sourceKey: leaf.sourceKey || `${source.key}:${index}`, menuSection: source.label,
+    const menuSection = target.key === 'aa-terms'
+      ? source.key !== 'aa-orgs' ? '学期与作息' : ['组织核对', '组织统计', '变更审计'].includes(label) ? '核对与统计' : '学院与班级'
+      : source.label
+    target.children.push({ ...leaf, label, sourceKey: leaf.sourceKey || `${source.key}:${index}`, menuSection,
       legacyWorkspaceIds: [...new Set([...(leaf.legacyWorkspaceIds || []), leaf.sourceKey, leaf.path].filter(Boolean))],
       ...(topic ? { menuParentPath: `/admin/academic-affairs/stats${topic.tabs[0] === 'overview' ? '' : `?tab=${topic.tabs[0]}`}` } : {}),
       menuSecondary: !PRIMARY[target.key].includes(label),

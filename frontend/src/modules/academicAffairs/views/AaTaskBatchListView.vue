@@ -4,7 +4,7 @@
   <ModulePageShell
     v-else
     :title="showGen ? '教学任务生成' : '教学任务批次'"
-    :subtitle="showGen ? '重复生成不会产生重复任务，不要手工建立没有来源的教学任务' : '先确认已发布方案和年级绑定，再生成'"
+    :subtitle="showGen ? '重复生成不会产生重复任务，不要手工建立没有来源的教学任务' : '从培养方案生成任务，按批次跟进开课办理'"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
@@ -15,9 +15,9 @@
       <AppButton v-if="canManage" variant="primary" @click="showGen = !showGen">从方案生成任务</AppButton>
     </template>
 
-    <div class="mp-stack">
+    <div class="mp-stack task-workspace">
       <AaOperationReceipt :receipt="receipt && { title: '任务生成回执', ...receipt }" />
-      <AaTeachingTaskStageRail v-if="showGen" :current="1" current-note="生成新批次" />
+      <AaTeachingTaskStageRail :current="showGen ? 1 : 0" :steps="offeringSteps" expanded current-note="开课办理流程" />
 
       <AppSectionCard v-if="showGen && canManage" title="从已发布培养方案生成">
         <div class="aa-cal-form">
@@ -70,12 +70,8 @@
           <div class="mp-cell-main">{{ row.batchName || `批次 ${row.batchId}` }}</div>
           <div class="mp-cell-sub">{{ row.termLabel || '学期待核对' }} · 共 {{ row.taskTotal ?? 0 }} 条任务</div>
         </template>
-        <template #cell-progress="{ row }">
-          <div class="task-progress-line"><span>分配</span><strong>{{ row.assignedRate ?? 0 }}%</strong></div>
-          <div class="task-progress"><span :style="{ width: `${row.assignedRate || 0}%` }" /></div>
-          <div class="task-progress-line is-secondary"><span>教师确认</span><strong>{{ row.teacherConfirmRate ?? 0 }}%</strong></div>
-          <div class="task-progress"><span :style="{ width: `${row.teacherConfirmRate || 0}%` }" /></div>
-        </template>
+        <template #cell-college="{ row }">{{ row.collegeName || '责任学院待核对' }}</template>
+        <template #cell-stage="{ row }"><AppStatusTag :label="stageLabel(row)" :type="statusColor(row.status)" /></template>
         <template #cell-blockers="{ row }">
           <div v-if="row.blockers?.length" class="task-batch-blockers">
             <span v-for="item in row.blockers.slice(0, 3)" :key="item.code">{{ item.message }}</span>
@@ -83,17 +79,15 @@
           </div>
           <span v-else class="task-batch-ready">无阻断</span>
         </template>
-        <template #cell-status="{ row }">
-          <AppStatusTag :status="row.status" :type="statusColor(row.status)" dot />
-        </template>
         <template #cell-next="{ row }">
           <div class="mp-cell-main">{{ row.nextAction?.label || '核对批次状态' }}</div>
           <div v-if="row.blockerCount" class="mp-cell-sub is-warning">共 {{ row.blockerCount }} 项阻断</div>
         </template>
         <template #cell-actions="{ row }">
-          <button class="mp-link" @click="openBatch(row)">进入工作台</button>
+          <button class="mp-link" @click="openNext(row)">{{ actionLabel(row) }}</button><br /><button class="mp-link mp-cell-sub" @click="openBatch(row)">查看批次</button>
         </template>
       </DataTable>
+      <p class="task-workspace__notice">终审通过表示可以进入排课，不表示课表已完成。</p>
     </div>
   </ModulePageShell>
 </template>
@@ -120,6 +114,7 @@ export default {
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      offeringSteps: [{ label: '方案生成' }, { label: '任务准备' }, { label: '教师本人确认' }, { label: '学院核对' }, { label: '校教务终审' }, { label: '可进入排课' }],
       loading: true,
       error: '',
       rows: [],
@@ -133,9 +128,8 @@ export default {
       pagination: { page: 1, pageSize: 20, total: 0 },
       columns: [
         { key: 'batch', title: '批次 / 规模' },
-        { key: 'progress', title: '执行进度', width: '190px' },
+        { key: 'college', title: '开课责任学院' }, { key: 'stage', title: '当前环节', width: '140px' },
         { key: 'blockers', title: '当前阻断' },
-        { key: 'status', title: '批次状态', width: '130px' },
         { key: 'next', title: '下一步' },
         { key: 'actions', title: '操作', width: '110px' }
       ]
@@ -150,14 +144,14 @@ export default {
     },
     metrics() {
       const rows = this.rows || []
-      const pending = rows.filter(row => ['DRAFT', 'GENERATED'].includes(row.status)).length
-      const processing = rows.filter(row => ['ASSIGNING', 'TEACHER_CONFIRMING', 'COLLEGE_CONFIRMED'].includes(row.status)).length
+      const pending = rows.filter(row => ['DRAFT', 'GENERATED'].includes(row.status) && !row.taskTotal).length
+      const processing = rows.filter(row => !['APPROVED', 'ARCHIVED'].includes(row.status) && (row.taskTotal > 0 || row.status === 'RETURNED')).length
       const completed = rows.filter(row => ['APPROVED', 'ARCHIVED'].includes(row.status)).length
       return [
         { label: '当前范围批次', short: '共', value: this.pagination.total, note: '当前学期与权限范围内的批次' },
-        { label: '本页待启动', short: '待启动', value: pending, note: '本页待启动' },
-        { label: '本页进行中', short: '进行中', value: processing, note: '本页进行中' },
-        { label: '本页已完成', short: '已完成', value: completed, note: '本页已完成' }
+        { label: '本页待启动', short: '本页待启动', value: pending, note: '本页待启动' },
+        { label: '本页进行中', short: '本页进行中', value: processing, note: '本页进行中' },
+        { label: '本页已完成', short: '本页已完成', value: completed, note: '本页已完成' }
       ]
     },
     filteredRows() { return this.rows }
@@ -179,8 +173,31 @@ export default {
   },
   beforeUnmount() { this.revision++; this.generateSeq++; this.collegeSeq++; this.disposed = true },
   methods: {
+    stageLabel(row) {
+      if (row.status === 'ARCHIVED') return '已归档'
+      if (row.status === 'APPROVED') return '开课审核完成'
+      if (row.status === 'COLLEGE_CONFIRMED') return '校教务终审'
+      if (!['DRAFT', 'RETURNED', 'GENERATED', 'ASSIGNING', 'TEACHER_CONFIRMING', 'TEACHER_CONFIRMED'].includes(row.status)) return TASK_BATCH_STATUS[row.status] || '状态待核对'
+      if (row.unassignedCount || row.teacherRejectedCount) return '任务准备'
+      if (row.waitingTeacherCount) return '教师本人确认'
+      return row.taskTotal ? '学院核对' : '方案生成'
+    },
+    actionLabel(row) {
+      if (row.status === 'APPROVED' && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.schedule.view')) return '进入本学期排课'
+      if (['DRAFT', 'RETURNED'].includes(row.status) && (row.unassignedCount || row.teacherRejectedCount) && (this.ctx.dataScope?.scopeType || this.ctx.dataScope?.scope) === 'COLLEGE' && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.assign')) return '分配教师'
+      if (!row.waitingTeacherCount && !row.blockerCount && ['DRAFT', 'RETURNED', 'COLLEGE_CONFIRMED'].includes(row.status) && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.teachingTask.confirm')) return '核对办理条件'
+      return '查看办理进度'
+    },
+    openNext(row) {
+      const label = this.actionLabel(row)
+      const query = { batchId: String(row.batchId), termId: String(row.termId), returnTo: this.$route.fullPath }
+      if (label === '进入本学期排课') { delete query.batchId; return this.$router.push({ path: '/admin/academic-affairs/schedule', query }) }
+      if (label === '分配教师') return this.$router.push({ path: '/admin/academic-affairs/teaching-tasks/assign', query })
+      if (label === '核对办理条件') return this.$router.push({ path: '/admin/academic-affairs/teaching-tasks/confirm', query })
+      return this.openBatch(row)
+    },
     statusColor: taskBatchColor,
-    openTeachingClasses() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes' } }) },
+    openTeachingClasses() { this.$router.push({ path: '/admin/academic-affairs/teaching-tasks', query: { view: 'classes', termId: this.filters.termId || undefined, returnTo: this.$route.fullPath } }) },
     restoreFilters() {
       const q = this.$route.query
       this.filters.termId = typeof q.termId === 'string' ? q.termId : ''
@@ -269,6 +286,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/teaching-task-workspace.css';
 .task-batch-overview { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .task-batch-metric { min-height: 92px; padding: 14px 16px; border: 1px solid var(--gray-200); border-radius: 10px; background: var(--bg-card); box-sizing: border-box; }
 .task-batch-metric span, .task-batch-metric small { display: block; color: var(--gray-500); font-size: 12px; }

@@ -17,7 +17,7 @@
     <div v-if="error" class="state is-err">{{ error }} <button type="button" class="mp-link" @click="load">重试</button></div>
     <div v-else-if="loading" class="plan-state" role="status">正在加载指导计划…</div>
     <div v-else-if="!rows.length" class="plan-state" role="status">
-      <strong>当前范围内暂无学生</strong>
+      <strong>当前筛选暂无在岗学生</strong>
       <p>可切换批次，或调整姓名与达标状态筛选。</p>
       <AppButton v-if="keyword || insufficientOnly || statusFilter" variant="ghost" @click="clearFilters">清空筛选</AppButton>
     </div>
@@ -53,6 +53,7 @@ const COLUMNS = [
   { key: 'enterpriseName', title: '企业' },
   { key: 'monthCount', title: '本月 / 要求', width: '110px' },
   { key: 'termCount', title: '学期 / 要求', width: '110px' },
+  { key: 'unknownDateCount', title: '历史未登记日期', width: '130px' },
   { key: 'nextFollowDate', title: '下次跟进' },
   { key: 'planStatus', title: '计划状态', width: '110px' },
   { key: 'actions', title: '操作', width: '130px' }

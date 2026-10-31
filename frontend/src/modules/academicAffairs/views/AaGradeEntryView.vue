@@ -7,7 +7,7 @@
   >
     <template #actions>
       <AppButton :disabled="writeBusy || submitPending" @click="returnToOverview">返回成绩队列</AppButton>
-      <AppButton @click="closeTask">{{ isAdminRole ? '成绩任务' : '我的录入任务' }}</AppButton>
+      <AppButton @click="closeTask">{{ schemeOnly ? '本院成绩任务' : isAdminRole ? '成绩任务' : '我的录入任务' }}</AppButton>
       <AppButton v-if="task && canSubmit" variant="primary" :disabled="writeBusy" @click="openSubmit">提交学院审核</AppButton>
     </template>
 
@@ -28,7 +28,7 @@
       </section>
       <ErrorState v-if="taskError" :description="taskError" @retry="retryTask" />
       <LoadingState v-if="taskLoading" />
-      <AppSectionCard v-if="!task" :title="importMode ? '选择成绩导入任务' : isAdminRole ? '成绩任务列表' : '我的录入任务'">
+      <AppSectionCard v-if="!task" :title="schemeOnly ? '选择本院成绩构成任务' : importMode ? '选择成绩导入任务' : isAdminRole ? '成绩任务列表' : '我的录入任务'">
         <div v-if="isAcademicTeacher" class="aa-current-term-bar">
           <span>{{ showHistory ? '历史成绩任务' : `当前学期：${currentTermName || '学期名称待核对'}` }}</span>
           <AppButton size="small" variant="ghost" :disabled="taskLoading || writeBusy" @click="toggleTaskHistory">{{ showHistory ? '返回当前学期' : '查看历史任务' }}</AppButton>
@@ -53,10 +53,10 @@
             </li>
           </ul>
         </div>
-        <EmptyState v-if="!taskLoading && !taskError && !myTasks.length" :title="importMode ? '当前没有可导入任务' : '当前没有成绩任务'" :description="importMode ? '先建立成绩任务，再导入并检查成绩。' : '选择教学任务后创建录入任务。'" />
-        <div class="aa-actions"><AppButton :disabled="taskPage <= 1" @click="changeTaskPage(taskPage - 1)">上一页</AppButton><span v-if="!taskLoading && !taskError">第 {{ taskPage }} 页 · 共 {{ taskTotal }} 项</span><AppButton :disabled="taskPage * 20 >= taskTotal" @click="changeTaskPage(taskPage + 1)">下一页</AppButton><AppButton @click="showCreate = !showCreate">{{ showCreate ? '收起新建' : '新建录入任务' }}</AppButton></div>
+        <EmptyState v-if="!taskLoading && !taskError && !myTasks.length" :title="importMode ? '当前没有可导入任务' : '当前没有成绩任务'" :description="schemeOnly ? '请先由任课教师建立成绩任务，再维护本院课程的成绩构成' : importMode ? '先建立成绩任务，再导入并检查成绩。' : '选择教学任务后创建录入任务。'" />
+        <div class="aa-actions"><AppButton :disabled="taskPage <= 1" @click="changeTaskPage(taskPage - 1)">上一页</AppButton><span v-if="!taskLoading && !taskError">第 {{ taskPage }} 页 · 共 {{ taskTotal }} 项</span><AppButton :disabled="taskPage * 20 >= taskTotal" @click="changeTaskPage(taskPage + 1)">下一页</AppButton><AppButton v-if="!schemeOnly" @click="showCreate = !showCreate">{{ showCreate ? '收起新建' : '新建录入任务' }}</AppButton></div>
       </AppSectionCard>
-      <AppSectionCard v-if="!task && showCreate" title="新建成绩录入任务">
+      <AppSectionCard v-if="!task && showCreate && !schemeOnly" title="新建成绩录入任务">
         <AppInlineAlert
           v-if="isAdminRole && !form.teachingTaskId"
           type="warning"
@@ -132,14 +132,15 @@
           </li>
         </ol>
 
-        <section class="aa-grade-metrics" aria-label="成绩任务关键信息">
+        <section v-if="!schemeOnly" class="aa-grade-metrics" aria-label="成绩任务关键信息">
           <article><small>{{ readOnlyResult && !dynamicMode ? '成绩记录' : '学生名单' }}</small><strong>{{ readOnlyResult && !dynamicMode ? `${rows.length} 条` : rosterMetric }}</strong><span v-if="!dynamicMode && !readOnlyResult">当前录入表 {{ rows.length }} 人，含待保存行</span></article>
           <article><small>成绩项</small><strong>{{ gradeItemMetric }}</strong></article>
           <article><small>录入模式</small><strong>{{ formalSchemeMode === 'unknown' ? '待核对' : dynamicMode ? '动态分项' : hasMidterm ? '固定三段' : '固定两段' }}</strong><span v-if="formalSchemeMode === 'dynamic'">须按已设置的成绩项录入</span></article>
           <article v-if="!readOnlyResult"><small>质量核验</small><strong>{{ qualityMetric }}</strong><span>提交前检查成绩是否完整</span></article>
         </section>
 
-        <AppInlineAlert v-if="readOnlyResult" type="info" title="已发布成绩仅供查看" description="调整成绩需发起成绩更正，原成绩和审核记录将保留。" />
+        <AppInlineAlert v-if="schemeOnly" type="info" title="本院课程成绩构成" description="维护成绩项和比例；任课教师按保存后的方案录分。开始录分后，成绩构成不可再修改。" />
+        <AppInlineAlert v-else-if="readOnlyResult" type="info" title="已发布成绩仅供查看" description="调整成绩需发起成绩更正，原成绩和审核记录将保留。" />
         <AppInlineAlert v-else type="info" description="逐行保存成绩后，还需提交学院审核。" />
 
         <AppSectionCard :title="readOnlyResult ? '成绩信息' : '录入设置'">
@@ -149,7 +150,7 @@
             <span v-if="task.deadlineReady">截止 {{ formatDeadline(task.deadline) }}</span>
             <span v-else>未设置提交截止时间</span>
           </div>
-          <div class="aa-mode-switch">
+          <div v-if="!schemeOnly" class="aa-mode-switch">
             <button :disabled="formalSchemeMode === 'dynamic'" :class="['aa-mode', { 'is-active': !dynamicMode }]" @click="switchMode(false)">{{ hasMidterm ? '固定三段' : '固定两段' }}</button>
             <button :class="['aa-mode', { 'is-active': dynamicMode }]" @click="switchMode(true)">动态成绩项</button>
           </div>
@@ -236,15 +237,16 @@
               title="首次录分后不能修改方案"
               description="按权重计算总评，提交后由学院审核、教务发布。"
             />
-            <LoadingState v-if="dynamicLoading" />
+            <ErrorState v-if="dynamicError" :description="dynamicError" @retry="loadDynamic" />
+            <LoadingState v-else-if="dynamicLoading" />
             <template v-else-if="dynamicData">
               <div class="aa-scheme-head">
-                <span>名单版本：{{ dynamicData.rosterIdentity?.rosterVersionNo || '—' }}</span>
+                <span v-if="!schemeOnly">名单版本：{{ dynamicData.rosterIdentity?.rosterVersionNo || '—' }}</span>
                 <span>权重合计 {{ schemeTotal }}%</span>
               </div>
               <div class="aa-scheme-list">
                 <div v-for="(component, index) in schemeDraft" :key="component.code + index" class="aa-scheme-row">
-                  <details class="aa-code"><summary>实施人员使用</summary><input v-model.trim="component.code" class="aa-input" maxlength="40" :disabled="writeBusy || !schemeEditable" placeholder="成绩项标识" /></details>
+                  <details v-if="!schemeOnly" class="aa-code"><summary>实施人员使用</summary><input v-model.trim="component.code" class="aa-input" maxlength="40" :disabled="writeBusy || !schemeEditable" placeholder="成绩项标识" /></details>
                   <input v-model.trim="component.name" class="aa-input aa-name" maxlength="80" :disabled="writeBusy || !schemeEditable" placeholder="名称" />
                   <input v-model.number="component.weight" type="number" min="0.01" max="100" step="0.01" class="aa-input aa-weight" :disabled="writeBusy || !schemeEditable" />
                   <label class="aa-required"><input v-model="component.required" type="checkbox" :disabled="writeBusy || !schemeEditable" /> 必填</label>
@@ -259,7 +261,7 @@
             </template>
           </AppSectionCard>
 
-          <AppSectionCard title="动态分项录入表">
+          <AppSectionCard v-if="!schemeOnly" title="动态分项录入表">
             <div class="aa-actions">
               <AppButton :disabled="!dynamicWritable || writeBusy || dynamicLoading" @click="saveDynamicRows()">整批保存当前页</AppButton>
               <span>第 {{ dynamicPage }} 页 · 共 {{ dynamicData?.total ?? '—' }} 人</span>
@@ -346,6 +348,7 @@ import { gradeIdentityApi } from '@/modules/academicAffairs/api/grade-identity.a
 import { academicAffairsR10Api } from '@/modules/academicAffairs/api/academic-affairs-r10.api'
 import { gradeReminderApi } from '@/modules/academicAffairs/api/grade-reminder.api'
 import { toast } from '@/utils/toast'
+import { matchPermission } from '@/config/navPlan'
 import { systemConfirm } from '@/services/systemDialog'
 import { currentUserFromToken } from '@/services/http/client'
 import { gradeError } from './parallel-c/grade-review.js'
@@ -400,13 +403,14 @@ export default {
     }
   },
   computed: {
+    schemeOnly() { const patterns = this.ctx.permissionPatterns || []; return matchPermission(patterns, 'academicAffairs.grade.scheme.manage') && !matchPermission(patterns, 'academicAffairs.grade.input') },
     readOnlyResult() { return ['PUBLISHED', 'ARCHIVED'].includes(this.task?.status) },
     importMode() { return this.$route?.query?.action === 'import' },
-    pageTitle() { return ['PUBLISHED', 'ARCHIVED'].includes(this.task?.status) ? '正式成绩' : this.importMode ? '成绩导入' : '成绩录入' },
-    pageSubtitle() { return ['PUBLISHED', 'ARCHIVED'].includes(this.task?.status) ? '查看已发布结果，需要调整请发起成绩更正。' : this.importMode ? '名单和成绩项匹配后才能确认导入。' : '按教学名单录入成绩，支持固定和动态成绩项。' },
+    pageTitle() { return this.schemeOnly ? '课程成绩构成' : ['PUBLISHED', 'ARCHIVED'].includes(this.task?.status) ? '正式成绩' : this.importMode ? '成绩导入' : '成绩录入' },
+    pageSubtitle() { return this.schemeOnly ? '维护本院课程成绩项和比例，任课教师按此录入成绩' : ['PUBLISHED', 'ARCHIVED'].includes(this.task?.status) ? '查看已发布结果，需要调整请发起成绩更正。' : this.importMode ? '名单和成绩项匹配后才能确认导入。' : '按教学名单录入成绩，支持固定和动态成绩项。' },
     identityKey() { const u = currentUserFromToken() || {}; return JSON.stringify([u.tenantId, u.userId, u.currentRoleCode, u.activeContextId, this.ctx.currentRole, this.ctx.dataScope]) },
     writeBusy() { return this.creating || this.submitting || this.schemePending || this.schemeSaving || !!this.dynamicSavingId || !!this.savingRowId || this.deadlineSaving || this.reminding },
-    editable() { return !!this.task && EDITABLE_STATUS.has(this.task.status) && this.task.allowedActions?.includes('INPUT') && !this.submitPending && !this.schemePending && !this.dynamicCommand && !this.dynamicRecoveryError },
+    editable() { return !this.schemeOnly && !!this.task && EDITABLE_STATUS.has(this.task.status) && this.task.allowedActions?.includes('INPUT') && !this.submitPending && !this.schemePending && !this.dynamicCommand && !this.dynamicRecoveryError },
     dynamicWritable() { return this.editable && !this.dynamicLoading && !this.dynamicError && !this.dynamicRows.some(row => row.draftConflict) && this.dynamicData?.canWriteComponents === true && String(this.dynamicData.gradeTaskId) === String(this.task.gradeTaskId) },
     fixedEditable() { return this.editable && this.formalSchemeMode === 'fixed' },
     hasMidterm() { return this.task && Number(this.task.midtermRatio) > 0 },
@@ -419,6 +423,7 @@ export default {
       return 2
     },
     currentResponsibility() {
+      if (this.schemeOnly && this.task?.status === 'NOT_STARTED') return '学院教务'
       const status = String(this.task?.status || '').toUpperCase()
       if (['SUBMITTED', 'COLLEGE_REVIEW'].includes(status)) return '学院成绩审核岗'
       if (status === 'ACADEMIC_REVIEW') return '教务成绩发布岗'
@@ -426,6 +431,7 @@ export default {
       return '任课教师或授权成绩管理员'
     },
     nextResponsibility() {
+      if (this.schemeOnly && this.task?.status === 'NOT_STARTED') return '任课教师按方案录分'
       const status = String(this.task?.status || '').toUpperCase()
       if (['PUBLISHED', 'ARCHIVED'].includes(status)) return '查看预警或申请更正'
       if (status === 'ACADEMIC_REVIEW') return '发布成绩并检查学业预警'
@@ -452,10 +458,10 @@ export default {
       return ADMIN_ROLES.has(code) || this.ctx?.userType === 'PLATFORM_SUPER_ADMIN'
     },
     canExtendDeadline() {
-      return Array.isArray(this.task?.allowedActions) && this.task.allowedActions.includes('EXTEND_DEADLINE')
+      return !this.schemeOnly && Array.isArray(this.task?.allowedActions) && this.task.allowedActions.includes('EXTEND_DEADLINE')
     },
     canSubmit() {
-      if (!this.task || !SUBMITTABLE_STATUS.has(this.task.status)) return false
+      if (this.schemeOnly || !this.task || !SUBMITTABLE_STATUS.has(this.task.status)) return false
       if (this.task.isOverdue === true || this.task.teacherAuthorityReady === false) return false
       const actions = Array.isArray(this.task.allowedActions) ? this.task.allowedActions : []
       return actions.includes('SUBMIT') && !this.submitPending && !this.dynamicCommand && !this.dynamicRecoveryError && !(this.dynamicMode && this.dynamicRows.some(row => row.draftConflict))
@@ -471,7 +477,7 @@ export default {
     dynamicDirty() { return this.dynamicRows.some(row => row.originalDraft !== JSON.stringify([row.scores, row.exceptionFlag])) },
     fixedDirty() { return this.rows.some(row => row.originalScores != null && row.originalScores !== JSON.stringify([row.usual ?? null, row.midterm ?? null, row.final ?? null, row.exceptionFlag])) },
     dynamicComponents() { return this.dynamicData?.scheme?.components || [] },
-    schemeEditable() { return this.editable && !!this.dynamicData?.scheme?.editable },
+    schemeEditable() { return (this.schemeOnly || this.editable) && !this.dynamicLoading && !this.dynamicError && !this.schemePending && !this.schemeSaving && !!this.dynamicData?.scheme?.editable },
     schemeTotal() { return Number(this.schemeDraft.reduce((sum, item) => sum + Number(item.weight || 0), 0).toFixed(4)) }
   },
   watch: {
@@ -543,7 +549,7 @@ export default {
       }
     },
     canRemind(row) {
-      return Array.isArray(row?.allowedActions) && row.allowedActions.includes('REMIND')
+      return !this.schemeOnly && Array.isArray(row?.allowedActions) && row.allowedActions.includes('REMIND')
     },
     openReminder(row) {
       if (!this.canRemind(row)) return
@@ -615,6 +621,7 @@ export default {
       return systemConfirm({ title: '还有未保存的成绩', message: '离开当前任务会丢失未保存的分数。可以取消返回继续保存，或明确放弃本次修改。', confirmText: '放弃修改并离开', type: 'danger' })
     },
     switchMode(value) {
+      if (this.schemeOnly) return
       if (this.writeBusy || (!value && this.formalSchemeMode === 'dynamic')) return
       this.dynamicMode = value
       if (value) this.loadDynamic()
@@ -741,13 +748,13 @@ export default {
         const task = await this.readExactTask(row.gradeTaskId)
         if (!valid()) return
         this.task = task; this.prepareDeadlineForm()
-        this.restoreDynamicCommand()
+        if (!this.schemeOnly) this.restoreDynamicCommand()
         const scheme = await academicAffairsR10Api.getGradeScheme(task.gradeTaskId)
         if (!valid()) return
         if (scheme?.code !== 0) throw scheme
         this.formalSchemeMode = scheme.data?.schemeId ? 'dynamic' : scheme.data?.status === 'DEFAULT' ? 'fixed' : 'unknown'
         if (this.formalSchemeMode === 'unknown') throw { code: 503 }
-        this.dynamicMode = this.formalSchemeMode === 'dynamic' || String(this.$route.query.mode || '') === 'dynamic'
+        this.dynamicMode = this.schemeOnly || this.formalSchemeMode === 'dynamic' || String(this.$route.query.mode || '') === 'dynamic'
         if (this.dynamicMode) await this.loadDynamic()
         else {
           await this.refreshRecords()
@@ -781,30 +788,34 @@ export default {
       const valid = () => this.currentTask(context) && seq === this.dynamicSeq
       this.dynamicLoading = true; this.dynamicError = ''
       try {
-        const res = await academicAffairsR10Api.getDynamicGradeRoster(context.taskId, { page: this.dynamicPage, pageSize: 30, ...(this.dynamicPage > 1 ? { expectedRosterVersionId: this.dynamicCommand?.rosterVersionId || this.dynamicData?.rosterIdentity?.rosterVersionId } : {}) })
+        const res = this.schemeOnly
+          ? await academicAffairsR10Api.getGradeScheme(context.taskId)
+          : await academicAffairsR10Api.getDynamicGradeRoster(context.taskId, { page: this.dynamicPage, pageSize: 30, ...(this.dynamicPage > 1 ? { expectedRosterVersionId: this.dynamicCommand?.rosterVersionId || this.dynamicData?.rosterIdentity?.rosterVersionId } : {}) })
         if (!valid()) return
         if (res?.code !== 0) throw res
-        if (!res.data?.scheme || (!res.data.scheme.schemeId && res.data.scheme.status !== 'DEFAULT')) throw { code: 503 }
-        if (String(res.data.gradeTaskId) !== String(context.taskId)) throw new Error('返回的名单与当前成绩任务不一致')
-        if ([...drafts.keys()].some(id => !(res.data.items || []).some(row => String(row.studentId) === id))) throw new Error('名单已变化，原页草稿保留，请先核对学生名单。')
-        this.dynamicData = res.data
-        this.formalSchemeMode = res.data.scheme?.schemeId ? 'dynamic' : res.data.scheme?.status === 'DEFAULT' ? 'fixed' : this.formalSchemeMode
-        this.schemeDraft = (res.data.scheme?.components || []).map((item, index) => ({ code: item.code, name: item.name, weight: Number(item.weight), required: item.required !== false, order: item.order || index + 1 }))
-        this.dynamicData.items = (res.data.items || []).map(row => {
+        const data = this.schemeOnly ? { gradeTaskId: res.data?.gradeTaskId, scheme: res.data, items: [] } : res.data
+        if (!data?.scheme || (!data.scheme.schemeId && data.scheme.status !== 'DEFAULT')) throw { code: 503 }
+        if (String(data.gradeTaskId) !== String(context.taskId)) throw new Error('返回的名单与当前成绩任务不一致')
+        if ([...drafts.keys()].some(id => !(data.items || []).some(row => String(row.studentId) === id))) throw new Error('名单已变化，原页草稿保留，请先核对学生名单。')
+        this.dynamicData = data
+        this.formalSchemeMode = data.scheme?.schemeId ? 'dynamic' : data.scheme?.status === 'DEFAULT' ? 'fixed' : this.formalSchemeMode
+        this.schemeDraft = (data.scheme?.components || []).map((item, index) => ({ code: item.code, name: item.name, weight: Number(item.weight), required: item.required !== false, order: item.order || index + 1 }))
+        this.dynamicData.items = (data.items || []).map(row => {
           const draft = drafts.get(String(row.studentId))
-          const draftConflict = !!draft && (draft.draftConflict || draft.rowVersion !== row.rowVersion || String(draft.recordId || '') !== String(row.recordId || '') || previousIdentity?.scheme?.schemeVersion !== res.data.scheme.schemeVersion || previousIdentity?.rosterIdentity?.rosterVersionId !== res.data.rosterIdentity?.rosterVersionId)
+          const draftConflict = !!draft && (draft.draftConflict || draft.rowVersion !== row.rowVersion || String(draft.recordId || '') !== String(row.recordId || '') || previousIdentity?.scheme?.schemeVersion !== data.scheme.schemeVersion || previousIdentity?.rosterIdentity?.rosterVersionId !== data.rosterIdentity?.rosterVersionId)
           return { ...row, scores: { ...(draft?.scores || row.scores || {}) }, formalScores: { ...(row.scores || {}) },
             draftConflict, formalExceptionFlag: row.exceptionFlag || 'NORMAL', exceptionFlag: draft?.exceptionFlag || row.exceptionFlag || 'NORMAL', originalDraft: JSON.stringify([row.scores || {}, row.exceptionFlag || 'NORMAL']) }
         })
-        if (res.data.status) this.task.status = res.data.status
-        if (this.schemePending && res.data.scheme?.schemeId && this.schemeMatches(res.data.scheme.components, this.pendingSchemeComponents)) { this.schemePending = false; this.pendingSchemeComponents = null; this.taskError = '' }
+        if (data.status) this.task.status = data.status
+        if (this.schemePending && data.scheme?.schemeId && this.schemeMatches(data.scheme.components, this.pendingSchemeComponents)) { this.schemePending = false; this.pendingSchemeComponents = null; this.taskError = '' }
         if (this.schemePending) this.dynamicError = '保存结果尚未确认，请刷新查看成绩方案。'
         return !this.schemePending
       } catch (err) { if (valid() && !this.denyTask(err)) this.dynamicError = gradeError(err, '动态成绩工作区加载失败。'); return false }
       finally { if (valid()) this.dynamicLoading = false }
     },
     addComponent() {
-      const index = this.schemeDraft.length + 1
+      let index = this.schemeDraft.length + 1
+      while (this.schemeDraft.some(item => item.code === `ITEM_${index}`)) index++
       this.schemeDraft.push({ code: `ITEM_${index}`, name: `成绩项${index}`, weight: 0, required: true, order: index })
     },
     removeComponent(index) { this.schemeDraft.splice(index, 1) },
@@ -950,7 +961,7 @@ export default {
       } catch (err) { if (this.currentTask(context)) this.showTaskError(err, '导入结果待确认，请刷新查看成绩任务。') }
     },
     async createTask() {
-      if (this.writeBusy) return
+      if (this.schemeOnly || this.writeBusy) return
       const context = this.captureTask()
       try {
       if (this.creating) return

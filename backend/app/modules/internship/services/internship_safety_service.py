@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime
+from datetime import datetime, timezone
 
 from sqlalchemy import select
 
@@ -37,13 +37,15 @@ def _completion_row(row):
         "id": str(row.id), "internshipId": str(row.internship_id),
         "batchId": str(row.batch_id or ""), "courseId": str(row.course_id),
         "courseVersion": row.course_version, "status": row.status,
-        "startedAt": row.started_at, "submittedAt": row.submitted_at,
-        "completedAt": row.completed_at,
+        "startedAt": row.started_at.replace(tzinfo=timezone.utc).isoformat() if row.started_at else None,
+        "submittedAt": row.submitted_at.replace(tzinfo=timezone.utc).isoformat() if row.submitted_at else None,
+        "completedAt": row.completed_at.replace(tzinfo=timezone.utc).isoformat() if row.completed_at else None,
         "studiedMinutes": int(row.studied_minutes or 0),
         "attemptCount": int(row.attempt_count or 0), "score": row.score,
         "passed": bool(row.passed),
         "commitmentConfirmed": bool(row.commitment_confirmed),
-        "commitmentAt": row.commitment_at, "reviewedAt": row.reviewed_at,
+        "commitmentAt": row.commitment_at.replace(tzinfo=timezone.utc).isoformat() if row.commitment_at else None,
+        "reviewedAt": row.reviewed_at.replace(tzinfo=timezone.utc).isoformat() if row.reviewed_at else None,
         "version": int(row.version or 0),
     }
 

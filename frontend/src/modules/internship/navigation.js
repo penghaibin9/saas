@@ -24,6 +24,7 @@ export function internshipWorkspaces(ctx) {
   if (!Array.isArray(ctx?.permissionPatterns) || ctx.permissionServiceError) return []
   const group = getVisibleNavPlan({
     permissionPatterns: ctx.permissionPatterns,
+    currentRole: ctx.currentRole,
     ctxKey: ctx.ctxKey || ''
   }).find((item) => item.key === 'internship')
   return (group?.children || []).map((item) => ({
@@ -89,7 +90,10 @@ export function internshipLocation(
     '/admin/internship/reports/'
   )
   // 材料阅读是归档工作区的对象深链，沿用该三级菜单的归属与高亮。
-  if (current.pathname === '/admin/internship/material-center') current.pathname = '/admin/internship/archive'
+  if (['/admin/internship/material-center', '/admin/internship/material-requirements'].includes(current.pathname)) {
+    current.pathname = '/admin/internship/archive'
+    current.searchParams.set('panel', 'records')
+  }
   let best = { workspaceKey: '', path: '', label: '', score: -1 }
   for (const workspace of workspaces) {
     for (const leaf of workspace.children) {

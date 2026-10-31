@@ -33,12 +33,20 @@ _EXT_MIME: dict[str, set[str]] = {
     "doc": {"application/msword", "application/octet-stream"},
     "xls": {"application/vnd.ms-excel", "application/octet-stream"},
     "ppt": {"application/vnd.ms-powerpoint", "application/octet-stream"},
+    "mp4": {"video/mp4", "application/octet-stream"},
+    "webm": {"video/webm", "application/octet-stream"},
+    "rar": {"application/vnd.rar", "application/x-rar-compressed", "application/octet-stream"},
 }
 
-_SCAN_REQUIRED_EXT = frozenset({"zip", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "txt", "csv"})
+_SCAN_REQUIRED_EXT = frozenset({"zip", "docx", "xlsx", "pptx", "doc", "xls", "ppt", "txt", "csv", "mp4", "webm", "rar"})
+_INTERNSHIP_MEDIA_BIZ = frozenset({
+    "INTERNSHIP", "INTERNSHIP_REPORT", "INTERNSHIP_WEEKLY_REPORT", "INTERNSHIP_CUSTOM_MATERIAL",
+    "INTERNSHIP_MATERIAL_TEMPLATE", "INTERNSHIP_TEACHER_PERIOD_REPORT", "INTERNSHIP_NOTICE",
+})
 _SYSTEM_ZIP_BIZ = frozenset({
     "COMPLIANCE_EVIDENCE", "ARCHIVE_PACKAGE", "ARCHIVE_BATCH_PACKAGE",
     "GRADUATION_MATERIAL", "INTERNSHIP",
+    *_INTERNSHIP_MEDIA_BIZ,
 })
 
 
@@ -67,6 +75,12 @@ def sniff_mime(head: bytes) -> str | None:
         return "application/zip"
     if head.startswith(b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1"):
         return "application/msword"
+    if len(head) >= 12 and head[4:8] == b"ftyp":
+        return "video/mp4"
+    if head.startswith(b"\x1aE\xdf\xa3"):
+        return "video/webm"
+    if head.startswith((b"Rar!\x1a\x07\x00", b"Rar!\x1a\x07\x01\x00")):
+        return "application/vnd.rar"
     sample = head[:512]
     if sample and all(b < 128 and (b >= 32 or b in (9, 10, 13)) for b in sample):
         return "text/plain"
@@ -163,6 +177,12 @@ def _validate_common(*, ext: str, declared_content_type: str | None, sniffed: st
                      zip_kind: str | None, biz_type: str | None, source: str) -> str:
     ext = (ext or "").lower()
     biz = (biz_type or "").upper()
+    media_types = {"mp4": "video/mp4", "webm": "video/webm", "rar": "application/vnd.rar"}
+    if ext in media_types:
+        if biz not in _INTERNSHIP_MEDIA_BIZ:
+            raise AppException("FILE_TYPE_NOT_ALLOWED", "该附件格式仅用于实习报告、公告和材料收件")
+        if sniffed != media_types[ext]:
+            raise AppException("FILE_TYPE_MISMATCH", "文件内容与附件格式不一致")
     if ext == "zip" and source == "USER" and not settings.FILE_ALLOW_ZIP and biz not in _SYSTEM_ZIP_BIZ:
         raise AppException("FILE_TYPE_NOT_ALLOWED", "普通附件默认禁用 ZIP，请联系管理员开通")
     expected = {"pdf": "application/pdf", "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif"}

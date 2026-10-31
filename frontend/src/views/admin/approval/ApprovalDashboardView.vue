@@ -8,11 +8,10 @@
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else class="mp-stack">
-      <ModuleHero
-        title="审批工作台"
-        :subtitle="'共 ' + summary.byBizType.length + ' 类业务，仅统计当前管理范围内的待办。'"
-        :stats="heroStats"
-      />
+      <div class="ad-overview">
+        <BusinessMetrics :items="overviewStats" />
+        <p class="ad-overview__note">共 {{ summary.byBizType.length }} 类业务，仅统计当前管理范围内的待办。<span v-if="summary.overdue">超时申请请优先办理。</span></p>
+      </div>
 
       <section class="mp-card">
         <div class="mp-card__head">
@@ -99,17 +98,17 @@
  */
 import {
   ModulePageShell,
-  ModuleHero,
   StatusTag,
   LoadingState,
   ErrorState,
   EmptyState
 } from '@/components/business'
+import BusinessMetrics from '@/components/workspace/BusinessMetrics.vue'
 import { approvalApi } from '@/modules/approval/api/approval.api'
 
 export default {
   name: 'ApprovalDashboardView',
-  components: { ModulePageShell, ModuleHero, StatusTag, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, BusinessMetrics, StatusTag, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
@@ -125,28 +124,13 @@ export default {
     }
   },
   computed: {
-    heroStats() {
+    overviewStats() {
       const s = this.summary
       return [
-        { label: '待办总数', value: String(s.total), trend: '', trendQuality: 'neutral' },
-        {
-          label: '今日新增',
-          value: String(s.todayNew),
-          trend: '',
-          trendQuality: 'neutral'
-        },
-        {
-          label: '临期任务',
-          value: String(s.nearDeadline),
-          trend: s.nearDeadline ? '请及时办理' : '',
-          trendQuality: s.nearDeadline ? 'bad' : 'neutral'
-        },
-        {
-          label: '已超时',
-          value: String(s.overdue),
-          trend: s.overdue ? '请优先办理' : '',
-          trendQuality: s.overdue ? 'bad' : 'good'
-        }
+        { label: '待办总数', value: s.total },
+        { label: '今日新增', value: s.todayNew },
+        { label: '临期任务', value: s.nearDeadline, accent: 'warning' },
+        { label: '已超时', value: s.overdue, accent: 'risk' }
       ]
     }
   },
@@ -175,6 +159,13 @@ export default {
 <style scoped>
 @import '@/styles/module-page.css';
 
+.ad-overview { padding: 4px 16px 12px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); }
+.ad-overview__note { margin: 10px 0 0; font-size: var(--font-size-sm); color: var(--text-secondary); }
+.ad-overview__note span { margin-left: 8px; color: var(--danger-600); }
+@media (max-width: 640px) {
+  .ad-overview :deep(.business-metrics) { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ad-overview__note span { display: block; margin: 4px 0 0; }
+}
 .ad-group {
   text-align: left;
   border: 1px solid var(--border-light);

@@ -32,6 +32,7 @@ def test_d9_s4_textbook_legacy_routes_are_owned_by_textbook_core_router():
         ("/academic-affairs/textbooks/selections/{}/withdraw", ("POST",)),
         ("/academic-affairs/textbooks/review-batches", ("POST",)),
         ("/academic-affairs/textbooks/review-batches", ("GET",)),
+        ("/academic-affairs/textbooks/review-batches/{}/items", ("GET",)),
         ("/academic-affairs/textbooks/review-batches/{}/advance", ("POST",)),
         ("/academic-affairs/textbooks/order-batches", ("POST",)),
         ("/academic-affairs/textbooks/order-batches", ("GET",)),
@@ -57,6 +58,7 @@ def test_d9_s4_textbook_legacy_routes_are_owned_by_textbook_core_router():
 def test_d9_s4_preserves_textbook_closure_extension_owners():
     owners = _owners()
     expected = {
+        ("/academic-affairs/textbooks/fee-ledger/{}/refund", ("POST",)),
         ("/academic-affairs/textbooks/review-candidates", ("GET",)),
         ("/academic-affairs/textbooks/distribution-batches", ("GET",)),
         ("/academic-affairs/textbooks/distribution-workbench/{}/records", ("GET",)),

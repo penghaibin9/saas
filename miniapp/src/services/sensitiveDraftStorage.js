@@ -1,4 +1,5 @@
 const SENSITIVE_PREFIXES = [
+  'gx_internship_draft:',
   // 教师成绩录入本机草稿（含学生名单与分数）
   'aa-grade-entry-draft:',
   // 消息详情/搜索池暂存：整条消息正文落到本地，可能含处分、资助、心理关注等敏感内容，

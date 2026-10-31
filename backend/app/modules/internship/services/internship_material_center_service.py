@@ -38,6 +38,10 @@ READY_VERSION_STATUS = {"READY", "SUBMITTED", "APPROVED", "ARCHIVED"}
 ACTIVE_MANIFEST_STATUS = {"PREPARED", "FROZEN", "PACKAGED"}
 
 MATERIAL_RULES = {
+    "ARCHIVE_STATE_SNAPSHOT": {"label": "完整业务与成绩快照", "sensitivity": "SENSITIVE"},
+    "FORMAL_DOCUMENT": {"label": "正式文书", "sensitivity": "SENSITIVE"},
+    "REPORT_HISTORY_ATTACHMENT": {"label": "报告历史附件", "sensitivity": "PERSONAL"},
+    "PAYROLL_EVIDENCE": {"label": "工资上报凭证", "sensitivity": "SENSITIVE"},
     "AGREEMENT": {"label": "三方协议", "sensitivity": "SENSITIVE"},
     "INSURANCE": {"label": "保险凭证", "sensitivity": "SENSITIVE"},
     "PROCESS_REPORT": {"label": "过程报告", "sensitivity": "PERSONAL"},
@@ -52,6 +56,7 @@ MATERIAL_RULES = {
     "SAFETY_EVIDENCE": {"label": "安全教育证据", "sensitivity": "SENSITIVE"},
     "SPECIAL_FILING": {"label": "特殊实习备案", "sensitivity": "SENSITIVE"},
     "FORCE_ARCHIVE_EVIDENCE": {"label": "强制归档依据", "sensitivity": "HIGHLY_SENSITIVE"},
+    "CUSTOM_MATERIAL": {"label": "自定义收件材料", "sensitivity": "PERSONAL"},
 }
 
 
@@ -80,20 +85,18 @@ def _assert_scope(db, internship_id, user, action: str = "查看材料") -> Inte
 def _file_ready(row: FileObject | None) -> bool:
     if not row or row.is_deleted:
         return False
-    scan = str(row.scan_status or "NOT_REQUIRED").upper()
+    scan = str(row.scan_status or "").upper()
     status = str(row.status or "").upper()
     return status in READY_FILE_STATUS and scan in READY_SCAN
 
 
 def _version_state(row: FileObject, review_status: str | None = None) -> str:
-    scan = str(row.scan_status or "NOT_REQUIRED").upper()
+    scan = str(row.scan_status or "").upper()
     status = str(row.status or "").upper()
     if status not in READY_FILE_STATUS:
         return "REJECTED" if status in {"REJECTED", "DELETED"} else "SCANNING"
-    if scan in {"PENDING", "RUNNING", "QUEUED"}:
-        return "SCANNING"
-    if scan in {"INFECTED", "ERROR", "FAILED"}:
-        return "REJECTED"
+    if scan not in READY_SCAN:
+        return "REJECTED" if scan in {"INFECTED", "ERROR", "FAILED"} else "SCANNING"
     reviewed = str(review_status or "").upper()
     if reviewed in {"APPROVED", "VERIFIED", "EFFECTIVE", "ARCHIVED", "PASSED", "RESOLVED", "CLOSED", "CONFIRMED"}:
         return "APPROVED"
@@ -212,6 +215,8 @@ def _legacy_sources(db, record: InternshipRecord, user=None, force_file_ids=None
         values.append(_source("FORCE_ARCHIVE_EVIDENCE", file_id,
             title=f"强制归档依据 · {index}", biz_type="INTERNSHIP_ARCHIVE_FORCE",
             biz_id=f"{record.id}:{index}", review_status="APPROVED"))
+    from app.modules.internship.services import internship_material_requirement_service as custom_materials
+    values.extend(custom_materials.approved_custom_sources(db, record))
     return [item for item in values if item["fileId"]]
 
 
@@ -387,6 +392,9 @@ def _current_rows(db, record: InternshipRecord) -> list[tuple]:
             FileBinding.student_id == record.student_id,
             FileBinding.batch_id == str(record.batch_id or ""), FileBinding.is_current.is_(True),
             FileBinding.status == "ACTIVE", FileBinding.is_deleted.is_(False),
+            FileAsset.tenant_id == _tid(), FileVersion.tenant_id == _tid(),
+            FileAsset.owner_type == "INTERNSHIP_RECORD", FileAsset.owner_id == str(record.id),
+            FileObject.tenant_id == _tid(),
             FileAsset.lifecycle_status == "ACTIVE", FileAsset.is_deleted.is_(False),
             FileVersion.is_current.is_(True), FileVersion.is_deleted.is_(False),
             FileObject.is_deleted.is_(False))
@@ -400,7 +408,7 @@ def _item(binding, asset, version, file_row) -> dict:
         "bindingId": str(binding.id), "assetId": str(asset.id), "versionId": str(version.id),
         "versionNo": version.version_no, "materialCode": f"{asset.category_code}:{binding.biz_id}",
         "category": asset.category_code,
-        "categoryLabel": MATERIAL_RULES.get(asset.category_code, {}).get("label", asset.category_code),
+        "categoryLabel": MATERIAL_RULES.get(asset.category_code, {}).get("label", "自定义材料"),
         "title": asset.title, "fileId": str(file_row.id), "fileName": file_row.file_name,
         "sizeBytes": file_row.size_bytes, "sha256": file_row.sha256,
         "scanStatus": file_row.scan_status, "fileStatus": file_row.status,
@@ -482,14 +490,16 @@ def record_detail(internship_id, user=None, *, auto_sync: bool = False) -> dict:
             "manifest": _manifest_row(db, manifest) if manifest else None}
 
 
-def list_center(page=1, page_size=20, *, batch_id=None, keyword=None, safety_status=None, user=None):
+def list_center(page=1, page_size=20, *, batch_id=None, keyword=None, safety_status=None, user=None,
+                category=None, review_status=None, college_id=None, major_id=None, class_id=None):
     from app.modules.internship.services.internship_batch_context import resolve_batch
     from app.modules.internship.services.internship_scope import apply_internship_record_scope
+    from app.modules.internship.services.internship_material_requirement_service import _filter_organization
     with session() as db:
         batch = resolve_batch(db, batch_id)
         ready_expr = (
             FileObject.status.in_(READY_FILE_STATUS)
-            & func.coalesce(FileObject.scan_status, "NOT_REQUIRED").in_(READY_SCAN)
+            & func.coalesce(FileObject.scan_status, "").in_(READY_SCAN)
             & FileVersion.status.in_(READY_VERSION_STATUS)
         )
         material_stats = select(
@@ -517,7 +527,18 @@ def list_center(page=1, page_size=20, *, batch_id=None, keyword=None, safety_sta
             FileVersion.is_current.is_(True),
             FileVersion.is_deleted.is_(False),
             FileObject.is_deleted.is_(False),
-        ).group_by(FileBinding.student_id).subquery()
+        )
+        if category:
+            if category not in MATERIAL_RULES:
+                raise AppException("VALIDATION_ERROR", "请选择有效的材料类型")
+            material_stats = material_stats.where(FileBinding.biz_type == "INTERNSHIP_CUSTOM_MATERIAL"
+                if category == "CUSTOM_MATERIAL" else FileAsset.category_code == category)
+        if review_status:
+            version_status = {"PENDING_REVIEW": "SUBMITTED", "APPROVED": "APPROVED", "RETURNED": "REJECTED"}.get(review_status)
+            if not version_status:
+                raise AppException("VALIDATION_ERROR", "请选择有效的材料审核状态")
+            material_stats = material_stats.where(FileVersion.status == version_status)
+        material_stats = material_stats.group_by(FileBinding.student_id).subquery()
         material_count = func.coalesce(material_stats.c.material_count, 0)
         ready_count = func.coalesce(material_stats.c.ready_count, 0)
         unsafe_count = material_count - ready_count
@@ -528,14 +549,19 @@ def list_center(page=1, page_size=20, *, batch_id=None, keyword=None, safety_sta
         ).join(
             StudentProfile, StudentProfile.id == InternshipRecord.student_id).where(
             InternshipRecord.tenant_id == _tid(), InternshipRecord.batch_id == batch.id,
-            InternshipRecord.is_deleted.is_(False), StudentProfile.is_deleted.is_(False))
+            InternshipRecord.is_deleted.is_(False), StudentProfile.tenant_id == _tid(),
+            StudentProfile.is_deleted.is_(False))
         query = query.outerjoin(
             material_stats, material_stats.c.student_id == InternshipRecord.student_id,
         )
         query = apply_internship_record_scope(query, user)
+        query = _filter_organization(query, college_id=college_id, major_id=major_id, class_id=class_id)
+        if category or review_status:
+            query = query.where(material_count > 0)
         if keyword:
-            value = f"%{keyword.strip()}%"
-            query = query.where((StudentProfile.real_name.like(value)) | (StudentProfile.student_no.like(value)))
+            value = keyword.strip()
+            query = query.where(StudentProfile.real_name.contains(value, autoescape=True)
+                | StudentProfile.student_no.contains(value, autoescape=True))
         if safety_status == "READY":
             query = query.where(material_count > 0, unsafe_count == 0)
         elif safety_status == "UNSAFE":

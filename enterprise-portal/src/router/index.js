@@ -1,5 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
-import { hasEnterpriseAuth, restoreEnterpriseSession } from '../services/request'
+import { hasEnterpriseAuth, restoreEnterpriseSession, setSelectedCampaignId, setTenantCode, getTenantCode } from '../services/request'
 
 const routes = [
   { path: '/login', name: 'enterprise-login', component: () => import('../views/EnterpriseLoginView.vue'), meta: { public: true } },
@@ -28,6 +28,11 @@ const routes = [
 
 const router=createRouter({ history: createWebHistory(import.meta.env.BASE_URL), routes })
 router.beforeEach(async to=>{
+  const campaignId=String(to.query?.campaignId||'').trim()
+  const tenantCode=String(to.query?.tenantCode||to.query?.tenant||'').trim()
+  // 深链只指定待校验的业务范围；已登录的学校身份仍以现有会话为准。
+  if(/^[1-9]\d{0,18}$/.test(campaignId))setSelectedCampaignId(campaignId)
+  if(tenantCode && !hasEnterpriseAuth() && !getTenantCode())setTenantCode(tenantCode)
   if(to.meta.public||hasEnterpriseAuth())return true
   try{
     await restoreEnterpriseSession()

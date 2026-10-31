@@ -204,19 +204,22 @@ def test_student_portal_uses_context_writes_and_upload_controls():
         encoding="utf-8"
     )
     assert "internshipCoreApi.saveApplication(body)" in view
-    assert "internshipCoreApi.submitApplication(saved.id, {" in view
-    assert "internshipCoreApi.withdrawLeave(item.id, {" in view
-    assert "internshipCoreApi.withdrawMakeup(item.id, {" in view
+    import re
+    view = re.sub(r"\s+", "", view)
+    assert re.search(r'internshipCoreApi\.submitApplication\(saved\.id,\{', view)
+    assert "internshipCoreApi.withdrawLeave(id,{...t.ctx,expectedVersion:version})" in view
+    assert "internshipCoreApi.withdrawMakeup(item.id,{" in view
     assert "internshipCoreApi.acknowledgePlan({" in view
-    assert "internshipCoreApi.applyChange({" in view
-    assert "internshipCoreApi.submitWeeklyReport({" in view
-    assert "internshipCoreApi.submitReport({" in view
+    assert "internshipCoreApi.applyChange(body)" in view
+    assert "constbody={...ctx,changeType:" in view
+    assert "internshipCoreApi.submitWeeklyReport(payload)" in view
+    assert "internshipCoreApi.submitReport(payload)" in view
     assert "portalApi.internshipChangeApply(" not in view
     assert "portalApi.internshipWeeklySubmit(" not in view
     assert "portalApi.internshipReportSubmit(" not in view
     assert "...currentInternshipContext()" in view
-    assert "expectedVersion: existing?.version ?? 0" in view
-    assert "expectedVersion: detail.version" in view
-    assert "岗位 ID" not in view
-    assert "证明材料文件 ID" not in view
-    assert "保单扫描件文件 ID" not in view
+    assert "expectedVersion:existing?.version??0" in view
+    assert "expectedVersion:saved.version" in view
+    assert "岗位ID" not in view
+    assert "证明材料文件ID" not in view
+    assert "保单扫描件文件ID" not in view

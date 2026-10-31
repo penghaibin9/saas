@@ -18,6 +18,10 @@ from . import academic_affairs_teacher_relation_authority as teacher_authority
 _ACTIVE_ALLOCATION_STATUSES = ("PENDING", "RECEIVED", "EXCHANGED")
 _ELIGIBLE_STUDENT_STATUSES = {"NORMAL", "REGISTERED", "ON_CAMPUS"}
 
+# 旧中间节点可继续办理，历史审计保留；每个责任层级只审核一次。
+_REVIEW_NEXT = {"DRAFT": "COLLEGE_APPROVED", "COLLEGE_REVIEWING": "COLLEGE_APPROVED",
+                "COLLEGE_APPROVED": "PUBLISHED", "ACADEMIC_APPROVED": "PUBLISHED"}
+
 
 def __getattr__(name):
     return getattr(_legacy, name)
@@ -52,6 +56,26 @@ def _missing_price_textbook_ids(catalog_by_id, textbook_ids):
         if textbook_id not in catalog_by_id
         or catalog_by_id[textbook_id].unit_price is None
     ]
+
+
+def _invalid_price_textbook_ids(catalog_by_id, textbook_ids):
+    invalid = []
+    for textbook_id in textbook_ids:
+        value = catalog_by_id[textbook_id].unit_price
+        if value is None:
+            continue
+        price = Decimal(str(value))
+        if not price.is_finite() or price < 0 or price > Decimal("999999.99") or price != price.quantize(Decimal("0.01")):
+            invalid.append(int(textbook_id))
+    return invalid
+
+
+def _parse_order_source(detail):
+    prefix, separator, value = str(detail or "").partition("=")
+    if prefix != "selectionId" or not separator or not value.isascii() or not value.isdecimal() or len(value) > 19:
+        return None
+    number = int(value)
+    return number if 0 < number <= 9223372036854775807 and value == str(number) else None
 
 
 def _distribution_shortage(arrived, allocated, requested):
@@ -170,9 +194,9 @@ def _review_dto(ctx, batch, source):
     result["collegeId"] = str(source.college_id) if _review_source_valid(batch, source) else None
     result["actions"] = _review_actions(ctx, batch, source)
     owners = {
-        "DRAFT": ("来源学院教材初审岗", "来源学院教材初审岗"),
+        "DRAFT": ("来源学院教材初审岗", "学校教务审核备案岗"),
         "COLLEGE_REVIEWING": ("来源学院教材初审岗", "学校教务复审岗"),
-        "COLLEGE_APPROVED": ("学校教务复审岗", "学校教材备案岗"),
+        "COLLEGE_APPROVED": ("学校教务审核备案岗", "学校教材征订岗"),
         "ACADEMIC_APPROVED": ("学校教材备案岗", "学校教材征订岗"),
         "PUBLISHED": ("学校教材征订岗", "教材到货与发放岗"),
         "RETURNED": ("原教材选用申报人", "重新提交后进入来源学院初审"),
@@ -314,6 +338,8 @@ def _fee_chain(db, fee_id):
     ).populate_existing().with_for_update().first()
     if not fee:
         raise not_found("费用记录不存在")
+    if int(fee.distribution_record_id) != int(record.id) or int(fee.student_id) != int(record.student_id):
+        raise _legacy._conflict("费用与教材发放学生不一致，请核对原始记录")
     return fee, record, distribution, order
 
 
@@ -541,14 +567,14 @@ def review_batch_advance(user, batch_id, action, reason=""):
         if not _review_source_valid(batch, source):
             raise _legacy._conflict("教材审核来源学院或学期不完整，请核对原选用与教学任务")
         _term(db, batch.term_id)
-        if batch.status not in _legacy._RB_CHAIN or source.reviewing_count != source.item_count:
+        if batch.status not in _REVIEW_NEXT or source.reviewing_count != source.item_count:
             raise _legacy._conflict("仅未备案且原选用仍在审核中的批次可办理，已备案或已征订不能退回")
         if action not in {"APPROVE", "RETURN"}:
             raise _legacy._bad("非法审核动作")
         if not _review_actions(ctx, batch, source)["advance" if action == "APPROVE" else "return"]:
             raise _legacy.no_data_scope("当前审核阶段应由来源学院办理" if batch.status in {"DRAFT", "COLLEGE_REVIEWING"} else "当前审核阶段应由学校教务办理")
         if action == "APPROVE":
-            batch.status = _legacy._RB_CHAIN[batch.status]
+            batch.status = _REVIEW_NEXT[batch.status]
             if ctx.scope_type == "COLLEGE":
                 batch.college_reviewer = _legacy._op()
             else:
@@ -634,6 +660,9 @@ def create_order_batch(user, body):
                 f"教材目录缺少定价，不能形成征订价格快照：{missing_price_ids[:10]}",
                 http_status=409,
             )
+        invalid_price_ids = _invalid_price_textbook_ids(catalog_by_id, textbook_ids)
+        if invalid_price_ids:
+            raise AppException("DATA_CONFLICT", f"教材定价异常，不能形成征订价格快照：{invalid_price_ids[:10]}", http_status=409)
 
         previous_count = db.query(AaTextbookOrderBatch).filter(
             AaTextbookOrderBatch.tenant_id == _legacy._tid(),
@@ -718,14 +747,19 @@ def record_arrival(user, item_id, arrived_qty):
 
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        item = db.query(AaTextbookOrderItem).filter(
+        item_query = db.query(AaTextbookOrderItem).filter(
             AaTextbookOrderItem.id == int(item_id),
             AaTextbookOrderItem.tenant_id == _legacy._tid(),
             AaTextbookOrderItem.is_deleted.is_(False),
-        ).with_for_update().first()
+        )
+        item = item_query.first()
         if not item:
             raise not_found("征订明细不存在")
         order = _get_order_batch(db, item.order_batch_id, lock=True)
+        # 与发放/签收保持征订单→明细的加锁顺序，避免到货和发放互相等待。
+        item = item_query.populate_existing().with_for_update().first()
+        if not item:
+            raise not_found("征订明细不存在")
         _term(db, order.term_id)
         if order.status not in ("ORDERED", "PARTIALLY_ARRIVED"):
             raise _legacy._invalid("仅已征订/部分到货批次可登记到货")
@@ -737,11 +771,12 @@ def record_arrival(user, item_id, arrived_qty):
         if value > ordered:
             raise _legacy._invalid(f"累计到货量 {value} 不能超过征订数量 {ordered}")
         item.arrived_qty = value
+        db.flush()
         items = db.query(AaTextbookOrderItem).filter(
             AaTextbookOrderItem.order_batch_id == order.id,
             AaTextbookOrderItem.tenant_id == _legacy._tid(),
             AaTextbookOrderItem.is_deleted.is_(False),
-        ).all()
+        ).populate_existing().with_for_update().all()
         all_arrived = bool(items) and all(
             int(row.arrived_qty or 0) >= int(row.order_qty or 0) for row in items
         )
@@ -775,8 +810,25 @@ def archive_order_batch(user, batch_id):
         return _legacy._ob_dto(batch)
 
 
+def _require_unique_order_sources(db, batch_id, selection_ids):
+    """取消批次的旧来源可保留；同一来源不得同时属于其他有效征订单。"""
+    from app.models import AffairsAuditTrail, AaTextbookOrderBatch
+    other = db.query(AffairsAuditTrail.id).join(
+        AaTextbookOrderBatch, and_(AaTextbookOrderBatch.id == AffairsAuditTrail.biz_id,
+            AaTextbookOrderBatch.tenant_id == AffairsAuditTrail.tenant_id),
+    ).filter(
+        AffairsAuditTrail.tenant_id == _legacy._tid(), AffairsAuditTrail.biz_type == "AA_TEXTBOOK_ORDER",
+        AffairsAuditTrail.action == "TEXTBOOK_ORDER_SOURCE", AffairsAuditTrail.biz_id != int(batch_id),
+        AffairsAuditTrail.detail.in_([f"selectionId={value}" for value in selection_ids]),
+        AaTextbookOrderBatch.is_deleted.is_(False), AaTextbookOrderBatch.status != "CANCELLED",
+    ).with_for_update().first()
+    if other:
+        raise _legacy._conflict("选用来源同时关联其他有效征订批次，请核对原始记录后办理")
+
+
 def cancel_order_batch(user, batch_id, reason):
-    from app.models import AffairsAuditTrail, AaTextbookOrderItem, AaTextbookSelection
+    from app.models import (AffairsAuditTrail, AaTextbookOrderItem, AaTextbookSelection,
+                            AaTeachingTask, AaTeachingTaskBatch)
 
     reason = str(reason or "").strip()
     if len(reason) < 5:
@@ -805,23 +857,44 @@ def cancel_order_batch(user, batch_id, reason):
         ).all()
         selection_ids = []
         for source in sources:
-            detail = str(source.detail or "")
-            if detail.startswith("selectionId=") and detail.split("=", 1)[1].isdigit():
-                selection_ids.append(int(detail.split("=", 1)[1]))
+            value = _parse_order_source(source.detail)
+            if value is None:
+                raise _legacy._conflict("征订来源选用快照损坏，不能取消并恢复选用，请先核对原始记录")
+            selection_ids.append(value)
         if not selection_ids:
             raise AppException(
                 "DATA_CONFLICT",
                 "历史征订批次缺少来源选用快照，不能自动取消并回退状态；请完成到货或人工数据治理",
                 http_status=409,
             )
-        selections = db.query(AaTextbookSelection).filter(
+        selections = db.query(AaTextbookSelection).join(
+            AaTeachingTask, AaTeachingTask.id == AaTextbookSelection.task_id,
+        ).join(AaTeachingTaskBatch, AaTeachingTaskBatch.id == AaTeachingTask.batch_id).filter(
             AaTextbookSelection.tenant_id == _legacy._tid(),
             AaTextbookSelection.id.in_(selection_ids),
             AaTextbookSelection.is_deleted.is_(False),
+            AaTeachingTask.tenant_id == _legacy._tid(), AaTeachingTask.is_deleted.is_(False),
+            AaTeachingTaskBatch.tenant_id == _legacy._tid(), AaTeachingTaskBatch.is_deleted.is_(False),
+            AaTeachingTaskBatch.term_id == batch.term_id,
         ).with_for_update().all()
+        items = db.query(AaTextbookOrderItem).filter(
+            AaTextbookOrderItem.tenant_id == _legacy._tid(), AaTextbookOrderItem.order_batch_id == batch.id,
+            AaTextbookOrderItem.is_deleted.is_(False),
+        ).with_for_update().all()
+        quantities = {}
         for selection in selections:
-            if selection.status == "ORDERED":
-                selection.status = "APPROVED"
+            if selection.status != "ORDERED" or int(selection.expected_qty or 0) <= 0:
+                raise _legacy._conflict("来源选用状态或数量不一致，不能取消征订，请先核对原始记录")
+            book_id = int(selection.textbook_id)
+            quantities[book_id] = quantities.get(book_id, 0) + int(selection.expected_qty)
+        item_quantities = {int(item.textbook_id): int(item.order_qty or 0) for item in items}
+        if (len(selection_ids) != len(set(selection_ids)) or
+                {int(row.id) for row in selections} != set(selection_ids) or
+                not items or len(item_quantities) != len(items) or quantities != item_quantities):
+            raise _legacy._conflict("征订明细与来源选用不一致，不能取消征订，请先核对原始记录")
+        _require_unique_order_sources(db, batch.id, selection_ids)
+        for selection in selections:
+            selection.status = "APPROVED"
         batch.status = "CANCELLED"
         _legacy._audit(db, "AA_TEXTBOOK_ORDER", batch.id, "TEXTBOOK_ORDER_CANCEL", reason)
         db.commit()
@@ -844,10 +917,12 @@ def _distribution_members(db, order, items, requested_ids):
     ).all()
     selection_ids = set()
     for source in sources:
-        prefix, separator, value = str(source.detail or "").partition("=")
-        if prefix != "selectionId" or not separator or not value.isdigit() or int(value) <= 0:
+        value = _parse_order_source(source.detail)
+        if value is None:
             conflict("征订来源选用快照损坏，请先核对来源，未生成发放名单")
-        selection_ids.add(int(value))
+        if value in selection_ids:
+            conflict("征订来源选用快照重复，请先核对来源，未生成发放名单")
+        selection_ids.add(value)
     if not selection_ids:
         conflict("征订批次缺少来源选用快照，请先核对并补齐来源，未生成发放名单")
 
@@ -877,6 +952,7 @@ def _distribution_members(db, order, items, requested_ids):
     order_quantities = {int(item.textbook_id): int(item.order_qty or 0) for item in items}
     if len(order_quantities) != len(items) or quantities != order_quantities:
         conflict("征订教材或数量与来源选用快照不一致，请先核对来源，未生成发放名单")
+    _require_unique_order_sources(db, order.id, selection_ids)
 
     members = {book_id: set() for book_id in order_quantities}
     rosters = {}
@@ -1087,10 +1163,12 @@ def generate_distribution(user, order_batch_id, class_id, student_ids, *, append
         }
 
 
-def _apply_receipt(db, record_id, note="签收"):
-    from app.models import AaTextbookFeeLedger, AaTextbookOrderItem
+def _apply_receipt(db, record_id, note="签收", *, expected_student_id=None):
+    from app.models import AaTextbookFeeLedger, AaTextbookOrderItem, AaTextbookRefund
 
     record, distribution, order = _distribution_chain(db, record_id, lock=True)
+    if expected_student_id is not None and int(record.student_id) != int(expected_student_id):
+        raise _legacy.no_data_scope("只能签收本人教材")
     status = str(record.status or "").upper()
     if status == "EXCLUDED":
         raise _legacy._invalid(record.exclude_reason or "该记录不在本次领用范围，不可签收")
@@ -1104,14 +1182,23 @@ def _apply_receipt(db, record_id, note="签收"):
     ).with_for_update().first()
     if not item:
         raise AppException("DATA_CONFLICT", "发放记录未匹配到征订价格快照", http_status=409)
-    price = Decimal(str(item.unit_price_snapshot or 0))
-    amount = price * Decimal(int(record.qty or 1))
+    if item.unit_price_snapshot is None:
+        raise _legacy._conflict("征订记录缺少价格快照，请核对原征订记录后再签收")
+    price = Decimal(str(item.unit_price_snapshot))
+    quantity = int(record.qty or 0)
+    if not price.is_finite() or price < 0 or quantity <= 0:
+        raise _legacy._conflict("教材价格或发放数量异常，请核对原始记录后再签收")
+    amount = price * Decimal(quantity)
+    if amount > Decimal("999999.99") or amount != amount.quantize(Decimal("0.01")):
+        raise _legacy._conflict("教材费用金额超出可登记范围，请核对价格和数量")
     fee = db.query(AaTextbookFeeLedger).filter(
         AaTextbookFeeLedger.tenant_id == _legacy._tid(),
         AaTextbookFeeLedger.distribution_record_id == record.id,
         AaTextbookFeeLedger.is_deleted.is_(False),
     ).with_for_update().first()
     if not fee:
+        if status == "RECEIVED":
+            raise _legacy._conflict("已签收教材缺少费用台账，请核对原始记录，不能自动补造费用")
         settled = amount == 0
         fee = AaTextbookFeeLedger(
             tenant_id=_legacy._tid(),
@@ -1124,12 +1211,29 @@ def _apply_receipt(db, record_id, note="签收"):
             paid_at=datetime.utcnow() if settled else None,
         )
         db.add(fee)
-    elif Decimal(str(fee.amount or 0)) != amount:
+    elif int(fee.student_id) != int(record.student_id) or fee.amount is None or Decimal(str(fee.amount)) != amount:
         raise AppException(
             "DATA_CONFLICT",
-            "已有费用台账金额与征订价格快照不一致，禁止自动覆盖，请先完成财务数据治理",
+            "已有费用台账学生或金额与发放、征订记录不一致，禁止自动覆盖，请先核对",
             http_status=409,
         )
+    elif status == "PENDING":
+        raise _legacy._conflict("待签收教材已有费用台账，请核对原始记录后再办理")
+    else:
+        paid = Decimal(str(fee.paid_amount)) if fee.paid_amount is not None else None
+        fee_status = str(fee.status or "").upper()
+        if (paid is None or not paid.is_finite() or paid < 0 or paid > amount or
+                fee_status not in {"UNPAID", "PARTIAL", "PAID", "WAIVED", "REFUNDED"} or
+                (fee_status in {"UNPAID", "WAIVED"} and paid != 0) or
+                (fee_status == "PARTIAL" and not 0 < paid < amount) or
+                (fee_status == "PAID" and paid != amount)):
+            raise _legacy._conflict("已签收教材的费用状态或收款金额异常，请核对原始记录")
+        if fee_status == "REFUNDED":
+            refund = db.query(AaTextbookRefund).filter(
+                AaTextbookRefund.tenant_id == _legacy._tid(), AaTextbookRefund.fee_id == fee.id,
+            ).first()
+            if paid <= 0 or not refund or Decimal(str(refund.amount)) != paid:
+                raise _legacy._conflict("已签收教材的退款流水与收款不一致，请核对原始记录")
     if status != "RECEIVED":
         record.status = "RECEIVED"
         record.received_at = datetime.utcnow()
@@ -1139,7 +1243,7 @@ def _apply_receipt(db, record_id, note="签收"):
             "AA_TEXTBOOK_DIST",
             record.id,
             "TEXTBOOK_SIGN_RECEIPT",
-            f"{note};价格快照={price};数量={record.qty or 1};应收={amount}",
+            f"{note};价格快照={price};数量={quantity};应收={amount}",
         )
     _refresh_distribution_batch(db, distribution)
     return {
@@ -1171,13 +1275,13 @@ def sign_receipt_my(user, student_id, record_id):
             raise not_found("发放记录不存在")
         if int(preview.student_id) != int(student_id):
             raise _legacy.no_data_scope("只能签收本人教材")
-        result = _apply_receipt(db, int(record_id), "学生签收")
+        result = _apply_receipt(db, int(record_id), "学生签收", expected_student_id=student_id)
         db.commit()
         return result
 
 
 def return_distribution(user, record_id, reason):
-    from app.models import AaTextbookFeeLedger
+    from app.models import AaTextbookFeeLedger, AaTextbookRefund
 
     reason = str(reason or "").strip()
     if len(reason) < 5:
@@ -1185,9 +1289,8 @@ def return_distribution(user, record_id, reason):
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
         record, distribution, _order = _distribution_chain(db, record_id, lock=True)
-        if record.status == "RETURNED":
-            return {"recordId": str(record.id), "status": record.status}
-        if record.status != "RECEIVED":
+        already_returned = record.status == "RETURNED"
+        if record.status not in {"RECEIVED", "RETURNED"}:
             raise _legacy._invalid("仅已签收教材可办理退领")
         fee = db.query(AaTextbookFeeLedger).filter(
             AaTextbookFeeLedger.tenant_id == _legacy._tid(),
@@ -1200,16 +1303,32 @@ def return_distribution(user, record_id, reason):
                 "已签收教材缺少费用台账，禁止退领；请先完成费用数据治理",
                 http_status=409,
             )
-        if Decimal(str(fee.paid_amount or 0)) > 0 or fee.status in ("PAID", "PARTIAL"):
+        if int(fee.student_id) != int(record.student_id):
+            raise _legacy._conflict("教材费用与领用学生不一致，请核对原始记录，未办理退领")
+        paid = Decimal(str(fee.paid_amount or 0))
+        due = Decimal(str(fee.amount or 0))
+        if fee.amount is None or fee.paid_amount is None or not paid.is_finite() or not due.is_finite() or paid < 0 or paid > due:
+            raise _legacy._conflict("教材费用金额异常，请核对原始记录，未办理退领")
+        refund = db.query(AaTextbookRefund).filter(
+            AaTextbookRefund.tenant_id == _legacy._tid(), AaTextbookRefund.fee_id == fee.id,
+        ).first() if paid > 0 and (fee.status == "REFUNDED" or (already_returned and fee.status == "WAIVED")) else None
+        if already_returned:
+            settled = (fee.status == "WAIVED" and (paid == 0 or (refund and Decimal(str(refund.amount)) == paid))) or (
+                fee.status == "PAID" and paid == 0 and due == 0)
+            if not settled:
+                raise _legacy._conflict("已退领记录与费用或退款流水不一致，请核对原始记录")
+            return {"recordId": str(record.id), "status": record.status, "feeStatus": fee.status, "idempotent": True}
+        if ((paid > 0 and (not refund or Decimal(str(refund.amount)) != paid or fee.status != "REFUNDED"))
+                or (paid == 0 and (fee.status in {"PARTIAL", "REFUNDED"} or (fee.status == "PAID" and due != 0)))):
             raise AppException(
                 "DATA_CONFLICT",
-                "该教材已发生实收，当前系统尚无退款流水，禁止直接退领冲销；请先完成正式退款闭环",
+                "该教材已发生实收，请由教材费用岗位确认实际全额退款并登记后再办理退领",
                 http_status=409,
             )
-        if fee.status == "UNPAID":
+        if fee.status in {"UNPAID", "REFUNDED"}:
             fee.status = "WAIVED"
             fee.waive_reason = f"退领：{reason}"[:500]
-        elif fee.status != "WAIVED":
+        elif fee.status != "WAIVED" and not (fee.status == "PAID" and due == 0 and paid == 0):
             raise _legacy._invalid("费用状态异常，不能办理退领")
         record.status = "RETURNED"
         record.exchange_reason = reason
@@ -1219,14 +1338,60 @@ def return_distribution(user, record_id, reason):
         return {"recordId": str(record.id), "status": record.status, "feeStatus": fee.status}
 
 
+def register_refund(user, fee_id, reason, expected_paid_amount):
+    """仅登记已经实际退还的全部实收，不发起支付，不覆盖收款。"""
+    from app.models import AaTextbookRefund
+    reason = str(reason or "").strip()
+    if len(reason) < 5:
+        raise _legacy._bad("退款原因不得少于5字")
+    with _legacy.session() as db:
+        _legacy._require_school(_legacy._ctx(user, db))
+        fee, record, _distribution, _order = _fee_chain(db, fee_id)
+        paid = Decimal(str(fee.paid_amount or 0))
+        due = Decimal(str(fee.amount or 0))
+        if fee.amount is None or fee.paid_amount is None or not paid.is_finite() or not due.is_finite() or paid < 0 or paid > due:
+            raise _legacy._conflict("费用金额异常，请核对原始收款，未登记退款")
+        if expected_paid_amount is None or Decimal(str(expected_paid_amount)) != paid:
+            raise _legacy._conflict("已收金额已变化，请刷新核对，未登记退款")
+        existing = db.query(AaTextbookRefund).filter(
+            AaTextbookRefund.tenant_id == _legacy._tid(), AaTextbookRefund.fee_id == fee.id,
+        ).with_for_update().first()
+        if existing:
+            if (Decimal(str(existing.amount)) != paid or paid <= 0 or
+                    (fee.status, record.status) not in {("REFUNDED", "RECEIVED"), ("WAIVED", "RETURNED")}):
+                raise _legacy._conflict("退款流水、费用或发放状态不一致，请核对")
+            return {"feeId": str(fee.id), "refundAmount": float(existing.amount), "idempotent": True}
+        if (record.status != "RECEIVED" or fee.status not in {"PAID", "PARTIAL"} or paid <= 0 or
+                (fee.status == "PAID" and paid != due) or (fee.status == "PARTIAL" and paid >= due)):
+            raise _legacy._invalid("仅已签收且有实收的教材可登记全额退款")
+        operator = _legacy._op()
+        if not operator:
+            raise _legacy._conflict("无法确认退款登记人，未登记退款")
+        db.add(AaTextbookRefund(tenant_id=_legacy._tid(), fee_id=fee.id, amount=paid,
+                                reason=reason, operator=operator, created_at=datetime.utcnow()))
+        fee.status = "REFUNDED"
+        _legacy._audit(db, "AA_TEXTBOOK_FEE", fee.id, "TEXTBOOK_REFUND", f"实际全额退款={paid};原因={reason}")
+        db.commit()
+        return {"feeId": str(fee.id), "refundAmount": float(paid), "idempotent": False}
+
+
 def mark_fee(user, fee_id, action, amount=None, waive_reason="", *, expected_paid_amount=None):
     with _legacy.session() as db:
         _legacy._require_school(_legacy._ctx(user, db))
-        fee, _record, _distribution, _order = _fee_chain(db, fee_id)
+        fee, record, _distribution, _order = _fee_chain(db, fee_id)
         action = str(action or "").upper()
-        status = str(fee.status or "UNPAID").upper()
+        status = str(fee.status or "").upper()
         due = Decimal(str(fee.amount or 0))
         paid = Decimal(str(fee.paid_amount or 0))
+        if (fee.amount is None or fee.paid_amount is None or not due.is_finite() or not paid.is_finite()
+                or due < 0 or paid < 0 or paid > due or status not in {"UNPAID", "PARTIAL", "PAID", "WAIVED", "REFUNDED"}
+                or (status == "UNPAID" and paid != 0) or (status == "PARTIAL" and not 0 < paid < due)
+                or (status == "PAID" and paid != due)):
+            raise _legacy._conflict("费用状态或金额异常，请核对原始记录，未办理收款或减免")
+        if record.status != "RECEIVED" and not (record.status == "RETURNED" and status == "WAIVED" and action in {"WAIVE", "WAIVED"}):
+            raise _legacy._invalid("仅已签收教材可办理费用登记，请核对发放记录")
+        if status == "REFUNDED":
+            raise _legacy._invalid("已登记退款，请继续办理教材退领，不可再次收款或减免")
 
         if action == "PARTIAL" and expected_paid_amount is None:
             raise _legacy._bad("部分收款须核对原已收金额，请刷新费用台账后重新办理")

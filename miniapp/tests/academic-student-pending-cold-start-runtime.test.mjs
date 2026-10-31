@@ -162,3 +162,16 @@ test('a storage failure prevents the POST before it leaves the application page'
   assert.match(run.page.applicationNotice, /未发送申请/)
   assert.equal(storage.get(pendingKey), undefined)
 })
+
+
+test('defer cold recovery checks the exact post-resubmit version',()=>{
+ const storage=new Map();setIdentity(storage);const run=runtime(storage)
+ run.page.applicationScope='exam';run.page.finishApplication=()=>{}
+ const command=run.api.createPendingCommand('exam',{idKey:'deferId',existingId:'71',returnedId:'71',recovery:{field:'version',equals:2}})
+ assert.equal(run.api.savePending('exam',command),true)
+ run.page.pendingApplication=run.api.redactPendingCommand('exam',command)
+ run.page.acceptApplication([{deferId:'71',version:1,status:'RETURNED'}],'deferId',()=>true)
+ assert.ok(run.page.pendingApplication)
+ run.page.acceptApplication([{deferId:'71',version:2,status:'COUNSELOR_REVIEW'}],'deferId',()=>true)
+ assert.equal(run.page.pendingApplication,null)
+})

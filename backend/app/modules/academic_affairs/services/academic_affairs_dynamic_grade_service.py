@@ -16,7 +16,8 @@ from datetime import datetime
 from sqlalchemy import select
 
 from app.core.context import get_current_user_ctx
-from app.core.exceptions import AppException, not_found
+from app.core.exceptions import AppException, no_permission, not_found
+from app.core.permissions import has_permission
 from app.services.db_service import _tid, session
 
 from . import academic_affairs_grade_service as grade_service
@@ -157,9 +158,24 @@ def _components(row, task) -> list[dict]:
         raise AppException("DATA_CONFLICT", "动态成绩方案快照损坏，请联系教务处修复", http_status=409) from exc
 
 
+def _scheme_task(db, task_id, user, *, lock=False):
+    can_manage = has_permission(user, "academicAffairs.grade.scheme.manage")
+    if not can_manage and not has_permission(user, "academicAffairs.grade.input"):
+        raise no_permission("当前岗位无权维护课程成绩构成")
+    task = _task(db, task_id, user, lock=lock)
+    if can_manage:
+        if str((user or {}).get("currentRoleCode") or "").upper() == "COLLEGE_ACADEMIC":
+            from app.core.affairs_security import build_affairs_context
+            context = build_affairs_context(user, db)
+            if context.scope_type != "COLLEGE" or not context.college_ids:
+                raise AppException("NO_DATA_SCOPE", "学院教务须配置本院范围，不能维护全校成绩构成")
+        grade_service._check_college_scope(db, task, user)
+    return task
+
+
 def get_scheme(task_id, user) -> dict:
     with session() as db:
-        task = _task(db, task_id, user)
+        task = _scheme_task(db, task_id, user)
         row = _scheme(db, task)
         components = _components(row, task)
         return {
@@ -180,7 +196,7 @@ def configure_scheme(task_id, user, components) -> dict:
 
     normalized = normalize_components(components)
     with session() as db:
-        task = _task(db, task_id, user, lock=True)
+        task = _scheme_task(db, task_id, user, lock=True)
         guard_term_writable(db, task.term_id)
         if task.status != "NOT_STARTED":
             raise AppException("DATA_CONFLICT", "成绩任务开始录分后不可修改成绩项方案")

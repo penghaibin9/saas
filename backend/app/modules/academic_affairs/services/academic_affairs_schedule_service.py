@@ -11,6 +11,7 @@
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from datetime import datetime
 
 from sqlalchemy import and_, func, or_, select
@@ -66,7 +67,7 @@ _FORMULA_PREFIXES = ("=", "+", "-", "@")
 
 # 教师/教室课表「广域查看」角色：不受本人/本班收敛（与 academic_affairs_task_service._REVIEW_ROLES 同构，
 # 教务域内小工具函数按模块各自持有，不跨文件耦合）。
-_REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
+_REVIEW_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", *COLLEGE_ACADEMIC_ROLES}
 
 
 def _resolve_classroom_id(db, text):

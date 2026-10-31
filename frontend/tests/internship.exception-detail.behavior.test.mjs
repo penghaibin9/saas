@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -5,7 +6,7 @@ import { parse } from '@vue/compiler-sfc'
 const script = parse(fs.readFileSync(new URL('../src/modules/internship/views/AttendanceExceptionDetailView.vue', import.meta.url), 'utf8')).descriptor.script.content
   .replace(/^import[^\n]*\n/gm, '').replace(/ {2}components: \{[\s\S]*?ActionReceipt \},\r?\n/, '').replace('export default', 'return')
 function view(api) {
-  const def = new Function('internshipApi', 'emptyConflict', script)(api, () => ({}))
+  const def = componentFactory('internshipApi', 'emptyConflict', script)(api, () => ({}))
   const vm = { ...def.data(), $route: { params: { id: '1' } } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   vm.loading = false; vm.detail = { id: '1', status: 'PENDING_HANDLE', version: 4 }; vm.comment = '已核对企业现场情况'

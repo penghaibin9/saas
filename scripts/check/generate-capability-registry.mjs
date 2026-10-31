@@ -54,6 +54,9 @@ function firstLeafPermission(workspace) {
 }
 
 function resolvePermission(cap, workspacePerm) {
+  if (cap.permissionAny?.length || cap.permissionAll?.length) {
+    return { permissionKey: cap.permissionKey || null, permissionPolicy: 'EXPLICIT', permissionExemptReason: null }
+  }
   if (cap.permissionKey) {
     return { permissionKey: cap.permissionKey, permissionPolicy: 'EXPLICIT', permissionExemptReason: null }
   }
@@ -208,6 +211,8 @@ async function main() {
           path: leaf.path || null,
           entryType,
           permissionKey: leaf.permissionKey || null,
+          ...(leaf.permissionAny?.length ? { permissionAny: leaf.permissionAny } : {}),
+          ...(leaf.permissionAll?.length ? { permissionAll: leaf.permissionAll } : {}),
           featureKey: featureForModule(manifest, techModule),
           status: leaf.status || 'planned',
           hidden: !!leaf.hidden,

@@ -23,7 +23,7 @@ _ORIGINAL_IN_SCOPE = getattr(
 @wraps(_ORIGINAL_IN_SCOPE)
 def complaint_in_scope_with_auditor(db, complaint, user) -> bool:
     current = user or {}
-    role = str(current.get("currentRoleCode") or current.get("roleCode") or "").upper()
+    role = str(current.get("currentRoleBaseCode") or current.get("currentRoleCode") or current.get("roleCode") or "").upper()
     if role == "SECURITY_AUDITOR":
         # complaint 已由 _get/list 查询限定 tenant_id=_tid()；这里只恢复租户内审计只读。
         return True

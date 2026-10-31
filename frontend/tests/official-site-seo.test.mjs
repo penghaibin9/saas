@@ -13,7 +13,7 @@ const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
 const prerenderSource = fs.readFileSync(path.join(root, 'scripts/prerender-official-site.mjs'), 'utf8')
 const runtimeSource = fs.readFileSync(path.join(root, 'src/services/officialSeoRuntime.js'), 'utf8')
-const mainSource = fs.readFileSync(path.join(root, 'src/main.js'), 'utf8')
+const mainSource = fs.readFileSync(path.join(root, '../website/frontend/src/main.js'), 'utf8')
 
 test('all official SEO routes resolve to the canonical production origin', () => {
   assert.ok(OFFICIAL_SEO_ROUTES.length >= 6)

@@ -7,7 +7,7 @@ import { OFFICIAL_SALES_PAGE_MAP, OFFICIAL_SEO_ROUTES } from '../src/config/offi
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const root = path.resolve(here, '..')
-const mainSource = fs.readFileSync(path.join(root, 'src/main.js'), 'utf8')
+const mainSource = fs.readFileSync(path.join(root, '../website/frontend/src/app.js'), 'utf8')
 const pageSource = fs.readFileSync(path.join(root, 'src/views/official-site/OfficialPlatformCapabilityView.vue'), 'utf8')
 const styleSource = fs.readFileSync(path.join(root, 'src/styles/official-platform-highlights.css'), 'utf8')
 

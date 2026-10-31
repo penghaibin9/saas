@@ -15,6 +15,14 @@ from app.services import audit_log
 router = APIRouter(prefix="/internship/enterprise-evals", tags=["岗位实习-企业评价版本化审核"])
 
 
+@router.get("/by-internship/{internship_id}/qr-entry", summary="生成企业扫码评价入口（仍需企业登录授权）")
+def evaluation_qr_entry(
+    internship_id: int,
+    user=Depends(require_permission("internship.eval.enterprise.manage")),
+):
+    return success(service.enterprise_evaluation_qr_entry(user, internship_id))
+
+
 @router.post("/{eval_id}/review-versioned", summary="按当前版本独立审核企业评价")
 def review_versioned(
     eval_id: str,

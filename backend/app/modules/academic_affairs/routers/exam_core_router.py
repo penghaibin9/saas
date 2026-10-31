@@ -388,7 +388,7 @@ def defer_my(status: Optional[str] = None, user=Depends(_require_student)):
 
 @router.post("/deferred-exams/{deferId}/resubmit", summary="退回后补材料重提")
 def defer_resubmit(deferId: int = Path(...), body: dict = Body(default={}), user=Depends(_require_student)):
-    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion")), message="已重提")
+    return success(exam_svc.defer_resubmit(user, deferId, (body or {}).get("expectedVersion"), reason=(body or {}).get("reason")), message="已重提")
 
 
 @router.get("/deferred-exams", summary="缓考审批列表（教务/学院/教师/辅导员）")
@@ -396,6 +396,7 @@ def defer_list(
     status: Optional[str] = None,
     page: int = 1,
     pageSize: int = 50,
+    deferId: Optional[int] = Query(None, gt=0),
     user=Depends(require_any_permission(_DEFER_COUNSELOR, _DEFER_REVIEW, "academicAffairs.exam.view")),
 ):
     items, total = exam_svc.defer_list(
@@ -404,6 +405,7 @@ def defer_list(
         student_only=False,
         page=page,
         page_size=pageSize,
+        defer_id=deferId,
     )
     return success(paginate(items, total, page, pageSize))
 

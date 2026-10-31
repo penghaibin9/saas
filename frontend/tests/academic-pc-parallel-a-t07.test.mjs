@@ -3,13 +3,14 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import * as results from '../src/modules/academicAffairs/components/parallel-a/resultState.js'
 import * as status from '../src/modules/academicAffairs/constants/course-program.js'
+import { academicRoleTabs, academicRoleAllows } from '../src/modules/academicAffairs/config/academicRoleNavigation.js'
 
 function instance(file, deps = {}, options = {}) {
   const source = fs.readFileSync(new URL('../src/modules/academicAffairs/views/' + file + '.vue', import.meta.url), 'utf8')
   const script = source.match(/<script>([\s\S]*?)<\/script>/)[1]
   const imports = [...script.matchAll(/^import\s+([\s\S]*?)\s+from\s+['"][^'"]+['"]\s*$/gm)]
   const names = imports.flatMap(([,binding]) => binding.trim().startsWith('{') ? binding.replace(/[{}]/g,'').split(',').map(x=>x.trim()).filter(Boolean) : [binding.trim()])
-  const defaults = { ...status, ...results, currentUserFromToken: () => ({}), matchPermission: (patterns,key)=>patterns.includes('*')||patterns.includes(key), toast: {success(){},error(){}}, courseMaterialReaderApi: {list: async()=>[],createPreviewProvider:()=>({})}, ...deps }
+  const defaults = { ...status, ...results, academicRoleTabs, academicRoleAllows, currentUserFromToken: () => ({}), matchPermission: (patterns,key)=>patterns.includes('*')||patterns.includes(key), toast: {success(){},error(){}}, courseMaterialReaderApi: {list: async()=>[],createPreviewProvider:()=>({})}, ...deps }
   const clean = script.replace(/^import\s+[\s\S]*?\s+from\s+['"][^'"]+['"]\s*$/gm,'').replace('export default','return')
   const component = new Function(...names, clean)(...names.map(name=>defaults[name] ?? {}))
   const vm = { ...component.data(), ctx: {permissionPatterns:['*']}, $route:{params:{id:'a'},query:{},fullPath:'/admin/academic-affairs/programs/a'}, $router:{push(){},replace:async()=>{}}, ...options }
@@ -30,6 +31,25 @@ test('方案绑定问题定位到可办理的审核发布步骤，而不是只�
   }
   vm.focusIssue({ fieldPath: 'courses' })
   assert.equal(vm.activeStep, 'courses')
+})
+
+test('学院方案页不展示审核发布页签，切换成功前不改变对象或加载目标页', async () => {
+  const vm = instance('AaProgramConsoleView', {}, { ctx: { currentRole: { roleCode: 'COLLEGE_ACADEMIC' }, permissionPatterns: ['*'] } })
+  let loads = 0, navigations = 0
+  vm.reload = () => loads++
+  vm.$router.replace = async () => { navigations++; return false }
+  vm.tab = 'authoring'
+  assert.equal(vm.visibleTabs.some(tab => ['review', 'publish', 'archive'].includes(tab.key)), false)
+  vm.switchTab('publish')
+  assert.equal(vm.tab, 'authoring')
+  assert.equal(loads, 0)
+  assert.equal(navigations, 0)
+  await vm.switchTab('courseModules')
+  assert.equal(vm.tab, 'authoring')
+  assert.equal(loads, 0)
+  await vm.__component.watch['$route.query.tab'].call(vm, 'courseModules')
+  assert.equal(vm.tab, 'courseModules')
+  assert.equal(loads, 1)
 })
 
 test('方案课程必须显式确认编班方式并写入正式请求',async()=>{

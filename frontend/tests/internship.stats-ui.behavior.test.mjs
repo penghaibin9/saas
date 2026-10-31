@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -8,7 +9,8 @@ const script = descriptor.script.content.replace(/^import[^\n]+\r?\n/gm, '').rep
 const result = data => ({ code: 0, data })
 const overview = () => result({ counters: [{ key: 'total', value: 3 }], metrics: [{ key: 'placementRate', label: '实习落实率', numerator: 1, denominator: 3, rate: 33.3, threshold: 95, warn: true }], generatedAt: '2026-09-07T10:00:00' })
 function setup(api = {}, permission = () => true) {
-  const def = new Function('statsApi', 'canCode', 'buildBarChartSpec', script)(api, permission, value => value)
+  api = {getProcurementOverview:async()=>result({}),...api}
+  const def = componentFactory('statsApi', 'canCode', 'buildBarChartSpec', script)(api, permission, value => value)
   const targets = [], vm = { ...def.data(), ctx: {}, batchStore: { selectedBatchId: '9007199254740999', withBatchQuery: q => ({ ...q, batchId: vm.batchStore.selectedBatchId }) }, $route: { query: {} }, $router: { push: target => targets.push(target), replace: target => targets.push(target) } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   for (const [key, fn] of Object.entries(def.computed)) if (key !== 'batchStore') Object.defineProperty(vm, key, { get: () => fn.call(vm) })
@@ -40,7 +42,7 @@ test('URL detail and attention navigation does not refetch an unchanged dataset'
 
 test('refresh reads the same scoped filters for overview and six-month trends', async () => {
   const calls = [], { vm } = setup({ getOverview: async q => { calls.push(q); return overview() }, getTrends: async q => { calls.push(q); return result({ series: [] }) } })
-  vm.dim = { college: '学院甲', major: '', className: '班级丙' }; await vm.load()
+  vm.dim = { college: '学院甲', major: '', className: '班级丙' }; vm.$route.query={...vm.dim}; await vm.load()
   assert.deepEqual(calls, [{ college: '学院甲', major: undefined, className: '班级丙', batchId: '9007199254740999' }, { college: '学院甲', major: undefined, className: '班级丙', batchId: '9007199254740999', months: 6 }]); assert.equal(vm.loaded, true)
 })
 
@@ -103,7 +105,7 @@ test('no batch or no view permission means no statistics request', async () => {
 
 test('export uses visible organization filters, refuses missing permission, and drops old-scope files', async () => {
   const calls = [], { vm } = setup({ exportStats: async q => { calls.push(q); return result({ filename: '统计.xlsx' }) } })
-  vm.dim = { college: '学院甲', major: '', className: '班级丙' }; await vm.exportFn(); assert.deepEqual(calls, [{ ...vm.dim, batchId: '9007199254740999' }])
+  vm.dim = { college: '学院甲', major: '', className: '班级丙' }; vm.$route.query={...vm.dim}; await vm.exportFn(); assert.deepEqual(calls, [{ ...vm.dim, batchId: '9007199254740999' }])
   vm.canBtn = () => false; assert.match((await vm.exportFn()).message, /权限/); assert.equal(calls.length, 1)
   let finish; const { vm: stale } = setup({ exportStats: () => new Promise(resolve => { finish = resolve }) }); const old = stale.exportFn(); stale.contextEpoch++
   finish(result({ filename: '旧学校统计.xlsx' })); const res = await old; assert.notEqual(res.code, 0); assert.equal(res.data, undefined)

@@ -26,6 +26,7 @@ function mount(name, api = {}, currentSession = session()) {
     vue: { ...vue, onMounted: () => {}, onBeforeUnmount: (fn) => disposers.push(fn) },
     'vue-router': { useRoute: () => ({ query: {} }), useRouter: () => ({ push: () => {} }) },
     '../../services/portalApi': { portalApi: api },
+    '../../services/printInApp': { createInAppPrintFrame: () => { throw new Error('本用例不打印') } },
     '../../stores/session': { useSessionStore: () => currentSession },
     '../../stores/ui': { useUiStore: () => ({ notify() {} }) },
     '../../services/systemDialog': { systemConfirm: async () => true, systemAlert: async () => true, systemPrompt: async () => null },
@@ -340,4 +341,46 @@ test('403 clears private page state but retains all three minimal recovery refer
   assert.equal(selection.receipt.value, null); assert.equal(textbook.receipt.value, null); assert.equal(level.receipt.value, null)
   assert.equal(storage.length, 3)
   delete globalThis.localStorage
+})
+
+
+test('缓考退回后修改说明，从原申请携带版本重提并核对新版本',async()=>{
+ globalThis.localStorage=new FakeStorage();let payload,writes=0
+ const old={deferId:'801',examCourseId:'401',courseName:'虚构考试',reason:'原来的申请说明',status:'RETURNED',version:1}
+ const vm=mount('Exam',{academicExam:async()=>[],academicExamDeferOptions:async()=>[],academicExamDefer:async()=>[{...old,...(writes?{reason:payload.reason,status:'COUNSELOR_REVIEW',version:2}:{})}],academicExamDeferResubmit:async(id,body)=>{assert.equal(id,'801');payload=body;writes++;return {deferId:id,version:2}}})
+ await vm.load();vm.returnDrafts['801']='已按退回意见补充说明'
+ await vm.resubmit(vm.deferrals.value[0])
+ assert.deepEqual(payload,{expectedVersion:1,reason:'已按退回意见补充说明'});assert.equal(writes,1)
+ assert.equal(vm.receiptTone.value,'success');assert.deepEqual(vm.uncertainKeys.value,[])
+ vm.dispose();delete globalThis.localStorage
+})
+
+test('缓考重提超时保留补充说明，刷新核对不自动重放提交',async()=>{
+ globalThis.localStorage=new FakeStorage();let writes=0
+ const row={deferId:'801',examCourseId:'401',reason:'原说明内容',status:'RETURNED',version:1}
+ const vm=mount('Exam',{academicExam:async()=>[],academicExamDeferOptions:async()=>[],academicExamDefer:async()=>[row],academicExamDeferResubmit:async()=>{writes++;throw Object.assign(new Error('连接中断'),{status:503})}})
+ await vm.load();vm.returnDrafts['801']='已补充的说明内容'
+ await vm.resubmit(row);await vm.resubmit(row);await vm.load()
+ assert.equal(writes,1);assert.equal(vm.returnDrafts['801'],'已补充的说明内容');assert.ok(vm.uncertainKeys.value.includes('resubmit:801'))
+ vm.dispose();delete globalThis.localStorage
+})
+
+
+test('缓考明确版本冲突保留说明，读到新版本后可以重新办理',async()=>{
+ globalThis.localStorage=new FakeStorage();let writes=0
+ const row={deferId:'801',examCourseId:'401',reason:'原说明内容',status:'RETURNED',version:1}
+ const vm=mount('Exam',{academicExam:async()=>[],academicExamDeferOptions:async()=>[],academicExamDefer:async()=>[{...row,version:writes?2:1}],academicExamDeferResubmit:async()=>{writes++;throw Object.assign(new Error('版本已变化'),{status:409})}})
+ await vm.load();vm.returnDrafts['801']='我补充的说明内容';await vm.resubmit(vm.deferrals.value[0])
+ assert.equal(vm.returnDrafts['801'],'我补充的说明内容');assert.deepEqual(vm.uncertainKeys.value,[])
+ assert.equal(vm.deferrals.value[0].version,2)
+ vm.dispose();delete globalThis.localStorage
+})
+
+test('学生缓考未获申请许可或已有在途申请时，即使说明完整也不能提交',()=>{
+ globalThis.localStorage=new FakeStorage();const vm=mount('Exam')
+ vm.drafts['401']={reasonType:'ILLNESS',reason:'已有完整申请说明'}
+ assert.equal(vm.canApply({examCourseId:'401',canApply:false}),false)
+ assert.equal(vm.canApply({examCourseId:'401',canApply:true,hasActiveDefer:true}),false)
+ assert.equal(vm.canApply({examCourseId:'401',canApply:true,hasActiveDefer:false}),true)
+ vm.dispose();delete globalThis.localStorage
 })

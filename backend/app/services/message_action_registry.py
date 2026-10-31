@@ -20,6 +20,14 @@ from app.services.mobile_focus_contract import (
 # V3 §4.4：``focus`` 声明该端目标是否真的能落到对象上（DETAIL / LIST_FOCUS / NONE）；
 # 缺省视为 NONE。``focusParam`` 指明用哪个 requiredParam 作为聚焦值，缺省用第一个必需参数。
 ACTION_REGISTRY: dict[str, dict[str, Any]] = {
+    "student.internship.employment-registration": {
+        "roles": ["STUDENT"],
+        "requiredParams": ["registrationId", "batchId", "internshipId"],
+        "pc": None, "studentPc": None, "teacherMini": None,
+        "studentMini": "/pages/student-internship/employment/index",
+        "focus": {"studentMini": FOCUS_DETAIL}, "focusParam": "registrationId",
+        "label": "实习转就业办理进度",
+    },
     "STUDENT_AFFAIRS_DORM_RECTIFICATION": {
         "roles": ["STUDENT"],
         "requiredParams": ["rectificationId"],

@@ -21,6 +21,18 @@ def _hdr(client, login_name):
     return {"Authorization": f"Bearer {data['accessToken']}"}
 
 
+def _review_college(client, bid):
+    college = _hdr(client, "college_admin01")
+    response = client.get(f"{BASE}/makeup/batches", headers=college, params={"batchId": bid})
+    assert response.status_code == 200, response.text
+    batch = response.json()["data"]["items"][0]
+    assert batch["canCollegeReview"] is True
+    response = client.post(f"{BASE}/makeup/batches/{bid}/college-review", headers=college,
+                           json={"expectedVersion": batch["scoreVersion"]})
+    assert response.status_code == 200, response.text
+    return response.json()["data"]
+
+
 def _stu_token(real_name, student_no):
     from app.core.security import create_access_token
     return {"Authorization": "Bearer " + create_access_token({
@@ -53,11 +65,11 @@ def _seed(db_mode):
 
     math = AaCourse(
         tenant_id=TID, course_code="QK-MATH", course_name="高等数学",
-        credit=4, status="ENABLED",
+        credit=4, status="ENABLED", owner_college_id=col.id,
     )
     english = AaCourse(
         tenant_id=TID, course_code="QK-ENG", course_name="大学英语",
-        credit=3, status="ENABLED",
+        credit=3, status="ENABLED", owner_college_id=col.id,
     )
     db.add_all([math, english]); db.flush()
 
@@ -154,7 +166,7 @@ def test_full_chain_writes_clearance_grade(client, db_mode):
     assert client.post(f"{BASE}/makeup/batches/{bid}/publish", headers=admin).status_code == 200
     assert client.post(f"{BASE}/makeup/records/{mid}/score", headers=admin,
                        json={"score": 88}).status_code == 200
-    assert client.post(f"{BASE}/makeup/batches/{bid}/college-review", headers=admin).status_code == 200
+    _review_college(client, bid)
     r = client.post(f"{BASE}/makeup/batches/{bid}/finish", headers=admin)
     assert r.status_code == 200, r.text
     from app.db.session import get_sessionmaker

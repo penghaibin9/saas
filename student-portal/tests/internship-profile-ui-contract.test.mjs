@@ -77,7 +77,7 @@ test('A03-5 profile read/write uses the canonical P0 context authority without i
 test('A03-5 completeness keeps backend blockers and submit conclusion', () => {
   assert.deepEqual(normalizeProfileCompleteness({ percent: 80, blockers: [{ code: 'INTRO_REQUIRED', message: '请补充自我介绍' }], canSubmit: false }), {
     percent: 80,
-    blockers: [{ code: 'INTRO_REQUIRED', message: '请补充自我介绍' }],
+    blockers: ['请补充自我介绍'],
     ready: false
   })
 })

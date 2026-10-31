@@ -9,7 +9,7 @@ import re
 
 from app.core.exceptions import AppException
 
-ROLE_TEMPLATE_VERSION = "2026.10.v1"
+ROLE_TEMPLATE_VERSION = "2026.10.r0"
 AFFAIRS_DELIVERY_ROLE_CODES = frozenset({
     "STUDENT_AFFAIRS_ADMIN", "STUDENT_AFFAIRS_COLLEGE", "COUNSELOR", "FUNDING_TEACHER",
     "PSYCHOLOGY_TEACHER", "DORM_MANAGER", "YOUTH_LEAGUE", "ORG_PERSONNEL",
@@ -34,6 +34,7 @@ BUILTIN_ROLE_TEMPLATES = (
           aliases=("审计员",)),
     _role("LEADER", "校领导", "MANAGEMENT", "SCHOOL"),
     _role("COLLEGE_ADMIN", "学院管理员", "MANAGEMENT", "COLLEGE", aliases=("学院负责人", "学院教务员")),
+    _role("COLLEGE_ACADEMIC", "学院教务", "ACADEMIC", "COLLEGE"),
     _role("ACADEMIC_ADMIN", "教务处管理员", "ACADEMIC", "SCHOOL", aliases=("教务管理员",)),
     _role("ACADEMIC_TEACHER", "任课教师", "ACADEMIC", "ASSIGNED",
           aliases=("课程教师", "教务老师", "ACADEMIC", "专业课教师", "公共课教师", "兼职教师")),

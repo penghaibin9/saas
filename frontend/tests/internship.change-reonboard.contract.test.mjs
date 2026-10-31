@@ -33,8 +33,9 @@ test('teacher Mini uses explicit batch and both application and record versions'
   const api = read('miniapp/src/services/internshipApi.js')
   assert.match(page, /useInternshipContextStore/)
   assert.match(page, /teacherInternshipChanges/)
-  assert.match(page, /expectedVersion: c\.version/)
-  assert.match(page, /recordExpectedVersion: c\.recordVersionSnapshot/)
+  assert.match(page, /expectedVersion: snapshot\.version/)
+  assert.match(page, /recordExpectedVersion: snapshot\.recordVersionSnapshot/)
+  assert.match(page, /const snapshot = \{ \.\.\.c \}/)
   assert.match(page, /initialComment/)
   assert.match(api, /context\/changes/)
 })
@@ -44,8 +45,8 @@ test('student Mini selects a canonical candidate instead of asking for a raw dat
   assert.doesNotMatch(page, /岗位库 ID|目标岗位编号/)
   assert.match(page, /studentInternshipChangeTargets/)
   assert.match(page, /selectedTarget/)
-  assert.match(page, /batchId: this\.context\.batchId/)
-  assert.match(page, /internshipId: this\.context\.recordId/)
+  assert.match(page, /batchId: batch, internshipId: record/)
+  assert.match(page, /record = String\(this\.context\.recordId\)/)
   assert.match(page, /studentInternshipChangeWithdraw/)
 })
 
@@ -55,7 +56,9 @@ test('student candidate facade filters by batch, capacity, company and rights', 
   assert.match(service, /InternshipPosition\.allocated_count < InternshipPosition\.headcount/)
   assert.match(service, /EmpCompany\.blacklist\.is_\(False\)/)
   assert.match(service, /evaluate_position_publishability/)
-  assert.match(service, /if not rights\["passed"\]/)
+  assert.match(service, /"canSelect": bool\(writable and rights\["passed"\]\)/)
+  assert.match(service, /rights\.get\("blockers"\)[\s\S]*?rights\.get\("unknowns"\)/)
+  assert.match(read('backend/app/modules/internship/services/internship_change_service.py'), /validate_target_position\(/)
 })
 
 test('modern student and teacher routes are registered behind the permission gate', () => {

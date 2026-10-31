@@ -4,14 +4,14 @@
     <div class="mp-stack">
       <div class="flt">
         <AppQuickFilterChips v-model="groupBy" :options="groupOptions" @change="load" />
-        <AppDateRangePicker :show-empty-hint="false" v-model="range" @change="load" />
+        <AppDateRangePicker v-model="range" @change="load" />
         <details class="flat-details"><summary>统计口径</summary>按请假开始日期统计，人数按学生去重；逾期为当前逾期未销假记录。</details>
       </div>
 
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <template v-else>
-        <BusinessMetrics :items="metrics" />
+        <BusinessMetrics class="leave-metrics" :items="metrics" />
 
         <div class="sec-t">{{ groupLabel }}分布</div>
         <EmptyState v-if="!breakdown.length" title="暂无分布数据" description="当前范围内没有请假记录"><template #actions><button class="mp-link" @click="range = { start: '', end: '' }; load()">查看全部时间</button></template></EmptyState>
@@ -89,7 +89,12 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
-.flt { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
-.metrics { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: var(--space-3); }
-.sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: var(--space-4) 0 var(--space-2); }
+.flt { padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.leave-metrics { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 0; padding: 4px 12px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); }
+.leave-metrics :deep(> div) { display: flex; align-items: baseline; justify-content: space-between; min-width: 0; padding: 10px 12px; gap: 8px; }
+.leave-metrics :deep(dd) { margin: 0; font-size: 22px; }
+@media (max-width: 1100px) { .leave-metrics { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .leave-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); padding: 4px; } .leave-metrics :deep(> div) { padding: 8px; } .flt > * { max-width: 100%; } }
+.flt :deep(.app-dr__empty) { display: none; }
+.sec-t { font-size: var(--font-size-sm); font-weight: var(--font-weight-medium); color: var(--text-secondary); margin: 0; }
 </style>

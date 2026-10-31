@@ -7,10 +7,13 @@
     show-subtitle-in-concise
   >
     <template #actions>
+      <AppButton v-if="['order', 'stock', 'fee'].includes(tab) && canDistribute" variant="ghost" size="small" :disabled="saving" @click="switchTab('distribution')">发放签收记录</AppButton>
+      <AppButton v-if="tab === 'distribution'" variant="ghost" size="small" :disabled="saving" @click="switchTab('order')">返回征订到货</AppButton>
+      <AppButton v-if="tab === 'distribution'" variant="ghost" size="small" :disabled="saving" @click="$router.replace({ query: { tab: 'distribution', history: $route.query.history === 'all' ? undefined : 'all', page: '1' } })">{{ $route.query.history === 'all' ? '查看当前学期' : '查看全部学期' }}</AppButton>
       <AppButton variant="ghost" size="small" @click="showSource = !showSource">来源与还原说明</AppButton>
       <AppButton v-if="isAcademicTeacher && tab === 'selection'" variant="ghost" size="small" :disabled="saving || loading" @click="toggleSelectionHistory">{{ showHistory ? '返回当前学期' : '历史选用记录' }}</AppButton>
       <AppButton
-        v-if="pageSpec.primary && (tab !== 'review' || reviewActions.createReview === true)"
+        v-if="pageSpec.primary && primaryAllowed"
         variant="primary"
         size="small"
         :disabled="primaryDisabled"
@@ -63,7 +66,7 @@
       <AppInlineAlert v-if="tab === 'stock' && rows.some(row => row.dataConflict)" type="danger" title="库存记录存在冲突" description="已签收与待签收占用超过到货数量。请核对到货、发放及退领原记录；负数按实际差额展示，不视为可继续发放。" />
       <div v-if="tab === 'stats'" class="aa-pagebar">
         <ul class="aa-stat-strip" aria-label="教材业务指标">
-          <li v-for="metric in metricCards" :key="metric.label" :class="{ 'is-warning': metric.warning }" :title="metric.note"><span>{{ metric.label.replace(/^本页/, '') }}</span><b>{{ metric.value }}</b></li>
+          <li v-for="metric in metricCards" :key="metric.label" :class="{ 'is-warning': metric.warning }" :title="metric.note"><span>{{ metric.label }}</span><b>{{ metric.value }}</b></li>
         </ul>
       </div>
 
@@ -82,14 +85,19 @@
             <dl class="aatb-facts">
               <div><dt>选用与备案</dt><dd>{{ stats.selectionApproved || 0 }} / {{ stats.selectionTotal || 0 }}</dd></div>
               <div><dt>征订与到货</dt><dd>{{ stats.arrivedQty || 0 }} / {{ stats.orderQty || 0 }}</dd></div>
-              <div><dt>未结费用</dt><dd>¥{{ money(stats.unpaidAmount) }}</dd></div>
+              <div v-if="stats.feeVisible"><dt>未结费用</dt><dd>¥{{ money(stats.unpaidAmount) }}</dd></div>
+              <div v-if="stats.feeVisible"><dt>累计退款</dt><dd>¥{{ money(stats.refundedAmount) }}</dd></div>
+              <div v-if="stats.feeVisible"><dt>退款待退领</dt><dd>{{ stats.refundPendingReturnCount || 0 }} 条</dd></div>
+              <div v-if="!stats.feeVisible"><dt>费用统计</dt><dd>无费用查看权限</dd></div>
               <div><dt>周期趋势</dt><dd>系统未提供按周的数据</dd></div>
             </dl>
           </article>
         </section>
         <section class="aatb-table-card">
           <header><div><h2>同口径明细下钻</h2><p>到货、发放、签收和费用分别按正式业务记录核对</p></div></header>
-          <DataTable :columns="statsColumns" :rows="statsRows" row-key="key" />
+          <DataTable :columns="statsColumns" :rows="statsRows" row-key="key">
+            <template #cell-note="{ row }"><button class="mp-link" @click="switchTab(row.key)">{{ row.note }}</button></template>
+          </DataTable>
         </section>
       </template>
 
@@ -100,7 +108,7 @@
           <button class="aatb-clear" :disabled="saving" @click="clearSearch">清空</button>
           <small v-if="tab !== 'catalog' && keyword">仅筛选本页记录</small>
           <ul class="aa-stat-strip aatb-strip" aria-label="教材业务指标">
-            <li v-for="metric in metricCards" :key="metric.label" :class="{ 'is-warning': metric.warning }" :title="metric.note"><span>{{ metric.label.replace(/^本页/, '') }}</span><b>{{ metric.value }}</b></li>
+            <li v-for="metric in metricCards" :key="metric.label" :class="{ 'is-warning': metric.warning }" :title="metric.note"><span>{{ metric.label }}</span><b>{{ metric.value }}</b></li>
           </ul>
         </div>
         <EmptyState v-if="!filteredRows.length" title="暂无数据" :description="emptyHint" />
@@ -113,16 +121,18 @@
           @page-change="turnPage"
         >
           <template #cell-primary="{ row }"><button class="aatb-object-link" @click="selectRow(row)">{{ row.primary }}</button><small>{{ row.secondary }}</small></template>
+          <template #cell-subject="{ row }">{{ COURSE_CATEGORY[row.subject] || row.subject || '尚未填写' }}</template>
+          <template #cell-officerKey="{ row }">{{ row.officerName || (row.officerLoginName ? `账号：${row.officerLoginName}` : '申报人待核对') }}<small v-if="row.officerName && row.officerLoginName">账号：{{ row.officerLoginName }}</small></template>
           <template #cell-status="{ row }">
-            <StatusTag :type="statusType(row.status)" :label="statusLabel(row.status)" dot />
+            <StatusTag :type="statusType(row.status)" :label="tab === 'fee' && row.status === 'WAIVED' && Number(row.refundAmount) > 0 ? '已退款退领' : statusLabel(row.status)" dot />
             <small v-if="tab === 'selection' && row.status === 'RETURNED' && row.rejectReason" class="aatb-return-reason">退回：{{ row.rejectReason }}</small>
           </template>
           <template #cell-price="{ row }">{{ row.unitPrice == null ? '—' : `¥${money(row.unitPrice)}` }}</template>
           <template #cell-amount="{ row }">¥{{ money(row.amount) }}</template>
-          <template #cell-paid="{ row }">¥{{ money(row.paidAmount) }} / ¥{{ money(row.amount) }}</template>
+          <template #cell-paid="{ row }">已收 ¥{{ money(row.paidAmount) }} / 原应收 ¥{{ money(row.amount) }}<small v-if="row.refundAmount">已退 ¥{{ money(row.refundAmount) }} · {{ row.refundReason }}</small></template>
           <template #cell-progress="{ row }"><strong>待签收 {{ row.pendingCount || 0 }} · 已签收 {{ row.receivedCount || 0 }}</strong><small>退领 {{ row.returnedCount || 0 }} · 未结费用 {{ row.unsettledFeeCount || 0 }}</small></template>
           <template #cell-ops="{ row }">
-            <button v-if="tab === 'catalog'" class="mp-link" @click="openTextbook(row)">打开</button>
+            <button v-if="tab === 'catalog' && canManageCatalog" class="mp-link" @click="openTextbook(row)">编辑目录</button>
             <template v-else-if="tab === 'selection'">
               <button class="mp-link" @click="selectRow(row)">查看来源</button>
               <button v-if="['DRAFT','RETURNED'].includes(row.status)" class="mp-link" @click="openSelection(row)">修改</button>
@@ -130,26 +140,27 @@
               <button v-if="row.status === 'DRAFT'" class="mp-link is-danger" @click="confirmSelectionWithdraw(row)">撤回</button>
             </template>
             <template v-else-if="tab === 'review'">
-              <button class="mp-link" @click="selectRow(row)">查看证据</button>
-              <button v-if="canAdvance(row)" class="mp-link" @click="confirmAdvance(row)">推进</button>
+              <button class="mp-link" @click="openReview(row)">查看选用明细</button>
+              <button v-if="canAdvance(row)" class="mp-link" @click="confirmAdvance(row)">{{ reviewActionLabel(row) }}</button>
               <button v-if="row.actions?.return === true" class="mp-link is-danger" @click="advanceReturn(row.reviewBatchId)">退回</button>
             </template>
             <template v-else-if="tab === 'order'">
-              <button class="mp-link" @click="selectRow(row)">打开</button>
+              <button class="mp-link" @click="openArrival(row)">征订明细</button>
               <button v-if="row.status === 'DRAFT'" class="mp-link" @click="confirmOrderSubmit(row)">提交征订</button>
               <button v-if="['DRAFT','ORDERED'].includes(row.status)" class="mp-link is-danger" @click="cancelOrder(row)">取消</button>
               <button v-if="['ORDERED','PARTIALLY_ARRIVED'].includes(row.status)" class="mp-link" @click="openArrival(row)">到货登记</button>
-              <button v-if="['PARTIALLY_ARRIVED','ARRIVED','ARCHIVED'].includes(row.status)" class="mp-link" @click="openDistributionGenerate(row)">生成发放名单</button>
+              <button v-if="canDistribute && ['PARTIALLY_ARRIVED','ARRIVED','ARCHIVED'].includes(row.status)" class="mp-link" @click="openDistributionGenerate(row)">生成发放名单</button>
               <button v-if="row.status === 'ARRIVED'" class="mp-link" @click="confirmOrderArchive(row)">归档</button>
             </template>
             <button v-else-if="tab === 'distribution'" class="mp-link" @click="openDistribution(row)">发放明细</button>
             <template v-else-if="tab === 'fee'">
-              <button class="mp-link" @click="selectRow(row)">打开</button>
+              <button v-if="row.distributionBatchId && canDistribute" class="mp-link" @click="openDistribution(row)">查看发放来源</button>
               <button v-if="['UNPAID','PARTIAL'].includes(row.status)" class="mp-link" @click="confirmFeePaid(row)">全额收款</button>
               <button v-if="['UNPAID','PARTIAL'].includes(row.status)" class="mp-link" @click="openPartial(row)">部分收款</button>
+              <button v-if="['PAID','PARTIAL'].includes(row.status) && Number(row.paidAmount) > 0" class="mp-link" @click="refundFee(row)">登记全额退款</button>
               <button v-if="row.status === 'UNPAID'" class="mp-link is-danger" @click="waiveFee(row.feeId)">减免</button>
             </template>
-            <button v-else class="mp-link" @click="selectRow(row)">打开</button>
+            <button v-else-if="tab === 'stock' && canDistribute" class="mp-link" @click="switchTab('distribution')">核对发放记录</button>
           </template>
         </DataTable>
       </section>
@@ -158,7 +169,7 @@
     <AppDrawer :visible="tbVisible" :title="editingTextbookId ? '编辑教材目录' : '新建教材'" mode="modal" size="medium" @close="tbVisible = false">
       <div class="aatb-form-grid">
         <AppFormItem label="教材名称" required><AppTextInput v-model="tbForm.name" :disabled="saving" /></AppFormItem>
-        <AppFormItem label="ISBN"><AppTextInput v-model="tbForm.isbn" :disabled="saving || !!editingTextbookId" /></AppFormItem>
+        <AppFormItem label="国际标准书号"><AppTextInput v-model="tbForm.isbn" :disabled="saving || !!editingTextbookId" /></AppFormItem>
         <AppFormItem label="版本"><AppTextInput v-model="tbForm.edition" :disabled="saving" /></AppFormItem>
         <AppFormItem label="出版社"><AppTextInput v-model="tbForm.publisher" :disabled="saving" /></AppFormItem>
         <AppFormItem label="适用课程/学科"><AppTextInput v-model="tbForm.subject" :disabled="saving" /></AppFormItem>
@@ -169,7 +180,7 @@
     </AppDrawer>
 
     <AppDrawer :visible="selectionVisible" :title="editingSelectionId ? '修改教材选用申报' : '教材选用正式申报'" mode="modal" size="large" @close="closeSelection">
-      <AppInlineAlert type="info" title="第四级对象视角" description="从正式教学任务开始，教材版本和需求人数提交后进入教材选用审核岗。" />
+      <AppInlineAlert type="info" title="选用依据" description="从正式教学任务开始，教材版本和需求人数提交后进入教材选用审核岗。" />
       <div class="aatb-form-grid">
         <AppFormItem label="教学任务" required><AppTeachingTaskPicker v-model="selectionForm.taskId" :query="{ termId: currentTermId || undefined, formalMine: isAcademicTeacher }" :disabled="saving || Boolean(editingSelectionId)" /></AppFormItem>
         <AppFormItem label="教材版本" required><AppSelect v-model="selectionForm.textbookId" :options="textbookOptions" placeholder="选择正式教材目录" :disabled="saving || selectionCatalogLoading" /></AppFormItem>
@@ -188,14 +199,25 @@
       <template #footer><AppButton variant="ghost" :disabled="saving" @click="reviewCreateVisible = false">取消</AppButton><AppButton variant="primary" :disabled="!reviewCollegeId || saving" :loading="saving" @click="submitReview">创建本学院审核批次</AppButton></template>
     </AppDrawer>
 
-    <AppDrawer :visible="arrivalVisible" title="登记到货验收" mode="modal" size="medium" @close="arrivalVisible = false">
+    <AppDrawer :visible="reviewVisible" title="审核批次选用明细" mode="modal" size="large" @close="reviewVisible = false">
+      <LoadingState v-if="reviewLoading" />
+      <ErrorState v-else-if="reviewError" :description="reviewError" @retry="openReview(reviewRow, reviewPage)" />
+      <template v-else>
+        <p v-if="reviewRow">{{ reviewRow.batchName }} · {{ statusLabel(reviewRow.status) }} · {{ reviewRow.currentOwner }}</p>
+        <AppInlineAlert type="info" description="以下为关联申报的当前内容；已退回重报的申报可能已修订，请结合批次状态核对。" />
+        <DataTable :columns="reviewColumns" :rows="reviewItems" row-key="selectionId" :pagination="{ page: reviewPage, pageSize: 20, total: reviewTotal }" @page-change="value => openReview(reviewRow, value)" />
+      </template>
+      <template #footer><AppButton variant="ghost" :disabled="saving" @click="reviewVisible = false">关闭</AppButton><AppButton v-if="!reviewLoading && !reviewError && canAdvance(reviewRow)" variant="primary" :disabled="saving" @click="confirmAdvance(reviewRow)">{{ reviewActionLabel(reviewRow) }}</AppButton></template>
+    </AppDrawer>
+
+    <AppDrawer :visible="arrivalVisible" :title="arrivalEditable ? '登记到货验收' : '征订教材明细'" mode="modal" size="medium" @close="arrivalVisible = false">
       <div class="aatb-form-stack">
         <AppInlineAlert type="info" description="到货数量是累计值，只能增加且不能超过征订数量；登记后重新读取正式明细。" />
         <p v-if="arrivalRow">征订批次：{{ arrivalRow.batchName || arrivalRow.orderBatchId }}</p>
         <LoadingState v-if="arrivalLoading" />
         <ErrorState v-else-if="arrivalError" :description="arrivalError" @retry="openArrival(arrivalRow)" />
         <EmptyState v-else-if="!arrivalItems.length" title="无征订明细" description="当前正式批次没有可登记的教材明细。" />
-        <ul v-else class="aatb-items"><li v-for="item in arrivalItems" :key="item.itemId"><span>{{ item.textbookName }}（订 {{ item.orderQty }} / 到 {{ item.arrivedQty }}）</span><span class="aatb-arr"><AppNumberInput v-model="arrivalQty[item.itemId]" :min="item.arrivedQty || 0" :max="item.orderQty" /><AppButton size="small" variant="ghost" @click="submitArrival(item.itemId)">登记</AppButton></span></li></ul>
+        <ul v-else class="aatb-items"><li v-for="item in arrivalItems" :key="item.itemId"><span>{{ item.textbookName }}（订 {{ item.orderQty }} / 到 {{ item.arrivedQty }}）<small>征订单价：¥{{ money(item.unitPrice) }}</small></span><span v-if="arrivalEditable" class="aatb-arr"><AppNumberInput v-model="arrivalQty[item.itemId]" :min="item.arrivedQty || 0" :max="item.orderQty" :disabled="saving" /><AppButton size="small" variant="ghost" :disabled="saving" @click="submitArrival(item.itemId)">登记</AppButton></span></li></ul>
       </div>
     </AppDrawer>
 
@@ -211,6 +233,7 @@
 </template>
 
 <script>
+import { toRaw } from 'vue'
 import { DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag } from '@/components/business'
 import { AppButton, AppDrawer } from '@/components/ui'
 import { AppConfirmDialog, AppFormItem, AppInlineAlert, AppNumberInput, AppSelect, AppTeachingTaskPicker, AppTextarea, AppTextInput } from '@/components/common'
@@ -221,17 +244,19 @@ import { textbookP0Api } from '@/modules/academicAffairs/api/textbook-p0.api'
 import { currentUserFromToken } from '@/services/http/client'
 import { toast } from '@/utils/toast'
 import { textbookQueuePage, textbookQueueReturnPath } from '../components/textbooks/textbookNavigation.js'
+import { COURSE_CATEGORY } from '../constants/course-program.js'
+import { matchPermission } from '@/config/navPlan'
 
 const LABELS = {
   ENABLED: '在用', DISABLED: '停用', DRAFT: '草稿', SUBMITTED: '已提交', REVIEWING: '审核中',
   COLLEGE_REVIEWING: '学院审核中', COLLEGE_APPROVED: '学院已通过', ACADEMIC_APPROVED: '教务已通过', PUBLISHED: '已备案',
   APPROVED: '已备案', RETURNED: '已退回', ORDERED: '已征订', PARTIALLY_ARRIVED: '部分到货', ARRIVED: '已到货',
   ARCHIVED: '已归档', CANCELLED: '已取消', DISTRIBUTING: '发放中', COMPLETED: '已完成', UNPAID: '未收款',
-  PARTIAL: '部分收款', PAID: '已结清', WAIVED: '已减免'
+  PARTIAL: '部分收款', PAID: '已结清', WAIVED: '已减免', REFUNDED: '已退款待退领'
 }
 
 const PAGE_SPEC = {
-  catalog: { title: '教材目录', subtitle: '教材版本与课程选用分开维护', object: '教材目录', primary: '新建教材', role: '教材目录管理岗', nextRole: '任课教师 / 课程负责人选用', source: '教材目录管理岗正式建立', sourceNote: '目录只维护教材版本；选用、征订、发放和费用继续使用各自的正式业务记录。', whyMe: '维护可供正式选用的教材版本', stage: 0, tableTitle: '教材目录 · 数量与来源', tableNote: 'ISBN、版本、出版社和适用课程来自正式教材目录' },
+  catalog: { title: '教材目录', subtitle: '教材版本与课程选用分开维护', object: '教材目录', primary: '新建教材', role: '教材目录管理岗', nextRole: '任课教师 / 课程负责人选用', source: '教材目录管理岗正式建立', sourceNote: '目录只维护教材版本；选用、征订、发放和费用继续使用各自的正式业务记录。', whyMe: '维护可供正式选用的教材版本', stage: 0, tableTitle: '教材目录 · 数量与来源', tableNote: '书号、版本、出版社和适用课程来自正式教材目录' },
   selection: { title: '教材选用', subtitle: '使用教学任务和名单测算，不手工造学生名单', object: '教材选用申报', primary: '从教学任务申报', role: '任课教师 / 课程负责人', nextRole: '教材选用审核岗', source: '正式教学任务', sourceNote: '选用必须绑定正式教学任务和教材目录；需求人数由课程负责人申报，提交后进入审核。', whyMe: '当前教学任务需要确定教材版本和需求数量', stage: 0, tableTitle: '教材选用申报 · 候选与正式结果', tableNote: '教学任务、教材、需求人数、申报人和审核状态同屏核对' },
   review: { title: '审核备案', subtitle: '审核后才能进入征订流程', object: '教材审核批次', primary: '审核选用申报', role: '教材选用审核岗', nextRole: '征订管理岗', source: '已提交教材选用', sourceNote: '审核批次只纳入当前学期已提交选用；推进前显示批次编号和当前正式状态。', whyMe: '选用申报已提交并进入本岗位审核队列', stage: 1, tableTitle: '责任队列', tableNote: '打开批次查看来源，确认对象后推进或退回' },
   order: { title: '征订到货', subtitle: '到货后继续进入发放和签收，不止于采购', object: '教材征订批次', primary: '生成征订 / 补订', role: '教材征订 / 到货岗', nextRole: '教材发放签收岗', source: '已备案教材选用', sourceNote: '征订批次汇总已备案选用；到货按教材明细累计登记，不能超过征订量。', whyMe: '教材选用已备案并等待征订或到货验收', stage: 2, tableTitle: '征订与到货 · 数量与来源', tableNote: '批次状态、到货明细和发放入口按正式记录衔接' },
@@ -246,13 +271,15 @@ export default {
   components: { AaTextbookObjectBar, AaTextbookStageRail, AppButton, AppConfirmDialog, AppDrawer, AppFormItem, AppInlineAlert, AppNumberInput, AppSelect, AppTeachingTaskPicker, AppTextarea, AppTextInput, DataTable, EmptyState, ErrorState, LoadingState, ModulePageShell, StatusTag },
   data() {
     return {
-      ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } }, currentTermId: '', currentTermName: '',
+      COURSE_CATEGORY, ctx: { currentRole: { roleName: '' }, dataScope: { scopeName: '' } }, currentTermId: '', currentTermName: '',
       tab: 'catalog', loading: true, error: '', rows: [], stats: {}, page: 1, pageSize: 20, total: 0, keyword: '', appliedKeyword: '',
       showHistory: false, openedSetupTaskId: '', selectionReceipt: null, selectionDraftReceipt: null,
       loadSeq: 0, arrivalSeq: 0, actionSeq: 0, initialized: false, saving: false, showSource: false, activeRowKey: '',
       tbVisible: false, editingTextbookId: '', tbForm: { name: '', isbn: '', edition: '', publisher: '', subject: '', unitPrice: 0 }, formError: '',
-      selectionVisible: false, editingSelectionId: '', selectionCatalogLoading: false, selectionCatalog: [], selectionError: '', selectionForm: { taskId: '', textbookId: '', expectedQty: 1, remark: '' },
+      selectionVisible: false, editingSelectionId: '', selectionCatalogLoading: false, selectionCatalogSeq: 0, selectionCatalog: [], selectionError: '', selectionForm: { taskId: '', textbookId: '', expectedQty: 1, remark: '' },
       reviewActions: {}, reviewCreateVisible: false, reviewCandidates: [], reviewCollegeId: '', reviewCreateError: '',
+      reviewVisible: false, reviewLoading: false, reviewError: '', reviewRow: null, reviewItems: [], reviewPage: 1, reviewTotal: 0, reviewSeq: 0,
+      reviewColumns: [{ key: 'courseName', title: '课程' }, { key: 'textbookName', title: '教材' }, { key: 'isbn', title: '书号' }, { key: 'edition', title: '版本' }, { key: 'publisher', title: '出版社' }, { key: 'expectedQty', title: '需求人数' }, { key: 'remark', title: '选用原因' }],
       arrivalVisible: false, arrivalRow: null, arrivalItems: [], arrivalQty: {}, arrivalError: '', arrivalLoading: false,
       partialVisible: false, partialRow: null, partialAmount: 0,
       confirmVisible: false, confirmTitle: '', confirmMessage: '', pendingAction: null,
@@ -260,6 +287,15 @@ export default {
     }
   },
   computed: {
+    isSchoolScope() { return ['SCHOOL', 'TENANT_ALL'].includes(this.ctx.dataScope?.scope) },
+    canDistribute() { return this.isSchoolScope && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.textbook.distribution.manage') },
+    canManageCatalog() { return this.isSchoolScope && matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.textbook.catalog.manage') },
+    primaryAllowed() {
+      if (this.tab === 'catalog') return this.canManageCatalog
+      if (this.tab === 'review') return this.reviewActions.createReview === true
+      return true
+    },
+    arrivalEditable() { return ['ORDERED', 'PARTIALLY_ARRIVED'].includes(this.arrivalRow?.status) },
     isAcademicTeacher() {
       return String(this.ctx?.currentRole?.roleCode || this.ctx?.currentRole?.roleType || '').toUpperCase() === 'ACADEMIC_TEACHER'
     },
@@ -271,7 +307,7 @@ export default {
     visibleRows() { return this.tab === 'stock' ? this.rows.slice((this.page - 1) * this.pageSize, this.page * this.pageSize) : this.rows },
     normalizedRows() {
       return this.visibleRows.map(row => {
-        if (this.tab === 'catalog') return { ...row, primary: row.name || '未命名教材', secondary: `${row.isbn || 'ISBN 未维护'} · 目录 ${row.textbookId || '—'}`, objectId: row.textbookId }
+        if (this.tab === 'catalog') return { ...row, primary: row.name || '未命名教材', secondary: `${row.isbn || '书号未维护'} · 目录 ${row.textbookId || '—'}`, objectId: row.textbookId }
         if (this.tab === 'selection') return { ...row, primary: row.courseName || '课程待核对', secondary: `教学任务 ${row.taskId || '未关联'} · 申报 ${row.selectionId || '—'}`, objectId: row.selectionId,
           currentOwner: ['SUBMITTED', 'REVIEWING'].includes(row.status) ? '教材选用审核岗' : row.currentOwner,
           nextOwner: ['SUBMITTED', 'REVIEWING'].includes(row.status) ? '审核通过后交征订岗位' : row.nextOwner }
@@ -287,10 +323,10 @@ export default {
     blockerText() { if (!this.selectedObject) return '当前范围没有可办理对象'; if (this.tab === 'selection') return ({ DRAFT: '待提交审核', SUBMITTED: '等待教材选用审核岗处理', REVIEWING: '等待教材选用审核岗处理', APPROVED: '审核已通过，等待征订岗位建单', ORDERED: '已进入征订批次，可返回征订到货核对', RETURNED: '已退回，等待申报人修订' }[this.selectedObject.status] || '按当前正式状态核对'); if (this.tab === 'review') return this.canAdvance(this.selectedObject) ? '需核对来源选用和当前审批节点' : '当前状态无可执行审核动作'; return '按当前正式状态核对' },
     textbookOptions() { return this.selectionCatalog.map(row => ({ label: `${row.name}${row.edition ? ` · ${row.edition}` : ''}`, value: String(row.textbookId) })) },
     reviewCollegeOptions() { return [...new Map(this.reviewCandidates.filter(row => row.collegeId).map(row => [String(row.collegeId), { value: String(row.collegeId), label: row.collegeName || '来源学院待核对' }])).values()] },
-    selectionCanSubmit() { return Boolean(this.selectionForm.taskId && this.selectionForm.textbookId && Number(this.selectionForm.expectedQty) > 0 && this.selectionForm.remark.trim()) },
+    selectionCanSubmit() { return Boolean(!this.selectionCatalogLoading && this.selectionForm.taskId && this.selectionForm.textbookId && Number.isSafeInteger(Number(this.selectionForm.expectedQty)) && Number(this.selectionForm.expectedQty) > 0 && this.selectionForm.remark.trim()) },
     columns() {
       const map = {
-        catalog: [{ key: 'primary', title: '教材名称 / ISBN' }, { key: 'edition', title: '版本' }, { key: 'publisher', title: '出版社' }, { key: 'subject', title: '适用课程' }, { key: 'price', title: '定价' }, { key: 'status', title: '状态' }, { key: 'ops', title: '办理入口' }],
+        catalog: [{ key: 'primary', title: '教材名称 / 书号' }, { key: 'edition', title: '版本' }, { key: 'publisher', title: '出版社' }, { key: 'subject', title: '适用课程' }, { key: 'price', title: '定价' }, { key: 'status', title: '状态' }, { key: 'ops', title: '办理入口' }],
         selection: [{ key: 'primary', title: '教学任务' }, { key: 'textbookName', title: '选用教材' }, { key: 'expectedQty', title: '需求人数' }, { key: 'officerKey', title: '申报人' }, { key: 'status', title: '审核状态' }, { key: 'ops', title: '办理入口' }],
         review: [{ key: 'primary', title: '审核批次' }, { key: 'status', title: '备案状态' }, { key: 'rejectReason', title: '审核依据 / 退回原因' }, { key: 'ops', title: '办理入口' }],
         order: [{ key: 'primary', title: '征订单' }, { key: 'status', title: '当前状态' }, { key: 'detailHint', title: '征订 / 到货数量' }, { key: 'ops', title: '办理入口', width: '300px' }],
@@ -303,22 +339,23 @@ export default {
     metricCards() {
       const count = status => this.rows.filter(row => row.status === status).length
       const sum = field => this.rows.reduce((total, row) => total + Number(row[field] || 0), 0)
-      if (this.tab === 'catalog') return [{ label: this.appliedKeyword ? '筛选结果总数' : '目录总数', value: this.total, note: this.appliedKeyword ? '当前目录查询结果' : '正式教材目录' }, { label: '本页在用', value: count('ENABLED'), note: '当前页真实状态' }, { label: '本页有定价', value: this.rows.filter(row => row.unitPrice != null).length, note: '目录定价已维护' }, { label: '本页待核验', value: this.rows.filter(row => !row.isbn || !row.publisher).length, note: 'ISBN 或出版社缺失', warning: true }]
+      if (this.tab === 'catalog') return [{ label: this.appliedKeyword ? '筛选结果总数' : '目录总数', value: this.total, note: this.appliedKeyword ? '符合当前查询条件的全部目录记录' : '正式教材目录' }, { label: '本页在用', value: count('ENABLED'), note: '当前页真实状态' }, { label: '本页有定价', value: this.rows.filter(row => row.unitPrice != null).length, note: '目录定价已维护' }, { label: '本页待核验', value: this.rows.filter(row => !row.isbn || !row.publisher).length, note: '书号或出版社缺失', warning: true }]
       if (this.tab === 'selection') return [{ label: '选用总数', value: this.total, note: '当前数据范围' }, { label: '本页草稿', value: count('DRAFT'), note: '待申报人提交' }, { label: '本页审核中', value: count('SUBMITTED') + count('REVIEWING'), note: '等待审核岗位' }, { label: '本页已备案', value: count('APPROVED') + count('ORDERED'), note: '可进入征订' }]
       if (this.tab === 'review') return [{ label: '审核批次', value: this.total, note: '正式批次总数' }, { label: '本页待办', value: this.rows.filter(row => this.canAdvance(row)).length, note: '当前节点可推进', warning: true }, { label: '本页已备案', value: count('PUBLISHED'), note: '可进入征订' }, { label: '本页已退回', value: count('RETURNED'), note: '返回申报人修订' }]
       if (this.tab === 'order') return [{ label: '征订批次', value: this.total, note: '正式批次总数' }, { label: '本页待提交', value: count('DRAFT'), note: '需提交征订' }, { label: '本页到货中', value: count('ORDERED') + count('PARTIALLY_ARRIVED'), note: '等待到货验收', warning: true }, { label: '本页已到货', value: count('ARRIVED') + count('ARCHIVED'), note: '可进入发放' }]
       if (this.tab === 'distribution') return [{ label: '发放批次', value: this.total, note: '正式批次总数' }, { label: '本页待签收', value: sum('pendingCount'), note: '学生发放记录', warning: true }, { label: '本页已签收', value: sum('receivedCount'), note: '已形成发放记录' }, { label: '本页未结费用', value: sum('unsettledFeeCount'), note: '转费用岗位处理' }]
-      if (this.tab === 'fee') return [{ label: '费用记录', value: this.total, note: '当前数据范围' }, { label: '本页应收', value: `¥${this.money(this.rows.filter(row => row.status !== 'WAIVED').reduce((total, row) => total + Number(row.amount || 0), 0))}`, note: '已减免金额不计入' }, { label: '本页已收', value: `¥${this.money(sum('paidAmount'))}`, note: '正式收款记录' }, { label: '本页待核对', value: count('UNPAID') + count('PARTIAL'), note: '未收或部分收款', warning: true }]
+      if (this.tab === 'fee') return [{ label: '费用记录', value: this.total, note: '当前数据范围' }, { label: '本页应收', value: `¥${this.money(this.rows.filter(row => !['WAIVED', 'REFUNDED'].includes(row.status)).reduce((total, row) => total + Number(row.amount || 0), 0))}`, note: '已减免与已退款待退领不计入' }, { label: '本页净收', value: `¥${this.money(sum('paidAmount') - sum('refundAmount'))}`, note: '累计收款减实际退款' }, { label: '本页待核对', value: count('UNPAID') + count('PARTIAL') + count('REFUNDED'), note: '未收、部分收款或退款待退领', warning: true }]
       if (this.tab === 'stock') return [{ label: '库存品种', value: this.total, note: '有到货或发放记录的教材' }, { label: '账面到货', value: sum('arrivedQty'), note: '以到货流水为准' }, { label: '已签收', value: sum('distributedQty'), note: '正式签收数量' }, { label: '可用库存', value: sum('stockQty'), note: '到货减已签收及待签收占用' }]
-      return [{ label: '统计范围', value: '本校全部学期', note: '包含历史记录' }, { label: '选用总数', value: this.stats.selectionTotal || 0, note: '正式选用记录' }, { label: '待处理费用', value: `¥${this.money(this.stats.unpaidAmount)}`, note: '未结不等于欠费结论', warning: true }, { label: '到货率', value: `${Math.round(Number(this.stats.arrivalRate || 0) * 100)}%`, note: `${this.stats.arrivedQty || 0} / ${this.stats.orderQty || 0}` }]
+      return [{ label: '统计范围', value: '本校全部学期', note: '包含历史记录' }, { label: '选用总数', value: this.stats.selectionTotal || 0, note: '正式选用记录' }, ...(this.stats.feeVisible ? [{ label: '待处理费用', value: `¥${this.money(this.stats.unpaidAmount)}`, note: '未结不等于欠费结论', warning: true }] : []), { label: '到货率', value: `${Math.round(Number(this.stats.arrivalRate || 0) * 100)}%`, note: `${this.stats.arrivedQty || 0} / ${this.stats.orderQty || 0}` }]
     },
     statsBars() { const values = [{ label: '选用', value: Number(this.stats.selectionTotal || 0) }, { label: '备案', value: Number(this.stats.selectionApproved || 0) }, { label: '征订', value: Number(this.stats.orderQty || 0) }, { label: '到货', value: Number(this.stats.arrivedQty || 0) }]; const max = Math.max(1, ...values.map(item => item.value)); return values.map(item => ({ ...item, percent: Math.max(item.value ? 4 : 0, Math.round(item.value / max * 100)) })) },
     statsColumns() { return [{ key: 'label', title: '业务口径' }, { key: 'value', title: '正式数量' }, { key: 'owner', title: '责任岗位' }, { key: 'note', title: '下钻说明' }] },
-    statsRows() { return [{ key: 'selection', label: '教材选用 / 已备案', value: `${this.stats.selectionTotal || 0} / ${this.stats.selectionApproved || 0}`, owner: '教材选用审核岗', note: '进入选用或审核备案核对' }, { key: 'order', label: '征订 / 到货', value: `${this.stats.orderQty || 0} / ${this.stats.arrivedQty || 0}`, owner: '征订到货岗', note: '进入征订到货核对批次明细' }, { key: 'fee', label: '未结费用金额', value: `¥${this.money(this.stats.unpaidAmount)}`, owner: '教材费用核对岗', note: '进入费用台账核对学生记录' }] },
+    statsRows() { return [{ key: 'selection', label: '教材选用 / 已备案', value: `${this.stats.selectionTotal || 0} / ${this.stats.selectionApproved || 0}`, owner: '教材选用审核岗', note: '进入选用或审核备案核对' }, { key: 'order', label: '征订 / 到货', value: `${this.stats.orderQty || 0} / ${this.stats.arrivedQty || 0}`, owner: '征订到货岗', note: '进入征订到货核对批次明细' }, ...(this.stats.feeVisible ? [{ key: 'fee', label: '未结费用金额', value: `¥${this.money(this.stats.unpaidAmount)}`, owner: '教材费用核对岗', note: '进入费用台账核对学生记录' }] : [])] },
     emptyHint() { return { catalog: '可由教材目录管理岗新建正式目录', selection: '请从正式教学任务发起教材选用', review: '当前学期没有已提交选用可建审核批次', order: '当前学期没有已备案选用可生成征订', distribution: '请从已到货征订批次生成班级发放名单', fee: '学生签收后按征订价格快照生成费用', stock: '征订到货并签收后形成库存口径' }[this.tab] || '' }
   },
   watch: {
     '$route.fullPath'() {
+      if (this.initialized && this.tab === 'distribution') { this.page = textbookQueuePage(this.$route.query.page); this.reload() }
       if (this.initialized && this.tab === 'catalog' && (this.appliedKeyword !== String(this.$route.query.catalogKeyword || '') || this.page !== textbookQueuePage(this.$route.query.page))) {
         this.restoreCatalogQuery(); this.reload()
       }
@@ -354,7 +391,7 @@ export default {
     await this.reload()
     await this.openSelectionFromRoute()
   },
-  beforeUnmount() { this.loadSeq++; this.arrivalSeq++; this.actionSeq++ },
+  beforeUnmount() { this.loadSeq++; this.arrivalSeq++; this.actionSeq++; this.reviewSeq++ },
   beforeRouteLeave() { return !this.saving },
   beforeRouteUpdate() { return !this.saving },
   methods: {
@@ -365,13 +402,18 @@ export default {
     money(value) { return Number(value || 0).toLocaleString('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) },
     statusLabel(status) { return LABELS[status] || (status ? '状态待确认' : '—') },
     statusType(status) { if (['ENABLED', 'PAID', 'APPROVED', 'PUBLISHED', 'ARRIVED', 'ARCHIVED', 'COMPLETED'].includes(status)) return 'success'; if (['CANCELLED', 'RETURNED', 'WAIVED', 'DISABLED'].includes(status)) return 'info'; if (['DRAFT', 'PARTIAL', 'PARTIALLY_ARRIVED', 'REVIEWING', 'COLLEGE_REVIEWING', 'COLLEGE_APPROVED', 'ACADEMIC_APPROVED', 'DISTRIBUTING'].includes(status)) return 'warning'; return 'primary' },
-    rowKey(row) { return String(row.textbookId || row.selectionId || row.reviewBatchId || row.orderBatchId || row.distributionBatchId || row.feeId || '') },
-    selectRow(row) { this.activeRowKey = this.rowKey(row) },
+    rowKey(row) { return String(row.objectId || row.selectionId || row.reviewBatchId || row.distributionBatchId || row.feeId || row.orderBatchId || row.textbookId || '') },
+    selectRow(row) {
+      this.activeRowKey = this.rowKey(row)
+      if (this.tab === 'review') return this.openReview(row)
+      if (this.tab === 'order') return this.openArrival(row)
+      if (this.tab === 'distribution') return this.openDistribution(row)
+    },
     resetView() { this.page = 1; this.keyword = ''; this.appliedKeyword = ''; this.activeRowKey = ''; this.showSource = false; this.clearDialogs() },
-    clearDialogs() { this.arrivalSeq++; this.arrivalVisible = false; this.partialVisible = false; this.tbVisible = false; this.selectionVisible = false; this.reasonDialog.visible = false; this.arrivalItems = []; this.arrivalQty = {}; this.partialRow = null; this.reviewCreateVisible = false; this.reviewCandidates = []; this.reviewCollegeId = ''; this.reviewCreateError = ''; this.reviewActions = {} },
+    clearDialogs() { this.reviewSeq++; this.reviewVisible = false; this.reviewRow = null; this.reviewItems = []; this.selectionCatalog = []; this.arrivalSeq++; this.arrivalVisible = false; this.partialVisible = false; this.tbVisible = false; this.selectionVisible = false; this.reasonDialog.visible = false; this.arrivalItems = []; this.arrivalQty = {}; this.partialRow = null; this.reviewCreateVisible = false; this.reviewCandidates = []; this.reviewCollegeId = ''; this.reviewCreateError = ''; this.reviewActions = {} },
     restoreCatalogQuery() { this.keyword = this.appliedKeyword = String(this.$route.query.catalogKeyword || ''); this.page = textbookQueuePage(this.$route.query.page) },
     async saveCatalogQuery() { await this.$router.replace({ query: { ...this.$route.query, page: String(this.page), catalogKeyword: this.appliedKeyword || undefined } }); await this.reload() },
-    search() { this.page = 1; this.appliedKeyword = this.keyword.trim(); if (this.tab === 'catalog') return this.saveCatalogQuery() },
+    search() { this.appliedKeyword = this.keyword.trim(); if (this.tab === 'catalog') { this.page = 1; return this.saveCatalogQuery() } },
     clearSearch() { this.keyword = ''; return this.search() },
     turnPage(value) { this.page = value; this.activeRowKey = ''; return this.tab === 'catalog' ? this.saveCatalogQuery() : this.reload() },
     async toggleSelectionHistory() {
@@ -382,7 +424,7 @@ export default {
       await this.reload()
     },
     runPrimaryAction() { if (this.tab === 'catalog') this.openTextbook(); else if (this.tab === 'selection') this.openSelection(); else if (this.tab === 'review') this.createReview(); else if (this.tab === 'order') this.createOrder(); else if (['fee', 'stock'].includes(this.tab)) this.reload(); else if (this.tab === 'stats') this.switchTab('order') },
-    switchTab(key) { const target = this.resolveTab(key); if (this.saving || target === this.tab) return; this.$router.replace({ query: { ...this.$route.query, tab: target } }) },
+    switchTab(key) { const target = this.resolveTab(key); if (this.saving || target === this.tab) return; this.$router.replace({ query: { tab: target, page: '1', ...(target === 'distribution' ? { history: 'all' } : {}) } }) },
     async retryLoad() {
       await this.reload()
       if (!this.error) await this.openSelectionFromRoute()
@@ -406,7 +448,7 @@ export default {
         else if (tab === 'selection') result = await api.listSelections(params)
         else if (tab === 'review') result = await textbookP0Api.listReviewBatches(params)
         else if (tab === 'order') result = await api.listOrderBatches(params)
-        else if (tab === 'distribution') result = await textbookP0Api.listDistributionBatches({ termId: this.currentTermId || undefined, ...params })
+        else if (tab === 'distribution') result = await textbookP0Api.listDistributionBatches({ termId: this.$route.query.history === 'all' ? undefined : this.currentTermId || undefined, ...params })
         else result = await api.feeLedger(params)
         if (!current()) return
         if (result.code !== 0) { this.error = result.message || '教材数据加载失败'; return }
@@ -429,9 +471,10 @@ export default {
     async write(call, success) { if (this.saving) return null; const seq = ++this.actionSeq, identity = this.identityKey, tab = this.tab; const current = () => seq === this.actionSeq && identity === this.identityKey && tab === this.tab; this.saving = true; try { const result = await call(); if (!current()) return null; if (result.code !== 0) { toast.error(result.message || '办理结果未确认，请核对正式记录'); return null } if (success) await success(result); return result } catch (exception) { if (current()) toast.error(exception?.message || '办理结果未确认，请核对正式记录'); return null } finally { if (current()) this.saving = false } },
     prepareConfirm(title, message, action) { this.confirmTitle = title; this.confirmMessage = message; this.pendingAction = { identity: this.identityKey, tab: this.tab, action }; this.confirmVisible = true },
     onConfirm() { const pending = this.pendingAction; this.pendingAction = null; this.confirmVisible = false; if (!pending) return; if (typeof pending === 'function') return pending(); if (pending.identity === this.identityKey && pending.tab === this.tab) pending.action() },
-    openTextbook(row) { this.editingTextbookId = row?.textbookId || ''; this.tbForm = { name: row?.name || '', isbn: row?.isbn || '', edition: row?.edition || '', publisher: row?.publisher || '', subject: row?.subject || '', unitPrice: Number(row?.unitPrice || 0) }; this.formError = ''; this.tbVisible = true },
+    openTextbook(row) { this.editingTextbookId = row?.textbookId || ''; this.tbForm = { name: row?.name || '', isbn: row?.isbn || '', edition: row?.edition || '', publisher: row?.publisher || '', subject: row?.subject || '', unitPrice: row?.unitPrice == null ? null : Number(row.unitPrice) }; this.formError = ''; this.tbVisible = true },
     async submitTextbook() { if (!this.tbForm.name.trim()) { this.formError = '教材名称必填'; return } const body = { ...this.tbForm, name: this.tbForm.name.trim() }; await this.write(() => this.editingTextbookId ? api.updateTextbook(this.editingTextbookId, body) : api.createTextbook(body), () => { toast.success(this.editingTextbookId ? '教材目录已保存' : '教材目录已创建'); this.tbVisible = false; this.reload() }) },
     async openSelection(row = null) {
+      const seq = ++this.selectionCatalogSeq
       this.selectionReceipt = null
       this.selectionDraftReceipt = null
       this.editingSelectionId = row?.selectionId ? String(row.selectionId) : ''
@@ -445,17 +488,27 @@ export default {
         : { taskId: '', textbookId: '', expectedQty: 1, remark: '' }
       this.selectionError = ''
       this.selectionVisible = true
+      this.selectionCatalog = []
       this.selectionCatalogLoading = true
       const identity = this.identityKey
       try {
-        const result = await api.listTextbooks({ status: 'ENABLED', page: 1, pageSize: 200 })
-        if (identity !== this.identityKey || !this.selectionVisible) return
-        if (result.code !== 0) { this.selectionError = result.message || '教材目录加载失败'; return }
-        this.selectionCatalog = result.data?.list || []
+        const catalog = []
+        let page = 1, total = 0
+        do {
+          const result = await api.listTextbooks({ status: 'ENABLED', page, pageSize: 200 })
+          if (seq !== this.selectionCatalogSeq || identity !== this.identityKey || !this.selectionVisible) return
+          if (result.code !== 0) { this.selectionError = result.message || '教材目录加载失败'; return }
+          const rows = result.data?.list || []
+          total = Number(result.data?.total || 0)
+          if (!rows.length && catalog.length < total) { this.selectionError = '教材目录发生变化，请关闭后重新选择'; return }
+          catalog.push(...rows)
+          page++
+        } while (catalog.length < total)
+        this.selectionCatalog = catalog
       } catch (exception) {
-        if (identity === this.identityKey && this.selectionVisible) this.selectionError = exception?.message || '教材目录加载失败'
+        if (seq === this.selectionCatalogSeq && identity === this.identityKey && this.selectionVisible) this.selectionError = exception?.message || '教材目录加载失败'
       } finally {
-        if (identity === this.identityKey) this.selectionCatalogLoading = false
+        if (seq === this.selectionCatalogSeq && identity === this.identityKey) this.selectionCatalogLoading = false
       }
     },
     async openSelectionFromRoute() {
@@ -536,7 +589,21 @@ export default {
     },
     confirmSelectionWithdraw(row) { const frozen = { id: row.selectionId, name: row.courseName || row.selectionId }; this.prepareConfirm('撤回教材选用草稿', `确认撤回“${frozen.name}”（申报 ${frozen.id}）？`, () => this.write(() => api.withdrawSelection(frozen.id), () => { toast.success('草稿已撤回'); this.reload() })) },
     canAdvance(row) { return row?.actions?.advance === true },
-    confirmAdvance(row) { const frozen = { id: row.reviewBatchId, name: row.batchName || row.reviewBatchId, status: row.status }; this.prepareConfirm('推进教材审核', `批次“${frozen.name}”（${frozen.id}）当前状态为“${this.statusLabel(frozen.status)}”。确认按正式审核链推进？`, () => this.write(() => api.reviewAdvance(frozen.id, 'APPROVE'), () => { toast.success('审核节点已推进，请核对正式状态'); this.reload() })) },
+    reviewActionLabel(row) { return ['DRAFT', 'COLLEGE_REVIEWING'].includes(row?.status) ? '学院审核通过' : '学校审核并备案' },
+    async openReview(row, page = 1) {
+      if (!row?.reviewBatchId) return
+      const seq = ++this.reviewSeq, identity = this.identityKey, id = row.reviewBatchId
+      const current = () => seq === this.reviewSeq && identity === this.identityKey && this.reviewVisible && this.tab === 'review'
+      this.reviewVisible = true; this.reviewLoading = true; this.reviewError = ''; this.reviewRow = { ...row }; this.reviewPage = page; this.reviewItems = []
+      try {
+        const result = await textbookP0Api.reviewItems(id, { page, pageSize: 20 })
+        if (!current()) return
+        if (result.code !== 0) { this.reviewError = result.message || '审核选用明细读取失败'; return }
+        this.reviewItems = result.data?.list || []; this.reviewTotal = Number(result.data?.total || 0); this.reviewRow = result.data?.batch || { ...row, actions: {} }
+      } catch { if (current()) this.reviewError = '审核选用明细读取失败，请重试' }
+      finally { if (current()) this.reviewLoading = false }
+    },
+    confirmAdvance(row) { if (!this.canAdvance(row)) return; const frozen = { id: row.reviewBatchId, name: row.batchName || row.reviewBatchId, status: row.status }; this.prepareConfirm(this.reviewActionLabel(row), `批次“${frozen.name}”（${frozen.id}）当前状态为“${this.statusLabel(frozen.status)}”。请确认已核对选用明细。`, () => this.write(() => api.reviewAdvance(frozen.id, 'APPROVE'), async () => { toast.success('审核已完成，请核对下一责任岗位'); await this.reload(); if (this.reviewVisible && this.reviewRow?.reviewBatchId === frozen.id) await this.openReview(this.reviewRow, this.reviewPage) })) },
     advanceReturn(id) { this.reasonDialog = { visible: true, title: '退回教材审核', sceneKey: '', submitting: false, identity: this.identityKey, action: reason => api.reviewAdvance(id, 'RETURN', reason) } },
     async createReview() {
       if (!this.currentTermId || this.reviewActions.createReview !== true) return
@@ -566,7 +633,24 @@ export default {
     openDistributionGenerate(row) { this.$router.push({ name: 'aa-textbook-distribution-new', query: { orderBatchId: row.orderBatchId, returnTo: this.queueReturnPath() } }) },
     openDistribution(row) { this.$router.push({ name: 'aa-textbook-distribution-detail', params: { batchId: row.distributionBatchId }, query: { returnTo: this.queueReturnPath() } }) },
     async openArrival(row) { const seq = ++this.arrivalSeq, identity = this.identityKey, id = row.orderBatchId; const current = () => seq === this.arrivalSeq && identity === this.identityKey && this.arrivalVisible && id === this.arrivalRow?.orderBatchId; this.arrivalRow = { ...row }; this.arrivalVisible = true; this.arrivalQty = {}; this.arrivalItems = []; this.arrivalError = ''; this.arrivalLoading = true; try { const result = await api.orderItems(id); if (!current()) return; if (result.code !== 0) { this.arrivalError = result.message || '征订明细加载失败'; return } this.arrivalItems = result.data?.items || []; this.arrivalItems.forEach(item => { this.arrivalQty[item.itemId] = item.arrivedQty }) } catch (exception) { if (current()) this.arrivalError = exception?.message || '征订明细加载失败' } finally { if (current()) this.arrivalLoading = false } },
-    async submitArrival(itemId) { const row = { ...this.arrivalRow }, quantity = this.arrivalQty[itemId], identity = this.identityKey, seq = this.arrivalSeq; if (!this.arrivalItems.some(item => item.itemId === itemId)) return; await this.write(() => api.recordArrival(itemId, quantity ?? 0), async () => { toast.success('到货累计量已登记'); const result = await api.orderItems(row.orderBatchId); if (identity !== this.identityKey || seq !== this.arrivalSeq) return; if (result.code === 0) this.arrivalItems = result.data?.items || []; else this.arrivalError = result.message || '已登记，明细刷新失败，请重新查询'; this.reload() }) },
+    async submitArrival(itemId) {
+      const row = { ...this.arrivalRow }, quantity = Number(this.arrivalQty[itemId]), identity = this.identityKey, seq = this.arrivalSeq
+      const item = this.arrivalItems.find(item => item.itemId === itemId)
+      if (!this.arrivalEditable || !item || this.saving) return
+      if (!Number.isSafeInteger(quantity) || quantity < Number(item.arrivedQty || 0) || quantity > Number(item.orderQty)) { toast.error('累计到货量须为整数，不能小于已到货量或超过征订量'); return }
+      await this.write(() => api.recordArrival(itemId, quantity), async response => {
+        if (identity !== this.identityKey || seq !== this.arrivalSeq) return
+        this.arrivalRow.status = response.data?.batchStatus || row.status
+        toast.success('到货累计量已登记')
+        try {
+          const result = await api.orderItems(row.orderBatchId)
+          if (identity !== this.identityKey || seq !== this.arrivalSeq) return
+          if (result.code === 0) { this.arrivalItems = result.data?.items || []; this.arrivalQty[itemId] = this.arrivalItems.find(item => item.itemId === itemId)?.arrivedQty ?? quantity }
+          else this.arrivalError = result.message || '已登记，明细刷新失败，请重新查询'
+        } catch { if (identity === this.identityKey && seq === this.arrivalSeq) this.arrivalError = '已登记，明细刷新失败，请重新查询' }
+        await this.reload()
+      })
+    },
     openPartial(row) { if (this.saving) return; this.partialRow = { ...row, identity: this.identityKey }; this.partialAmount = 0; this.partialVisible = true },
     async submitPartial() {
       if (this.saving || !this.partialVisible || this.partialRow?.identity !== this.identityKey || this.tab !== 'fee') return
@@ -577,7 +661,12 @@ export default {
     },
     confirmFeePaid(row) { const frozen = { id: row.feeId, name: row.textbookName || row.feeId, amount: row.amount, paid: row.paidAmount }; this.prepareConfirm('登记教材费全额收款', `确认将“${frozen.name}”台账 ${frozen.id} 登记为全额收款？应收 ¥${this.money(frozen.amount)}，当前已收 ¥${this.money(frozen.paid)}。`, () => this.write(() => api.markFee(frozen.id, 'PAID', undefined, '', frozen.paid), result => { toast.success(result.data?.idempotent ? '费用已处于终态' : '费用已结清'); this.reload() })) },
     waiveFee(id) { this.reasonDialog = { visible: true, title: '减免教材费', sceneKey: 'aa.textbook.reduce', submitting: false, identity: this.identityKey, action: reason => api.markFee(id, 'WAIVE', undefined, reason) } },
-    async onReasonConfirm({ reason }) { const dialog = this.reasonDialog; if (!dialog.visible || !dialog.action || dialog.identity !== this.identityKey || this.saving) return; dialog.submitting = true; try { await this.write(() => dialog.action(reason), () => { if (this.reasonDialog === dialog) dialog.visible = false; toast.success('办理成功，请核对更新后的正式记录'); this.reload() }) } finally { if (this.reasonDialog === dialog && dialog.identity === this.identityKey) dialog.submitting = false } }
+    refundFee(row) {
+      if (this.saving || !['PAID', 'PARTIAL'].includes(row.status) || Number(row.paidAmount) <= 0) return
+      const id = row.feeId, paid = Number(row.paidAmount)
+      this.reasonDialog = { visible: true, title: `确认已实际全额退款 ¥${this.money(paid)}，登记后继续退领`, sceneKey: '', submitting: false, identity: this.identityKey, action: reason => textbookP0Api.registerRefund(id, reason, paid) }
+    },
+    async onReasonConfirm({ reason }) { const dialog = this.reasonDialog; if (!dialog.visible || !dialog.action || dialog.identity !== this.identityKey || this.saving) return; dialog.submitting = true; try { await this.write(() => dialog.action(reason), async () => { if (toRaw(this.reasonDialog) === toRaw(dialog)) dialog.visible = false; toast.success('办理成功，请核对更新后的正式记录'); await this.reload(); if (this.tab === 'review' && this.reviewVisible) await this.openReview(this.reviewRow, this.reviewPage) }) } finally { if (toRaw(this.reasonDialog) === toRaw(dialog) && dialog.identity === this.identityKey) dialog.submitting = false } }
   }
 }
 </script>

@@ -55,7 +55,7 @@ def test_location_classification_covers_all_operational_branches():
     assert trust.classify_location(lat=1, lng=1, accuracy=20, rule=rule, distance_m=650) == (
         "OUT_OF_RANGE", "OUT_OF_RANGE")
     assert trust.classify_location(lat=None, lng=None, accuracy=None, rule=rule, distance_m=None) == (
-        "NO_LOCATION", "MISSING")
+        "NO_LOCATION", "NO_LOCATION")
     assert trust.classify_location(
         lat=1, lng=1, accuracy=20,
         rule={**rule, "configured": False}, distance_m=None,

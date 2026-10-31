@@ -4,9 +4,9 @@
       <div>
         <p class="eyebrow">提交前必看</p>
         <h2>企业将看到以下资料</h2>
-        <p>以下内容来自材料预览。正式投递时会冻结为不可变的材料快照。</p>
+        <p>请核对企业将收到的资料。提交后会保留本次投递版本，后续修改个人资料不会改变已投递内容。</p>
       </div>
-      <span class="policy">隐私策略 {{ preview.consentPolicyVersion || '待加载' }}</span>
+      <span class="policy">{{ preview.consentPolicyVersion ? '已取得学校共享规则' : '正在读取共享规则' }}</span>
     </div>
 
     <div v-if="loading" class="preview-state">正在生成企业视角材料预览…</div>
@@ -18,25 +18,25 @@
       <div class="field-columns">
         <div class="field-group">
           <div class="group-title"><strong>学校已核验</strong><span>只读</span></div>
-          <div v-if="!preview.schoolFields.length" class="empty">当前预览未返回学校字段明细。</div>
+          <div v-if="!preview.schoolFields.length" class="empty">暂未取得学校资料，请重新加载。</div>
           <div v-for="field in preview.schoolFields" :key="field.key" class="preview-field">
-            <span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong>
+            <span>{{ field.label }}</span><strong>{{ Array.isArray(field.value) ? field.value.join('、') || '—' : field.value ?? '—' }}</strong>
           </div>
         </div>
         <div class="field-group">
-          <div class="group-title"><strong>学生自填</strong><span>按本次快照冻结</span></div>
-          <div v-if="!preview.studentFields.length" class="empty">当前预览未返回学生自填字段明细。</div>
+          <div class="group-title"><strong>学生自填</strong><span>以本次提交为准</span></div>
+          <div v-if="!preview.studentFields.length" class="empty">暂未取得个人资料，请重新加载。</div>
           <div v-for="field in preview.studentFields" :key="field.key" class="preview-field">
-            <span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong>
+            <span>{{ field.label }}</span><strong>{{ Array.isArray(field.value) ? field.value.join('、') || '—' : field.value ?? '—' }}</strong>
           </div>
         </div>
       </div>
 
-      <div v-if="preview.sharedFields.length" class="shared-list">
-        <div class="group-title"><strong>其他共享资料</strong><span>系统裁剪后的字段</span></div>
+      <div v-if="otherFields.length" class="shared-list">
+        <div class="group-title"><strong>其他共享资料</strong><span>本次允许共享的内容</span></div>
         <div class="shared-grid">
-          <div v-for="field in preview.sharedFields" :key="field.key" class="preview-field">
-            <span>{{ field.label }}</span><strong>{{ field.value || '—' }}</strong>
+          <div v-for="field in otherFields" :key="field.key" class="preview-field">
+            <span>{{ field.label }}</span><strong>{{ Array.isArray(field.value) ? field.value.join('、') || '—' : field.value ?? '—' }}</strong>
           </div>
         </div>
       </div>
@@ -47,6 +47,7 @@
           <p>当前预览：{{ preview.maskedContact || '联系方式默认脱敏展示' }}</p>
         </div>
         <select :value="contactSharingMode" @change="$emit('update:contactSharingMode', $event.target.value)">
+          <option value="" disabled>请选择学校允许的方式</option>
           <option v-for="option in options" :key="option.value" :value="option.value">{{ option.label }}</option>
         </select>
         <p class="policy-help">{{ selectedOption.help }}</p>
@@ -60,15 +61,15 @@
       <div class="pdf-panel">
         <div>
           <strong>《岗位实习申请简历》</strong>
-          <p>PDF 由材料快照生成；公开 PDF 不包含你投递的其它志愿。</p>
+          <p>当前档案预览由学校服务生成，仅供本人核对，不包含其他志愿。</p>
         </div>
-        <button type="button" :disabled="pdfBusy || !preview.previewHash" @click="$emit('pdf-preview')">
-          {{ pdfBusy ? '生成中…' : '生成 / 预览 PDF' }}
+        <button type="button" :disabled="pdfBusy || !preview.previewHash || !options.some(option => option.value === contactSharingMode)" @click="$emit('pdf-preview')">
+          {{ pdfBusy ? '生成中…' : '生成可打印预览' }}
         </button>
       </div>
 
       <div v-if="pdfUrl" class="pdf-result">
-        <a :href="pdfUrl" rel="noopener noreferrer">打开岗位实习申请简历 PDF</a>
+        <a :href="pdfUrl" rel="noopener noreferrer">打开实习档案预览文档</a>
       </div>
     </template>
   </section>
@@ -82,14 +83,15 @@ const props = defineProps({
   preview: { type: Object, required: true },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' },
-  contactSharingMode: { type: String, default: 'AFTER_INTERVIEW' },
+  contactSharingMode: { type: String, default: 'MASKED_ONLY' },
   confirmed: { type: Boolean, default: false },
   pdfBusy: { type: Boolean, default: false },
   pdfUrl: { type: String, default: '' }
 })
 defineEmits(['refresh', 'pdf-preview', 'update:contactSharingMode', 'update:confirmed'])
-const options = CONTACT_SHARING_OPTIONS
-const selectedOption = computed(() => options.find((item) => item.value === props.contactSharingMode) || options[1])
+const options = computed(() => CONTACT_SHARING_OPTIONS.filter(option => props.preview.allowedContactSharingModes?.includes(option.value)))
+const otherFields = computed(() => props.preview.sharedFields.filter(field => ![...props.preview.schoolFields, ...props.preview.studentFields].some(item => item.key === field.key)))
+const selectedOption = computed(() => options.value.find((item) => item.value === props.contactSharingMode) || { help: '请先选择学校允许的联系方式共享方式。' })
 </script>
 
 <style scoped>

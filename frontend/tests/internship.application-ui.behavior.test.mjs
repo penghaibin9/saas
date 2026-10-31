@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -11,8 +12,9 @@ const script = parse(fs.readFileSync(new URL('../src/modules/internship/views/In
   .replace('export default', 'return')
 
 function view(api = {}) {
+  api = {getFilterOptions:async()=>({code:0,data:{}}),...api}
   const batch = { selectedBatchId: '7', withBatchQuery: query => ({ ...query, batchId: '7' }) }
-  const def = new Function('internshipApplicationApi', 'useInternshipBatchStore', 'emptyConflict', 'REJECT_APPLICATION', 'toast', 'pickNextPending', 'anchorIndexOf', 'captureConflict', 'isConflict', 'canCode', script)(api, () => batch, emptyConflict, [], { success() {} }, pickNextPending, anchorIndexOf, captureConflict, isConflict, ctx => ctx?.review === true)
+  const def = componentFactory('internshipApplicationApi', 'useInternshipBatchStore', 'emptyConflict', 'REJECT_APPLICATION', 'toast', 'pickNextPending', 'anchorIndexOf', 'captureConflict', 'isConflict', 'canCode', script)(api, () => batch, emptyConflict, [], { success() {} }, pickNextPending, anchorIndexOf, captureConflict, isConflict, ctx => ctx?.review === true)
   const calls = []
   const vm = { ...def.data(), $route: { path: '/admin/internship/applications', query: { id: '9007199254740997', type: 'SELF_ARRANGED', status: 'PENDING_REVIEW', keyword: '测试', page: '3', batchId: '7' } }, $router: { push: to => calls.push(to), replace: to => calls.push(to) } }
   for (const [name, method] of Object.entries(def.methods)) vm[name] = method.bind(vm)
@@ -36,7 +38,7 @@ test('review freezes both versions and prevents a duplicate submission', async (
   const first = vm.submitReview({ reason: '请补齐证明材料' })
   await vm.submitReview({ reason: '请补齐证明材料' })
   assert.equal(requests.length, 1)
-  assert.deepEqual(requests[0].payload, { action: 'REJECT', comment: '请补齐证明材料', expectedVersion: 2, recordExpectedVersion: 4 })
+  assert.deepEqual(requests[0].payload, { action: 'REJECT', batchId: '7', comment: '请补齐证明材料', expectedVersion: 2, recordExpectedVersion: 4 })
   resolve({ code: 0, data: { status: 'REJECTED' } }); await first
   assert.equal(vm.drawer.data.status, 'REJECTED'); assert.equal(vm.confirm.visible, false)
 })
@@ -117,7 +119,7 @@ test('direct application deep link restores its object and list context on initi
 
 test('returning from application review retains filters and removes the detail ID', () => {
   const { vm, calls } = view(); vm.load = () => {}; vm.loadDetail = () => {}; vm.restoreLocation(); vm.backToList()
-  assert.deepEqual(calls[0], { path: '/admin/internship/applications', query: { type: 'SELF_ARRANGED', status: 'PENDING_REVIEW', keyword: '测试', page: 3, batchId: '7' } })
+  assert.deepEqual(JSON.parse(JSON.stringify(calls[0])), { path: '/admin/internship/applications', query: { type: 'SELF_ARRANGED', status: 'PENDING_REVIEW', keyword: '测试', page: 3, batchId: '7' } })
 })
 
 test('a late application response cannot replace a newly opened object', async () => {

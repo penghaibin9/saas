@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -10,7 +11,7 @@ const script = parse(source).descriptor.script.content
   .replace(/ {2}components: \{[\s\S]*?ActionReceipt \},/, '')
   .replace('export default', 'return')
 function setup(api) {
-  const def = new Function('guidanceVisitApi', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', script)(api, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} })
+  const def = componentFactory('guidanceVisitApi', 'emptyConflict', 'isConflict', 'captureConflict', 'canCode', 'toast', script)(api, emptyConflict, isConflict, captureConflict, () => true, { success() {}, error() {} })
   const vm = { ...def.data(), batchStore: { selectedBatchId: '1' }, $route: { query: {} } }
   for (const [name, fn] of Object.entries(def.methods)) vm[name] = fn.bind(vm)
   return vm
@@ -54,7 +55,7 @@ test('communication and visit-plan rows use their real object fields', () => {
   const vm = setup({})
   vm.tab = 'communication'
   assert.equal(vm.recordTitle({ summary: '确认下周指导安排' }), '确认下周指导安排')
-  assert.equal(vm.recordMeta({ communicationTypeLabel: '电话沟通', contactName: '测试联系人' }), '电话沟通 · 测试联系人')
+  assert.equal(vm.recordMeta({ communicationTypeLabel: '电话沟通', contactName: '测试联系人' }), '电话沟通 · 测试联系人 · 未设置')
   vm.tab = 'visit-plan'
   assert.equal(vm.recordTitle({ enterpriseName: '测试企业' }), '测试企业')
   assert.equal(vm.recordMeta({ ownerName: '测试教师', planDate: '2026-09-10' }), '测试教师 · 2026-09-10')
@@ -122,7 +123,7 @@ test('successful withdrawal preserves its receipt after clearing the selected re
 test('new visit plan carries batch, company and schedule and opens the created detail', async () => {
   let payload, opened
   const vm = setup({ createVisitPlan: async body => { payload = body; return { code: 0, data: { id: '9007199254740999', status: 'DRAFT', version: 1 } } } })
-  vm.planForm = { enterpriseId: '99', enterpriseName: '测试企业', objective: '核对指导安排', planDate: '2026-09-15', method: 'ONSITE', location: '会议室' }
+  vm.planForm = { recordIds:['9007199254740998'], enterpriseId: '99', enterpriseName: '测试企业', objective: '核对指导安排', planDate: '2026-09-15', method: 'ONSITE', location: '会议室' }
   vm.showCreatedRecord = id => { opened = id }; vm.reload = () => {}
   await vm.submitVisitPlan()
   assert.equal(payload.batchId, '1'); assert.equal(payload.enterpriseId, '99')
@@ -133,7 +134,7 @@ test('new visit plan carries batch, company and schedule and opens the created d
 test('changing context during plan creation prevents late navigation and receipt changes', async () => {
   let finish, writes = 0
   const vm = setup({ createVisitPlan: () => { writes++; return new Promise(resolve => { finish = resolve }) } })
-  vm.planForm.objective = '核对指导安排'
+  vm.planForm.objective = '核对指导安排'; vm.planForm.recordIds = ['9007199254740998']
   const old = vm.submitVisitPlan()
   await vm.submitVisitPlan(); assert.equal(writes, 1)
   vm.resetCreateDialogs(); vm.tab = 'guidance'

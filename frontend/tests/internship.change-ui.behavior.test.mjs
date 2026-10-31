@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -8,9 +9,9 @@ const { descriptor } = parse(fs.readFileSync(new URL('../src/modules/internship/
 const script = descriptor.script.content.replace(/^import[\s\S]*?from ['"][^'"]+['"]\r?\n/gm, '')
   .replace(/ {2}components: \{[\s\S]*?AppButton \},/, '').replace('export default', 'return')
 function setup(api = {}) {
-  const def = new Function('internshipApi', 'emptyConflict', 'isConflict', 'captureConflict', 'REJECT_CHANGE', 'toast', script)(api, emptyConflict, isConflict, captureConflict, [], { error() {}, success() {} })
+  const def = componentFactory('internshipApi', 'emptyConflict', 'isConflict', 'captureConflict', 'REJECT_CHANGE', 'toast', script)(api, emptyConflict, isConflict, captureConflict, [], { error() {}, success() {} })
   const targets = []
-  const vm = { ...def.data(), canReview: true, batchStore: { selectedBatchId: '1', withBatchQuery: q => ({ ...q, batchId: '1' }) },
+  const vm = { ...def.data(), ctx: {ctxKey: 'test'}, canReview: true, batchStore: { selectedBatchId: '1', withBatchQuery: q => ({ ...q, batchId: '1' }) },
     $route: { query: {}, fullPath: '/changes' }, $router: { replace: target => targets.push(target), push: target => targets.push(target) } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   Object.defineProperty(vm, 'approvalBlockers', { get: () => def.computed.approvalBlockers.call(vm) })

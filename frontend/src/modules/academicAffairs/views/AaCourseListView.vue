@@ -34,11 +34,10 @@
         <DataTable v-else :columns="columns" :rows="rows" row-key="courseId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-code="{ row }">
           <div class="mp-cell-main">{{ row.courseCode }}</div>
-          <div class="mp-cell-sub">v{{ row.version }}</div>
+          <div class="mp-cell-sub">第 {{ row.version }} 版</div>
         </template>
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.courseName }}</div>
-          <div class="mp-cell-sub">正式课程编号 {{ row.courseId }}</div>
         </template>
         <template #cell-nature="{ row }">
           <span>{{ row.natureLabel || '性质待核验' }}</span>

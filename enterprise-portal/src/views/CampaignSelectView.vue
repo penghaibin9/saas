@@ -1,11 +1,14 @@
 <script setup>
 import { computed, onMounted, onBeforeUnmount, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute,useRouter } from 'vue-router'
 import { enterpriseInternshipApi } from '../services/enterpriseInternshipApi'
-import { setSelectedCampaignId } from '../services/request'
+import { getTenantCode,setSelectedCampaignId } from '../services/request'
+import { assertEvaluationReturnScope,evaluationReturnTarget } from '../services/evaluationNavigation.js'
 
 // Authority contract: 不允许选择 companyId，企业范围由登录成员关系决定。
 const router = useRouter(), loading = ref(true), error = ref(''), items = ref([]), entering = ref('')
+const route=useRoute()
+const returnTarget=computed(()=>evaluationReturnTarget(route.query.redirect))
 let alive = true, sequence = 0
 const available = item => item.participationStatus === 'ACCEPTED' && item.recruitmentAvailable === true
 const historical = item => ['CLOSED', 'ARCHIVED'].includes(item.status)
@@ -43,8 +46,12 @@ async function enter(item, mode = 'RECRUITMENT') {
       : await enterpriseInternshipApi.collaborationContext(item.batchId)
     if (!alive || current !== sequence) return
     if (mode === 'RECRUITMENT' ? String(context?.campaignId) !== String(id) : String(context?.batchId) !== String(item.batchId)) throw new Error('办理范围已变化，请重新读取后选择')
+    if(returnTarget.value){
+      if(String(id)!==returnTarget.value.query.campaignId)throw new Error('请选择扫码任务所属的招聘季或实习协同范围')
+      assertEvaluationReturnScope(returnTarget.value,context,getTenantCode())
+    }
     setSelectedCampaignId(id)
-    await router.push('/home')
+    await router.push(returnTarget.value||(mode==='COLLABORATION'?'/students':'/home'))
   } catch (e) {
     if (alive && current === sequence) error.value = e.message || '当前无法进入，请重新读取后再试'
   } finally { if (alive && current === sequence) entering.value = '' }
@@ -55,15 +62,16 @@ onBeforeUnmount(() => { alive = false; sequence++ })
 
 <template>
   <main class="select-page"><section class="panel">
-    <header class="page-head"><div><div class="brand">跃科 · 企业协同中心</div><h1>选择招聘季</h1><p>按学校安排进入本轮招聘，或继续已有的实习协同。</p></div><button class="ep-btn" type="button" :disabled="loading || !!entering" @click="load">重新读取</button></header>
+    <header class="page-head"><div><div class="brand">跃科 · 企业协同中心</div><h1>选择办理范围</h1><p>按学校安排进入本轮招聘，或继续已有的实习协同。</p></div><button class="ep-btn" type="button" :disabled="loading || !!entering" @click="load">重新读取</button></header>
+    <p v-if="returnTarget" class="ep-card ep-empty" role="status">登录已完成。请选择扫码任务所属范围，核验后将继续原学生的企业评价。</p>
     <div v-if="error" class="ep-error" role="alert">{{ error }}</div>
     <div v-if="loading" class="ep-card ep-empty" role="status">正在读取当前账号可办理的招聘季…</div>
     <template v-else>
       <section aria-labelledby="current-heading"><div class="section-head"><h2 id="current-heading">当前招聘季</h2><span>{{ activeItems.length }} 个</span></div>
         <div v-if="!activeItems.length" class="ep-card ep-empty">当前没有可进入的招聘季，请查看下方参与状态。</div>
-        <div v-else class="campaigns"><button v-for="item in activeItems" :key="item.id || item.campaignId" class="campaign ep-card" type="button" :disabled="!!entering" @click="enter(item)"><div><strong>{{ item.campaignName || item.name }}</strong><span>{{ statusLabel(item.status) }}</span></div><p>{{ item.phaseLabel || '进入后查看岗位报送与学校安排。' }}</p><small>{{ entering === String(item.id || item.campaignId) ? '正在核验访问权限…' : '进入招聘工作台 →' }}</small></button></div>
+        <div v-else class="campaigns"><button v-for="item in activeItems" :key="item.id || item.campaignId" class="campaign ep-card" type="button" :disabled="!!entering" @click="enter(item)"><div><strong>{{ item.campaignName || item.name }}</strong><span>{{ statusLabel(item.status) }}</span></div><p>进入后查看岗位报送与学校安排。</p><small>{{ entering === String(item.id || item.campaignId) ? '正在核验访问权限…' : '进入招聘工作台 →' }}</small></button></div>
       </section>
-      <section v-if="collaborationItems.length" aria-labelledby="collab-heading"><div class="section-head"><h2 id="collab-heading">实习协同</h2><span>{{ collaborationItems.length }} 个</span></div><div class="campaigns"><button v-for="item in collaborationItems" :key="item.id || item.campaignId" class="campaign ep-card" type="button" :disabled="!!entering" @click="enter(item, 'COLLABORATION')"><div><strong>{{ item.campaignName || item.name }}</strong><span>协同可用</span></div><p>本轮招聘：{{ unavailableLabel(item) }}。可继续已授权的学生指导与评价。</p><small>仅进入实习协同 →</small></button></div></section>
+      <section v-if="collaborationItems.length" aria-labelledby="collab-heading"><div class="section-head"><h2 id="collab-heading">实习协同</h2><span>{{ collaborationItems.length }} 个</span></div><div class="campaigns"><button v-for="item in collaborationItems" :key="item.id || item.campaignId" class="campaign ep-card" type="button" :disabled="!!entering" @click="enter(item, 'COLLABORATION')"><div><strong>{{ item.campaignName || item.name }}</strong><span>协同可用</span></div><p v-if="item.scopeType === 'BATCH'">学校已授权本批次的学生指导与评价。</p><p v-else>本轮招聘：{{ unavailableLabel(item) }}。可继续已授权的学生指导与评价。</p><small>仅进入实习协同 →</small></button></div></section>
       <section aria-labelledby="history-heading"><div class="section-head"><h2 id="history-heading">历史招聘季</h2><span>{{ historyItems.length }} 个</span></div><div v-if="!historyItems.length" class="ep-card ep-empty">暂无可查阅的历史招聘季</div><div v-else class="campaigns"><button v-for="item in historyItems" :key="item.id || item.campaignId" class="campaign history ep-card" type="button" :disabled="!!entering" @click="enter(item)"><div><strong>{{ item.campaignName || item.name }}</strong><span>{{ statusLabel(item.status) }}</span></div><p>在访问有效期内查阅岗位、申请及企业处理记录。</p><small>进入历史只读视图 →</small></button></div></section>
       <section v-if="waitingItems.length" aria-labelledby="waiting-heading"><div class="section-head"><h2 id="waiting-heading">当前不可进入</h2><span>{{ waitingItems.length }} 个</span></div><article v-for="item in waitingItems" :key="item.id || item.campaignId" class="ep-card waiting-campaign"><div><strong>{{ item.campaignName || item.name }}</strong><span>{{ unavailableLabel(item) }}</span></div><p>{{ item.participationStatus === 'INVITED' ? '请打开学校提供的邀请链接，由受邀联系人确认本轮参与。' : item.recruitmentAccessStatus === 'NOT_STARTED' ? '请在学校设置的访问时间内进入，可稍后重新读取。' : '如需查阅或继续办理，请联系学校核对本人的访问权限。' }}</p></article></section>
     </template>

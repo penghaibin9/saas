@@ -1,7 +1,7 @@
 """岗位实习域请求 DTO。"""
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List, Optional, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -17,6 +17,8 @@ class StageItem(BaseModel):
 
 class CheckinRule(BaseModel):
     requireDaily: bool = True
+    reminderTime: Optional[str] = Field(None, pattern=r'^(?:[01]\d|2[0-3]):[0-5]\d$', description='学校当地当天未签提醒时间；未配置不发送')
+    requiredDays: int = Field(0, ge=0, le=366, description="计划要求签到天数；0 表示学校未配置")
     geofenceRadiusM: int = Field(500, ge=0, le=5000, description="电子围栏半径（米）")
     maxAccuracyM: int = Field(200, ge=20, le=2000, description="可接受的最大定位误差（米）")
     allowedExceptionTypes: List[str] = Field(
@@ -26,8 +28,22 @@ class CheckinRule(BaseModel):
 
 class WeeklyReportRuleCfg(BaseModel):
     frequency: str = Field("WEEKLY", description="WEEKLY/BIWEEKLY")
-    minWordCount: int = Field(800, ge=0, le=5000)
+    minWordCount: int = Field(30, ge=0, le=5000)
+    requiredCount: int = Field(0, ge=0, le=100, description="本批次学生应交周报篇数；0 表示未配置，不计算完成率")
     deadlineWeekday: int = Field(7, ge=1, le=7, description="每周几前必须提交，1=周一...7=周日")
+    reviewSlaHours: int = Field(48, ge=1, le=720, description="教师准时批阅时限（小时）")
+
+
+class ProcessReportRuleCfg(BaseModel):
+    dailyMinWords: int = Field(30, ge=1, le=5000)
+    dailyRequiredCount: int = Field(0, ge=0, le=500)
+    monthlyMinWords: int = Field(100, ge=1, le=10000)
+    monthlyRequiredCount: int = Field(0, ge=0, le=60)
+    summaryMinWords: int = Field(300, ge=1, le=20000)
+    summaryRequiredCount: int = Field(1, ge=0, le=1)
+    maxImages: int = Field(9, ge=0, le=30)
+    maxVideos: int = Field(3, ge=0, le=10)
+    reviewSlaHours: int = Field(48, ge=1, le=720)
 
 
 class GuidanceRuleCfg(BaseModel):
@@ -77,12 +93,42 @@ class OnboardRuleCfg(BaseModel):
     requireAdvisor: bool = Field(True, description="须分配校内指导教师")
 
 
+class TeacherReportRuleCfg(BaseModel):
+    weeklyMaxWords: int = Field(12000, ge=30, le=12000)
+    monthlyMaxWords: int = Field(12000, ge=100, le=12000)
+    summaryMaxWords: int = Field(12000, ge=300, le=12000)
+
+
+class TeacherCheckinLocation(BaseModel):
+    model_config = ConfigDict(extra='forbid', allow_inf_nan=False, str_strip_whitespace=True)
+    name: str = Field(min_length=1, max_length=80)
+    centerLat: float = Field(ge=-90, le=90)
+    centerLng: float = Field(ge=-180, le=180)
+    radiusM: int = Field(ge=30, le=5000)
+    coordinateSystem: Literal['GCJ02', 'WGS84']
+
+
+class TeacherCheckinRuleCfg(BaseModel):
+    model_config = ConfigDict(extra='forbid')
+    maxAccuracyM: int = Field(200, ge=20, le=2000)
+    locations: List[TeacherCheckinLocation] = Field(default_factory=list, max_length=50)
+
+    @model_validator(mode='after')
+    def unique_location_names(self):
+        if len({site.name for site in self.locations}) != len(self.locations):
+            raise ValueError('教师签到地点名称不能重复')
+        return self
+
+
 class RulesConfig(BaseModel):
     """批次规则。compliance 为 P2 合规模块；允许冻结标记等扩展键。"""
     model_config = ConfigDict(extra="allow")
 
     checkin: CheckinRule = Field(default_factory=CheckinRule)
     weeklyReport: WeeklyReportRuleCfg = Field(default_factory=WeeklyReportRuleCfg)
+    processReport: ProcessReportRuleCfg = Field(default_factory=ProcessReportRuleCfg)
+    teacherReport: TeacherReportRuleCfg = Field(default_factory=TeacherReportRuleCfg)
+    teacherCheckin: TeacherCheckinRuleCfg = Field(default_factory=TeacherCheckinRuleCfg)
     guidance: GuidanceRuleCfg = Field(default_factory=GuidanceRuleCfg)
     evaluation: EvaluationRuleCfg = Field(default_factory=EvaluationRuleCfg)
     score: ScoreRuleCfg = Field(default_factory=ScoreRuleCfg)
@@ -141,6 +187,7 @@ class ExceptionHandleRequest(BaseModel):
 class ReportReviewRequest(BaseModel):
     action: str = Field(..., description="APPROVE / RETURN")
     comment: Optional[str] = Field(None, description="退回时必填 ≥5 字")
+    ratingLevel: Optional[int] = Field(None, ge=1, le=5, description="五级批阅评价 1~5；通过时必填")
     expectedVersion: Optional[int] = Field(None, ge=0, description="乐观锁期望版本")
     version: Optional[int] = Field(None, ge=0, description="expectedVersion 别名")
 
@@ -160,6 +207,8 @@ class EnterpriseCreate(BaseModel):
     cooperationLevel: Optional[str] = None
     contactPerson: Optional[str] = None
     contactPhone: Optional[str] = None
+    collegeScopeIds: Optional[List[str]] = Field(
+        None, description="岗位实习适用学院ID；空列表=全校通用（仅校级管理员）")
     remark: Optional[str] = None
 
 
@@ -177,6 +226,8 @@ class EnterpriseUpdate(BaseModel):
     cooperationLevel: Optional[str] = None
     contactPerson: Optional[str] = None
     contactPhone: Optional[str] = None
+    collegeScopeIds: Optional[List[str]] = Field(
+        None, description="岗位实习适用学院ID；显式空列表=全校通用（仅校级管理员）")
     remark: Optional[str] = None
 
 

@@ -10,7 +10,7 @@ const source = parse(fs.readFileSync(new URL('../src/views/internship/Internship
 function fixture(apis) {
   const route = reactive({ query: { campaignId: '1' } })
   let dispose
-  const deps = { ...profileModel, ...materialModel, ref, computed, useRoute: () => route,
+  const deps = { useSessionStore:()=>({user:{tenantId:'11',userId:'18'}}), currentSessionGeneration:()=>1, fileSdk:{metadata:async fileId=>({fileId,readyForBusiness:true,canDownload:true}),fetchPreviewBlob:async()=>new Blob()}, ...profileModel, ...materialModel, ref, computed, useRoute: () => route,
     useRouter: () => ({}), watch() {}, onMounted() {}, onBeforeUnmount: fn => { dispose = fn },
     internshipSelectionApi: { forScope: scope => apis[scope.campaignId] } }
   const page = new Function(...Object.keys(deps), source+'\nreturn {load,generatePdfPreview,pdfUrl,preview,profile,previewError}')(...Object.values(deps))

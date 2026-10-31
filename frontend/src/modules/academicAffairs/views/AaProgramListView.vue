@@ -54,13 +54,13 @@
       <DataTable v-else :columns="columns" :rows="rows" row-key="programId" :pagination="pagination" @page-change="onPageChange">
         <template #cell-name="{ row }">
           <div class="mp-cell-main">{{ row.programName }}</div>
-          <div class="mp-cell-sub">{{ row.courseCount ?? '—' }} 门课程 · 正式方案编号 {{ row.programId }}</div>
+          <div class="mp-cell-sub">{{ row.courseCount ?? '—' }} 门课程</div>
         </template>
         <template #cell-majorGrade="{ row }">
           <div class="mp-cell-main">{{ row.majorName || '专业待核验' }}</div>
           <div class="mp-cell-sub">{{ row.gradeYear ? `${row.gradeYear}级` : '年级待核验' }}</div>
         </template>
-        <template #cell-version="{ row }">v{{ row.version }}</template>
+        <template #cell-version="{ row }">第 {{ row.version }} 版</template>
         <template #cell-credits="{ row }">
           <div class="mp-cell-main">毕业要求 {{ row.totalCredits ?? '未设置' }}</div>
           <div class="mp-cell-sub">已编课程 {{ row.creditSum ?? '—' }} 学分</div>

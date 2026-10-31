@@ -91,7 +91,11 @@ def submit(body, user) -> dict:
                 http_status=409,
             )
 
-        actor_teacher_key = _legacy._teacher_key_for_origin(db, origin, user, lock=True)
+        if (user or {}).get("currentRoleCode") == "COLLEGE_ACADEMIC":
+            actor_teacher_key, teacher_name = _legacy._college_assist_teacher(db, origin, user, lock=True)
+        else:
+            actor_teacher_key = _legacy._teacher_key_for_origin(db, origin, user, lock=True)
+            teacher_name = (user or {}).get("realName") or (user or {}).get("name") or origin.teacher_name
         if ct == "STOP" and not (getattr(body, "makeupPlan", None) or "").strip():
             raise AppException("VALIDATION_ERROR", "停课须填写补课/后续安排说明")
 
@@ -161,7 +165,7 @@ def submit(body, user) -> dict:
             origin_item_id=origin.id, task_id=origin.task_id, change_type=ct,
             course_name=origin.course_name, class_id=origin.class_id, class_name=origin.class_name,
             teacher_key=actor_teacher_key,
-            teacher_name=(user or {}).get("realName") or (user or {}).get("name") or origin.teacher_name,
+            teacher_name=teacher_name,
             origin_weekday=origin.weekday, origin_slot_no=origin.slot_no,
             origin_start_week=origin.start_week, origin_end_week=origin.end_week,
             origin_week_parity=origin.week_parity, origin_classroom=origin.classroom_text,
@@ -333,7 +337,9 @@ def cancel(cid, user, reason="") -> dict:
             raise AppException("APPROVAL_VERSION_CONFLICT", "当前状态不可撤销", http_status=409)
 
         ctx = _legacy.build_affairs_context(user, db)
-        if not _legacy._can_manage_all(ctx):
+        if (user or {}).get("currentRoleCode") == "COLLEGE_ACADEMIC":
+            _legacy._require_assist_cancel_scope(db, change, user, ctx)
+        elif not _legacy._can_manage_all(ctx):
             keys = _legacy._derive_keys(user)
             if not change.teacher_key or change.teacher_key not in keys:
                 raise _legacy.no_data_scope("仅可撤销本人发起的调停课单")

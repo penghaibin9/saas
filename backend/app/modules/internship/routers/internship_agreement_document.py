@@ -6,7 +6,7 @@ internship_agreement_service 管理。PDF 使用公共 pdf_util 真实生成，�
 """
 from __future__ import annotations
 
-from datetime import datetime
+from app.core.timeutil import local_now
 
 from fastapi import APIRouter, Depends
 
@@ -37,7 +37,7 @@ def agreement_pdf(
     title = f"{student_name} · 三方实习协议"
     watermark = (
         f"岗位实习中心 · 协议#{agreement_id} · 状态：{status_label} · "
-        f"套打人：{operator} · {datetime.now():%Y-%m-%d %H:%M} · 下载留痕"
+        f"套打人：{operator} · {local_now():%Y-%m-%d %H:%M} · 下载留痕"
     )
     content = build_text_pdf(title, body, watermark=watermark)
     filename = "_".join(part for part in ("三方实习协议", student_no, student_name) if part)

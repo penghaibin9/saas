@@ -1358,6 +1358,7 @@ class AaMakeupBatch(PKMixin, TenantMixin, CommonMixin, Base):
     term_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     term_code: Mapped[str | None] = mapped_column(String(50))
     exam_batch_ref: Mapped[int | None] = mapped_column(BigInteger, comment="→ t_aa_exam_batch 关联考务批次")
+    score_version: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0", comment="录分及学院审核版本")
     score_rule: Mapped[str] = mapped_column(String(20), nullable=False, default="CAP60",
                                             comment="计分规则 CAP60 及格封顶60")
     published_at: Mapped[datetime | None] = mapped_column(DateTime)
@@ -1560,6 +1561,16 @@ class AaTextbookFeeLedger(PKMixin, TenantMixin, CommonMixin, Base):
                                         comment="UNPAID/PARTIAL/PAID/WAIVED")
 
     __table_args__ = (UniqueConstraint("tenant_id", "distribution_record_id", name="uk_aa_tb_fee"),)
+
+
+class AaTextbookRefund(PKMixin, TenantMixin, AuditTimeMixin, Base):
+    """已实际退还教材费的不可变登记，一笔费用最多全额退还一次。"""
+    __tablename__ = "t_aa_textbook_refund"
+    fee_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    amount: Mapped[float] = mapped_column(Numeric(8, 2), nullable=False)
+    reason: Mapped[str] = mapped_column(String(500), nullable=False)
+    operator: Mapped[str] = mapped_column(String(100), nullable=False)
+    __table_args__ = (UniqueConstraint("tenant_id", "fee_id", name="uk_aa_tb_refund_fee"),)
 
 
 # ═══════════ 排课管理组（13B-SM-07；排课规则中心 + 教师可用时间 + 全量冲突报告，复用既有课表批次/条目/冲突检测）═══════════

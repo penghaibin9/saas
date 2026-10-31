@@ -79,11 +79,27 @@ export const archiveApi = {
   },
 
   exportArchives(params = {}) {
-    return call(() => request(`${B}/export`, { method: 'POST', params }))
+    return call(() => request(`${B}/export`, { method: 'POST', timeoutMs: 60000, params }))
+  },
+
+  listFormalDocuments(internshipId) {
+    return call(() => request(`/internship/formal-documents/by-internship/${encodeURIComponent(internshipId)}`))
+  },
+
+  generateFormalDocument(internshipId, documentType) {
+    return call(() => request('/internship/formal-documents/generate', {
+      method: 'POST', body: { internshipId, documentType }
+    }))
+  },
+
+  downloadFormalDocument(documentId, fileName = 'internship-formal-document.pdf') {
+    return fileSdk.downloadFrom(
+      `/internship/formal-documents/${encodeURIComponent(documentId)}/download`, fileName
+    )
   },
 
   buildPackage(id) {
-    return call(() => request(`${B}/${id}/package`, { method: 'POST' }))
+    return call(() => request(`${B}/${id}/package`, { method: 'POST', timeoutMs: 60000 }))
   },
 
   buildBatchPackage(batchId, { afterId = 0, limit = 20 } = {}) {
@@ -93,7 +109,7 @@ export const archiveApi = {
   },
 
   verifyRestore(packageId) {
-    return call(() => request(`/internship/archive-packages/${packageId}/restore-check`, { method: 'POST' }))
+    return call(() => request(`/internship/archive-packages/${packageId}/restore-check`, { method: 'POST', timeoutMs: 60000 }))
   },
 
   employmentTransition(id) {

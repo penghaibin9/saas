@@ -92,8 +92,7 @@
       <AppInlineAlert v-if="formError" type="danger" :description="formError" />
       <div class="aa-actions aa-form-footer">
         <AppButton @click="goBack">取消</AppButton>
-        <AppButton @click="submit" :loading="submitting">保存草稿</AppButton>
-        <AppButton variant="primary" :loading="submitting" @click="submit">保存课程草稿</AppButton>
+        <AppButton variant="primary" :loading="submitting" :disabled="!canManage" @click="submit">保存课程草稿</AppButton>
       </div>
         </AppSectionCard>
 

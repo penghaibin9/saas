@@ -14,7 +14,7 @@ from app.modules.internship.services.internship_identity import stable_user_id
 from app.modules.internship.services import internship_scope as scope_service
 from app.modules.internship.services import internship_service as domain_service
 from app.modules.internship.services import internship_student_service as student_service
-from app.services.mobile_teacher_service import scope_match_row
+from app.services.mobile_teacher_service import _ADVISOR_ROLES, scope_match_row
 
 _INSTALLED = False
 
@@ -45,8 +45,14 @@ def _advisor_condition(user):
 
 
 def _stable_scope_match(scope, *, student_no=None, class_name=None,
-                        college_name=None, advisor_user_id=None) -> bool:
+                        college_name=None, advisor_user_id=None, student_id=None,
+                        class_id=None, college_id=None, major_id=None) -> bool:
     """保留班级/学院/显式学生范围，只移除 advisor_name 授权输入。"""
+    role = str(scope.get("roleCode") or "").upper()
+    if role == "GD_MENTOR":
+        scope = {**scope, "roleCode": "INTERN_MENTOR"}
+    if role not in _ADVISOR_ROLES | {"GD_MENTOR"}:
+        advisor_user_id = None
     return scope_match_row(
         scope,
         student_no=student_no,
@@ -54,24 +60,24 @@ def _stable_scope_match(scope, *, student_no=None, class_name=None,
         advisor_name=None,
         college_name=college_name,
         advisor_user_id=advisor_user_id,
+        student_id=student_id, class_id=class_id, college_id=college_id, major_id=major_id,
     )
 
 
 def _scope_rec_in_scope(scope, db, record, student) -> bool:
     if scope.get("mode") != "SCOPED":
         return True
-    if record is None:
+    if record is None or student is None:
         return False
-    class_name, college_name = domain_service.resolve_student_class_college_names(
-        db, student,
-    )
-    return _stable_scope_match(
-        scope,
-        student_no=student.student_no if student else None,
-        class_name=class_name,
-        college_name=college_name,
-        advisor_user_id=record.advisor_user_id,
-    )
+    from sqlalchemy import select
+    from app.services.db_service import _tid
+    from app.models import StudentProfile
+    query = select(InternshipRecord.id).join(StudentProfile, and_(
+        StudentProfile.id == InternshipRecord.student_id,
+        StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False),
+    )).where(InternshipRecord.id == record.id, InternshipRecord.tenant_id == _tid(),
+             InternshipRecord.is_deleted.is_(False))
+    return db.scalar(scope_service.apply_internship_record_scope(query, resolved_scope=scope)) is not None
 
 
 def _domain_rec_in_scope(scope, db, record, student) -> bool:
@@ -98,6 +104,8 @@ def _domain_rec_in_scope_pre(scope, record, student, class_name_map,
         class_name=class_name,
         college_name=college_name,
         advisor_user_id=record.advisor_user_id,
+        student_id=getattr(student, 'id', None), class_id=getattr(student, 'class_id', None),
+        college_id=getattr(student, 'college_id', None), major_id=getattr(student, 'major_id', None),
     )
 
 
@@ -105,7 +113,7 @@ def _student_rec_in_scope(scope, db, record, student) -> bool:
     return _scope_rec_in_scope(scope, db, record, student)
 
 
-def _stable_advisor(db, advisor_user_id=None, advisor_name=None):
+def _stable_advisor(db, advisor_user_id=None, advisor_name=None, user=None):
     """新写入必须提交稳定账号 ID；advisorName 仅作响应展示，不可反查授权。"""
     if advisor_user_id in (None, ""):
         if (advisor_name or "").strip():
@@ -114,7 +122,7 @@ def _stable_advisor(db, advisor_user_id=None, advisor_name=None):
                 "指导教师姓名仅用于展示，分配必须提交稳定 advisorUserId",
             )
         return None
-    return _ORIGINAL_ADVISOR(db, advisor_user_id, None)
+    return _ORIGINAL_ADVISOR(db, advisor_user_id, None, user=user)
 
 
 _ORIGINAL_ADVISOR = student_service._advisor

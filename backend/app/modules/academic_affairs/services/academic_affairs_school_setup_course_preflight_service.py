@@ -23,6 +23,7 @@ catalog existence a create/update blocker.
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 import json
 from collections import Counter
 from typing import Mapping
@@ -301,7 +302,7 @@ def _course_catalog_dry_run_with_db(
 
     role = str((user or {}).get("currentRoleCode") or "").strip().upper()
     allowed_college_ids: set[int] | None = None
-    if role == "COLLEGE_ADMIN":
+    if role in COLLEGE_ACADEMIC_ROLES:
         allowed_college_ids = (
             {int(value) for value in security.college_ids}
             if security.scope_type == "COLLEGE"

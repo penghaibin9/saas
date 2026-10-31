@@ -4,7 +4,7 @@
     <MobileGlobalState v-if="state !== 'ready'" :state="state" @retry="retryLoad" />
     <view v-else-if="wb" class="ts-pad">
         <MobileInlineAlert v-if="internshipContextError" type="warning" :description="internshipContextError" />
-        <view v-if="selectedInternshipBatch" class="ts-panel wb-batch"><text class="ts-muted">当前岗位实习批次</text><text class="ts-row-title">{{ selectedInternshipBatch.name }}</text><text class="ts-muted">{{ selectedInternshipBatch.academicYear }} {{ selectedInternshipBatch.term }} · {{ internshipBatchStatus(selectedInternshipBatch.status) }}</text></view>
+        <view v-if="selectedInternshipBatch" class="ts-panel wb-batch"><text class="ts-muted">当前岗位实习批次</text><text class="ts-row-title">{{ selectedInternshipBatch.name }}</text><text class="ts-muted">{{ selectedInternshipBatch.academicYear }} {{ selectedInternshipBatch.term }} · {{ internshipBatchStatus(selectedInternshipBatch.status) }}</text><button class="ts-link ts-plain" @click="go('/pages/teacher-internship/index?batchId=' + encodeURIComponent(String(selectedInternshipBatch.id)))">进入实习工作台</button></view>
         <view class="ts-panel">
           <view class="ts-heading"><view class="ts-title"><view class="ts-marker" /><text>待我处理</text><text class="ts-count">（{{ todoBadge }}）</text></view><button class="ts-link ts-plain" @click="go('/pages/teacher/todos/index')">全部待办<MobileShellIcon name="chevron-right" :size="16" /></button></view>
           <view v-if="wb.partialFailures && wb.partialFailures.todos" class="ts-error"><text>待办加载失败</text><button class="ts-link ts-plain" @click="retryLoad">重试</button></view>

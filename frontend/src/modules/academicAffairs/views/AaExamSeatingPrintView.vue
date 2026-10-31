@@ -10,7 +10,7 @@
     <AaExamObjectBar
       class="no-print"
       :title="document ? `${document.batchName || '考试批次'} · ${document.courseName || '考试课程'}` : '正式打印对象'"
-      :object-id="document ? `EXAM-ROOM-${document.examRoomId}` : (roomId ? `EXAM-ROOM-${roomId}` : '等待输入考场 ID')"
+      :object-id="document ? `EXAM-ROOM-${document.examRoomId}` : (roomId ? `EXAM-ROOM-${roomId}` : '等待输入考场编号')"
       source="考务管理 / 考务打印"
       :status="document ? '正式发布可打印' : '等待核验正式证据'"
       owner="考务打印岗"
@@ -20,18 +20,19 @@
     />
     <AaExamStageRail class="no-print" :steps="stageSteps" :active-index="3" aria-label="考务打印办理阶段" />
     <div class="aaesp-toolbar no-print">
-      <AppTextInput v-model="roomId" placeholder="考场 ID" style="max-width:160px" @keyup.enter="load" />
-      <AppButton size="small" variant="primary" :disabled="loading || printRequest.submitting" @click="load">
+      <AppButton size="small" variant="primary" @click="$router.push('/admin/academic-affairs/exam')">选择考试和考场</AppButton>
+      <AppButton v-if="roomId" size="small" :disabled="loading || printRequest.submitting" @click="load">
         {{ loading ? '核验中…' : '载入正式打印数据' }}
       </AppButton>
       <AppButton v-if="canPrint" size="small" variant="ghost" @click="openPrint('DOOR_LIST')">打印门贴 / 座位表</AppButton>
       <AppButton v-if="canPrint" size="small" variant="ghost" @click="openPrint('TICKET')">批量打印准考证</AppButton>
       <span class="aaesp-hint">仅可打印已发布考务的正式座位表 / 门贴 / 准考证；重复打印必须留原因</span>
     </div>
+    <details class="no-print"><summary>实施人员使用：按考场编号定位</summary><AppTextInput v-model="roomId" placeholder="考场编号" style="max-width:160px" @keyup.enter="load" /></details>
     <AppInlineAlert v-if="printError" class="no-print" type="danger" :description="printError" />
 
     <div v-if="canPrint" :class="['aaesp-sheet', printLayout ? `is-${printLayout.toLowerCase()}` : '']">
-      <div class="aaesp-official">正式发布 · {{ document.batchStatus }}</div>
+      <div class="aaesp-official">正式发布 · {{ ({ PUBLISHED: '已发布', FINISHED: '已结束', ARCHIVED: '已归档' })[document.batchStatus] || '状态待核对' }}</div>
       <h2 class="aaesp-title">正式考场座位表 / 门贴</h2>
       <p class="aaesp-sub">{{ document.batchName || '考试批次' }} · {{ document.courseName || '考试课程' }}</p>
       <p class="aaesp-sub">
@@ -77,8 +78,8 @@
     <ErrorState v-else-if="error" :description="error" @retry="load" />
     <EmptyState
       v-else
-      title="输入考场 ID 载入正式打印数据"
-      description="系统会先核验考试已发布、课程已确认、考场有效、锁定名单与座位一致；任一条件不满足，都不会改用草稿数据打印。"
+      title="先选择需要打印的考试和考场"
+      description="点击“选择考试和考场”，打开该课程的考场，选择“座位表/准考证/门贴”。系统核验正式发布名单后即可打印。"
     />
 
     <AppConfirmDialog
@@ -119,6 +120,7 @@ import { academicAffairsExamPrintApi as api } from '@/modules/academicAffairs/ap
 import AaExamObjectBar from '@/modules/academicAffairs/components/exam/AaExamObjectBar.vue'
 import AaExamStageRail from '@/modules/academicAffairs/components/exam/AaExamStageRail.vue'
 import { currentUserFromToken } from '@/services/http/client'
+import { formatDateTime } from '@/utils/dateUtils'
 import { toast } from '@/utils/toast'
 import {
   clearUnconfirmedWrite,
@@ -211,13 +213,12 @@ export default {
     },
     formatPublishedAt(value) {
       if (!value) return '—'
-      const text = String(value).replace('T', ' ')
-      return text.length > 19 ? text.slice(0, 19) : text
+      return formatDateTime(value)
     },
     async load() {
       const id = String(this.roomId || '').trim()
       if (!id) {
-        this.error = '请填考场 ID'
+        this.error = '请填考场编号'
         return
       }
       const seq = ++this.loadSeq

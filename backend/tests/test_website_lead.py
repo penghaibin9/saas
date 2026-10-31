@@ -43,73 +43,24 @@ def test_public_website_notification_paths_are_tenant_neutral():
         assert resolve_tenant_code(_request(f"{path}/")) == ""
 
 
-def test_website_lead_public_endpoint_forwards_expected_fields_without_db(monkeypatch):
-    seen = {}
-
-    monkeypatch.setattr(notification_api, "allow_website_lead", lambda _ip: (True, "OK"))
-
-    def fake_send(body):
-        seen.update(body.model_dump())
-        return {"status": "SENT"}
-
-    monkeypatch.setattr(notification_api, "send_website_lead_sms", fake_send)
-
-    response = TestClient(_app()).post(
-        "/api/v1/notification/website-lead",
-        json={
-            "school_name": "湖南某职业学院",
-            "contact_name": "张老师",
-            "phone": "13800138000",
-            "interest": "岗位实习",
-            "message": "想了解部署和报价",
-            "website": "",
-            "source_path": "/contact",
-        },
-    )
-
-    assert response.status_code == 200
-    assert seen["school_name"] == "湖南某职业学院"
-    assert seen["contact_name"] == "张老师"
-    assert seen["phone"] == "13800138000"
-    assert seen["interest"] == "岗位实习"
-    assert seen["message"] == "想了解部署和报价"
+def test_school_notification_router_no_longer_serves_website_endpoints():
+    # The active implementation and validation are tested in website/backend/tests/test_integrations.py.
+    client = TestClient(_app())
+    assert client.post('/api/v1/notification/website-lead', json={}).status_code == 404
+    assert client.get('/api/v1/notification/website-wechat-signature', params={'url': 'https://www.hnyueke.com/'}).status_code == 404
+    assert {route.path for route in notification_api.router.routes} == {
+        '/notification/send-test', '/notification/logs'
+    }
 
 
-def test_website_lead_honeypot_returns_success_without_sending(monkeypatch):
-    called = {"send": 0}
-    monkeypatch.setattr(
-        notification_api,
-        "send_website_lead_sms",
-        lambda _body: called.__setitem__("send", called["send"] + 1),
-    )
-
-    response = TestClient(_app()).post(
-        "/api/v1/notification/website-lead",
-        json={
-            "school_name": "湖南某职业学院",
-            "contact_name": "张老师",
-            "phone": "13800138000",
-            "interest": "教务系统",
-            "message": "",
-            "website": "https://spam.example",
-        },
-    )
-
-    assert response.status_code == 200
-    assert called["send"] == 0
-
-
-def test_website_lead_rejects_invalid_mobile_number(monkeypatch):
-    response = TestClient(_app()).post(
-        "/api/v1/notification/website-lead",
-        json={
-            "school_name": "湖南某职业学院",
-            "contact_name": "张老师",
-            "phone": "12345",
-            "interest": "学工中心",
-        },
-    )
-    assert response.status_code == 422
+def test_school_application_has_no_website_news_or_public_marketing_api():
+    from app.main import app
+    paths = app.openapi()['paths']
+    assert '/api/v1/notification/send-test' in paths
+    assert '/api/v1/notification/logs' in paths
+    assert not any(path.startswith('/news') or 'website-news' in path for path in paths)
+    assert '/api/v1/notification/website-lead' not in paths
+    assert '/api/v1/notification/website-wechat-signature' not in paths
 
 
 def test_send_website_lead_sms_calls_provider_directly_without_persistence(monkeypatch):

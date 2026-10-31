@@ -9,6 +9,7 @@
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from sqlalchemy import and_, func, or_, select
 
 from . import academic_affairs_grade_core_service as _core
@@ -19,7 +20,7 @@ _ORIGINAL = _core.list_grade_audit
 
 def list_grade_audit(user, biz_type=None, page=1, page_size=50):
     role = str((user or {}).get("currentRoleCode") or "").upper()
-    if role not in {"ACADEMIC_TEACHER", "COLLEGE_ADMIN"} or (user or {}).get("userType") == "PLATFORM_SUPER_ADMIN":
+    if role not in {"ACADEMIC_TEACHER", *COLLEGE_ACADEMIC_ROLES} or (user or {}).get("userType") == "PLATFORM_SUPER_ADMIN":
         return _ORIGINAL(user, biz_type=biz_type, page=page, page_size=page_size)
 
     from app.models import AaGradeRecord, AaGradeTask, AffairsAuditTrail
@@ -28,7 +29,7 @@ def list_grade_audit(user, biz_type=None, page=1, page_size=50):
         from .academic_affairs_grade_task_read_service import _base_query, _scope_conditions
 
         college_context = None
-        if role == "COLLEGE_ADMIN":
+        if role in COLLEGE_ACADEMIC_ROLES:
             from app.core.affairs_security import build_affairs_context
 
             college_context = build_affairs_context(user, db)
@@ -46,7 +47,7 @@ def list_grade_audit(user, biz_type=None, page=1, page_size=50):
             and_(AffairsAuditTrail.biz_type == "AA_GRADE_TASK", AffairsAuditTrail.biz_id.in_(task_ids)),
             and_(AffairsAuditTrail.biz_type == "AA_GRADE_RECORD", AffairsAuditTrail.biz_id.in_(record_ids)),
         ]
-        if role == "COLLEGE_ADMIN":
+        if role in COLLEGE_ACADEMIC_ROLES:
             from app.models import StudentProfile
 
             allowed = college_context.allowed_class_ids(db)

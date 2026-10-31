@@ -1,21 +1,21 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="岗位核对" subtitle="查看指导批次的岗位安排与条件" show-back fallback-url="/pages/teacher/workbench/index" />
+  <view class="internship-surface mobile-page mobile-teacher page-wrap teacher-position-list">
+    <MobileNavBar variant="teacher" title="岗位核对" show-back fallback-url="/pages/teacher-internship/index" />
     <MobileGlobalState :state="state" :description="error" @retry="load">
       <view class="page-pad stack">
-        <view class="card ip__context"><view><text class="ip__eyebrow">当前实习批次</text><text class="ip__batch">{{ context.selectedBatch?.name || '暂无指导批次' }}</text></view><picker :range="batchLabels" :value="batchIndex" @change="changeBatch"><text class="ip__switch">切换 ▾</text></picker></view>
-        <view class="ip__search"><input v-model="keyword" maxlength="100" placeholder="搜索岗位或企业" confirm-type="search" @confirm="search" /><button size="mini" @click="search">搜索</button></view>
-        <view class="ip__filters" role="radiogroup" aria-label="岗位状态筛选"><button v-for="filter in filters" :key="filter.value" role="radio" :aria-checked="status === filter.value" :class="{ 'is-on': status === filter.value }" @click="chooseFilter(filter.value)">{{ filter.label }}</button></view>
+        <view class="ip__context"><text class="ip__batch">{{ context.selectedBatch?.name || '暂无指导批次' }}</text><picker class="mobile-picker" v-if="context.batches.length > 1" :range="batchLabels" :value="batchIndex" @change="changeBatch"><text class="ip__switch">切换批次</text></picker></view>
+        <view class="ip__search"><input class="mobile-input" v-model="keyword" maxlength="100" placeholder="搜索岗位或企业" confirm-type="search" @confirm="search" /><button class="mobile-control" size="mini" @click="search">搜索</button></view>
+        <view class="ip__filters" role="radiogroup" aria-label="岗位状态筛选"><button class="mobile-control" v-for="filter in filters" :key="filter.value" role="radio" :aria-checked="status === filter.value" :class="{ 'is-on': status === filter.value }" @click="chooseFilter(filter.value)">{{ filter.label }}</button></view>
         <view class="ip__count"><text>{{ total }} 个岗位</text><text>核对资料 · 只读</text></view>
         <MobileGlobalState v-if="!rows.length" state="empty" title="当前条件下暂无岗位" description="可调整筛选或切换指导批次。岗位审核和发布由学校经办人办理。" />
-        <button v-for="row in rows" :key="row.id" class="card ip__position" role="button" :aria-label="`${row.title}，${row.companyName || '企业信息待核对'}，${row.statusLabel}，查看岗位详情`" @click="openPosition(row)">
+        <button v-for="row in rows" :key="row.id" class="mobile-control card ip__position" role="button" :aria-label="`${row.title}，${row.companyName || '企业信息待核对'}，${row.statusLabel}，查看岗位详情`" @click="openPosition(row)">
           <view class="ip__row"><text class="ip__title">{{ row.title }}</text><MobileStatusTag :label="row.statusLabel" :type="row.statusTone" /></view>
           <text class="ip__company">{{ row.companyName || '企业信息待核对' }}</text>
           <text class="ip__meta">{{ row.workLocation || '地区待补充' }} · {{ row.majorRequirement || '专业要求未说明' }}</text>
           <view class="ip__bottom"><text>{{ row.salaryRange || '报酬条件见详情' }}</text><text>剩余 {{ row.remaining ?? '—' }} / {{ row.headcount ?? '—' }} 人　›</text></view>
         </button>
-        <view v-if="total > pageSize" class="ip__paging"><button size="mini" :disabled="page <= 1" @click="turn(-1)">上一页</button><text>{{ page }} / {{ Math.ceil(total / pageSize) }}</text><button size="mini" :disabled="page * pageSize >= total" @click="turn(1)">下一页</button></view>
-        <MobileInlineAlert type="info" description="岗位上架不等于每位学生当前可选；还需符合招聘季开放范围和本人的资格条件。" />
+        <view v-if="total > pageSize" class="ip__paging"><button class="mobile-control" size="mini" :disabled="page <= 1" @click="turn(-1)">上一页</button><text>{{ page }} / {{ Math.ceil(total / pageSize) }}</text><button class="mobile-control" size="mini" :disabled="page * pageSize >= total" @click="turn(1)">下一页</button></view>
+        <MobileInlineAlert type="info" description="已上架岗位仍需符合招聘季范围和学生资格，才可选择。" />
       </view>
     </MobileGlobalState>
   </view>
@@ -65,4 +65,6 @@ export default {
 </script>
 <style scoped>
 .ip__context,.ip__row,.ip__count,.ip__bottom,.ip__paging{display:flex;align-items:center;justify-content:space-between;gap:12px}.ip__eyebrow,.ip__company,.ip__meta{display:block;color:var(--text-tertiary);font-size:12px;line-height:1.7}.ip__batch{display:block;font-size:16px;font-weight:600;margin-top:5px}.ip__switch{color:var(--brand-primary);font-size:13px;white-space:nowrap}.ip__search{display:flex;align-items:center;gap:12px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:10px;padding:8px 12px}.ip__search input{flex:1;min-width:0;font-size:14px}.ip__search button{margin:0;background:transparent;color:var(--brand-primary)}.ip__search button::after,.ip__position::after,.ip__filters button::after{border:0}.ip__filters{display:flex;flex-wrap:wrap;gap:8px}.ip__filters button{display:flex;align-items:center;justify-content:center;flex:0 0 auto;min-height:40px;margin:0;padding:6px 12px;font-size:12px;line-height:1.5;background:var(--bg-card);color:var(--text-secondary);border:1px solid var(--border-light);border-radius:999px}.ip__filters .is-on{background:var(--brand-50);border-color:var(--brand-200);color:var(--brand-primary);font-weight:600}.ip__count,.ip__paging{font-size:12px;color:var(--text-tertiary)}.ip__position{display:block;width:100%;margin:0;text-align:left;line-height:1.6}.ip__row{align-items:flex-start}.ip__title{font-size:17px;font-weight:600;flex:1;min-width:0;overflow-wrap:anywhere}.ip__company{font-size:14px;color:var(--text-secondary);margin:8px 0}.ip__meta{overflow-wrap:anywhere}.ip__bottom{border-top:1px solid var(--border-light);padding-top:13px;margin-top:16px;font-size:12px;color:var(--text-secondary);flex-wrap:wrap}.ip__paging button{margin:0}
+.teacher-position-list :deep(.mobile-global-state){max-width:760px;margin:0 auto}.teacher-position-list :deep(.mgs-btn){min-height:44px;font-size:15px}
+.teacher-position-list .card{border-radius:8px;box-shadow:none}.ip__context{padding:4px 0 12px;border-bottom:1px solid var(--border-light)}.ip__batch{margin:0;font-size:15px;line-height:22px;min-width:0;overflow-wrap:anywhere}.ip__context picker{flex-shrink:0}.ip__switch{display:flex;align-items:center;min-height:44px;font-size:14px}.ip__search{border-radius:8px;padding:4px 12px}.ip__search input,.ip__search button,.ip__paging button{min-height:44px;font-size:15px}.ip__filters button{min-height:44px;font-size:14px;border-radius:8px}.ip__count,.ip__paging,.ip__meta,.ip__bottom{font-size:14px;line-height:22px}.ip__title{font-size:16px;line-height:24px}
 </style>

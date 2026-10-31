@@ -4,6 +4,9 @@ import { requireDecimalId } from './evaluationContext.js'
 
 const AUTH_ROOT = '/internship/enterprise-portal'
 const DECISIONS = new Set(['INTERESTED','INTERVIEW','ACCEPT_INTENT','REJECTED'])
+export function enterpriseRoleLabel(value){return ({COMPANY_ADMIN:'企业管理员',HR:'招聘对接人',MENTOR:'企业导师'})[String(value||'').trim().toUpperCase()]||'企业成员'}
+export function enterpriseCampaignStatusLabel(value){return ({DRAFT:'筹备中',OPEN:'进行中',FROZEN:'已冻结',CLOSED:'已结束',ARCHIVED:'已归档'})[String(value||'').trim().toUpperCase()]||'状态待核对'}
+export function formatEnterpriseDateTime(value){if(!value)return '—';const date=new Date(value);return Number.isNaN(date.getTime())?'时间待确认':date.toLocaleString('zh-CN',{hour12:false})}
 let activeContextMode='NONE'
 let activeCollaborationBatchId=''
 
@@ -44,7 +47,12 @@ function normalizeMaterial(data={}){
   const groups={skillEvidence:[],certificates:[],projects:[],practices:[],awards:[],portfolio:[]}
   const targetByType={SKILL_EVIDENCE:'skillEvidence',CERTIFICATE:'certificates',PROJECT:'projects',PRACTICE:'practices',AWARD:'awards',PORTFOLIO:'portfolio'}
   for(const item of items){const target=targetByType[String(item?.itemType||'').toUpperCase()];if(target)groups[target].push(item)}
-  return {...data,profile,schoolFacts:data.schoolFactSnapshot||{},skillTags:Array.isArray(profile.skillTags)?profile.skillTags:[],...groups}
+  const decisionLabels={PENDING:'待处理',INTERESTED:'感兴趣',INTERVIEW:'已安排面试',ACCEPT_INTENT:'拟接收',REJECTED:'不合适'}
+  const effectLabels={ACTIVE:'当前有效',EXPIRED:'已过期',SUPERSEDED:'已被后续办理替代',CONSUMED:'已用于学校确认'}
+  return {...data,profile,schoolFacts:data.schoolFactSnapshot||{},skillTags:Array.isArray(profile.skillTags)?profile.skillTags:[],...groups,
+    appliedAt:data.submittedAt||null,decisionEffectStatus:data.effectStatus||null,
+    allowedDecisionActions:Array.isArray(data.allowedDecisionActions)?data.allowedDecisionActions.filter(value=>DECISIONS.has(value)):[],
+    decisionHistory:(Array.isArray(data.decisionHistory)?data.decisionHistory:[]).map(item=>({...item,statusLabel:decisionLabels[item.status]||'状态待确认',effectLabel:effectLabels[item.effectStatus]||'效力待确认'}))}
 }
 function normalizeApplicantSummary(row={}){
   const student=row.student||{}
@@ -57,7 +65,7 @@ function evaluationPayload(payload={}){
   if(payload.expectedVersion!==null&&payload.expectedVersion!==undefined&&payload.expectedVersion!=='')result.expectedVersion=requireVersion(payload.expectedVersion,'企业评价')
   return result
 }
-async function fetchApplicationMaterial(id){return normalizeMaterial(await request(`${AUTH_ROOT}/applications/${id}`,{params:requireRecruitmentAccess()}))}
+async function fetchApplicationMaterial(id,historyPage=1){return normalizeMaterial(await request(`${AUTH_ROOT}/applications/${id}`,{params:{...requireRecruitmentAccess(),historyPage}}))}
 
 export const enterpriseInternshipApi={
   context:(campaignId)=>request(`${AUTH_ROOT}/context`,{params:{campaignId}}),
@@ -76,7 +84,7 @@ export const enterpriseInternshipApi={
   updatePosition:(id,payload={})=>request(`${AUTH_ROOT}/positions/${id}`,{method:'PUT',params:requireRecruitmentAccess(),body:{...sanitizePositionPayload(payload),expectedVersion:requireVersion(payload.expectedVersion,'岗位')}}),
   submitPosition:(id,expectedVersion)=>request(`${AUTH_ROOT}/positions/${id}/submit`,{method:'POST',params:requireRecruitmentAccess(),body:{expectedVersion:requireVersion(expectedVersion,'岗位')}}),
   withdrawPosition:(id,expectedVersion)=>request(`${AUTH_ROOT}/positions/${id}/withdraw`,{method:'POST',params:requireRecruitmentAccess(),body:{expectedVersion:requireVersion(expectedVersion,'岗位')}}),
-  applications:async({page=1,pageSize=50,decisionStatus='',positionId=''}={})=>normalizeApplicantPage(await request(`${AUTH_ROOT}/applications`,{params:{...requireRecruitmentAccess(),page,pageSize,decisionStatus,positionId}})),
+  applications:async({page=1,pageSize=50,decisionStatus='',positionId='',keyword=''}={})=>normalizeApplicantPage(await request(`${AUTH_ROOT}/applications`,{params:{...requireRecruitmentAccess(),page,pageSize,decisionStatus,positionId,keyword:keyword||undefined}})),
   applicationMaterial:fetchApplicationMaterial,
   resumePdf:(id)=>requestBinary(`${AUTH_ROOT}/applications/${id}/resume-pdf`,{params:requireRecruitmentAccess()}),
   decideApplication:(id,status,payload={})=>{if(!DECISIONS.has(status))throw new Error(`不允许的企业 Decision: ${status}`);return request(`${AUTH_ROOT}/applications/${id}/decision`,{method:'POST',params:requireRecruitmentAccess(),body:{status,...payload}})},
@@ -84,7 +92,7 @@ export const enterpriseInternshipApi={
   withdrawAccept:(id,reason)=>{const text=String(reason||'').trim();if(text.length<2)throw new Error('撤回拟接收必须填写原因');return request(`${AUTH_ROOT}/applications/${id}/withdraw-accept`,{method:'POST',params:requireRecruitmentAccess(),body:{reason:text}})},
   internshipStudents:({batchId,page=1,pageSize=50,status='',keyword=''}={})=>request(`${AUTH_ROOT}/internship-students`,{params:{...collaborationParams(batchId),page,pageSize,status,keyword}}),
   internshipStudent:(id,batchId)=>request(`${AUTH_ROOT}/internship-students/${id}`,{params:collaborationParams(batchId)}),
-  evaluationTasks:({batchId,status='',page=1,pageSize=50}={})=>request(`${AUTH_ROOT}/evaluation-tasks`,{params:{...collaborationParams(batchId),status,page,pageSize}}),
+  evaluationTasks:({batchId,status='',page=1,pageSize=50,internshipId=''}={})=>request(`${AUTH_ROOT}/evaluation-tasks`,{params:{...collaborationParams(batchId),status,page,pageSize,...(positiveId(internshipId)?{internshipId:positiveId(internshipId)}:{})}}),
   submitEvaluation:(id,payload={},batchId)=>request(`${AUTH_ROOT}/evaluation-tasks/${id}/submit`,{method:'POST',params:collaborationParams(batchId),body:evaluationPayload(payload)}),
 }
 export const enterpriseDecisionStatuses=Object.freeze([...DECISIONS])

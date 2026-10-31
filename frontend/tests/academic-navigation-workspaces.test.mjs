@@ -98,6 +98,22 @@ test('foundation keeps grade and organization anchors visible in the compact ter
   for (const label of ['年级管理', '组织核对', '组织统计']) assert.ok(visibleLabels.includes(label), label)
 })
 
+test('foundation tertiary sections follow preparation tasks and preserve permission-filtered entries', () => {
+  const modules = getVisibleNavPlan({ permissionPatterns: ['*'] }).find(group => group.key === 'academic-affairs').children
+  const items = workspaceMenuItems(workspacePages(modules), 'aa-terms', '')
+  const expected = {
+    学期管理: '学期与作息', 校历管理: '学期与作息', 作息时间: '学期与作息',
+    学院管理: '学院与班级', 专业管理: '学院与班级', 年级管理: '学院与班级', 行政班管理: '学院与班级', 教学班管理: '学院与班级',
+    组织核对: '核对与统计', 组织统计: '核对与统计'
+  }
+  assert.equal(items.length, 10)
+  for (const item of items) assert.equal(item.menuSection, expected[item.label], item.label)
+  const limited = getVisibleNavPlan({ permissionPatterns: ['academicAffairs.term.view'] }).find(group => group.key === 'academic-affairs').children
+  const limitedItems = workspaceMenuItems(workspacePages(limited), 'aa-terms', '')
+  assert.deepEqual(limitedItems.map(item => item.label), ['学期管理'])
+  assert.equal(limitedItems[0].menuSection, '学期与作息')
+})
+
 test('daily operations, workload processing and supplementary exams have clear owners', () => {
   for (const [path, expected] of [
     ['/admin/academic-affairs/workload-review', 'aa-teaching-tasks'],

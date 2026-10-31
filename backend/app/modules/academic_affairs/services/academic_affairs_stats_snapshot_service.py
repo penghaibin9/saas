@@ -5,6 +5,7 @@
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 import hashlib
 import json
 from datetime import datetime
@@ -161,7 +162,7 @@ def _snapshot_scope(db, user, *, write=False):
         return {"all": True, "collegeIds": set()}
     context = build_affairs_context(user or {}, db)
     college_ids = {int(value) for value in (context.college_ids or set())}
-    if role in {"COLLEGE_ADMIN", "COLLEGE_SA"} and college_ids:
+    if role in {*COLLEGE_ACADEMIC_ROLES, "COLLEGE_SA"} and college_ids:
         return {"all": False, "collegeIds": college_ids}
     action = "创建" if write else "查看"
     raise no_permission(f"当前身份无权{action}教务统计冻结快照")

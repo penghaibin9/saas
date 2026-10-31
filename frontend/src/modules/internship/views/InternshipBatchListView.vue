@@ -1,6 +1,8 @@
 <template>
   <ModulePageShell class="ix-batch-list" :title="pageTitle" :subtitle="pageSubtitle" watermark-purpose="实习批次管理">
     <template #actions>
+      <AppExportButton v-if="canPlanExport && selected.length" :export-fn="bulkPlanPdfFn">批量计划 PDF（{{ selected.length }}）</AppExportButton>
+      <AppExportButton v-if="canPlanExport && selected.length" :export-fn="bulkPlanXlsxFn">批量计划 Excel（{{ selected.length }}）</AppExportButton>
       <AppExportButton v-if="canExport" :export-fn="exportFn">导出台账</AppExportButton>
       <AppButton v-if="canManage" variant="primary" @click="openCreate">新建批次</AppButton>
     </template>
@@ -13,8 +15,8 @@
       <LoadingState v-if="loading" />
       <ErrorState v-else-if="error" :description="error" @retry="load" />
       <EmptyState v-else-if="!rows.length" title="没有找到实习批次" :description="emptyDescription" />
-      <DataTable v-else :columns="tableColumns" :rows="rows" row-key="id"
-        :pagination="{ page, pageSize, total }" @page-change="turnPage">
+      <DataTable v-else v-model:selected="selected" :columns="tableColumns" :rows="rows" row-key="id"
+        :selectable="canPlanExport" :pagination="{ page, pageSize, total }" @page-change="turnPage">
         <template #cell-batch="{ row }">
           <RouterLink class="ibl-name" :to="detailLocation(row)">{{ row.batchName }}</RouterLink>
           <div class="ibl-secondary">{{ row.batchNo }}<span v-if="row.academicYear"> · {{ row.academicYear }} {{ row.term }}</span></div>
@@ -41,6 +43,7 @@ import { AppStatusTag, AppExportButton } from '@/components/common'
 import { AppButton } from '@/components/ui'
 import { TableActionColumn } from '@/modules/internship/components'
 import { internshipApi } from '@/modules/internship/api/internship.api'
+import { planApi } from '@/modules/internship/api/plan-insurance.api'
 import { formatDate } from '@/utils/dateUtils'
 import { matchPermission } from '@/config/navPlan'
 import { withInternshipBatch } from '../navigation.js'
@@ -62,7 +65,7 @@ export default {
   components: { ModulePageShell, AdvancedFilter, DataTable, EmptyState, LoadingState, ErrorState,
     AppStatusTag, AppExportButton, AppButton, TableActionColumn },
   data() {
-    return { ctx: null, loading: true, error: '', rows: [], total: 0, page: 1, pageSize: 10,
+    return { ctx: null, loading: true, error: '', rows: [], selected: [], total: 0, page: 1, pageSize: 10,
       filters: { keyword: '', status: '' }, appliedFilters: { keyword: '', status: '' }, loadSequence: 0,
       statusTagType: { DRAFT: 'default', RUNNING: 'success', CLOSED: 'info', ARCHIVED: 'default', VOIDED: 'danger' } }
   },
@@ -75,6 +78,7 @@ export default {
     pageSubtitle() { return PANELS[this.activePanel].hint },
     canManage() { return this.ctx?.permissionActions?.createBatch?.allowed === true },
     canExport() { return Array.isArray(this.ctx?.permissionPatterns) && matchPermission(this.ctx.permissionPatterns, 'internship.batch.export') },
+    canPlanExport() { return Array.isArray(this.ctx?.permissionPatterns) && matchPermission(this.ctx.permissionPatterns, 'internship.plan.view') },
     emptyDescription() {
       if (this.appliedFilters.keyword || this.appliedFilters.status) return '可调整关键词或状态，重新查询。'
       return this.canManage ? '从“新建批次”开始，保存后继续配置参与名单。' : '当前授权范围内暂无批次，请联系实习管理员。'
@@ -115,11 +119,12 @@ export default {
         this.ctx = context.data
         if (res.code !== 0) throw new Error(res.message || '批次加载失败，请重试')
         this.rows = res.data?.list || []
+        this.selected = []
         this.total = Number(res.data?.total || 0)
       } catch (e) {
         if (sequence === this.loadSequence) {
           this.error = e.message || '批次加载失败，请重试'
-          this.rows = []; this.total = 0; this.ctx = null
+          this.rows = []; this.selected = []; this.total = 0; this.ctx = null
         }
       } finally {
         if (sequence === this.loadSequence) this.loading = false
@@ -136,6 +141,8 @@ export default {
     turnPage(page) { this.updateQuery(page) },
     dateShort(value) { return formatDate(value, '—') },
     exportFn() { return internshipApi.exportBatches({ ...this.appliedFilters }) },
+    bulkPlanPdfFn() { return planApi.bulkExportPdf([...this.selected]) },
+    bulkPlanXlsxFn() { return planApi.bulkExportXlsx([...this.selected]) },
     openCreate() {
       this.$router.push({ path: '/admin/internship/batches/new', query: { returnTo: this.$route.fullPath } })
     },

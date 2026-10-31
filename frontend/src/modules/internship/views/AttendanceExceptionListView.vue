@@ -34,12 +34,13 @@
           <div class="mp-cell-sub">{{ row.className }} · {{ row.enterpriseName }}</div>
         </template>
         <template #cell-type="{ row }">
-          <AppStatusTag :type="['MISSING', 'LOW_ACCURACY', 'LOCATION_UNCERTAIN'].includes(row.type) ? 'warning' : 'danger'">{{ row.typeLabel }}</AppStatusTag>
+          <AppStatusTag :type="['MISSING', 'NO_LOCATION', 'LOW_ACCURACY', 'LOCATION_UNCERTAIN'].includes(row.type) ? 'warning' : 'danger'">{{ row.typeLabel }}</AppStatusTag>
           <div v-if="row.streak" class="mp-cell-sub" style="color: var(--danger-600)">{{ row.streak }}</div>
         </template>
         <template #cell-deviceRisk="{ row }">
-          <span :style="row.deviceRisk !== '正常' ? 'color: var(--danger-600); font-weight: 500' : ''">{{ row.deviceRisk }}</span>
+          <span :style="['mock','rooted'].includes(row.deviceRisk) ? 'color: var(--danger-600); font-weight: 500' : ''">{{ row.deviceRiskLabel }}</span>
         </template>
+        <template #cell-date="{ row }"><AppDateDisplay :value="row.date" mode="datetime" /></template>
         <template #cell-status="{ row }">
           <AppStatusTag :status="row.status" dot>{{ row.statusLabel }}</AppStatusTag>
         </template>
@@ -61,7 +62,7 @@ import {
   ModulePageShell, AdvancedFilter, DataTable,
   LoadingState, ErrorState, EmptyState
 } from '@/components/business'
-import { AppStatusTag, AppExportButton } from '@/components/common'
+import { AppStatusTag, AppExportButton, AppDateDisplay } from '@/components/common'
 import { internshipApi } from '@/modules/internship/api/internship.api'
 import { attendanceApi } from '@/modules/internship/api/attendance.api'
 import { saveReviewQueue } from '@/modules/internship/composables/reviewQueue'
@@ -76,7 +77,7 @@ const WORK_FIELDS = ['filters.keyword', 'filters.type', 'filters.status', 'pagin
 
 export default {
   name: 'AttendanceExceptionListView',
-  components: { ModulePageShell, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, LoadingState, ErrorState, EmptyState },
+  components: { ModulePageShell, AdvancedFilter, DataTable, AppStatusTag, AppExportButton, AppDateDisplay, LoadingState, ErrorState, EmptyState },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

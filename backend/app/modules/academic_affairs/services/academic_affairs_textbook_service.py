@@ -465,9 +465,11 @@ def list_order_batches(user, status=None, page=1, page_size=20):
 def order_items(user, bid):
     from app.models import AaTextbookOrderItem
     with session() as db:
-        _ctx(user, db)
+        _require_school(_ctx(user, db))
+        _get_ob(db, bid)
         rows = db.query(AaTextbookOrderItem).filter(AaTextbookOrderItem.order_batch_id == bid,
-                                                    AaTextbookOrderItem.tenant_id == _tid()).all()
+                                                    AaTextbookOrderItem.tenant_id == _tid(),
+                                                    AaTextbookOrderItem.is_deleted.is_(False)).all()
         return [{"itemId": str(i.id), "textbookName": i.textbook_name, "orderQty": i.order_qty,
                  "arrivedQty": i.arrived_qty, "unitPrice": _fnum(i.unit_price_snapshot)} for i in rows]
 
@@ -591,17 +593,22 @@ def my_distributions(user, student_id):
 
 def my_fees(user, student_id):
     """学生本人教材费用（正方学生端6.14教材费用对标，只读本人；含应缴/已缴/欠费合计）。"""
-    from app.models import AaTextbookFeeLedger
+    from app.models import AaTextbookFeeLedger, AaTextbookRefund
     with session() as db:
         rows = db.query(AaTextbookFeeLedger).filter(
             AaTextbookFeeLedger.tenant_id == _tid(), AaTextbookFeeLedger.student_id == int(student_id),
             AaTextbookFeeLedger.is_deleted.is_(False)).order_by(AaTextbookFeeLedger.id.desc()).all()
-        waived = sum(float(f.amount or 0) for f in rows if f.status == "WAIVED")
-        total_due = sum(float(f.amount or 0) for f in rows if f.status != "WAIVED")
-        total_paid = sum(float(f.paid_amount or 0) for f in rows)
+        refunds = {int(r.fee_id): r for r in db.query(AaTextbookRefund).filter(
+            AaTextbookRefund.tenant_id == _tid(), AaTextbookRefund.fee_id.in_([f.id for f in rows])).all()} if rows else {}
+        waived = sum(float(f.amount or 0) for f in rows if f.status == "WAIVED" and int(f.id) not in refunds)
+        total_due = sum(float(f.amount or 0) for f in rows if f.status not in {"WAIVED", "REFUNDED"})
+        total_refunded = sum(float(r.amount or 0) for r in refunds.values())
+        total_paid = sum(float(f.paid_amount or 0) for f in rows) - total_refunded
         return {"items": [{"feeId": str(f.id), "textbookName": f.textbook_name, "amount": _fnum(f.amount),
-                           "paidAmount": _fnum(f.paid_amount), "status": f.status} for f in rows],
+                           "paidAmount": _fnum(f.paid_amount), "refundAmount": _fnum(refunds[int(f.id)].amount) if int(f.id) in refunds else 0,
+                           "status": f.status} for f in rows],
                 "totalDue": round(total_due, 2), "totalPaid": round(total_paid, 2), "waivedAmount": round(waived, 2),
+                "totalRefunded": round(total_refunded, 2),
                 "unpaid": round(total_due - total_paid, 2)}
 
 

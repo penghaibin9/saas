@@ -8,8 +8,6 @@ from __future__ import annotations
 import hashlib
 import json
 from datetime import datetime
-from urllib.parse import quote
-
 from sqlalchemy import and_, case, func, or_, select
 
 from app.core.exceptions import AppException, no_permission, not_found
@@ -37,7 +35,7 @@ MATERIALS = [
 ]
 
 _FIX_PATHS = {
-    "eligibility": ("完成实习资格审核", "/admin/internship/participants?stage=qualification"),
+    "eligibility": ("完成实习资格审核", "/admin/internship/students/{internshipId}?section=eligibility"),
     "enterpriseAccess": ("补齐企业准入", "/admin/internship/enterprises"),
     "studentConsent": ("补学生知情确认", "/admin/internship/compliance?panel=consent"),
     "guardianConsent": ("补监护人确认", "/admin/internship/compliance?panel=consent"),
@@ -47,12 +45,12 @@ _FIX_PATHS = {
     "specialFiling": ("完成特殊实习备案", "/admin/internship/compliance?panel=special"),
     "workRights": ("修正岗位劳动权益", "/admin/internship/positions"),
     "emergency": ("补齐企业应急预案", "/admin/internship/compliance?panel=emergency"),
-    "advisor": ("分配校内指导教师", "/admin/internship/participants?stage=advisor"),
+    "advisor": ("分配校内指导教师", "/admin/internship/students?panel=mentor&advisorId={internshipId}"),
     "weekly": ("补交或审核周报", "/admin/internship/process-reports"),
     "checkin": ("处理打卡缺口", "/admin/internship/attendance"),
     "guidance": ("补录指导记录", "/admin/internship/guidance"),
-    "visit": ("补录巡访记录", "/admin/internship/visits"),
-    "openIncident": ("关闭未结事故", "/admin/internship/risks?panel=incident"),
+    "visit": ("补录巡访记录", "/admin/internship/guidance?panel=visit"),
+    "openIncident": ("关闭未结事故", "/admin/internship/compliance?tab=incidents&internshipId={internshipId}"),
     "openHighRisk": ("处置开放高风险", "/admin/internship/risks"),
     "enterpriseEval": ("完成企业评价", "/admin/internship/evaluations?stage=enterprise"),
     "studentEval": ("完成学生自评", "/admin/internship/evaluations?stage=student"),
@@ -182,6 +180,7 @@ def _missing_actions(blockers, internship_id) -> list[dict]:
             blocker.get("code"),
             ("回到合规工作台补齐", "/admin/internship/compliance"),
         )
+        path = path.replace("{internshipId}", str(internship_id))
         joiner = "&" if "?" in path else "?"
         actions.append({
             "code": blocker.get("code"),
@@ -189,7 +188,8 @@ def _missing_actions(blockers, internship_id) -> list[dict]:
             "reason": blocker.get("reason"),
             "status": blocker.get("status"),
             "actionLabel": action_label,
-            "path": f"{path}{joiner}id={internship_id}",
+            "path": path if blocker.get("code") in {"eligibility", "advisor", "visit", "openIncident"}
+                    else f"{path}{joiner}id={internship_id}",
         })
     return actions
 
@@ -301,7 +301,7 @@ def archive_student_in_session(db, user, internship_id, force=False,
         import re
         from app.core.permissions import enforce_permission, is_super_admin
         enforce_permission(user or {}, "internship.archive.force")
-        role = str((user or {}).get("currentRoleCode") or
+        role = str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or
                    (user or {}).get("userType") or "").upper()
         if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
             raise no_permission("仅学校管理员可执行强制归档")
@@ -518,6 +518,25 @@ def preflight_archive(internship_id, user=None) -> dict:
         }
 
 
+def frozen_employment_result(db, record):
+    """调用方先校验本人或管理范围；就业衔接共用冻结成绩事实。"""
+    archive = _archive_row(db, record.id)
+    if not archive or archive.status != "ARCHIVED":
+        raise AppException("DATA_CONFLICT", "仅已归档实习结果可衔接就业")
+    score = db.scalar(select(InternshipFinalScore).where(
+        InternshipFinalScore.tenant_id == _tid(), InternshipFinalScore.internship_id == record.id,
+        InternshipFinalScore.status == "PUBLISHED", InternshipFinalScore.is_deleted.is_(False),
+    ).order_by(InternshipFinalScore.id.desc()))
+    if not score:
+        raise AppException("DATA_CONFLICT", "缺少仍有效的已发布正式成绩，禁止衔接就业")
+    from app.modules.internship.services import internship_score_archive_guard as score_guard
+    frozen = (archive.material_snapshot or {}).get("finalScoreFreeze") or {}
+    current_freeze, current_hash = score_guard._score_freeze(db, score)
+    if frozen != current_freeze or (archive.material_snapshot or {}).get("finalScoreFreezeHash") != current_hash:
+        raise AppException("DATA_CONFLICT", "归档成绩冻结证据与当前正式结果不一致")
+    return archive, score, current_hash
+
+
 def employment_transition_context(internship_id, user=None) -> dict:
     """仅以已归档且仍为 PUBLISHED 的冻结成绩衔接就业台账。"""
     scope, in_scope = _scope_ctx(user)
@@ -555,23 +574,24 @@ def employment_transition_context(internship_id, user=None) -> dict:
         from app.models.employment import EmpStudent
         from app.modules.employment.services import employment_runtime_service as employment_runtime
 
-        employment = db.scalar(select(EmpStudent).where(
-            EmpStudent.tenant_id == _tid(),
-            EmpStudent.student_id == record.student_id,
-            EmpStudent.record_status == "ACTIVE",
-            EmpStudent.is_deleted.is_(False),
-        ).order_by(EmpStudent.id.desc()))
+        from app.core.permissions import has_permission
         employment_id = ""
-        if employment:
-            # 就业域仍使用自己的数据范围；不能因为实习可见就泄露就业详情对象 ID。
-            employment_runtime._assert_emp_id(db, employment.id, user)
-            employment_id = str(employment.id)
-        keyword = getattr(student, "student_no", "") or getattr(student, "real_name", "") or ""
-        path = (
-            f"/admin/employment/students/{employment_id}?source=internship&internshipId={record.id}"
-            if employment_id else
-            f"/admin/employment/students?source=internship&internshipId={record.id}&keyword={quote(keyword)}"
-        )
+        formal_path = ""
+        if has_permission(user or {}, "employment.student.view"):
+            employment = db.scalar(select(EmpStudent).where(
+                EmpStudent.tenant_id == _tid(), EmpStudent.student_id == record.student_id,
+                EmpStudent.record_status == "ACTIVE", EmpStudent.is_deleted.is_(False),
+            ).order_by(EmpStudent.id.desc()))
+            if employment:
+                try:
+                    employment_runtime._assert_emp_id(db, employment.id, user)
+                except AppException as exc:
+                    if exc.code not in {"NO_PERMISSION", "NOT_FOUND"}:
+                        raise
+                else:
+                    employment_id = str(employment.id)
+                    formal_path = f"/admin/employment/students/{employment_id}?source=internship&internshipId={record.id}"
+        path = f"/admin/internship/employment?batchId={record.batch_id}&internshipId={record.id}&status=ALL"
         return {
             "internshipId": str(record.id),
             "studentId": str(record.student_id),
@@ -588,6 +608,7 @@ def employment_transition_context(internship_id, user=None) -> dict:
             "employmentRecordId": employment_id,
             "employmentRecordExists": bool(employment_id),
             "employmentPath": path,
+            "formalEmploymentPath": formal_path,
             "resultAuthority": "PUBLISHED_FINAL_SCORE_FROZEN_IN_ARCHIVE",
         }
 
@@ -686,7 +707,7 @@ def revoke_archive_in_session(db, user, internship_id, reason="",
 
     assert_high_risk_write_available(db)
     from app.core.permissions import is_super_admin
-    role = str((user or {}).get("currentRoleCode") or
+    role = str((user or {}).get("currentRoleBaseCode") or (user or {}).get("currentRoleCode") or
                (user or {}).get("userType") or "").upper()
     if role != "SCHOOL_ADMIN" and not is_super_admin(user or {}):
         raise no_permission("仅学校管理员可撤销归档")
@@ -788,15 +809,14 @@ def resolve_archive_package_download(package_id, user=None):
             InternshipEvidencePackage.tenant_id == _tid(),
             InternshipEvidencePackage.package_type == "ARCHIVE",
             InternshipEvidencePackage.is_deleted.is_(False)))
-        if not package or package.status == "INVALIDATED" or not package.package_file_id:
+        if not package or package.status != "READY" or not package.package_file_id:
             raise not_found("归档包不存在或不可下载")
         from app.modules.internship.services.internship_scope import (
             assert_internship_record_scope,
         )
         assert_internship_record_scope(db, package.target_id, user, "下载归档包")
-        resolved = file_service.resolve_download(package.package_file_id, user=user)
-        if not resolved:
-            raise not_found("归档包不存在或不可下载")
+        from app.services.file_access_resolvers import resolve_authorized_archive_download
+        resolved = resolve_authorized_archive_download(db, package, user)
         _trail(db, package.target_id, "PACKAGE_DOWNLOAD", {
             "packageId": str(package.id),
             "packageVersion": package.package_version,

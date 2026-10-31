@@ -141,6 +141,7 @@ import { User, Reading, Brush, Lock, SwitchButton, ArrowRight, Check, Close } fr
 const ROLE_LABEL = {
   SCHOOL_ADMIN: '学校管理员',
   COLLEGE_ADMIN: '学院管理员',
+  COLLEGE_ACADEMIC: '学院教务',
   COUNSELOR: '辅导员',
   GD_MENTOR: '毕设导师',
   INTERN_MENTOR: '实习指导教师',

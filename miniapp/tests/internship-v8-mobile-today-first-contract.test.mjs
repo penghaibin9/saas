@@ -9,17 +9,17 @@ const review = read('src/pages/teacher-internship/internship-review/index.vue')
 const adapter = read('src/services/teacherSequentialV3Api.js')
 const backend = read('../backend/app/modules/internship/services/internship_service.py')
 
-test('V8 Student Mini keeps currentTask first and groups all seventeen routes by live stage', () => {
+test('学生实习先显示当前事项，按阶段组织已有服务和招标新增服务', () => {
   const navBlock = student.match(/navItems:\s*\[([\s\S]*?)\n\s*]/)?.[1] || ''
   const paths = [...navBlock.matchAll(/path: '([^']+)'/g)].map((match) => match[1])
 
-  assert.equal(paths.length, 17)
-  assert.equal(new Set(paths).size, 17)
+  assert.equal(paths.length, 22)
+  assert.equal(new Set(paths).size, 22)
   assert.ok(student.indexOf('compliance.currentTask') < student.indexOf('serviceGroups'))
-  assert.match(student, /label: '当前必须做'/)
+  assert.match(student, /compliance\.currentTask/)
   assert.match(student, /label: this\.canShowDailyWork \? '今天' : '需要帮助'/)
-  assert.match(student, /label: '当前阶段服务'/)
-  assert.match(student, /label: '更多服务'/)
+  assert.match(student, /selection: '选岗申请', onboard: '上岗准备', process: '实习记录', result: '实习收尾'/)
+  assert.match(student, /label: '其他事项'/)
   assert.match(student, /currentStage\(\)/)
   assert.match(student, /this\.i\?\.statusText === 'ONBOARD'/)
   assert.match(student, /openSub\(n\.path\)/)

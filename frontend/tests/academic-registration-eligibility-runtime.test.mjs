@@ -5,6 +5,8 @@ import test from 'node:test'
 import { matchPermission } from '../src/config/navPlan.js'
 import { academicRouteState } from '../src/modules/academicAffairs/academicFlowContext.js'
 import { formatDateTime } from '../src/utils/dateUtils.js'
+import { compile, createSSRApp } from 'vue'
+import { renderToString } from 'vue/server-renderer'
 
 const source = readFileSync(new URL('../src/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue', import.meta.url), 'utf8')
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
@@ -158,11 +160,51 @@ test('qualification evidence does not infer materials, roster revision or freshn
   state.elig.rows[0].eligibilityCheckedAt = '2026-09-08T07:44:59Z'
   state.selectedEligRow = state.elig.rows[0]
   const evidence = state.registrationEvidence
-  for (const title of ['当前名单版本', '材料与依据', '数据时效']) {
+  for (const title of ['名单信息', '材料与依据', '最近核验']) {
     assert.equal(evidence.find(item => item.title === title).type, 'warning')
   }
   assert.equal(state.registrationSteps[3].complete, false)
   state.selectedEligRow.eligibilityStatus = 'INELIGIBLE'
   assert.match(state.objectReasonText(state.selectedEligRow), /实际原因/)
   assert.doesNotMatch(state.objectReasonText(state.selectedEligRow), /补齐材料/)
+})
+
+test('已选批次提示当前范围，未知注册类型不显示内部枚举', () => {
+  const { state } = page()
+  state.tab = 'unregistered'
+  assert.equal(state.batchHint, '仅显示当前批次')
+  state.batchId = ''
+  assert.match(state.batchHint, /全部可见批次/)
+  state.batchId = '1'; state.batches[0].registerType = 'FUTURE_INTERNAL_TYPE'
+  assert.match(state.selectedBatchLabel, /类型待确认/)
+  assert.doesNotMatch(state.selectedBatchLabel, /FUTURE_INTERNAL_TYPE/)
+  assert.doesNotMatch(JSON.stringify(state.batchOptions), /FUTURE_INTERNAL_TYPE/)
+})
+
+test('核验依据合并重复身份节点，保留缺失材料名单与时效警告', () => {
+  const { state } = page()
+  state.elig.rows[0].eligibilityStatus = 'ELIGIBLE'
+  const evidence = state.registrationEvidence
+  assert.equal(evidence.length, 4)
+  const text = JSON.stringify(evidence)
+  assert.match(text, /材料清单未提供/)
+  assert.match(text, /当前名单未提供版本信息/)
+  assert.match(text, /材料和名单是否变化/)
+  assert.doesNotMatch(text, /学生 ID|批次 ID|来源对象与身份|当前办理节点/)
+  assert.equal(state.registrationSteps[3].complete, false)
+})
+
+test('暂缓期限和归档时间使用公共本地时间格式，保留原值并明确缺失值', async () => {
+  const { state } = page()
+  for (const key of ['requestedUntil', 'archivedAt']) {
+    const template = source.match(new RegExp(`<template #cell-${key}="\\{ row \\}">([\\s\\S]*?)<\\/template>`))?.[1]
+    assert.ok(template)
+    for (const value of ['2026-08-31T10:30:00Z', null]) {
+      const row = { [key]: value }
+      const html = await renderToString(createSSRApp({ data: () => ({ row }), methods: { registrationTime: state.registrationTime }, render: compile(template) }))
+      assert.ok(html.includes(formatDateTime(value, '未提供')))
+      assert.doesNotMatch(html, /T10:30:00Z/)
+      assert.equal(row[key], value)
+    }
+  }
 })

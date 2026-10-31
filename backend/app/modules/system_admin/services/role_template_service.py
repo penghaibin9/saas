@@ -58,6 +58,26 @@ def _items(db, template: RoleTemplate | None) -> list[str]:
     return sorted(set((template.permission_ceiling_json or {}).get("items") or []))
 
 
+def _assert_rollback_snapshot(db, source, template_code, permissions, expected_digest, *, candidate=None) -> None:
+    if (source.template_code != template_code or source.publish_status != PUBLISHED
+            or source.template_category != TEMPLATE_CATEGORY_SYSTEM_ROLE or source.status != "ACTIVE"):
+        raise AppException("DATA_CONFLICT", "回滚来源必须是同一岗位的已发布版本", http_status=409)
+    for snapshot in ((source, candidate) if candidate is not None else (source,)):
+        rows = list(db.scalars(select(RoleTemplatePermission).where(
+            RoleTemplatePermission.tenant_id == PLATFORM_TENANT,
+            RoleTemplatePermission.role_template_id == int(snapshot.id),
+            RoleTemplatePermission.is_deleted.is_(False),
+        ).order_by(RoleTemplatePermission.id).with_for_update()).all())
+        snapshot_permissions = sorted({row.permission_code for row in rows if row.effect == EFFECT_ALLOW})
+        if (not snapshot_permissions or any(row.effect != EFFECT_ALLOW for row in rows)
+                or not expected_digest or snapshot.permission_digest != expected_digest
+                or _digest(snapshot_permissions) != expected_digest
+                or sorted(set(permissions)) != snapshot_permissions):
+            raise AppException(
+                "DATA_CONFLICT", "回滚权限必须完整匹配来源版本，且来源快照不得发生变化", http_status=409,
+            )
+
+
 def _sync_permissions(db, template: RoleTemplate, permissions) -> list[str]:
     wanted = sorted({str(value or "").strip() for value in (permissions or []) if str(value or "").strip()})
     rows = list(db.scalars(select(RoleTemplatePermission).where(
@@ -210,6 +230,7 @@ def create_draft(
     source_commit_sha: str = "",
     actor_user_id: int | None = None,
     source_template_id: int | None = None,
+    rollback_source_digest: str | None = None,
 ) -> dict:
     code = assert_school_role_template_code(template_code)
     reason = str(change_reason or "").strip()
@@ -217,7 +238,10 @@ def create_draft(
         raise AppException("VALIDATION_ERROR", "模板新版本必须填写至少5个字符的变更原因")
     permissions = sorted({str(value or "").strip() for value in (permission_codes or []) if str(value or "").strip()})
     assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
-    _assert_canonical_new_writes(permissions)
+    if rollback_source_digest is None:
+        _assert_canonical_new_writes(permissions)
+    elif source_template_id is None:
+        raise AppException("DATA_CONFLICT", "回滚草稿缺少来源版本", http_status=409)
 
     db = get_sessionmaker()()
     try:
@@ -231,11 +255,13 @@ def create_draft(
         baseline = _current_published(db, code)
         previous = None
         if source_template_id is not None:
-            previous = _load(db, source_template_id, lock=False)
+            previous = _load(db, source_template_id, lock=rollback_source_digest is not None)
             if previous.template_code != code:
                 raise AppException("VALIDATION_ERROR", "回滚/派生源模板 code 不一致")
         elif latest is not None:
             previous = latest
+        if rollback_source_digest is not None:
+            _assert_rollback_snapshot(db, previous, code, permissions, rollback_source_digest)
 
         item = RoleTemplate(
             tenant_id=PLATFORM_TENANT,
@@ -258,6 +284,8 @@ def create_draft(
             created_by=actor_user_id,
             updated_by=actor_user_id,
         )
+        if rollback_source_digest is not None:
+            item.permission_ceiling_json["rollbackSourceDigest"] = rollback_source_digest
         db.add(item)
         db.flush()
         _sync_permissions(db, item, permissions)
@@ -400,7 +428,16 @@ def publish_draft(
             item.change_reason = reason
         permissions = _items(db, item)
         assert_custom_role_assignable(permissions, allow_legacy_patterns=False)
-        _assert_canonical_new_writes(permissions)
+        snapshot = item.permission_ceiling_json or {}
+        if "rollbackSourceDigest" in snapshot:
+            if item.previous_template_id is None:
+                raise AppException("DATA_CONFLICT", "回滚草稿缺少来源版本", http_status=409)
+            source = _load(db, int(item.previous_template_id), lock=True)
+            _assert_rollback_snapshot(
+                db, source, item.template_code, permissions, snapshot["rollbackSourceDigest"], candidate=item,
+            )
+        else:
+            _assert_canonical_new_writes(permissions)
         if not permissions:
             raise AppException("VALIDATION_ERROR", "角色模板至少包含一个具体的学校级权限")
         now = datetime.utcnow()
@@ -465,4 +502,5 @@ def create_rollback_draft(
         source_commit_sha=source_commit_sha,
         actor_user_id=actor_user_id,
         source_template_id=source_template_id,
+        rollback_source_digest=source_snapshot["permissionDigest"],
     )

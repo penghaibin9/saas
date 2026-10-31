@@ -14,8 +14,8 @@ test('搜索状态用业务语言说明，入口、禁用状态和原始权限�
     { status: 'unauthorized', groupKey: 'school', trail: '未开通项', disabled: true, path: '/denied', badge: '未开通' }
   ]
   const body = source.split('    fnResults() {')[1].split('\n    },')[0]
-  const results = new Function('searchSearchAliases', 'searchNavPlan', 'filterAcademicTeacherSearchResults', body)
-    .call({ fnQueryDebounced: '查询', workspaceStudentSearchEnabled: false, visibleGroupKeys: new Set(['school']), ctx: {}, helpApi: null }, () => [], () => rows, value => value)
+  const results = new Function('searchSearchAliases', 'searchNavPlan', 'filterAcademicTeacherSearchResults', 'hasAcademicRoleMenu', 'academicRoleSearchResults', body)
+    .call({ fnQueryDebounced: '查询', workspaceStudentSearchEnabled: false, visibleGroupKeys: new Set(['school']), ctx: {}, helpApi: null }, () => [], () => rows, value => value, () => false, value => value)
   assert.deepEqual(results.map(row => row.kind), ['暂未开放', '部分可用', '未开通'])
   assert.deepEqual(results.map(row => row.to), [null, '/partial', null])
   assert.deepEqual(results.map(row => row.disabled), [true, false, true])

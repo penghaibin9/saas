@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -10,7 +11,7 @@ function view(file, api = {}, overrides = {}) {
     .replace(/^import[\s\S]*?from\s*['"][^'"]+['"]\s*$/gm, '')
     .replace(/components:\s*\{[^}]*\},/, 'components: {},').replace('export default', 'return')
   const routes = [], saved = []
-  const options = new Function('positionApi', 'toast', 'canCode', 'useInternshipBatchStore', 'REMUNERATION_TYPE_LABEL', 'REMUNERATION_CYCLE_LABEL', 'REMUNERATION_TYPE', 'REMUNERATION_CYCLE', 'POSITION_STATUS', 'window', script)(
+  const options = componentFactory('positionApi', 'toast', 'canCode', 'useInternshipBatchStore', 'REMUNERATION_TYPE_LABEL', 'REMUNERATION_CYCLE_LABEL', 'REMUNERATION_TYPE', 'REMUNERATION_CYCLE', 'POSITION_STATUS', 'window', script)(
     api, { success() {}, error() {} }, (ctx, code) => ctx.permissionPatterns?.includes(code), () => ({ selectedBatchId: '23' }),
     REMUNERATION_TYPE_LABEL, REMUNERATION_CYCLE_LABEL, REMUNERATION_TYPE, REMUNERATION_CYCLE, POSITION_STATUS, { __SAAS_DIRTY_FORM_GUARD__: { markSaved: () => saved.push(true) } })
   const instance = { ...options.data(), ctx: { permissionPatterns: ['internship.position.view', 'internship.position.manage', 'internship.position.publish', 'internship.enterprise.view'] },

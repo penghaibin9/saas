@@ -1,3 +1,4 @@
+import { academicRoleAllows, academicRoleDefaultPath, hasAcademicRoleMenu } from '../src/modules/academicAffairs/config/academicRoleNavigation.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import vm from 'node:vm'
@@ -324,7 +325,7 @@ async function overviewNavigationFixture(t, options = {}) {
     const index = readOverviewSource('router/index.js'), start = index.indexOf('router.beforeEach(async (to, from, next) => {'), end = index.indexOf('\n\nexport default router', start)
     assert.ok(start > 0 && end > start)
     const registration = index.slice(start, end); assert.equal(registration.split('import.meta.env.PROD').length - 1, 1)
-    const guardScope = { router, getToken: () => 'DECLARED_NOT_NORMAL_AUTH', request: forbidden, _declaredBuildProd: false, isPlatformPrincipal: () => false, ensurePlatformAccessContext: forbidden, resolvePlatformHome: forbidden,
+    const guardScope = { router, currentUserFromToken: () => state.claims, getModuleEntitlements: overviewNavigationGate.getModuleEntitlements, academicRoleAllows, academicRoleDefaultPath, hasAcademicRoleMenu, getToken: () => 'DECLARED_NOT_NORMAL_AUTH', request: forbidden, _declaredBuildProd: false, isPlatformPrincipal: () => false, ensurePlatformAccessContext: forbidden, resolvePlatformHome: forbidden,
       GUARDED_MODULES: overviewNavigationGate.GUARDED_MODULES, getPermissionPatterns: overviewNavigationGate.getPermissionPatterns, ensurePermissionPatterns: overviewNavigationGate.ensurePermissionPatterns, getRbacLoadFailed: overviewNavigationGate.getRbacLoadFailed, canEnterRoute: overviewNavigationGate.canEnterRoute, routeAccessNotice: overviewNavigationGate.routeAccessNotice }
     removeCanonical = new Function(...Object.keys(guardScope), `return ${registration.replace('import.meta.env.PROD', '_declaredBuildProd')}`)(...Object.values(guardScope))
     removeAfter = router.afterEach((to, from, failure) => transitions.push({ to: to.fullPath, from: from.fullPath, type: failure?.type ?? null }))

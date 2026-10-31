@@ -94,6 +94,7 @@ def evaluation_tasks(
     page: int = Query(1, ge=1),
     pageSize: int = Query(50, ge=1, le=100),
     status: str | None = Query(default=None),
+    internshipId: int | None = Query(default=None, ge=1),
     principal: EnterprisePrincipal = Depends(require_permission("internship.eval.enterprise.manage")),
 ):
     context = resolve_internship_collab_context(principal, batch_id=batchId)
@@ -104,6 +105,7 @@ def evaluation_tasks(
             page=page,
             page_size=pageSize,
             status=status,
+            internship_id=internshipId,
         ))
 
 

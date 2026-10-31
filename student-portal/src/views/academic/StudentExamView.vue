@@ -29,7 +29,10 @@
           <article v-for="record in deferrals" :key="record.deferId || record.id" :class="{ 'is-target': String(record.deferId || record.id) === focusDeferId }">
             <div class="taskline"><div class="iconbox amber"><AcademicPrototypeIcon name="circle-info" /></div><div class="grow"><strong>{{ record.courseName || '本人考试' }} · 缓考申请</strong><small>{{ dateTime(record.createdAt || record.applyAt) }} → {{ deferStatusText(record.status) }}</small></div><span class="tag amber">{{ deferStatusText(record.status) }}</span></div>
             <dl class="definition"><dt>申请说明</dt><dd>{{ record.reason || '未提供' }}</dd><dt v-if="record.reviewNote || record.rejectReason || record.returnReason">处理意见</dt><dd v-if="record.reviewNote || record.rejectReason || record.returnReason">{{ record.reviewNote || record.rejectReason || record.returnReason }}</dd></dl>
-            <button v-if="record.status === 'RETURNED'" class="btn small" :disabled="!!actingKey" @click="resubmit(record)">确认补充完成并重提</button>
+            <div v-if="record.status === 'RETURNED'" class="stack">
+              <label class="field"><span>按退回意见补充缓考说明</span><textarea v-model.trim="returnDrafts[String(record.deferId || record.id)]" :disabled="!!actingKey" maxlength="500" placeholder="请修改说明后重新提交，至少5字" /></label>
+              <button class="btn small" :disabled="!!actingKey || uncertainKeys.includes('resubmit:' + String(record.deferId || record.id))" @click="resubmit(record)">保存补充说明并重提原申请</button>
+            </div>
           </article><p class="label">以受理节点返回为准，不把“学院通过”显示成全流程批准。</p>
         </div></section>
       </template>
@@ -69,6 +72,7 @@ const deferrals = ref([])
 const receipt = ref(null)
 const receiptTone = ref('success')
 const drafts = reactive({})
+const returnDrafts = reactive({})
 const selectedOptionId = ref('')
 const uncertainKeys = ref([])
 const selectedOption = computed(() => deferOptions.value.find(option => deferOptionKey(option) === selectedOptionId.value))
@@ -105,8 +109,8 @@ function isPast(exam) {
   return value != null && value < Date.now()
 }
 function deferStatusText(value) {
-  const map = { SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核中', TEACHER_CONFIRM: '任课教师确认中', ACADEMIC_REVIEW: '教务审核中', APPROVED: '已批准', REJECTED: '未批准', RETURNED: '退回待补充', CANCELLED: '已撤销' }
-  return map[String(value || '').toUpperCase()] || value || '待确认'
+  const map = { SUBMITTED: '已提交', COUNSELOR_REVIEW: '辅导员审核中', TEACHER_CONFIRM: '任课教师确认中', COLLEGE_REVIEW: '学院审核中', ACADEMIC_FINAL: '教务终审中', ACADEMIC_REVIEW: '教务审核中', APPROVED: '已批准', REJECTED: '未批准', RETURNED: '退回待补充', CANCELLED: '已撤销' }
+  return map[String(value || '').toUpperCase()] || '状态待确认'
 }
 function ensureDraft(option) {
   const key = deferOptionKey(option)
@@ -114,7 +118,7 @@ function ensureDraft(option) {
 }
 function canApply(option) {
   const draft = drafts[deferOptionKey(option)]
-  return !uncertainKeys.value.includes(`apply:${deferOptionKey(option)}`) && !!option?.examCourseId && !!draft?.reasonType && String(draft.reason || '').trim().length >= 5
+  return option?.canApply === true && option?.hasActiveDefer !== true && !uncertainKeys.value.includes(`apply:${deferOptionKey(option)}`) && !!option?.examCourseId && !!draft?.reasonType && String(draft.reason || '').trim().length >= 5
 }
 function persistentCommandCleared(reference) {
   const pending = guard.pendingCommands()
@@ -128,7 +132,7 @@ function reconcilePersistentCommands() {
     const formal = reference.ackId ? deferrals.value.find((row) => String(row.deferId || row.id || '') === reference.ackId) : null
     const confirmed = applying
       ? formal && String(formal.examCourseId || '') === reference.objectId
-      : formal && reference.ackId === reference.objectId && String(formal.status || '').toUpperCase() !== 'RETURNED'
+      : formal && reference.ackId === reference.objectId && reference.parentId && String(formal.version) === reference.parentId && ['COUNSELOR_REVIEW','TEACHER_CONFIRM','COLLEGE_REVIEW','ACADEMIC_FINAL','APPROVED'].includes(formal.status)
     if (confirmed && guard.completePersistentCommand(reference)) {
       receiptTone.value = 'success'
       receipt.value = academicReceipt({ title: `原缓考申请${applying ? '' : '重新'}提交已通过正式记录确认`, object: formal.courseName || formal.examName || '原考试', status: deferStatusText(formal.status), operatedAt: formal.updatedAt || formal.createdAt || formal.submittedAt, next: '请继续在申请记录中跟踪学校受理结果。' })
@@ -159,6 +163,7 @@ async function load() {
   exams.value = rowsOf(examResult)
   deferOptions.value = rowsOf(optionResult)
   deferrals.value = rowsOf(recordResult)
+  for (const row of deferrals.value) if (row.status === 'RETURNED' && !(String(row.deferId || row.id) in returnDrafts)) returnDrafts[String(row.deferId || row.id)] = row.reason || ''
   reconcilePersistentCommands()
   for (const option of deferOptions.value) ensureDraft(option)
   if (returnedDeferrals.value.length && tab.value === 'schedule') tab.value = 'records'
@@ -210,14 +215,16 @@ async function resubmit(record) {
   const id = record?.deferId || record?.id
   const commandKey = `resubmit:${String(id || '')}`
   if (!id || actingKey.value || uncertainKeys.value.includes(commandKey)) return
-  const command = guard.beginCommand({ key: commandKey, deferId: String(id), object: record.courseName || record.examName || '当前考试' })
+  const reason = String(returnDrafts[String(id)] || '').trim()
+  if (reason.length < 5 || !Number.isSafeInteger(record.version)) { ui.notify('请补充至少5字说明，并刷新核对原申请版本'); return }
+  const command = guard.beginCommand({ key: commandKey, deferId: String(id), expectedVersion: record.version, reason, object: record.courseName || record.examName || '当前考试' })
   if (!await systemConfirm({ title:'确认重新提交缓考', message:`确认已按处理意见补充“${command.object}”并重新提交？`, confirmText:'确认重新提交' })) return
   if (!guard.isCurrentCommand(command)) return
-  const persistent = guard.preparePersistentCommand({ action: 'RESUBMIT_DEFER', objectId: command.deferId })
+  const persistent = guard.preparePersistentCommand({ action: 'RESUBMIT_DEFER', objectId: command.deferId, parentId: String(command.expectedVersion + 1) })
   if (!persistent) { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '缓考重新提交未发送', object: command.object, status: '浏览器无法保存待确认引用', next: '请检查浏览器本地存储后再提交。' }); return }
   actingKey.value = command.key
   try {
-    const result = await portalApi.academicExamDeferResubmit(command.deferId)
+    const result = await portalApi.academicExamDeferResubmit(command.deferId, { expectedVersion: command.expectedVersion, reason: command.reason })
     if (!guard.isCurrentCommand(command)) return
     const acknowledged = guard.rememberPersistentAck(persistent, result?.deferId || result?.id)
     uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
@@ -225,7 +232,7 @@ async function resubmit(record) {
     const readOk = await load()
     if (!guard.isCurrentCommand(command) || !readOk) return
     const formal = acknowledged?.ackId === command.deferId ? deferrals.value.find((row) => String(row.deferId || row.id) === command.deferId) : null
-    if (formal && String(formal.status || '').toUpperCase() !== 'RETURNED' && persistentCommandCleared(persistent)) {
+    if (formal && Number.isSafeInteger(result?.version) && result.version === command.expectedVersion + 1 && formal.version === result.version && formal.reason === command.reason && String(formal.status || '').toUpperCase() !== 'RETURNED' && persistentCommandCleared(persistent)) {
       receiptTone.value = 'success'; receipt.value = academicReceipt({ title: '缓考申请已重新提交并核对', object: command.object, status: deferStatusText(formal.status), operatedAt: formal.updatedAt || formal.submittedAt || result?.updatedAt, next: '请继续在申请记录中跟踪学校受理结果。' })
       uncertainKeys.value = uncertainKeys.value.filter(value => value !== command.key)
       markStudentAcademicFormClean()
@@ -277,7 +284,13 @@ async function printTicket(exam) {
 }
 async function handleActionError(e, command, action, persistent) {
   const kind = studentAcademicWriteErrorKind(e)
-  if (!['network', 'forbidden', 'conflict'].includes(kind)) guard.completePersistentCommand(persistent)
+  if (kind === 'conflict') {
+    const cleared = guard.completePersistentCommand(persistent)
+    if (cleared) uncertainKeys.value = uncertainKeys.value.filter(key => key !== command.key)
+    receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: '原申请已变化，本次未提交', object: command.object, status: cleared ? '请核对最新记录后重新办理' : '本地待核实引用暂未清除', next: '已填写内容保留，请刷新核对原申请。' })
+    await load(); return
+  }
+  if (!['network', 'forbidden'].includes(kind)) guard.completePersistentCommand(persistent)
   if (kind === 'network' || kind === 'conflict') uncertainKeys.value = [...new Set([...uncertainKeys.value, command.key])]
   if (kind === 'network' || kind === 'conflict') { receiptTone.value = 'waiting'; receipt.value = academicReceipt({ title: kind === 'network' ? `${action}结果待确认` : '考试情况已变化', object: command.object, status: '待服务器记录确认', next: academicErrorMessage(e, '请重新核对。') }); await load() }
   else ui.notify(academicErrorMessage(e, `${action}失败`))
@@ -286,6 +299,7 @@ async function handleActionError(e, command, action, persistent) {
 function clearSensitive(e) {
   guard.invalidate()
   exams.value = []; deferOptions.value = []; deferrals.value = []; Object.keys(drafts).forEach((key) => delete drafts[key])
+  Object.keys(returnDrafts).forEach(key => delete returnDrafts[key])
   receipt.value = null; selectedOptionId.value = ''
   loading.value = false; actingKey.value = ''
   error.value = academicErrorMessage(e)

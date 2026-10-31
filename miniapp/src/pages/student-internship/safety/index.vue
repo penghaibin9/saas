@@ -1,12 +1,12 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar title="岗前安全教育" subtitle="当前所选批次全部必修课程" show-back />
+  <view class="internship-surface mobile-page mobile-student page-wrap">
+    <MobileNavBar title="岗前安全教育" show-back />
     <MobileGlobalState :state="state" @retry="load">
       <view class="page-pad stack" v-if="state === 'ready'">
-        <MobileInlineAlert type="info" :description="batchId ? '上岗前须完成所选批次全部必修课程；旧版本课程通过记录不能代替新版本。' : '当前只有一条进行中实习记录，系统已使用该批次。'" />
+        <text v-if="courses.length" class="ss__rule">上岗前完成全部必修课程；版本更新后需重新学习。</text>
         <MobileGlobalState v-if="!courses.length" state="empty" title="暂无安全教育课程"
-          description="如学校已要求安全教育但此处无课程，请联系指导教师或学校管理员。" />
-        <view v-for="course in courses" :key="course.id" class="card ss" @click="open(course)">
+          description="如需上岗学习，请联系指导教师核对课程安排。" />
+        <view v-for="course in orderedCourses" :key="course.id" class="card ss" @click="open(course)">
           <view class="row-between">
             <view class="flex-1">
               <text class="t-md t-bold">{{ course.title }}</text>
@@ -16,7 +16,7 @@
           </view>
           <view class="ss__progress">
             <text>已学习 {{ course.studiedMinutes || 0 }} 分钟</text>
-            <text>剩余尝试 {{ course.remainingAttempts }}</text>
+            <text v-if="course.completionStatus !== 'PASSED'">剩余尝试 {{ course.remainingAttempts }}</text><text v-else>本版本已通过，可查看学习结果</text>
           </view>
           <text v-if="course.requireCommitment" class="ss__commit">安全承诺：{{ course.commitmentConfirmed ? '已确认' : '待确认' }}</text>
           <text class="ss__action">{{ actionLabel(course) }} ›</text>
@@ -32,6 +32,7 @@ import { go } from '@/utils/nav'
 
 export default {
   data() { return { state: 'loading', courses: [], batchId: '' } },
+  computed: { orderedCourses(){return this.courses.filter(course=>course.completionStatus!=='PASSED').concat(this.courses.filter(course=>course.completionStatus==='PASSED'))} },
   onLoad(options) {
     this.batchId = String(options?.batchId || '')
     this.load()
@@ -68,7 +69,7 @@ export default {
     },
     statusLabel(status) {
       return ({ NOT_STARTED: '未开始', IN_PROGRESS: '学习中', PENDING_REVIEW: '待审核',
-        PASSED: '已通过', FAILED: '未通过' })[status] || status || '未开始'
+        PASSED: '已通过', FAILED: '未通过' })[status] || (status ? '状态待核对' : '未开始')
     },
     statusTone(status) {
       if (status === 'PASSED') return 'success'
@@ -88,8 +89,9 @@ export default {
 
 <style scoped>
 .ss { display: flex; flex-direction: column; gap: var(--space-2); }
-.ss__sub { display: block; margin-top: 3px; font-size: var(--font-size-xs); color: var(--text-tertiary); }
-.ss__progress { display: flex; justify-content: space-between; font-size: var(--font-size-xs); color: var(--text-secondary); }
-.ss__commit { font-size: var(--font-size-xs); color: var(--warning-700); }
-.ss__action { align-self: flex-end; color: var(--brand-primary); font-size: var(--font-size-sm); }
+.ss__rule { font-size:var(--font-size-base);line-height:1.6;color:var(--text-secondary); }
+.ss__sub { display: block; margin-top: 3px; font-size: var(--font-size-base); color: var(--text-tertiary); }
+.ss__progress { display: flex; flex-wrap:wrap;gap:8px;justify-content: space-between; font-size: var(--font-size-base); color: var(--text-secondary); }
+.ss__commit { font-size: var(--font-size-base); color: var(--warning-700); }
+.ss__action { align-self: flex-end;display:flex;align-items:center;min-height:var(--touch-target-min);color: var(--brand-primary); font-size: var(--font-size-md); }
 </style>

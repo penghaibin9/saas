@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -13,7 +14,7 @@ function setup(api = {}) {
   const store = { selectedBatchId: '23', canWriteStudents: true, withBatchQuery(q) { return { ...q, batchId: this.selectedBatchId } } }
   const feedback = [], routes = []
   const bindings = { ...constants, internStudentApi: api, useInternshipBatchStore: () => store, canCode: (ctx, code) => ctx.permissionPatterns?.includes(code), toast: { success: x => feedback.push(x), error: x => feedback.push(x) } }
-  const def = new Function(...Object.keys(bindings), script)(...Object.values(bindings))
+  const def = componentFactory(...Object.keys(bindings), script)(...Object.values(bindings))
   const vm = { ...def.data(), ctx: { permissionPatterns: ['internship.student.view', 'internship.student.manage', 'internship.student.export', 'internship.student.eligibility.review'] },
     $route: { path: '/admin/internship/students', fullPath: '/admin/internship/students?batchId=23&panel=roster&page=3', query: { batchId: '23', panel: 'roster', page: '3' } },
     $router: { resolve: t => ({ fullPath: t.path + '?' + new URLSearchParams(t.query).toString() }), push: t => routes.push(t), replace: t => routes.push(t) } }
@@ -62,9 +63,9 @@ test('unsubmitted filters cannot silently change pagination, list refresh or exp
 
 test('mentor view explains its scope and name while read-only roles keep viewing without write actions', () => {
   const { vm } = setup(); vm.activePanel = 'mentor'
-  assert.equal(vm.pageTitle, '导师分配'); assert.match(vm.pageSubtitle, /指导关系/)
+  assert.equal(vm.pageTitle, '导师分配'); assert.match(vm.pageSubtitle, /尚未分配校内指导教师/)
   vm.ctx.permissionPatterns = ['internship.student.view']
-  assert.deepEqual(vm.rowActions({ status: 'PREPARING' }), [{ key: 'detail', label: '档案' }])
+  assert.deepEqual(vm.rowActions({ status: 'PREPARING' }), [{ key: 'detail', label: '档案' }, { key: 'basic', label: '基础资料' }])
   assert.equal(vm.canExport, false)
 })
 
@@ -133,7 +134,7 @@ test('mentor default includes students without a position and puts assignment fi
   const { vm } = setup(); vm.load = () => {}
   vm.$route.query = { panel: 'mentor' }; vm.applyRouteFilters()
   assert.equal(vm.appliedFilters.hasPosition, ''); assert.equal('hasPosition' in vm.queryParams(), false)
-  assert.deepEqual(vm.rowActions({ id: '31', status: 'PREPARING' }), [{ key: 'assignAdvisor', label: '分配导师' }, { key: 'detail', label: '档案' }])
+  assert.deepEqual(vm.rowActions({ id: '31', batchId:'23', status: 'PREPARING' }), [{ key: 'assignAdvisor', label: '分配导师' }, { key: 'detail', label: '档案' }, { key:'basic',label:'基础资料' }])
   assert.deepEqual(vm.toolbarActions.map(x => x.key), ['roster'])
   vm.$route.query.hasPosition = 'true'; vm.applyRouteFilters(); assert.equal(vm.queryParams().hasPosition, true)
 })

@@ -1,20 +1,20 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="实习学生" subtitle="本批次名单与资格进度" show-back fallback-url="/pages/teacher/workbench/index" />
+  <view class="internship-surface mobile-page mobile-teacher page-wrap teacher-students">
+    <MobileNavBar variant="teacher" title="实习学生" show-back fallback-url="/pages/teacher-internship/index" />
     <MobileGlobalState :state="state" :description="error" @retry="load">
       <view class="page-pad stack">
-        <view class="card its__context"><view><text class="its__eyebrow">当前实习批次</text><text class="its__batch">{{ context.selectedBatch?.name || context.selectedBatch?.batchName || '请选择批次' }}</text></view>
-          <picker :range="batchLabels" :value="batchIndex" @change="changeBatch"><view class="its__switch">切换 ▾</view></picker>
+        <view class="its__context"><text class="its__batch">{{ context.selectedBatch?.name || context.selectedBatch?.batchName || '请选择批次' }}</text>
+          <picker class="mobile-picker" v-if="context.batches.length > 1" :range="batchLabels" :value="batchIndex" @change="changeBatch"><view class="its__switch">切换批次</view></picker>
         </view>
-        <view class="its__search"><input v-model="keyword" placeholder="搜索姓名或学号" confirm-type="search" @confirm="search" /><button size="mini" @click="search">搜索</button></view>
-        <view class="its__filters"><button v-for="item in filters" :key="item.value" :class="{ 'is-on': eligibility === item.value }" @click="chooseFilter(item.value)">{{ item.label }}</button></view>
-        <view class="its__count"><text>{{ total }} 名学生</text><text>点击学生查看实习档案</text></view>
-        <MobileGlobalState v-if="!rows.length" state="empty" title="当前条件下暂无学生" description="可调整搜索条件或切换批次。名单按当前身份的数据范围显示。" />
+        <view class="its__search"><input class="mobile-input" v-model="keyword" placeholder="搜索姓名或学号" confirm-type="search" @confirm="search" /><button class="mobile-control" size="mini" @click="search">搜索</button></view>
+        <view class="its__filters"><button class="mobile-control" v-for="item in filters" :key="item.value" :class="{ 'is-on': eligibility === item.value }" @click="chooseFilter(item.value)">{{ item.label }}</button></view>
+        <view class="its__count"><text>{{ total }} 名学生</text></view>
+        <MobileGlobalState v-if="!rows.length" state="empty" title="当前条件下暂无学生" description="可调整搜索条件或切换批次。" />
         <view v-for="row in rows" :key="row.id" class="card its__student" @click="openStudent(row)">
           <view class="its__row"><view class="its__avatar">{{ row.name?.slice(0, 1) }}</view><view class="flex-1"><text class="its__name">{{ row.name }}</text><text class="its__meta">{{ maskedNo(row.studentNo) }} · {{ row.className }}</text></view><MobileStatusTag :label="row.eligibilityLabel" :type="tone(row.eligibilityStatus)" /></view>
           <view class="its__placement"><text>{{ row.positionName || row.destinationLabel || '岗位待落实' }}</text><text>{{ row.statusLabel }} ›</text></view>
         </view>
-        <view v-if="total > pageSize" class="its__paging"><button size="mini" :disabled="page <= 1" @click="turn(-1)">上一页</button><text>{{ page }} / {{ Math.ceil(total / pageSize) }}</text><button size="mini" :disabled="page * pageSize >= total" @click="turn(1)">下一页</button></view>
+        <view v-if="total > pageSize" class="its__paging"><button class="mobile-control" size="mini" :disabled="page <= 1" @click="turn(-1)">上一页</button><text>{{ page }} / {{ Math.ceil(total / pageSize) }}</text><button class="mobile-control" size="mini" :disabled="page * pageSize >= total" @click="turn(1)">下一页</button></view>
       </view>
     </MobileGlobalState>
   </view>
@@ -66,4 +66,5 @@ export default {
 .its__search{display:flex;align-items:center;gap:12px;background:var(--bg-card);border:1px solid var(--border-light);border-radius:10px;padding:8px 12px}.its__search input{flex:1;font-size:14px;min-width:0}.its__search button{margin:0;color:var(--brand-primary);background:transparent}.its__search button::after{border:0}
 .its__filters{display:flex;gap:8px}.its__filters button{flex:1;padding:8px 2px;margin:0;font-size:13px;line-height:1.5;color:var(--text-secondary);background:transparent;border-radius:8px}.its__filters button::after{border:0}.its__filters button.is-on{background:var(--brand-50);color:var(--brand-primary);font-weight:600}
 .its__count{display:flex;justify-content:space-between;font-size:12px;color:var(--text-tertiary)}.its__avatar{display:flex;align-items:center;justify-content:center;width:38px;height:38px;flex:none;border-radius:12px;color:var(--brand-primary);background:var(--brand-50);font-size:16px}.its__name{display:block;font-size:16px;font-weight:600}.its__meta{display:block;font-size:11px;line-height:1.7;color:var(--text-tertiary);margin-top:3px}.its__placement{border-top:1px solid var(--border-light);padding-top:13px;margin-top:16px;font-size:12px;color:var(--text-secondary)}.its__paging{font-size:12px;color:var(--text-tertiary)}.its__paging button{margin:0}
+.teacher-students :deep(.page-pad){width:100%;max-width:760px;margin:0 auto;box-sizing:border-box}.teacher-students .card{border-radius:8px;box-shadow:none}.its__context{padding:4px 0 12px;border-bottom:1px solid var(--border-light)}.its__batch{margin:0;min-width:0;overflow-wrap:anywhere}.its__context picker{flex-shrink:0}.its__switch{display:flex;align-items:center;min-height:44px;padding:0 8px;font-size:14px}.its__filters{flex-wrap:wrap}.its__filters button{min-height:44px;font-size:14px}.its__search{border-radius:8px;padding:4px 12px}.its__search input,.its__search button{min-height:44px;font-size:15px}.its__count,.its__meta,.its__placement,.its__paging{font-size:14px;line-height:22px}.its__paging button{min-height:44px;font-size:14px}.its__row .flex-1{min-width:0}.its__name,.its__meta,.its__placement text{overflow-wrap:anywhere}.its__placement{padding-top:10px;margin-top:12px}.its__avatar{border-radius:8px}
 </style>

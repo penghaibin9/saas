@@ -1,0 +1,577 @@
+{
+  "schemaVersion": 1,
+  "authority": "ROLE_MENU_UPPER_BOUND_AND_PUBLISHED_PERMISSIONS",
+  "selectorKeys": [
+    "tab",
+    "panel",
+    "action",
+    "entry",
+    "wall",
+    "view",
+    "mode"
+  ],
+  "roles": {
+    "COLLEGE_ACADEMIC": {
+      "groups": [
+        {
+          "key": "aa-college-teaching",
+          "label": "本院教学",
+          "entries": [
+            {
+              "leafId": "aa.dashboard.overview",
+              "label": "本院教学概览"
+            },
+            {
+              "leafId": "aa.teaching-tasks.teaching.tasks",
+              "label": "本院教学任务"
+            },
+            {
+              "leafId": "aa.teaching-tasks.teaching.tasks.assign",
+              "label": "分配任课教师",
+              "permissionKey": "academicAffairs.teachingTask.assign"
+            }
+          ]
+        },
+        {
+          "key": "aa-college-program",
+          "label": "培养方案",
+          "entries": [
+            {
+              "leafId": "aa.training.programs"
+            },
+            {
+              "leafId": "aa.training.programs.console.tab.authoring",
+              "label": "编制方案",
+              "permissionKey": "academicAffairs.program.manage"
+            },
+            {
+              "leafId": "aa.training.programs.console.tab.versions"
+            },
+            {
+              "leafId": "aa.training.programs.console.tab.courseModules"
+            },
+            {
+              "leafId": "aa.training.programs.console.tab.creditRequirements"
+            },
+            {
+              "leafId": "aa.training.programs.console.tab.practiceSegments"
+            },
+            {
+              "leafId": "aa.training.programs.console.tab.graduationRequirements"
+            }
+          ]
+        },
+        {
+          "key": "aa-college-course-grade",
+          "label": "课程与成绩",
+          "entries": [
+            {
+              "leafId": "aa.courses.courses"
+            },
+            {
+              "leafId": "aa.courses.courses.new"
+            },
+            {
+              "leafId": "aa.courses.courses.console.tab.credit"
+            },
+            {
+              "leafId": "aa.courses.courses.console.tab.outline"
+            },
+            {
+              "leafId": "aa.courses.courses.console.tab.assessment"
+            },
+            {
+              "leafId": "aa.courses.courses.console.tab.owner"
+            },
+            {
+              "leafId": "aa.courses.courses.console.tab.material"
+            },
+            {
+              "leafId": "aa.grades.grade.overview"
+            },
+            {
+              "leafId": "aa.grades.grade.entry",
+              "label": "课程成绩构成",
+              "permissionKey": "academicAffairs.grade.scheme.manage"
+            },
+            {
+              "leafId": "aa.grades.grade.fail"
+            },
+            {
+              "leafId": "aa.grades.transcript"
+            }
+          ]
+        },
+        {
+          "key": "aa-college-schedule",
+          "label": "课表与调停课",
+          "entries": [
+            {
+              "leafId": "aa.schedule.schedule.teacher"
+            },
+            {
+              "leafId": "aa.schedule.schedule.class"
+            },
+            {
+              "leafId": "aa.schedule.schedule.teaching.class"
+            },
+            {
+              "leafId": "aa.schedule.schedule.week"
+            },
+            {
+              "leafId": "aa.schedule.schedule.semester"
+            },
+            {
+              "leafId": "aa.schedule.schedule.room"
+            },
+            {
+              "leafId": "aa.schedule-change.schedule.change"
+            },
+            {
+              "leafId": "aa.schedule-change.schedule.change.apply",
+              "label": "协助登记调停课"
+            }
+          ]
+        },
+        {
+          "key": "aa-college-roster",
+          "label": "学籍办理",
+          "entries": [
+            {
+              "leafId": "aa.student-status.roster"
+            },
+            {
+              "leafId": "aa.student-status.roster.corrections"
+            },
+            {
+              "leafId": "aa.status-change.status.changes"
+            },
+            {
+              "leafId": "aa.status-change.status.changes.new"
+            },
+            {
+              "leafId": "aa.registration.registration",
+              "label": "本院注册查询"
+            }
+          ]
+        },
+        {
+          "key": "aa-college-warning",
+          "label": "学业预警",
+          "entries": [
+            {
+              "leafId": "aa.warning.warnings",
+              "label": "本院学业预警"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.dashboard"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.credit"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.fail"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.gpa"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.retake"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.graduation"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.followup"
+            },
+            {
+              "leafId": "aa.warning.warnings.console.tab.stats"
+            }
+          ]
+        },
+        {
+          "key": "aa-college-query",
+          "label": "教学查询",
+          "entries": [
+            {
+              "leafId": "aa.makeup.makeup.tab.makeup",
+              "label": "本院补考成绩"
+            },
+            {
+              "leafId": "aa.makeup.makeup.tab.clearance",
+              "label": "本院清考成绩"
+            },
+            {
+              "leafId": "aa.exam.exam",
+              "label": "本院考试查询"
+            },
+            {
+              "leafId": "aa.exam.exam.tab.defer",
+              "label": "本院缓考审批"
+            },
+            {
+              "leafId": "aa.textbooks.textbooks.tab.catalog"
+            },
+            {
+              "leafId": "aa.resources.classrooms"
+            },
+            {
+              "leafId": "aa.resources.resources.occupancy"
+            },
+            {
+              "leafId": "aa.evaluation.evaluation.tab.evalStats"
+            },
+            {
+              "leafId": "aa.graduation-qual.graduation.audit.console.tab.results"
+            }
+          ]
+        },
+        {
+          "key": "aa-college-stats",
+          "label": "本院统计",
+          "entries": [
+            {
+              "leafId": "aa.stats.stats",
+              "label": "本院统计总览"
+            },
+            {
+              "leafId": "aa.schedule-change.schedule.change.stats"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "statusChange"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "registration"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "course"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "teachingTask"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "schedule"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "courseSelection"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "exam"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "grade"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "warning"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "graduation"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "workload"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "resource"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "overview"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/status-changes/suspend",
+          "permissionKey": "academicAffairs.statusChange.apply",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/status-changes/resume",
+          "permissionKey": "academicAffairs.statusChange.apply",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/status-changes/withdraw",
+          "permissionKey": "academicAffairs.statusChange.apply",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/status-changes/transfer-major",
+          "permissionKey": "academicAffairs.statusChange.apply",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/status-changes/transfer-class",
+          "permissionKey": "academicAffairs.statusChange.apply",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/status-changes/preserve",
+          "permissionKey": "academicAffairs.statusChange.apply",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/programs/:id",
+          "permissionKey": "academicAffairs.program.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/courses/:id",
+          "permissionKey": "academicAffairs.course.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/courses/:id/edit",
+          "permissionKey": "academicAffairs.course.manage",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/:id",
+          "permissionKey": "academicAffairs.teachingTask.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/roster/:id",
+          "permissionKey": "academicAffairs.roster.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/status-changes/:id",
+          "permissionKey": "academicAffairs.statusChange.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/registration/:id",
+          "permissionKey": "academicAffairs.registration.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/schedule/teacher/:key",
+          "permissionKey": "academicAffairs.schedule.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/schedule/class/:key",
+          "permissionKey": "academicAffairs.schedule.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/schedule/teaching-class/:key",
+          "permissionKey": "academicAffairs.schedule.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/schedule/room/:key",
+          "permissionKey": "academicAffairs.schedule.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/graduation/:id/results",
+          "permissionKey": "academicAffairs.graduation.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/programs/console",
+          "permissionKey": "academicAffairs.program.manage",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/warnings/console",
+          "permissionKey": "academicAffairs.warning.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/programs/opening-plan",
+          "permissionKey": "academicAffairs.program.view",
+          "query": {}
+        },
+        {
+          "path": "/admin/academic-affairs/programs/console",
+          "permissionKey": "academicAffairs.program.manage",
+          "query": {
+            "tab": "planChange"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/programs/console",
+          "permissionKey": "academicAffairs.program.manage",
+          "query": {
+            "tab": "practicePlan"
+          }
+        }
+      ]
+    },
+    "LEADER": {
+      "groups": [
+        {
+          "key": "aa-leader-screen",
+          "label": "教务大屏",
+          "entries": [
+            {
+              "leafId": "aa.big-screen.wall.1",
+              "label": "教务运行大屏"
+            }
+          ]
+        },
+        {
+          "key": "aa-leader-stats",
+          "label": "统计报表",
+          "entries": [
+            {
+              "leafId": "aa.stats.stats",
+              "label": "统计总览"
+            },
+            {
+              "leafId": "aa.stats.stats.tab.snapshot"
+            }
+          ]
+        }
+      ],
+      "routes": [
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "statusChange"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "registration"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "course"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "teachingTask"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "schedule"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "courseSelection"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "exam"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "grade"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "warning"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "graduation"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "workload"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "resource"
+          }
+        },
+        {
+          "path": "/admin/academic-affairs/stats",
+          "permissionKey": "academicAffairs.stats.view",
+          "query": {
+            "tab": "overview"
+          }
+        }
+      ]
+    }
+  }
+}

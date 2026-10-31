@@ -83,7 +83,7 @@ function commandId() {
 function allowedRecovery(value) {
   if (!value || typeof value !== 'object') return null
   const field = text(value.field)
-  if (!['status', 'registrationStatus', 'submitted'].includes(field)) return null
+  if (!['status', 'registrationStatus', 'submitted', 'version'].includes(field)) return null
   const result = { field }
   if (value.equals !== undefined) result.equals = typeof value.equals === 'boolean' ? value.equals : text(value.equals)
   if (Array.isArray(value.excludes)) result.excludes = value.excludes.map(text).filter(Boolean).slice(0, 8)

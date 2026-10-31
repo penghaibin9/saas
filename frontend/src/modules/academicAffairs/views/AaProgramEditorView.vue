@@ -8,15 +8,15 @@
     :data-scope-name="ctx.dataScope.scopeName"
   >
     <template #actions>
-      <AppButton @click="returnToSource">返回来源工作区</AppButton>
-      <AppButton :loading="validationLoading" @click="loadValidation">运行校验</AppButton>
+      <AppButton @click="returnToSource">返回</AppButton>
+      <AppButton :loading="validationLoading" @click="loadValidation">检查方案</AppButton>
       <AppButton @click="$router.push('/admin/academic-affairs/programs/opening-plan')">开课差异</AppButton>
     </template>
 
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="program">
-      <AaObjectContext :name="program.programName" :identity="[program.gradeYear && (program.gradeYear + '级'), '版本 v' + program.version].filter(Boolean).join(' · ')" :status="statusLabel(program.status)" :owner="programOwner" :next-step="programNextOwner" source="当前方案的课程、绑定与版本以正式记录为准" />
+      <AaObjectContext :name="program.programName" :identity="[program.gradeYear && (program.gradeYear + '级'), '第 ' + program.version + ' 版'].filter(Boolean).join(' · ')" :status="statusLabel(program.status)" :owner="programOwner" :next-step="programNextOwner" />
       <AaOperationReceipt :receipt="receipt" />
       <p v-if="program.responsibility?.resolved === false" class="mp-note" role="status">责任岗位尚未就绪，请按学校实际任职核对。
         <router-link v-if="hasPermission('system.org.view')" class="mp-link" to="/admin/system/org?tab=positions">核对组织与岗位</router-link>
@@ -50,7 +50,7 @@
           v-if="editable && validation && !validation.canSubmit"
           type="warning"
           title="方案暂不能提交审核"
-          :description="`请先处理右侧 ${validation.counts.blocker} 个阻断项；提醒项可在确认制度口径后保留。`"
+          :description="`请在「方案校验」中处理 ${validation.counts.blocker} 个阻断项；提醒项请按学校要求确认。`"
         />
 
         <AppSectionCard v-show="activeStep === 'basic'" title="① 基本信息">
@@ -66,8 +66,8 @@
           <div v-else class="aa-facts">
             <div><span>方案名称</span><b>{{ program.programName }}</b></div>
             <div><span>适用年级</span><b>{{ program.gradeYear || '未设置' }}</b></div>
-            <div><span>专业ID</span><b>{{ program.majorId || '未设置' }}</b></div>
-            <div><span>版本</span><b>v{{ program.version }}</b></div>
+            <div><span>专业</span><b>{{ program.majorName || (program.majorId ? '专业信息不可用' : '未设置') }}</b></div>
+            <div><span>版本</span><b>第 {{ program.version }} 版</b></div>
           </div>
         </AppSectionCard>
 

@@ -31,5 +31,5 @@ export const studentEvalApi = {
   review(id, { action, comment, expectedVersion, version }) {
     return call(() => request(`${B}/${id}/review`, { method: 'POST', body: { action, comment, expectedVersion: expectedVersion ?? version } }))
   },
-  exportEvals(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) }
+  exportEvals(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', timeoutMs: 60000, params })) }
 }

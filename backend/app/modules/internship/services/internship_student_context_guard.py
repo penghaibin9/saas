@@ -4,9 +4,10 @@ from __future__ import annotations
 from sqlalchemy import select
 
 from app.core.exceptions import AppException
-from app.models import InternshipRecord
+from app.models import InternshipBatch, InternshipRecord
 from app.modules.internship.services.internship_batch_context import parse_required_batch_id
 from app.modules.internship.services.internship_record_resolver import (
+    _is_active_record,
     resolve_student_internship_context,
 )
 from app.services.db_service import _as_id, _tid
@@ -31,9 +32,15 @@ def require_explicit_context(db, user: dict, payload: dict, *, for_write: bool):
     except (TypeError, ValueError):
         raise AppException("VALIDATION_ERROR", "实习记录格式不合法") from None
 
+    from app.services.mobile_student_service import _require_student, resolve_student
+    from app.core.exceptions import no_permission
+
+    student = resolve_student(db, _require_student(user))
+    if student is None or student.is_deleted or student.tenant_id != _tid():
+        raise no_permission("学生账号未绑定有效的本校学生档案")
     ctx = resolve_student_internship_context(
         db,
-        student_no=(user or {}).get("studentNo"),
+        student=student,
         batch_id=batch_id,
         for_write=for_write,
     )
@@ -41,6 +48,7 @@ def require_explicit_context(db, user: dict, payload: dict, *, for_write: bool):
         raise AppException(
             "DATA_CONFLICT",
             "该记录不属于当前实习批次，请刷新批次上下文",
+            http_status=409,
         )
 
     record = ctx.record
@@ -49,7 +57,7 @@ def require_explicit_context(db, user: dict, payload: dict, *, for_write: bool):
             InternshipRecord.id == internship_id,
             InternshipRecord.tenant_id == _tid(),
             InternshipRecord.is_deleted.is_(False),
-        ).with_for_update())
+        ).with_for_update().execution_options(populate_existing=True))
         if (
             not record
             or int(record.student_id) != int(ctx.student.id)
@@ -58,7 +66,15 @@ def require_explicit_context(db, user: dict, payload: dict, *, for_write: bool):
             raise AppException(
                 "DATA_CONFLICT",
                 "该记录不属于当前实习批次，请刷新批次上下文",
+                http_status=409,
             )
+        batch = db.scalar(select(InternshipBatch).where(
+            InternshipBatch.id == batch_id,
+            InternshipBatch.tenant_id == _tid(),
+            InternshipBatch.is_deleted.is_(False),
+        ).with_for_update(read=True).execution_options(populate_existing=True))
+        if not batch or not _is_active_record(record, batch):
+            raise AppException("DATA_CONFLICT", "实习记录或批次已结束，禁止继续业务写入，请刷新核对", http_status=409)
     return record, ctx.student, batch_id
 
 
@@ -69,10 +85,12 @@ def require_expected_version(raw, current: int, *, entity_name: str) -> int:
         raise AppException(
             "DATA_CONFLICT",
             f"缺少有效{entity_name}版本，请刷新后重试",
+            http_status=409,
         ) from None
     if expected != int(current or 0):
         raise AppException(
             "DATA_CONFLICT",
             f"{entity_name}已被其他操作更新，请刷新后重试",
+            http_status=409,
         )
     return expected

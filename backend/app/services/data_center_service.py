@@ -45,6 +45,7 @@ _ROLE_LABELS = {
     "LEADER": "校级领导",
     "SCHOOL_LEADER": "校级领导",
     "COLLEGE_ADMIN": "学院管理员",
+    "COLLEGE_ACADEMIC": "学院教务",
     "ACADEMIC_ADMIN": "教务管理员",
     "EMPLOYMENT_TEACHER": "就业老师",
     "STUDENT_AFFAIRS_ADMIN": "学工管理员",

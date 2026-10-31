@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -7,7 +8,7 @@ const script = parse(fs.readFileSync(new URL('../src/modules/internship/views/At
   .replace(/ {2}components: \{[\s\S]*?ActionReceipt \},\r?\n/, '')
   .replace('export default', 'return')
 function view(api = {}, downloads = {}) {
-  const def = new Function('attendanceApi', 'emptyConflict', 'guidanceVisitApi', script)(api, () => ({}), downloads)
+  const def = componentFactory('attendanceApi', 'emptyConflict', 'guidanceVisitApi', script)(api, () => ({}), downloads)
   const vm = { ...def.data(), batchStore: { selectedBatchId: '7' } }
   for (const [key, fn] of Object.entries(def.methods)) vm[key] = fn.bind(vm)
   for (const [key, fn] of Object.entries(def.computed)) if (key !== 'batchStore') Object.defineProperty(vm, key, { get: () => fn.call(vm) })
@@ -18,7 +19,7 @@ test('attendance exposes all returned rows without a separate three-record previ
   const rows = Array.from({ length: 8 }, (_, id) => ({ id: String(id) }))
   const vm = view({ getCheckins: async () => ({ code: 0, data: { list: rows, total: 8 } }) })
   await vm.load(); assert.deepEqual(vm.rows, rows); assert.equal(vm.total, 8)
-  assert.equal(vm.tableColumns.some(c => c.key === 'actions'), false)
+  assert.equal(vm.tableColumns.some(c => c.key === 'actions'), true)
 })
 test('late attendance response cannot overwrite a newer selected tab', async () => {
   let resolve

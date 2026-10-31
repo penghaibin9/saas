@@ -48,7 +48,8 @@ test('草稿批次的办理阶段跟随正式任务汇总，不停留在生成�
   vm.workbench={status:'DRAFT',taskTotal:1,unassignedCount:1};assert.equal(vm.currentStage,2)
   vm.workbench={status:'DRAFT',taskTotal:1,unassignedCount:0,waitingTeacherCount:1};assert.equal(vm.currentStage,3)
   vm.workbench={status:'DRAFT',taskTotal:1,teacherConfirmRate:100};assert.equal(vm.currentStage,4)
-  vm.workbench={status:'APPROVED',taskTotal:1,teacherConfirmRate:100};assert.equal(vm.currentStage,5)
+  vm.workbench={status:'COLLEGE_CONFIRMED',taskTotal:1,teacherConfirmRate:100};assert.equal(vm.currentStage,5)
+  vm.workbench={status:'APPROVED',taskTotal:1,teacherConfirmRate:100};assert.equal(vm.currentStage,6)
 })
 
 test('教师确认页读取非空任务后提供可渲染的中文状态',async()=>{
@@ -170,7 +171,7 @@ test('T08 teacher confirmation reads exact task state before confirming receipt'
   const row={taskId:'x',status:'ASSIGNED',courseName:'课程'};let assigned=true
   const vm=instance('AaTeacherTaskConfirmView',{academicAffairsApi:{teacherActTask:async id=>{calls.push('POST:'+id);assigned=false;return ok({})},listAllTasks:async p=>{assert.equal(p.mine,true);calls.push('GET');return page([{...row,status:assigned?'ASSIGNED':'TEACHER_CONFIRMED'}])}}})
   vm.loading=false;vm.rows=[row];vm.openConfirm(row);await vm.doConfirm()
-  assert.deepEqual(calls,['GET','POST:x','GET']);assert.equal(vm.receipt.status,'教师已确认');assert.equal(vm.receipt.pending,false)
+  assert.deepEqual(calls,['GET','POST:x','GET','GET']);assert.equal(vm.receipt.status,'教师已确认');assert.equal(vm.receipt.pending,false)
 })
 test('T08 unchanged teacher task after successful command remains pending',async()=>{
   const row={taskId:'x',status:'ASSIGNED'}
@@ -581,6 +582,8 @@ for(const change of [{reviewedAt:'2026-09-08T08:01:00Z'},{reviewedBy:'someone-el
 test('仅草稿批次中未分配的任务显示作废动作',()=>{
   const vm=instance('AaTaskDetailView')
   vm.workbench={status:'DRAFT',actions:{canAssign:true}}
+  assert.equal(vm.canVoidDraftRow({status:'PENDING_ASSIGN',teacherKey:''}),false)
+  vm.workbench.actions.canVoidDraft=true
   assert.equal(vm.canVoidDraftRow({status:'PENDING_ASSIGN',teacherKey:''}),true)
   assert.equal(vm.canVoidDraftRow({status:'ASSIGNED',teacherKey:'teacher-b'}),false)
   vm.workbench.status='APPROVED'
@@ -590,13 +593,13 @@ test('仅草稿批次中未分配的任务显示作废动作',()=>{
 test('作废草稿命令从正式批次回读确认任务已移除',async()=>{
   const calls=[]
   const vm=instance('AaTaskDetailView',{
-    teachingTaskWorkbenchApi:{getBatch:async id=>ok({batchId:id,status:'DRAFT',actions:{canAssign:true}})},
+    teachingTaskWorkbenchApi:{getBatch:async id=>ok({batchId:id,status:'DRAFT',actions:{canAssign:true,canVoidDraft:true}})},
     academicAffairsApi:{
       voidDraftTeachingTask:async(id,reason)=>{calls.push(['VOID',id,reason]);return ok({isDeleted:true,status:'VOIDED'})},
       getBatchTasks:async(id,params)=>{calls.push(['READ',id,params.taskId]);return page([])}
     }
   })
-  vm.loading=false;vm.workbench={batchId:'a',status:'DRAFT',actions:{canAssign:true}}
+  vm.loading=false;vm.workbench={batchId:'a',status:'DRAFT',actions:{canAssign:true,canVoidDraft:true}}
   vm.rows=[{taskId:'44',status:'PENDING_ASSIGN',teacherKey:''}]
   vm.voidDraft={visible:true,submitting:false,invalid:false,taskId:'44',courseName:'重复课程',teachingClassCode:'TC1-X-1',reason:'确认是同课程同班重复草稿'}
   await vm.doVoidDraft()

@@ -16,7 +16,6 @@ const definitions = [
   ['/src/modules/student/student.routes.js', 'studentRoutes'],
   ['/src/modules/orientation/orientation.routes.js', 'default'],
   ['/src/modules/campusService/campusService.routes.js', 'default'],
-  ['/src/modules/academicAffairs/routes/academic.routes.js', 'default'],
   ['/src/modules/academicAffairs/academic-affairs.routes.js', 'academicAffairsRoutes'],
   ['/src/modules/internship/routes.js', 'default'],
   ['/src/modules/graduation/routes.js', 'default'],

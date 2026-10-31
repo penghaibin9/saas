@@ -1,10 +1,10 @@
 <template>
-  <ModulePageShell title="教学任务确认" subtitle="学院核对与教务确认仍按原节点" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName" show-subtitle-in-concise>
+  <ModulePageShell title="教学任务确认" subtitle="学院先核对，校教务再终审；按当前责任岗位办理" :role-name="ctx.currentRole.roleName" :data-scope-name="ctx.dataScope.scopeName" show-subtitle-in-concise>
+    <div class="task-workspace__filters"><label>学期<AppTermEntityPicker v-model="termId" clearable @change="query" /></label><label>批次状态<select v-model="status" @change="query"><option value="">全部状态</option><option value="DRAFT">准备与核对</option><option value="RETURNED">已退回学院</option><option value="COLLEGE_CONFIRMED">待校教务终审</option><option value="APPROVED">审核已完成</option></select></label><label>搜索批次<input v-model.trim="keyword" placeholder="批次名称" @keyup.enter="query" /></label><AppButton @click="query">查询</AppButton></div>
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <EmptyState v-else-if="!rows.length" title="当前范围暂无教学任务批次" description="从已发布培养方案生成后进入核对队列。" />
-    <div v-else class="task-confirm-stack">
-      <AaTeachingTaskStageRail :current="4" current-note="当前学院教务核对" />
+    <div v-else class="task-confirm-stack task-workspace">
       <div class="task-confirm-layout">
       <section class="task-confirm-queue" aria-label="责任队列">
         <h3>责任队列</h3>
@@ -29,30 +29,36 @@
 
 <script>
 import { ModulePageShell, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppStatusTag } from '@/components/common'
+import { AppButton } from '@/components/ui'
+import { AppStatusTag, AppTermEntityPicker } from '@/components/common'
 import { academicAffairsApi } from '../api/academic-affairs.api'
 import { TASK_BATCH_STATUS, taskBatchColor } from '../constants/teaching'
 import AaTaskDetailView from './AaTaskDetailView.vue'
-import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
 
 export default {
   name: 'AaTaskConfirmView',
-  components: { ModulePageShell, LoadingState, ErrorState, EmptyState, AppStatusTag, AaTaskDetailView, AaTeachingTaskStageRail },
+  components: { AppButton, AppTermEntityPicker, ModulePageShell, LoadingState, ErrorState, EmptyState, AppStatusTag, AaTaskDetailView },
   props: { ctx: { type: Object, required: true } },
-  data() { return { loading: true, error: '', rows: [], revision: 0, page: 1, total: 0 } },
-  computed: { selectedBatchId() { return String(this.$route.query.batchId || '') } },
-  created() { this.load() },
+  data() { return { termId: '', status: '', keyword: '', loading: true, error: '', rows: [], revision: 0, page: 1, total: 0 } },
+  computed: {
+    selectedBatchId() { return String(this.$route.query.batchId || '') },
+    queueQuery() { const q = this.$route.query; return JSON.stringify([q.termId, q.batchStatus, q.batchKeyword, q.queuePage]) }
+  },
+  created() { this.restoreQuery(); this.load() },
+  watch: { queueQuery() { this.restoreQuery(); this.load() }, ctx() { this.revision++; this.rows = []; this.total = 0; this.load() } },
   beforeUnmount() { this.revision++ },
   methods: {
+    restoreQuery() { const q = this.$route.query; this.termId = String(q.termId || ''); this.status = String(q.batchStatus || ''); this.keyword = String(q.batchKeyword || ''); this.page = Math.max(1, Number(q.queuePage) || 1) },
+    async query() { const before = this.$route.fullPath; await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, termId: this.termId || undefined, batchStatus: this.status || undefined, batchKeyword: this.keyword || undefined, batchId: undefined, status: undefined, keyword: undefined, page: undefined, queuePage: '1' } }); if (before === this.$route.fullPath) { this.page = 1; await this.load() } },
     taskBatchColor,
     statusLabel(value) { return TASK_BATCH_STATUS[value] || '状态待确认' },
-    selectBatch(row) { this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, batchId: String(row.batchId) } }) },
-    changePage(delta) { this.page += delta; this.load() },
+    selectBatch(row) { this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, batchId: String(row.batchId), status: undefined, keyword: undefined, page: undefined, teachingTaskId: undefined } }) },
+    changePage(delta) { return this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, queuePage: String(this.page + delta) } }) },
     async load() {
       const revision = ++this.revision
       this.loading = true; this.error = ''; this.rows = []; this.total = 0
       try {
-        const result = await academicAffairsApi.getTaskBatches({ page: this.page, pageSize: 20 })
+        const result = await academicAffairsApi.getTaskBatches({ termId: this.termId || undefined, status: this.status || undefined, keyword: this.keyword || undefined, page: this.page, pageSize: 20 })
         if (revision !== this.revision) return
         if (result.code !== 0) { this.error = result.message || '核对队列读取失败，请重试。'; return }
         this.rows = result.data?.list || []; this.total = Number(result.data?.total || 0)
@@ -65,9 +71,16 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/teaching-task-workspace.css';
+.task-confirm-layout :deep(.task-workbench__metrics) { display: none; }
+.task-confirm-layout :deep(.mps__title) { font-size: 20px; }
+.task-confirm-layout :deep(.task-workbench__hero) { padding: 14px; }
 .task-confirm-layout { display: grid; grid-template-columns: 240px minmax(0, 1fr); gap: 16px; align-items: start; }
 .task-confirm-stack { display: grid; gap: 16px; }
 .task-confirm-queue { border: 1px solid var(--gray-200); border-radius: 10px; overflow: hidden; background: var(--bg-card); }
+.task-confirm-queue { max-height: 65vh; overflow-y: auto; }
+.task-confirm-layout :deep(.task-workbench__hero) { display: block; }
+.task-confirm-layout :deep(.task-workbench__hero p) { margin-bottom: 0; }
 .task-confirm-queue h3 { margin: 0; padding: 16px; font-size: 15px; }
 .task-confirm-queue > button { display: flex; flex-direction: column; align-items: flex-start; gap: 9px; width: 100%; padding: 16px 13px; border: 0; border-top: 1px solid var(--gray-200); border-left: 3px solid transparent; background: transparent; color: var(--gray-800); text-align: left; cursor: pointer; }
 .task-confirm-queue > button.active { border-left-color: var(--primary-600); background: var(--primary-50); }

@@ -9,9 +9,7 @@
     <AppGlobalState :state="pageState" :description="errorMessage" loading-text="正在加载社团..." @retry="load"
                     @back="$router.push('/admin/student-affairs/activity')">
       <div class="sa-toolbar">
-        <div class="sa-grid sa-grid--metrics">
-          <AppMetricCard v-for="c in metricCards" :key="c.key" :title="c.label" :value="c.value" :accent="c.accent" />
-        </div>
+        <BusinessMetrics class="compact-metrics" :items="metricCards" />
         <AppPermissionButton :allowed="canBtn('studentAffairs.club.manage')" code="studentAffairs.club.manage" :loading="saving" @click="openForm">建社团</AppPermissionButton>
       </div>
 
@@ -111,8 +109,9 @@
 </template>
 
 <script>
+import BusinessMetrics from '@/components/workspace/BusinessMetrics.vue'
 import {
-  AppConfirmDialog, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+  AppConfirmDialog, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
   AppSelect, AppStatusTag, AppStudentPicker, AppTextInput
 } from '@/components/common'
 import { DataTable } from '@/components/business'
@@ -149,8 +148,8 @@ const STATUS_FILTERS = [
 export default {
   name: 'ClubWorkbenchView',
   props: { ctx: { type: Object, default: null } },
-  components: {
-    AppButton, AppConfirmDialog, AppDrawer, AppGlobalState, AppMetricCard, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
+  components: { BusinessMetrics,
+    AppButton, AppConfirmDialog, AppDrawer, AppGlobalState, AppPageShell, AppPagination, AppPermissionButton, AppSectionCard,
     AppSelect, StatusTag: AppStatusTag, AppStudentPicker, AppTextInput, DataTable
   },
   data() {
@@ -277,15 +276,16 @@ export default {
 </script>
 
 <style scoped>
-.sa-toolbar { display: flex; align-items: flex-start; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
-.sa-grid--metrics { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: var(--space-4); flex: 1; min-width: 300px; }
+@import '@/styles/module-page.css';
+.sa-toolbar { display: flex; align-items: center; justify-content: space-between; gap: var(--space-4); margin-bottom: var(--space-4); flex-wrap: wrap; }
+.cf-list, .cf-detail { min-width: 0; }
 .cf-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: var(--space-3); margin-bottom: var(--space-3); }
 .cf-field { display: flex; flex-direction: column; gap: 4px; font-size: var(--font-size-sm); }
 .cf-input { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: 7px 10px; }
 .cf-error { color: var(--danger-500,#dc2626); font-size: var(--font-size-sm); }
 .cf-actions { display: flex; gap: var(--space-3); justify-content: flex-end; }
 .cf-btn { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-md); padding: 7px 16px; cursor: pointer; }
-.cf-layout { display: grid; grid-template-columns: 380px 1fr; gap: var(--space-4); }
+.cf-layout { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: var(--space-4); }
 .cf-filters { display: flex; gap: var(--space-2); margin-bottom: var(--space-3); flex-wrap: wrap; }
 .cf-chip { border: 1px solid var(--border-light); background: var(--bg-card); border-radius: var(--radius-full); padding: 3px 12px; font-size: var(--font-size-xs); cursor: pointer; }
 .cf-chip.is-on { background: var(--color-primary); color: #fff; border-color: var(--color-primary); }
@@ -293,7 +293,7 @@ export default {
 .cf-club { border: 1px solid var(--border-light); border-radius: var(--radius-md); padding: var(--space-3); cursor: pointer; }
 .cf-club.is-active { border-color: var(--color-primary); box-shadow: 0 0 0 2px rgba(37,99,235,0.12); }
 .cf-club__top { display: flex; justify-content: space-between; align-items: center; }
-.cf-club__name { font-weight: 600; }
+.cf-club__name { font-weight: 600; overflow-wrap: anywhere; min-width: 0; }
 .cf-club__meta { font-size: var(--font-size-sm); color: var(--text-secondary); margin: 4px 0; }
 .cf-club__ops { display: flex; gap: 6px; }
 .cf-empty, .cf-hint { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
@@ -303,6 +303,10 @@ export default {
 .cf-inline > * { flex: 1 1 180px; min-width: 180px; }
 .cf-inline > .app-perm-btn { flex: 0 0 auto; min-width: 0; }
 .sa-empty { color: var(--text-tertiary); padding: var(--space-3); text-align: center; }
-@media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .cf-grid, .cf-layout { grid-template-columns: 1fr; } }
-@import '@/styles/module-page.css';
+@media (max-width: 960px) { .cf-grid, .cf-layout { grid-template-columns: 1fr; } }
+.compact-metrics { flex: 1; min-width: 0; padding: 12px 16px; background: var(--bg-card); border: 1px solid var(--border-light); border-radius: var(--radius-md); margin-bottom: 16px; gap: 12px 24px; }
+.compact-metrics :deep(> div) { display: flex; align-items: baseline; gap: 12px; min-width: 125px; }
+.compact-metrics :deep(dd) { margin: 0; font-size: 24px; }
+.sa-toolbar .compact-metrics { margin-bottom: 0; }
+@media (max-width: 640px) { .compact-metrics { flex-basis: 100%; } }
 </style>

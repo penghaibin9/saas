@@ -25,6 +25,7 @@ from . import academic_affairs_grade_service as grade_service
 from . import academic_affairs_makeup_core_service as _core
 from . import academic_affairs_teaching_class_service as teaching_class_service
 from . import academic_affairs_exemption_evidence_service as evidence_service
+from . import academic_affairs_makeup_review_service as review_service
 from .academic_affairs_effective_grade_policy_service import freeze_effective_grade_policy
 from .academic_affairs_grade_identity_service import next_study_attempt_no, source_attempt_no
 from .academic_affairs_roster_consumer_service import consumer_counts, get_consumer_snapshot
@@ -323,6 +324,28 @@ def makeup_pending(user, term=None, page=1, page_size=50):
     } for row in rows], total
 
 
+def list_makeup_batches(user, status=None, page=1, page_size=20, kind=None, batch_id=None):
+    from app.models import AaMakeupBatch, AcademicMakeup
+
+    with _core.session() as db:
+        ctx = _core._ctx(user, db)
+        query = db.query(AaMakeupBatch).filter(AaMakeupBatch.tenant_id == _core._tid(), AaMakeupBatch.is_deleted.is_(False))
+        visible_records = review_service.scoped_records(db, ctx)
+        if ctx.scope_type != "TENANT_ALL":
+            query = query.filter(AaMakeupBatch.id.in_(visible_records.with_entities(AcademicMakeup.batch_id)))
+        for column, value in ((AaMakeupBatch.status, status), (AaMakeupBatch.kind, kind), (AaMakeupBatch.id, batch_id)):
+            if value is not None:
+                query = query.filter(column == value)
+        total = query.count()
+        size = max(1, min(200, int(page_size)))
+        batches = query.order_by(AaMakeupBatch.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size).all()
+        summaries = review_service.summary(db, ctx, user, [b.id for b in batches])
+        return [{**_core._mb_dto(b), **summaries.get(b.id, {"reviewTotal": 0, "reviewedCount": 0, "canCollegeReview": False})} for b in batches], total
+
+
+clearance_records = review_service.list_records
+
+
 def create_makeup_batch(user, body):
     from app.models import AaExamBatch, AaMakeupBatch
 
@@ -396,7 +419,7 @@ def link_exam_batch(user, batch_id, exam_batch_id):
 
     with _core.session() as db:
         _core._require_school(_core._ctx(user, db))
-        batch = _core._get_mb(db, int(batch_id))
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
         term = _guard_batch(db, batch)
         if batch.status not in {_core._MB_DRAFT, _core._MB_ARRANGED}:
             raise _core._invalid("仅DRAFT/ARRANGED补考批次可挂考务编排")
@@ -422,7 +445,7 @@ def enroll_makeup_by_grade(user, batch_id, grade_id, acad_student_id, origin_sco
 
     with _core.session() as db:
         _core._require_school(_core._ctx(user, db))
-        batch = _core._get_mb(db, int(batch_id))
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
         _guard_batch(db, batch)
         if batch.status not in {_core._MB_DRAFT, _core._MB_ARRANGED}:
             raise _core._invalid("仅DRAFT/ARRANGED批次可纳入名单")
@@ -542,7 +565,7 @@ def clearance_scan(user, batch_id, dry_run=False):
 
     with _core.session() as db:
         _core._require_school(_core._ctx(user, db))
-        batch = _core._get_mb(db, int(batch_id))
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
         _guard_batch(db, batch)
         if (batch.kind or "MAKEUP") != "CLEARANCE":
             raise _core._invalid("仅清考批次可执行名单扫描")
@@ -560,14 +583,13 @@ def clearance_scan(user, batch_id, dry_run=False):
             )
         added = skipped = 0
         if not dry_run:
+            existing = {int(row[0]) for row in db.query(AcademicMakeup.origin_grade_id).filter(
+                AcademicMakeup.tenant_id == _core._tid(), AcademicMakeup.batch_id == batch.id,
+                AcademicMakeup.origin_grade_id.is_not(None), AcademicMakeup.is_deleted.is_(False),
+            ).all()}
             for candidate in candidates:
-                duplicate = db.query(AcademicMakeup).filter(
-                    AcademicMakeup.tenant_id == _core._tid(),
-                    AcademicMakeup.batch_id == batch.id,
-                    AcademicMakeup.origin_grade_id == int(candidate["gradeId"]),
-                    AcademicMakeup.is_deleted.is_(False),
-                ).first()
-                if duplicate:
+                grade_id = int(candidate["gradeId"])
+                if grade_id in existing:
                     skipped += 1
                     continue
                 db.add(AcademicMakeup(
@@ -585,6 +607,7 @@ def clearance_scan(user, batch_id, dry_run=False):
                     status="PENDING_EXAM",
                     record_status="ACTIVE",
                 ))
+                existing.add(grade_id)
                 added += 1
             if added and batch.status == _core._MB_DRAFT:
                 batch.status = _core._MB_ARRANGED
@@ -612,7 +635,7 @@ def publish_makeup_batch(user, batch_id):
 
     with _core.session() as db:
         _core._require_school(_core._ctx(user, db))
-        batch = _core._get_mb(db, int(batch_id))
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
         _guard_batch(db, batch)
         if batch.status != _core._MB_ARRANGED:
             raise _core._invalid("仅ARRANGED批次可发布")
@@ -634,6 +657,12 @@ def publish_makeup_batch(user, batch_id):
                 details={"makeupIds": [str(row.id) for row in identity_debt[:100]]},
                 http_status=409,
             )
+        query, _ = review_service.record_query(db)
+        ownership = {row.id: college for row, _, college in query.filter(AcademicMakeup.batch_id == batch.id).all()}
+        if any(not ownership.get(row.id) for row in records):
+            raise _core._invalid("部分课程缺少明确的开课学院，请先补齐课程或教学任务归属")
+        for row in records:
+            row.review_college_id = ownership[row.id]
         batch.status = _core._MB_PUBLISHED
         batch.published_at = datetime.utcnow()
         _core._audit(db, "AA_MAKEUP", batch.id, "MAKEUP_BATCH_PUBLISH", f"名单{len(records)}条")
@@ -655,19 +684,27 @@ def enter_makeup_score(user, makeup_id, score):
 
     with _core.session() as db:
         _core._require_school(_core._ctx(user, db))
-        row = db.query(AcademicMakeup).filter(
-            AcademicMakeup.id == int(makeup_id),
-            AcademicMakeup.tenant_id == _core._tid(),
+        batch_id = db.query(AcademicMakeup.batch_id).filter(
+            AcademicMakeup.id == int(makeup_id), AcademicMakeup.tenant_id == _core._tid(),
             AcademicMakeup.is_deleted.is_(False),
+        ).scalar()
+        if not batch_id:
+            raise not_found("补考记录不存在")
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
+        _guard_batch(db, batch)
+        row = db.query(AcademicMakeup).filter(
+            AcademicMakeup.id == int(makeup_id), AcademicMakeup.tenant_id == _core._tid(),
+            AcademicMakeup.batch_id == batch.id, AcademicMakeup.is_deleted.is_(False),
         ).with_for_update().first()
         if not row:
             raise not_found("补考记录不存在")
-        batch = _core._get_mb(db, int(row.batch_id))
-        _guard_batch(db, batch)
+        if review_service.reviewed(row):
+            raise _core._invalid("该成绩已由开课学院审核，不能覆盖已审核成绩")
         if batch.status not in {_core._MB_PUBLISHED, _core._MB_SCORING}:
             raise _core._invalid("批次未发布，不可录入")
         row.final_score = int(numeric)
         row.status = "SCORED"
+        batch.score_version = int(batch.score_version or 0) + 1
         if batch.status == _core._MB_PUBLISHED:
             batch.status = _core._MB_SCORING
         _core._audit(db, "AA_MAKEUP", row.id, "MAKEUP_SCORE", f"成绩{row.final_score}")
@@ -675,29 +712,35 @@ def enter_makeup_score(user, makeup_id, score):
         return {"makeupId": str(row.id), "finalScore": row.final_score, "status": row.status}
 
 
-def college_review_scores(user, batch_id):
+def college_review_scores(user, batch_id, expected_version):
+    from app.core.permissions import has_permission
     from app.models import AcademicMakeup
 
     with _core.session() as db:
-        _core._require_school(_core._ctx(user, db))
-        batch = _core._get_mb(db, int(batch_id))
+        ctx = _core._ctx(user, db)
+        if ctx.scope_type != "COLLEGE" or not ctx.college_ids or not has_permission(user, review_service.REVIEW_PERMISSION):
+            raise no_data_scope("仅有成绩审核权限的开课学院岗位可审核，学校教务不能代审")
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
         _guard_batch(db, batch)
-        if batch.status != _core._MB_SCORING:
-            raise _core._invalid("仅SCORING批次可学院审核")
-        records = db.query(AcademicMakeup).filter(
-            AcademicMakeup.tenant_id == _core._tid(),
-            AcademicMakeup.batch_id == batch.id,
-            AcademicMakeup.is_deleted.is_(False),
-        ).all()
-        if not records:
-            raise AppException("DATA_CONFLICT", "批次没有成绩记录", http_status=409)
-        pending = [row for row in records if row.status != "SCORED" or row.final_score is None]
-        if pending:
-            raise _core._invalid(f"尚有{len(pending)}条补考成绩未录入，不可提交学院审核")
-        batch.status = _core._MB_REVIEWED
-        _core._audit(db, "AA_MAKEUP", batch.id, "MAKEUP_COLLEGE_REVIEW", f"审核{len(records)}条")
+        if isinstance(expected_version, bool) or expected_version != int(batch.score_version or 0):
+            raise _core._invalid("成绩或审核进度已变化，请重新读取名单后再审核")
+        if batch.status not in {_core._MB_SCORING, _core._MB_REVIEWED}:
+            raise _core._invalid("当前批次尚未进入成绩审核阶段")
+        query, _ = review_service.record_query(db)
+        rows = query.filter(AcademicMakeup.batch_id == batch.id).order_by(AcademicMakeup.id).with_for_update().all()
+        actor = (get_current_user_ctx() or {}).get("userId")
+        changed = review_service.approve_rows(rows, ctx.college_ids, actor)
+        for row in changed:
+            _core._audit(db, "AA_MAKEUP", row.id, "MAKEUP_COLLEGE_REVIEW",
+                         f"batchId={batch.id};collegeId={row.review_college_id};score={row.final_score};actor={actor}")
+        complete = bool(rows) and all(review_service.reviewed(row) and row.status == "SCORED" and row.final_score is not None for row, _, _ in rows)
+        batch.status = _core._MB_REVIEWED if complete else _core._MB_SCORING
+        if changed:
+            batch.score_version = int(batch.score_version or 0) + 1
+        db.flush()
+        result = {**_core._mb_dto(batch), **review_service.summary(db, ctx, user, [batch.id]).get(batch.id, {})}
         db.commit()
-        return _core._mb_dto(batch)
+        return result
 
 
 def _regular_origin(db, row):
@@ -784,7 +827,7 @@ def finish_makeup_batch(user, batch_id):
 
     with _core.session() as db:
         _core._require_school(_core._ctx(user, db))
-        batch = _core._get_mb(db, int(batch_id))
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
         _guard_batch(db, batch)
         if batch.status == _core._MB_FINISHED:
             return _core._mb_dto(batch)
@@ -793,11 +836,9 @@ def finish_makeup_batch(user, batch_id):
         records = db.query(AcademicMakeup).filter(
             AcademicMakeup.tenant_id == _core._tid(),
             AcademicMakeup.batch_id == batch.id,
-            AcademicMakeup.status == "SCORED",
             AcademicMakeup.is_deleted.is_(False),
-        ).order_by(AcademicMakeup.id).all()
-        if not records:
-            raise AppException("DATA_CONFLICT", "批次没有已审核成绩，禁止结束", http_status=409)
+        ).order_by(AcademicMakeup.id).with_for_update().all()
+        review_service.require_complete(records)
 
         cap = 60 if batch.score_rule == "CAP60" else 100
         affected = set()
@@ -807,7 +848,8 @@ def finish_makeup_batch(user, batch_id):
             identity = _deferred_identity(db, row) if row.kind == "DEFERRED" else _regular_origin(db, row)
             final_score = int(row.final_score or 0)
             passed = final_score >= 60
-            recorded_score = min(final_score, cap) if passed else final_score
+            # 缓考沿正常实考计分；并入补考场次不改变它的成绩性质。
+            recorded_score = min(final_score, cap) if passed and row.kind != "DEFERRED" else final_score
             grade = db.query(AcademicGrade).filter(
                 AcademicGrade.tenant_id == _core._tid(),
                 AcademicGrade.source_biz_type == identity["sourceBizType"],
@@ -1519,6 +1561,35 @@ def exemption_list(user, status=None, student_only=False, page=1, page_size=50, 
         return items, total
 
 
+def deferred_pool(user, page=1, page_size=50, *, defer_id=None):
+    from app.models import AaDeferredExam as D, AaExamCourse as C, AcademicMakeup as M
+    from .academic_affairs_exam_service import _course_offering_college_expression
+
+    with _core.session() as db:
+        ctx = _core._ctx(user, db)
+        query = db.query(D).filter(D.tenant_id == _core._tid(), D.status == "APPROVED", D.is_deleted.is_(False))
+        if defer_id is not None:
+            query = query.filter(D.id == int(defer_id))
+        if ctx.scope_type == "COLLEGE" and ctx.college_ids:
+            courses = select(C.id).where(C.tenant_id == _core._tid(), C.is_deleted.is_(False),
+                _course_offering_college_expression().in_(ctx.college_ids))
+            query = query.filter(D.exam_course_id.in_(courses))
+        elif ctx.scope_type != "TENANT_ALL":
+            raise no_data_scope("当前岗位不能查看缓考合流名单")
+        total = query.count()
+        size = max(1, min(200, int(page_size)))
+        rows = query.order_by(D.id.desc()).offset((max(1, int(page)) - 1) * size).limit(size).all()
+        links = {}
+        if rows:
+            for link in db.query(M).filter(M.tenant_id == _core._tid(), M.is_deleted.is_(False),
+                M.source_biz_type == "DEFERRED_EXAM", M.source_biz_id.in_([d.id for d in rows])).all():
+                links.setdefault(link.source_biz_id, []).append(link)
+        return [{"deferId": str(d.id), "studentId": str(d.student_id), "studentName": d.student_name,
+            "examCourseId": str(d.exam_course_id), "courseName": d.course_name, "nextBatchRef": d.next_batch_ref,
+            "makeupId": str(links[d.id][0].id) if len(links.get(d.id, [])) == 1
+                and str(links[d.id][0].batch_id) == str(d.next_batch_ref) else None} for d in rows], total
+
+
 def merge_deferred(user, defer_id, batch_id):
     """缓考并入后续考试：冻结缓考来源、课程版本、当前修读次数和考试课程名单版本。"""
     from app.models import (
@@ -1540,11 +1611,13 @@ def merge_deferred(user, defer_id, batch_id):
         if not deferred:
             raise not_found("缓考记录不存在")
         if deferred.status != "APPROVED":
-            raise _core._invalid("仅APPROVED缓考可并入补考批次")
-        batch = _core._get_mb(db, int(batch_id))
+            raise _core._invalid("仅已批准的缓考申请可并入补考批次")
+        batch = _core._get_mb(db, int(batch_id), for_update=True)
         _guard_batch(db, batch)
+        if (batch.kind or "MAKEUP") != "MAKEUP":
+            raise _core._invalid("缓考应并入普通补考批次，不能并入毕业清考批次")
         if batch.status not in {_core._MB_DRAFT, _core._MB_ARRANGED}:
-            raise _core._invalid("仅DRAFT/ARRANGED批次可并入缓考")
+            raise _core._invalid("仅草稿或已编排、尚未发布的批次可接收缓考")
 
         duplicate = db.query(AcademicMakeup).filter(
             AcademicMakeup.tenant_id == _core._tid(),

@@ -2,7 +2,7 @@
 import pytest
 from sqlalchemy import event
 
-from tests.test_aa_clearance import BASE, TID, _create_batch, _hdr, _seed, _stu_token
+from tests.test_aa_clearance import BASE, TID, _create_batch, _hdr, _seed, _stu_token, _review_college
 
 STUDENT_PATHS = ["/api/v1/mobile/academic/clearance/my", "/api/v1/portal/academic/clearance"]
 
@@ -49,7 +49,7 @@ def test_both_student_endpoints_wait_for_finish_and_use_formal_score(client, db_
     _assert_result(client, student, None, mid)
     _post(client, admin, f"/makeup/records/{mid}/score", {"score": raw_score})
     _assert_result(client, student, None, mid)
-    _post(client, admin, f"/makeup/batches/{bid}/college-review")
+    _review_college(client, bid)
     _assert_result(client, student, None, mid)
     _post(client, admin, f"/makeup/batches/{bid}/finish")
     _assert_result(client, student, published_score, mid)
@@ -71,7 +71,7 @@ def test_invalid_or_unresolved_formal_sources_never_fall_back_to_raw_score(clien
     student = _stu_token("清甲", "QK2201")
     _post(client, admin, f"/makeup/batches/{bid}/publish")
     _post(client, admin, f"/makeup/records/{mid}/score", {"score": 88})
-    _post(client, admin, f"/makeup/batches/{bid}/college-review")
+    _review_college(client, bid)
     _post(client, admin, f"/makeup/batches/{bid}/finish")
     with get_sessionmaker()() as db:
         grade_id = db.query(AcademicGrade.id).filter_by(
@@ -121,7 +121,7 @@ def test_published_projection_batches_grade_read_without_business_writes(client,
     ids, admin, bid, mid = _arrange(client, db_mode)
     _post(client, admin, f"/makeup/batches/{bid}/publish")
     _post(client, admin, f"/makeup/records/{mid}/score", {"score": 88})
-    _post(client, admin, f"/makeup/batches/{bid}/college-review")
+    _review_college(client, bid)
     _post(client, admin, f"/makeup/batches/{bid}/finish")
     with get_sessionmaker()() as db:
         source = db.get(AcademicMakeup, mid)

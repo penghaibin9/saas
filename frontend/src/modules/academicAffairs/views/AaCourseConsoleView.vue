@@ -11,7 +11,7 @@
     </template>
 
     <details class="aacc-workspace-directory"><summary>切换相关工作区</summary><div class="aacc-tabs">
-      <button v-for="t in tabs" :key="t.key" :class="['aacc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
+      <button v-for="t in visibleTabs" :key="t.key" :class="['aacc-tab', { 'is-active': tab === t.key }]" @click="switchTab(t.key)">{{ t.label }}</button>
     </div></details>
 
     <!-- 分类/性质/考核方式：快捷筛选芯片（带计数） -->
@@ -220,6 +220,7 @@ import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affai
 import { COURSE_CATEGORY, COURSE_NATURE, EXAM_MODE, MATERIAL_TYPE, REVIEW_STATUS, reviewStatusColor } from '@/modules/academicAffairs/constants/course-program'
 import { matchPermission } from '@/config/navPlan'
 import { toast } from '@/utils/toast'
+import { academicRoleTabs, academicRoleAllows } from '../config/academicRoleNavigation'
 
 export default {
   name: 'AaCourseConsoleView',
@@ -254,6 +255,7 @@ export default {
   },
   computed: {
     contextIdentity() { return JSON.stringify([this.ctx.ctxKey, this.ctx.currentRole, this.ctx.dataScope, this.ctx.permissionPatterns, this.ctx.permissionVersion, this.ctx.dataScopeVersion]) },
+    visibleTabs() { return academicRoleTabs(this.tabs, '/admin/academic-affairs/courses/console', this.ctx) },
     canVoidMaterial() {
       return this.hasPermission('academicAffairs.course.manage') && String(this.ctx.currentRole?.roleCode || this.ctx.currentRole?.roleType || '').toUpperCase() !== 'COLLEGE_ACADEMIC'
     },
@@ -327,6 +329,7 @@ export default {
     /** 维度 Tab 对应的真实课程字段名（assessment Tab 展示名与后端字段名 examMode 不同名）。 */
     dimFieldName(dim) { return dim === 'assessment' ? 'examMode' : dim },
     switchTab(k) {
+      if (!academicRoleAllows({ path: '/admin/academic-affairs/courses/console', query: { tab: k } }, this.ctx)) return
       return this.$router.replace({ query: { ...this.$route.query, tab: k } })
     },
     searchPage() { if (this.viewPage === 1) return this.load(); this.viewPage = 1 },

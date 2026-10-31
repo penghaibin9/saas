@@ -8,6 +8,7 @@ build_affairs_context（学院范围）/is_enrolled（缓考前置）/_derive_ke
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 import json
 import random
 from datetime import datetime
@@ -996,12 +997,13 @@ def my_exam_schedule(user, student_id) -> dict:
                 "note": "" if items else "暂无已发布的个人考试安排"}
 
 
-def _defer_dto(d):
+def _defer_dto(d, allowed_actions=None):
     return {"deferId": str(d.id), "studentId": str(d.student_id), "studentName": d.student_name,
             "examCourseId": str(d.exam_course_id), "courseName": d.course_name,
             "reasonType": d.reason_type, "reason": d.reason, "status": d.status,
             "currentNode": d.current_node or "", "version": int(d.version or 0),
-            "returnReason": d.return_reason, "applyAt": _iso(d.apply_at)}
+            "returnReason": d.return_reason, "applyAt": _iso(d.apply_at),
+            "allowedActions": allowed_actions or []}
 
 
 def _exam_started(c):
@@ -1067,9 +1069,8 @@ _NODE_STATUS = {"COUNSELOR": _D_COUNSELOR, "TEACHER": _D_TEACHER, "COLLEGE": _D_
 
 
 def _check_defer_scope(user, db, ctx, d):
-    """节点级角色+范围收敛（施工包 §9：辅导员限本人所带班级学生/任课教师限本人授课/学院限本学院/教务处全放行）。
-    TENANT_ALL（教务处/教务管理员/学校管理员）直接放行，其余角色必须与当前节点匹配且命中真实业务关系，否则 403002。"""
-    if _is_school(ctx):
+    """四级分别办理：学校只终审，各前序节点必须命中责任岗位与真实业务关系。"""
+    if d.status == _D_FINAL and _is_school(ctx):
         return
     role = _role()
     status = d.status
@@ -1078,7 +1079,7 @@ def _check_defer_scope(user, db, ctx, d):
             raise no_data_scope("仅辅导员可在该节点审批")
         from app.models import StudentProfile
         stu = db.query(StudentProfile).filter(StudentProfile.id == d.student_id,
-                                              StudentProfile.tenant_id == _tid()).first()
+                                              StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)).first()
         allowed = getattr(ctx, "class_ids", None) or set()
         if not stu or not stu.class_id or int(stu.class_id) not in allowed:
             raise no_data_scope("非本人所带班级学生")
@@ -1091,13 +1092,23 @@ def _check_defer_scope(user, db, ctx, d):
             raise no_data_scope("非本人授课的考试课程")
         return
     if status == _D_COLLEGE:
-        if role != "COLLEGE_ADMIN":
+        if ctx.scope_type != "COLLEGE":
             raise no_data_scope("仅学院教务可在该节点审批")
         c = _get_course(db, d.exam_course_id)
         _check_course_scope(db, ctx, c)
         return
-    # ACADEMIC_FINAL：仅教务处（TENANT_ALL，已在函数首行放行），其余角色一律拒绝
     raise no_data_scope("仅教务处可执行终审")
+
+
+def _defer_allowed_actions(user, db, ctx, row):
+    if row.status not in _DEFER_CHAIN:
+        return []
+    try:
+        _check_defer_scope(user, db, ctx, row)
+        _require_defer_review_permission(user, row.status)
+    except AppException:
+        return []
+    return ["APPROVE", "RETURN", "REJECT"]
 
 
 def _visible_defer_record(user, db, ctx, d) -> bool:
@@ -1109,13 +1120,13 @@ def _visible_defer_record(user, db, ctx, d) -> bool:
     if role == "COUNSELOR":
         from app.models import StudentProfile
         stu = db.query(StudentProfile).filter(StudentProfile.id == d.student_id,
-                                              StudentProfile.tenant_id == _tid()).first()
+                                              StudentProfile.tenant_id == _tid(), StudentProfile.is_deleted.is_(False)).first()
         allowed = getattr(ctx, "class_ids", None) or set()
         return bool(stu and stu.class_id and int(stu.class_id) in allowed)
     if role == "ACADEMIC_TEACHER":
         c = _get_course(db, d.exam_course_id)
         return bool(c.teacher_key and c.teacher_key in _derive_keys(user))
-    if role == "COLLEGE_ADMIN":
+    if ctx.scope_type == "COLLEGE":
         c = _get_course(db, d.exam_course_id)
         try:
             _check_course_scope(db, ctx, c)
@@ -1197,10 +1208,10 @@ def defer_review(user, defer_id, action, reason="", expected_version=None):
         after = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
         _audit(db, "DEFERRED_EXAM", d.id, "DEFER_REVIEW_ACT", f"{action}->{d.status}", before, after)
         db.commit()
-        return _defer_dto(d)
+        return _defer_dto(d, _defer_allowed_actions(user, db, ctx, d))
 
 
-def defer_resubmit(user, defer_id, expected_version=None):
+def defer_resubmit(user, defer_id, expected_version=None, *, reason=None):
     from app.models import AaDeferredExam
     from app.services.mobile_student_service import _require_student, resolve_student
 
@@ -1223,6 +1234,12 @@ def defer_resubmit(user, defer_id, expected_version=None):
         if d.status != _D_RETURNED:
             raise _invalid("仅退回状态可重提")
         _require_defer_version(d, expected_version)
+        if reason is not None:
+            if not isinstance(reason, str) or not 5 <= len(reason.strip()) <= 500:
+                raise _bad("补充后的缓考说明须为5至500字")
+            if isinstance(expected_version, bool) or not isinstance(expected_version, int):
+                raise _bad("请重新读取原申请版本后提交补充说明")
+            d.reason = reason.strip()
         before = f"status={d.status};node={d.current_node or ''};version={int(d.version or 0)}"
         d.status = _D_COUNSELOR
         d.current_node = "COUNSELOR"
@@ -1265,11 +1282,27 @@ def defer_list(user, status=None, student_only=False, page=1, page_size=50, defe
             return [_defer_dto(d) for d in rows], total
 
         affairs_ctx = _ctx(user, db)
-        rows = q.order_by(AaDeferredExam.id.desc()).all()
         if not _is_school(affairs_ctx):
-            rows = [d for d in rows if _visible_defer_record(user, db, affairs_ctx, d)]
-        total = len(rows)
-        return [_defer_dto(d) for d in rows[(page - 1) * page_size: page * page_size]], total
+            from app.models import AaExamCourse, StudentProfile
+            role = _role()
+            if role == "COUNSELOR":
+                students = select(StudentProfile.id).where(StudentProfile.tenant_id == _tid(),
+                    StudentProfile.is_deleted.is_(False), StudentProfile.class_id.in_(affairs_ctx.class_ids or {-1}))
+                q = q.filter(AaDeferredExam.student_id.in_(students))
+            elif role == "ACADEMIC_TEACHER":
+                courses = select(AaExamCourse.id).where(AaExamCourse.tenant_id == _tid(),
+                    AaExamCourse.is_deleted.is_(False), AaExamCourse.teacher_key.in_(_derive_keys(user)))
+                q = q.filter(AaDeferredExam.exam_course_id.in_(courses))
+            elif affairs_ctx.scope_type == "COLLEGE":
+                courses = select(AaExamCourse.id).where(AaExamCourse.tenant_id == _tid(),
+                    AaExamCourse.is_deleted.is_(False), _course_offering_college_expression().in_(affairs_ctx.college_ids or {-1}))
+                q = q.filter(AaDeferredExam.exam_course_id.in_(courses))
+            else:
+                q = q.filter(AaDeferredExam.id == -1)
+        total = q.count()
+        rows = q.order_by(AaDeferredExam.id.desc()).offset((max(1, int(page)) - 1) * min(200, max(1, int(page_size)))).limit(min(200, max(1, int(page_size)))).all()
+        return [_defer_dto(d, _defer_allowed_actions(user, db, affairs_ctx, d)) for d in rows], total
+
 
 
 def _batch_stats_many(db, batch_ids, ctx):

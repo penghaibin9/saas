@@ -88,8 +88,8 @@ def test_task_queue_pagination_and_summary_use_database_counts(client, db_mode):
         rows += [AaTeachingTask(tenant_id=tid, batch_id=batch.id, course_id=1,
                    course_name="其他课程", teacher_key="  ", status="TEACHER_CONFIRMED")]
         db.add_all(rows); db.commit(); bid, term_id = str(batch.id), str(term.id)
-    token = client.post("/api/v1/auth/mock-login", json={"loginName":"school_admin01","password":"any"}).json()["data"]["accessToken"]
-    headers = {"Authorization": f"Bearer {token}"}
+    from tests.support_task_review_identity import task_reader_headers
+    headers = task_reader_headers()
     statements = []
     def capture(_conn, _cursor, statement, _params, _context, _many):
         if statement.lstrip().lower().startswith("select") and "t_aa_teaching_task" in statement:

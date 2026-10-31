@@ -19,7 +19,7 @@
     <div class="metrics">
       <div class="metric"><span>已发布岗位</span><strong>{{ context.publishedPositions }}</strong></div>
       <div class="metric"><span>合作企业</span><strong>{{ context.partnerCompanies }}</strong></div>
-      <div class="metric"><span>匹配岗位</span><strong>{{ context.matchedPositions }}</strong></div>
+      <div class="metric"><span>匹配岗位</span><strong>{{ context.matchedPositions ?? '待统计' }}</strong></div>
       <div class="metric"><span>已选志愿</span><strong>{{ context.selectedVolunteers }}/3</strong></div>
     </div>
   </section>

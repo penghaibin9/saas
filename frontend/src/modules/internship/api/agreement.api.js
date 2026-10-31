@@ -62,6 +62,6 @@ export const agreementApi = {
   },
   startEsign(id) { return call(() => request(`${B}/${id}/esign/start`, { method: 'POST', body: {} })) },
   esignSign(id, { party }) { return call(() => request(`${B}/${id}/esign/sign`, { method: 'POST', body: { party } })) },
-  exportAgreements(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', params })) },
+  exportAgreements(params = {}) { return call(() => request(`${B}/export`, { method: 'POST', timeoutMs: 60000, params })) },
   exportAgreementPdf(id) { return call(() => request(`${B}/${id}/pdf`, { method: 'POST', body: {} })) }
 }

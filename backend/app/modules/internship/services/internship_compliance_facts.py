@@ -10,6 +10,7 @@ from app.models import (
     InternshipVisit, WeeklyReport,
 )
 from app.services.db_service import _tid
+from app.modules.internship.services.internship_leave_service import effective_period
 
 
 def _date(value):
@@ -50,10 +51,10 @@ def material_quantity_facts(db, rec, batch) -> dict:
     leave_days = set()
     leaves = db.scalars(select(InternshipLeave).where(
         InternshipLeave.tenant_id == _tid(), InternshipLeave.internship_id == rec.id,
-        InternshipLeave.status.in_(("APPROVED", "RETURNED")),
+        InternshipLeave.status.in_(("APPROVED", "OVERDUE", "RETURNED")),
         InternshipLeave.is_deleted.is_(False))).all()
     for leave in leaves:
-        left, right = _date(leave.start_date), _date(leave.end_date)
+        left, right = effective_period(leave)
         if not left or not right:
             continue
         cursor = left

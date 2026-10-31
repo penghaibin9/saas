@@ -5,6 +5,7 @@
     :watermark="false"
   >
     <template #actions>
+      <AppButton variant="ghost" :disabled="syncing" @click="$router.push({ path: '/admin/internship/material-requirements', query: batchStore.withBatchQuery() })">收件要求</AppButton>
       <AppButton v-if="selectedId" variant="ghost" :disabled="syncing" @click="closeStudent">返回学生列表</AppButton>
       <AppButton variant="ghost" :disabled="syncing || loading || detailLoading" @click="refreshCurrent">刷新</AppButton>
       <AppButton v-if="selected && canSync" variant="secondary" :loading="syncing" :disabled="detailLoading" @click="syncCurrent">同步业务材料</AppButton>
@@ -17,6 +18,11 @@
         <option value="">全部状态</option><option value="READY">全部安全可用</option>
         <option value="UNSAFE">存在待处理材料</option><option value="NOT_SYNCED">尚未登记材料</option>
       </select>
+      <label for="material-type">材料类型</label>
+      <select id="material-type" v-model="category" @change="reload"><option value="">全部类型</option><option v-for="item in materialTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select>
+      <label for="material-review">审核状态</label>
+      <select id="material-review" v-model="reviewStatus" @change="reload"><option value="">全部审核状态</option><option value="PENDING_REVIEW">待审核</option><option value="APPROVED">已通过</option><option value="RETURNED">已退回</option></select>
+      <AppOrgCascader v-model="organization" @change="reload" />
       <span v-if="!loading && !error" class="filter-hint">当前筛选 {{ total }} 人</span>
     </section>
 
@@ -104,7 +110,7 @@
           </section>
 
           <details class="technical-evidence">
-            <summary>查看材料版本与归档清单</summary>
+            <summary>实施人员使用：材料版本与归档清单</summary>
           <section class="section-card">
             <div class="section-title">
               <div><strong>材料版本清单</strong><span>核对每份材料的固定版本、文件检查与审核结果。</span></div>
@@ -115,7 +121,7 @@
                 <tbody>
                   <tr v-for="item in selected.items" :key="item.versionId">
                     <td>{{ item.categoryLabel }}</td>
-                    <td>v{{ item.versionNo }}</td>
+                    <td>第{{ item.versionNo }}版</td>
                     <td class="mono">{{ item.versionId }}</td>
                     <td :title="item.fileName">{{ item.fileName }}</td>
                     <td><AppStatusTag :type="item.readyForBusiness ? 'success' : 'danger'" size="sm">{{ scanResultLabel(item.scanStatus) }}</AppStatusTag></td>
@@ -141,7 +147,7 @@
                 <div><dt>清单版本</dt><dd>第 {{ selected.manifest.revision }} 次修订</dd></div>
                 <div><dt>清单编号</dt><dd class="mono">{{ selected.manifest.id }}</dd></div>
                 <div><dt>文件版本数</dt><dd>{{ selected.manifest.items.length }}</dd></div>
-                <div><dt>清单文件摘要</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
+                <div><dt>清单文件摘要（用于完整性校验）</dt><dd class="mono" :title="selected.manifest.manifestSha256">{{ selected.manifest.manifestSha256 }}</dd></div>
               </dl>
               <div class="manifest-list">
                 <div v-for="item in selected.manifest.items" :key="`${item.versionId}-${item.materialCode}`">
@@ -162,22 +168,26 @@
 <script>
 import { ModulePageShell } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppSearchBox, AppStatusTag, AppPagination } from '@/components/common'
+import { AppSearchBox, AppStatusTag, AppPagination, AppOrgCascader } from '@/components/common'
 import AppDocumentViewer from '@/components/file/viewer/AppDocumentViewer.vue'
 import SecureFileList from '@/components/file/SecureFileList.vue'
 import { internshipMaterialCenterApi } from '@/modules/internship/api/material-center.api'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { toast } from '@/utils/toast'
 import { canCode } from '@/modules/internship/composables/permission'
+import { normalizeUiError } from '@/utils/presentationSafety'
+
+const MATERIAL_TYPES = Object.entries({ AGREEMENT:'三方协议', INSURANCE:'保险凭证', PROCESS_REPORT:'过程报告', GUIDANCE:'指导记录附件', VISIT:'巡访证据', ENTERPRISE_EVAL:'企业评价证明', STUDENT_EVAL:'学生鉴定证明', LEAVE_EVIDENCE:'请假证明', ATTENDANCE_APPEAL:'打卡申诉证明', COMPLAINT_EVIDENCE:'投诉证据', PLAN_TASK_EVIDENCE:'计划任务证据', SAFETY_EVIDENCE:'安全教育证据', SPECIAL_FILING:'特殊实习备案', FORCE_ARCHIVE_EVIDENCE:'强制归档依据', CUSTOM_MATERIAL:'自定义收件材料' }).map(([value,label])=>({value,label}))
 
 export default {
   name: 'InternshipMaterialCenterView',
-  components: { ModulePageShell, AppButton, AppSearchBox, AppStatusTag, AppDocumentViewer, SecureFileList, AppPagination },
+  components: { ModulePageShell, AppButton, AppSearchBox, AppStatusTag, AppDocumentViewer, SecureFileList, AppPagination, AppOrgCascader },
   props: { ctx: { type: Object, default: () => ({}) } },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20,
       keyword: '', safetyStatus: '', loading: false, detailLoading: false,
+      category: '', reviewStatus: '', organization: [], materialTypes: MATERIAL_TYPES,
       syncing: false, error: '', selectedId: '', selected: null,
       activePreviewFileId: '', detailError: '', operationError: '', syncReceipt: '', downloadingId: '',
       listSeq: 0, detailSeq: 0, epoch: 0, requestKey: '', removeRouteGuard: null,
@@ -189,7 +199,7 @@ export default {
     canView() { return canCode(this.ctx, 'internship.archive.view') },
     canSync() { return canCode(this.ctx, 'internship.archive.manage') },
     scopeKey() { return JSON.stringify([this.epoch, String(this.batchStore.selectedBatchId || '')]) },
-    listContext() { return JSON.stringify([this.scopeKey, this.keyword, this.safetyStatus, this.page]) },
+    listContext() { return JSON.stringify([this.scopeKey, this.keyword, this.safetyStatus, this.category, this.reviewStatus, this.organization, this.page]) },
     detailContext() { return `${this.scopeKey}:${this.selectedId}` },
     previewRequested() { return typeof this.$route.query.file === 'string' && !!this.$route.query.file },
     selectedStatus() { return !this.summary.total ? 'NOT_SYNCED' : this.summary.unsafe ? 'UNSAFE' : 'READY' },
@@ -211,8 +221,8 @@ export default {
     'batchStore.selectedBatchId'(next, previous) {
       this.epoch++; this.clearDetail(); this.selectedId = ''; this.page = 1
       if (previous && String(next) !== String(previous)) {
-        this.keyword = ''; this.safetyStatus = ''
-        this.navigate({ id: undefined, file: undefined, page: '1', keyword: undefined, safetyStatus: undefined }, true)
+        this.keyword = ''; this.safetyStatus = ''; this.category = ''; this.reviewStatus = ''; this.organization = []
+        this.navigate({ id: undefined, file: undefined, page: '1', keyword: undefined, safetyStatus: undefined, category: undefined, reviewStatus: undefined, collegeId: undefined, majorId: undefined, classId: undefined }, true)
         this.load()
       } else { this.restoreQuery(); this.load(); this.syncRouteDetail() }
     },
@@ -230,6 +240,9 @@ export default {
       const q = this.$route.query
       this.keyword = typeof q.keyword === 'string' ? q.keyword : ''
       this.safetyStatus = ['READY', 'UNSAFE', 'NOT_SYNCED'].includes(q.safetyStatus) ? q.safetyStatus : ''
+      this.category = MATERIAL_TYPES.some(item => item.value === q.category) ? q.category : ''
+      this.reviewStatus = ['PENDING_REVIEW', 'APPROVED', 'RETURNED'].includes(q.reviewStatus) ? q.reviewStatus : ''
+      this.organization = [q.collegeId, q.majorId, q.classId].map(value => /^[1-9]\d*$/.test(String(value || '')) ? String(value) : '')
       this.page = /^[1-9]\d*$/.test(String(q.page || '')) ? Math.min(Number(q.page), 1000000) : 1
     },
     syncRouteDetail() {
@@ -245,13 +258,13 @@ export default {
       if (!this.canView) { this.error = '无材料查看权限'; return }
       this.loading = true
       try {
-        const data = await internshipMaterialCenterApi.list({ page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId, keyword: this.keyword || undefined, safetyStatus: this.safetyStatus || undefined })
+        const data = await internshipMaterialCenterApi.list({ page: this.page, pageSize: this.pageSize, batchId: this.batchStore.selectedBatchId, keyword: this.keyword || undefined, safetyStatus: this.safetyStatus || undefined, category: this.category || undefined, reviewStatus: this.reviewStatus || undefined, collegeId: this.organization[0] || undefined, majorId: this.organization[1] || undefined, classId: this.organization[2] || undefined })
         if (seq !== this.listSeq || key !== this.listContext) return
         this.rows = data?.items || []; this.total = data?.total ?? 0
-      } catch (error) { if (seq === this.listSeq && key === this.listContext) this.error = error?.message || '材料列表加载失败' }
+      } catch (error) { if (seq === this.listSeq && key === this.listContext) this.error = normalizeUiError(error, { fallback: '材料列表加载失败' }).userMessage }
       finally { if (seq === this.listSeq && key === this.listContext) this.loading = false }
     },
-    reload() { this.navigate({ keyword: this.keyword, safetyStatus: this.safetyStatus, page: '1', id: undefined, file: undefined }); this.page = 1; this.load() },
+    reload() { this.navigate({ keyword: this.keyword, safetyStatus: this.safetyStatus, category: this.category, reviewStatus: this.reviewStatus, collegeId: this.organization[0], majorId: this.organization[1], classId: this.organization[2], page: '1', id: undefined, file: undefined }); this.page = 1; this.load() },
     changePage(page) { this.navigate({ page: String(page) }) },
     openStudent(row) { this.navigate({ id: String(row.internshipId), file: undefined }) },
     closeStudent() { this.navigate({ id: undefined, file: undefined }) },
@@ -267,7 +280,7 @@ export default {
         if (seq !== this.detailSeq || key !== this.detailContext) return false
         if (String(data.internshipId) !== this.selectedId || String(data.batchId) !== String(this.batchStore.selectedBatchId)) { this.detailError = '该材料对象不属于当前批次，请返回学生列表重新定位'; return false }
         this.selected = data; this.restorePreview(); this.focusDetail(); return true
-      } catch (error) { if (seq === this.detailSeq && key === this.detailContext) this.detailError = error?.message || '学生材料详情加载失败'; return false }
+      } catch (error) { if (seq === this.detailSeq && key === this.detailContext) this.detailError = normalizeUiError(error, { fallback: '学生材料详情加载失败' }).userMessage; return false }
       finally { if (seq === this.detailSeq && key === this.detailContext) this.detailLoading = false }
     },
     focusDetail() { this.$nextTick?.(() => { const heading = this.$el?.querySelector(this.activePreviewFile ? '#material-reader-title' : '#material-student-title'); heading?.focus({ preventScroll: true }); heading?.scrollIntoView({ block: this.activePreviewFile ? 'start' : 'nearest' }) }) },
@@ -281,7 +294,7 @@ export default {
         const count = result?.items?.length || 0, unsafe = result?.unsafe?.length || 0
         this.syncReceipt = count ? `已同步 ${count} 份材料${unsafe ? `，其中 ${unsafe} 份仍待安全处理` : '，请以重新读取的材料状态为准'}。` : '同步已完成，现有业务记录中暂无可登记材料。'
         await Promise.all([this.load(), this.refreshDetail(true)])
-      } catch (error) { if (key === this.detailContext) this.operationError = error?.message || '材料同步未确认，请刷新核对当前状态' }
+      } catch (error) { if (key === this.detailContext) this.operationError = normalizeUiError(error, { fallback: '材料同步未确认，请刷新核对当前状态' }).userMessage }
       finally { if (key === this.detailContext) this.syncing = false }
     },
     restorePreview() {
@@ -306,10 +319,10 @@ export default {
       if (!item?.canDownload || !item.readyForBusiness || this.downloadingId || this.syncing || !this.canView) return
       const key = this.detailContext; this.downloadingId = String(item.fileId); this.operationError = ''
       try { await internshipMaterialCenterApi.downloadMaterial(item) }
-      catch (error) { if (key === this.detailContext) this.operationError = error?.message || '文件下载失败' }
+      catch (error) { if (key === this.detailContext) this.operationError = normalizeUiError(error, { fallback: '文件下载失败' }).userMessage }
       finally { if (key === this.detailContext) this.downloadingId = '' }
     },
-    previewError(error) { this.operationError = error?.message || '站内预览失败，请刷新材料状态后重试' },
+    previewError(error) { this.operationError = normalizeUiError(error, { fallback: '站内预览失败，请刷新材料状态后重试' }).userMessage },
     goArchive() { if (!this.syncing && this.selected) this.$router.push({ path: '/admin/internship/archive', query: this.batchStore.withBatchQuery({ id: this.selectedId }) }) },
     shortHash(value) {
       const text = String(value || '')
@@ -326,7 +339,7 @@ export default {
     },
     manifestStatusLabel(value) { return ({ DRAFT: '草稿', FROZEN: '已冻结', PACKAGED: '已打包', REVOKED: '已撤销', PENDING: '生成中' })[value] || (value ? '状态待确认' : '—') },
     scanResultLabel(value) { return ({ CLEAN: '已通过', NOT_REQUIRED: '无需扫描', PENDING: '待扫描', INFECTED: '未通过', FAILED: '扫描失败' })[value] || (value ? '扫描结果待确认' : '—') },
-    reviewStatusLabel(value) { return ({ PENDING: '待审核', SUBMITTED: '已提交', APPROVED: '已通过', ACCEPTED: '已验收', RETURNED: '已退回', REJECTED: '未通过', WAIVED: '已免交', SUPERSEDED: '已被新版本替代' })[value] || (value ? `审核状态待确认（${value}）` : '—') }
+    reviewStatusLabel(value) { return ({ PENDING: '待审核', SUBMITTED: '已提交', APPROVED: '已通过', ACCEPTED: '已验收', RETURNED: '已退回', REJECTED: '未通过', WAIVED: '已免交', SUPERSEDED: '已被新版本替代' })[value] || (value ? '审核状态待确认' : '—') }
   }
 }
 </script>

@@ -91,7 +91,7 @@ export const matchApi = {
     return call(() => request(`${BASE}/intentions/import/errors-xlsx`, { method: 'POST', body: { rows, errors } }))
   },
   exportIntentions(params = {}) {
-    return call(() => request(`${BASE}/intentions/export`, { method: 'POST', params }))
+    return call(() => request(`${BASE}/intentions/export`, { method: 'POST', timeoutMs: 60000, params }))
   },
   async downloadIntentionExport(params = {}) {
     const res = await this.exportIntentions(params)
@@ -129,7 +129,7 @@ export const matchApi = {
     return call(() => request(`${BASE}/${id}/reject`, { method: 'POST', body: { reason } }))
   },
   exportMatches(params = {}) {
-    return call(() => request(`${BASE}/export`, { method: 'POST', params }))
+    return call(() => request(`${BASE}/export`, { method: 'POST', timeoutMs: 60000, params }))
   },
   async downloadMatchExport(params = {}) {
     const res = await this.exportMatches(params)

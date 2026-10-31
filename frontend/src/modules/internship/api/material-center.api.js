@@ -28,6 +28,37 @@ function raceAbort(promise, signal) {
 }
 
 export const internshipMaterialCenterApi = {
+  requirements(params = {}) { return request('/internship/material-requirements', { params }) },
+  createRequirement(body) { return request('/internship/material-requirements', { method: 'POST', body }) },
+  attachRequirementTemplate(requirementId, fileId) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/template`, {
+      method: 'POST', body: { fileId }
+    })
+  },
+  publishRequirement(requirementId) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/publish`, { method: 'POST' })
+  },
+  requirementCoverage(requirementId, params = {}) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/coverage`, { params })
+  },
+  requirementStudents(requirementId, params = {}) {
+    return request(`/internship/material-requirements/${encodeURIComponent(requirementId)}/students`, { params })
+  },
+  reviewSubmission(submissionId, body) {
+    return request(`/internship/material-submissions/${encodeURIComponent(submissionId)}/review`, {
+      method: 'POST', body
+    })
+  },
+  uploadRequirementTemplate(file, onProgress) {
+    return fileSdk.upload(file, { bizType: 'INTERNSHIP_MATERIAL_TEMPLATE', bizId: '', onProgress })
+  },
+  downloadRequirementTemplate(requirementId, templateVersionId) {
+    return fileSdk.downloadFrom(`/internship/material-requirements/${encodeURIComponent(requirementId)}/template/download?templateVersionId=${encodeURIComponent(templateVersionId)}`, '材料模板')
+  },
+  downloadRequirementPackage(requirementId, params = {}) {
+    const query = new URLSearchParams(Object.entries(params).filter(([,value]) => value !== undefined && value !== null && value !== ''))
+    return fileSdk.downloadFrom(`/internship/material-requirements/${encodeURIComponent(requirementId)}/package/download?${query}`, '材料文件包.zip')
+  },
   list(params = {}) { return request(BASE, { params }) },
   detail(internshipId) { return request(`${BASE}/${encodeURIComponent(internshipId)}`) },
   sync(internshipId) {

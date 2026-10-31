@@ -25,9 +25,13 @@ const B = '/internship'
 export const attendanceApi = {
   // 打卡台账
   getCheckins(params = {}) { return callList(`${B}/checkins`, params) },
-  exportCheckins(params = {}) { return call(() => request(`${B}/checkins/export`, { method: 'POST', params })) },
+  exportCheckins(params = {}) { return call(() => request(`${B}/checkins/export`, { method: 'POST', timeoutMs: 60000, params })) },
   // 打卡异常
-  getExceptions(params = {}) { return callList(`${B}/exceptions`, params) },
+  async getExceptions(params = {}) {
+    const result = await callList(`${B}/exceptions`, params)
+    if (result.code === 0) result.data.list = result.data.list.map(row => ({ ...row, deviceRiskLabel: ({ mock:'客户端报告模拟定位', rooted:'客户端报告设备风险', not_available:'未提供可信检测' })[row.deviceRisk] || '设备信号待确认' }))
+    return result
+  },
   getExceptionDetail(id) { return call(() => request(`${B}/exceptions/${id}`)) },
   handleException(id, { action, comment, expectedVersion, version }) {
     return call(() => request(`${B}/exceptions/${id}/handle`, {
@@ -42,9 +46,9 @@ export const attendanceApi = {
   exportExceptions(params = {}) {
     const { ids, ...rest } = params
     if (ids && ids.length) {
-      return call(() => request(`${B}/exceptions/export`, { method: 'POST', params: rest, body: { ids } }))
+      return call(() => request(`${B}/exceptions/export`, { method: 'POST', timeoutMs: 60000, params: rest, body: { ids } }))
     }
-    return call(() => request(`${B}/exceptions/export`, { method: 'POST', params: rest }))
+    return call(() => request(`${B}/exceptions/export`, { method: 'POST', timeoutMs: 60000, params: rest }))
   },
   // 补卡审批
   getMakeups(params = {}) { return callList(`${B}/makeups`, params) },
@@ -62,7 +66,7 @@ export const attendanceApi = {
       method: 'POST', body: { comment, expectedVersion: expectedVersion ?? version }
     }))
   },
-  exportMakeups(params = {}) { return call(() => request(`${B}/makeups/export`, { method: 'POST', params })) }
+  exportMakeups(params = {}) { return call(() => request(`${B}/makeups/export`, { method: 'POST', timeoutMs: 60000, params })) }
 }
 
 export default attendanceApi

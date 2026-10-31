@@ -41,7 +41,7 @@
     </div>
 
     <div v-if="moreOpen" class="more-filters">
-      <input v-model.trim="draft.companyId" class="filter-control" aria-label="企业编号" placeholder="企业编号" @change="emitSearch" />
+      <input v-model.trim="draft.companyId" class="filter-control" aria-label="企业" placeholder="企业名称" @change="emitSearch" />
       <input v-model.trim="draft.industry" class="filter-control" aria-label="行业" placeholder="行业" @change="emitSearch" />
       <input v-model.trim="draft.scale" class="filter-control" aria-label="企业规模" placeholder="企业规模" @change="emitSearch" />
       <select v-model="draft.nightShift" class="filter-control" aria-label="夜班" @change="emitSearch">

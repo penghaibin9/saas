@@ -87,6 +87,7 @@ export function normalizeMobileVolunteerGroup(raw = {}) {
     }
   })
   return {
+    id: first(raw, 'id'),
     status: String(raw.status || raw.groupStatus || 'UNAVAILABLE').toUpperCase(),
     version: optionalVersion(raw.version ?? raw.groupVersion),
     recordVersion: optionalVersion(raw.recordVersion ?? raw.internshipRecordVersion),
@@ -94,6 +95,7 @@ export function normalizeMobileVolunteerGroup(raw = {}) {
     internshipId: raw.internshipId || raw.recordId || null,
     lockedCompanyName: raw.lockedCompanyName || '',
     teacherConfirmDeadline: raw.teacherConfirmDeadline || '',
+    revisionReason: String(raw.revisionReason || ''),
     slots
   }
 }

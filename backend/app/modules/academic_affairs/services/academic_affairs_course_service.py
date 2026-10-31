@@ -16,6 +16,7 @@ Tier1 R2（新增课程/课程分类/课程性质/学分学时/课程负责人/�
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 import json
 import re
 from datetime import datetime
@@ -141,12 +142,15 @@ def _validate_majors(db, tenant_id, major_ids):
 def _check_college_scope(db, user, owner_college_id):
     """学院管理员只能在本学院开课单位下新增/编辑课程；教务处/超管不限（对齐数据范围）。"""
     role = (user.get("currentRoleCode") or "").upper() if user else ""
-    if role != "COLLEGE_ADMIN":
+    if role not in COLLEGE_ACADEMIC_ROLES:
         return
     from app.core.affairs_security import build_affairs_context, no_data_scope
     ctx = build_affairs_context(user, db)
-    if ctx.scope_type != "COLLEGE" or not ctx.college_ids:
+    if ctx.scope_type == "TENANT_ALL":
         return
+    # 未配置学院范围时默认拒绝，不能因为没有范围就放开全校开课单位
+    if ctx.scope_type != "COLLEGE" or not ctx.college_ids:
+        raise no_data_scope("当前身份未配置学院范围，不能维护课程")
     if not owner_college_id or int(owner_college_id) not in ctx.college_ids:
         raise no_data_scope("开课单位不在您的管理范围内")
 
@@ -491,6 +495,8 @@ def add_course_material(course_id, user, body) -> dict:
 
 
 def void_course_material(material_id, user, reason="") -> dict:
+    if str((user or {}).get("currentRoleCode") or "").upper() == "COLLEGE_ACADEMIC":
+        raise AppException("NO_PERMISSION", "学院教务不能作废课程材料", http_status=403)
     from app.models import AaCourseMaterial
     with session() as db:
         x = db.get(AaCourseMaterial, int(material_id))

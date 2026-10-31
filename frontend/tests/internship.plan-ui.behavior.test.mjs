@@ -1,3 +1,4 @@
+import { componentFactory } from './internship-test-dependencies.mjs'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import test from 'node:test'
@@ -7,7 +8,8 @@ const script = parse(fs.readFileSync(new URL('../src/modules/internship/views/In
   .replace(/ {2}components: \{[\s\S]*?\n {2}\},/, '')
   .replace('export default', 'return')
 function view(api, stubChildren = true) {
-  const definition = new Function('planApi', 'canCode', 'isConflict', 'toast', script)(api, () => true, res => res.code === 409001, { success() {}, error() {} })
+  api = {getBatchPlanContext:async()=>({code:0,data:{}}),getTemplates:async()=>({code:0,data:[]}),...api}
+  const definition = componentFactory('planApi', 'canCode', 'isConflict', 'toast', script)(api, () => true, res => res.code === 409001, { success() {}, error() {} })
   const vm = { ...definition.data(), batchId: '1', $route: { query: {} }, ctx: {} }
   for (const [key, method] of Object.entries(definition.methods)) vm[key] = method.bind(vm)
   if (stubChildren) vm.loadAcks = vm.loadProgressSummary = vm.reloadProgress = vm.loadProgress = () => {}
@@ -45,7 +47,7 @@ test('plan panel navigation retains batch and does not discard unsaved form or t
 test('saving carries original version and retains edits made while saving', async () => {
   let finish, payload
   const vm = view({ saveBatchPlan: (id, body) => { payload = body; return new Promise(resolve => { finish = resolve }) } })
-  vm.plan = { id: '1', status: 'DRAFT', version: 4 }; vm.form = { title: '实习计划', objectives: '', content: '实习期间按要求完成工作任务并定期提交实习成果材料。' }; vm.tasks = [{ name: '提交报告' }]
+  vm.plan = { id: '1', status: 'DRAFT', version: 4 }; vm.form = { internshipType:'POST',planNo:'SYN-2026',majorName:'合成专业',educationLevel:'专科',subsidyStandard:'按协议执行',targetAudience:'合成班级',responsibleName:'合成负责人',requirements:'合成实习任务要求',assessmentContent:'合成考核内容说明',attachmentFileIds:[], title: '实习计划', objectives: '合成实习培养目的', content: '实习期间按要求完成工作任务并定期提交实习成果材料。' }; vm.tasks = [{ name: '提交报告' }]
   const saving = vm.save(); vm.form.title = '继续修改标题'
   finish({ code: 0, data: { id: '1', status: 'DRAFT', version: 5 } }); await saving
   assert.equal(payload.expectedVersion, 4); assert.equal(vm.form.title, '继续修改标题'); assert.equal(vm.dirty, true)
@@ -54,7 +56,7 @@ test('saving carries original version and retains edits made while saving', asyn
 test('conflict preserves draft and blocks replay using a refreshed version', async () => {
   let calls = 0
   const vm = view({ saveBatchPlan: async () => { calls++; return { code: 409001 } } })
-  vm.plan = { id: '1', status: 'DRAFT', version: 4 }; vm.form = { title: '实习计划', objectives: '', content: '实习期间按要求完成工作任务并定期提交实习成果材料。' }; vm.tasks = [{ name: '提交报告' }]
+  vm.plan = { id: '1', status: 'DRAFT', version: 4 }; vm.form = { internshipType:'POST',planNo:'SYN-2026',majorName:'合成专业',educationLevel:'专科',subsidyStandard:'按协议执行',targetAudience:'合成班级',responsibleName:'合成负责人',requirements:'合成实习任务要求',assessmentContent:'合成考核内容说明',attachmentFileIds:[], title: '实习计划', objectives: '合成实习培养目的', content: '实习期间按要求完成工作任务并定期提交实习成果材料。' }; vm.tasks = [{ name: '提交报告' }]
   await vm.save(); await vm.save()
   assert.equal(calls, 1); assert.equal(vm.plan.version, 4); assert.equal(vm.form.title, '实习计划'); assert.equal(vm.writeConflict, true)
 })

@@ -43,12 +43,20 @@ async def upload_contract(
 
     requested_biz_type = str(biz_type or "ATTACHMENT").strip().upper()
     requested_biz_id = str(biz_id or "").strip() or None
+    from app.services.file_content_security import _INTERNSHIP_MEDIA_BIZ
+    validation_options = {}
+    if requested_biz_type in _INTERNSHIP_MEDIA_BIZ:
+        from app.core.permissions import require_module
+        require_module("internship")(user)
+        # 仅选择格式校验规则；文件仍然是无业务绑定的私有临时对象。
+        validation_options["validation_biz_type"] = requested_biz_type
     meta = await file_service.store_upload(
         file,
         "TEMP_PRIVATE",
         biz_id=None,
         user=user,
         visibility="PRIVATE",
+        **validation_options,
     )
     scan_status = str(meta.get("scanStatus") or "NOT_REQUIRED").upper()
     result = {

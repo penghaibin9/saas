@@ -583,7 +583,7 @@ def exam_defer_resubmit_my(user, defer_id, body=None) -> dict:
 
     payload = body or {}
     expected_version = payload.get("expectedVersion") if isinstance(payload, dict) else getattr(payload, "expectedVersion", None)
-    return exam.defer_resubmit(user, defer_id, expected_version)
+    return exam.defer_resubmit(user, defer_id, expected_version, reason=payload.get("reason") if isinstance(payload, dict) else getattr(payload, "reason", None))
 
 
 def _identity_options(user, *, page=None, page_size=20, keyword='', grade_id=None, course_id=None) -> dict:

@@ -4,6 +4,7 @@
     :subtitle="activeTab === 'incidents' ? '跟进事故处置，维护当前批次的应急预案。' : '核对学生上岗条件，查看缺项并继续办理。'"
   >
     <template #actions>
+      <AppButton v-if="archiveReturnTo" variant="ghost" :disabled="loading || acting" @click="$router.push(archiveReturnTo)">返回归档核验</AppButton>
       <template v-if="!reviewRequested && !consentEditor && !safetyEditor && !filingEditor && !incidentEditor && !exemptionEditor && batchStore.selectedBatchId">
         <span class="compliance-updated">最近核验 {{ fmt(workbench.generatedAt || stats.evaluatedAt) }}</span>
         <AppButton variant="ghost" :disabled="loading || acting" @click="load">刷新核验</AppButton>
@@ -27,6 +28,8 @@
       <AppButton v-if="consentEditor" variant="ghost" @click="closeConsentEditor">返回知情台账</AppButton>
       </template>
     </template>
+    <p v-if="incidentScopeError" role="alert">{{ incidentScopeError }}</p>
+    <p v-else-if="activeTab === 'incidents' && $route.query.internshipId" role="status">仅显示归档学生尚未关闭的事故；办理完成后返回归档重新核验。</p>
     <ErrorState v-if="error" :description="error" @retry="load" />
     <LoadingState v-else-if="loading" />
     <div v-else-if="reviewRequested && (reviewError || groupError || !dialog.open)" class="review-state">
@@ -194,7 +197,7 @@
                       <strong>{{ row.studentNo }} · {{ row.studentName }}</strong>
                       <div class="cell-sub">{{ row.consentType === 'GUARDIAN' ? `${row.participantName || '监护人'} · ${row.contactMasked || '手机号未显示'}` : '学生本人' }}</div>
                     </td>
-                    <td><span :class="['state-tag', stateTone(row.status)]">{{ consentStatusText(row.status) }}</span></td>
+                    <td><span :class="['state-tag', stateTone(row.status)]">{{ consentStatusText(row.status) }}</span><p v-if="row.status === 'REJECTED' && row.rejectionReason" class="cell-sub">无法确认原因：{{ row.rejectionReason }}</p></td>
                     <td>
                       <span v-if="row.consentType === 'STUDENT'" class="cell-sub">站内任务</span>
                       <template v-else>
@@ -261,7 +264,7 @@
           <section v-if="filingEditor && can('internship.filing.review')" class="mp-card filing-editor">
             <div class="mp-card__head"><div><strong>新建特殊备案</strong><p class="mp-note">经办人创建并提交，申请人与审核人必须分离。</p></div></div>
             <fieldset class="form-grid filing-fields" :disabled="acting || !!filingDraft">
-              <label>学生 *<select v-model="forms.filing.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生 *<AppInternshipStudentPicker v-model="forms.filing.internshipId" :disabled="!!statsError || !batchStore.selectedBatchId" :query="{ batchId: batchStore.selectedBatchId }" placeholder="按姓名或学号选择学生" /></label>
               <label>备案类型 *<select v-model="forms.filing.filingType"><option v-for="item in filingTypes" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label>目的地区<input v-model.trim="forms.filing.destinationRegion" maxlength="200" placeholder="跨区域/境外时填写" /></label>
               <label class="span-3">备案原因 *<textarea v-model.trim="forms.filing.triggerReason" rows="3" maxlength="500" placeholder="不少于5字" /></label>
@@ -287,7 +290,7 @@
           <section v-if="incidentEditor === 'incident' && can('internship.incident.report')" class="mp-card incident-editor">
             <div class="mp-card__head"><div><strong>上报事故</strong><p class="mp-note">填写事故情况与已采取措施，提交后在台账继续跟进。</p></div></div>
             <fieldset class="form-grid incident-fields" :disabled="acting">
-              <label>学生<select v-model="forms.incident.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<AppInternshipStudentPicker v-model="forms.incident.internshipId" :disabled="!!statsError || !batchStore.selectedBatchId" :query="{ batchId: batchStore.selectedBatchId }" placeholder="按姓名或学号选择学生" /></label>
               <label>严重程度<select v-model="forms.incident.severity"><option value="LOW">一般</option><option value="MEDIUM">较大</option><option value="HIGH">重大</option><option value="CRITICAL">特别重大</option></select></label>
               <label>事故类型<input v-model.trim="forms.incident.incidentType" maxlength="50" placeholder="例如 人身伤害/交通/设备" /></label>
               <label>发生时间<input v-model="forms.incident.occurredAt" type="datetime-local" :max="nowLocal" /></label>
@@ -315,7 +318,7 @@
                 <button v-if="row.status === 'CLOSED' && row.evidenceTarget?.targetId && can('internship.evidence.export')" type="button" class="mp-link" @click="generateIncidentEvidence(row)">生成监管证据包</button>
               </td>
             </tr>
-            <tr v-if="showEmpty(workbench.incidents)"><td colspan="5" class="empty-cell">暂无事故记录</td></tr>
+            <tr v-if="!incidentScopeError && showEmpty(incidentRows)"><td colspan="5" class="empty-cell">{{ $route.query.internshipId ? '该生已无未关闭事故，请返回归档重新核验。' : '暂无事故记录' }}</td></tr>
           </tbody></table></div></section>
 
           <section v-if="incidentEditor === 'emergency' && can('internship.incident.handle')" class="mp-card incident-editor">
@@ -342,9 +345,9 @@
 
         <template v-else-if="activeTab === 'exemptions'">
           <section v-if="exemptionEditor && can('internship.compliance.exempt.request')" class="mp-card incident-editor">
-            <div class="mp-card__head"><div><strong>申请合规豁免</strong><p class="mp-note">说明特殊情况、替代措施和有效期，提交学校审核。</p></div></div>
+            <div class="mp-card__head"><div><strong>申请合规豁免</strong><p class="mp-note">说明特殊情况、替代措施和有效期，提交学校审核。未满16周岁不得安排岗位实习；年龄条件不可豁免，出生日期存疑请联系学校核实。</p></div></div>
             <fieldset class="form-grid incident-fields" :disabled="acting">
-              <label>学生<select v-model="forms.exemption.internshipId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label>学生<AppInternshipStudentPicker v-model="forms.exemption.internshipId" :disabled="!!statsError || !batchStore.selectedBatchId" :query="{ batchId: batchStore.selectedBatchId }" placeholder="按姓名或学号选择学生" /></label>
               <label>检查项<select v-model="forms.exemption.checkCode"><option value="">请选择检查项</option><option v-for="item in exemptionChecks" :key="item.value" :value="item.value">{{ item.label }}</option></select></label>
               <label>有效期至<input v-model="forms.exemption.validUntil" type="datetime-local" :min="nowLocal" /></label>
               <label class="span-3">申请原因<textarea v-model.trim="forms.exemption.reason" rows="4" maxlength="1000" placeholder="不少于 10 字，说明特殊情况、替代措施和责任人" /></label>
@@ -355,7 +358,7 @@
             <div class="consent-actions"><AppButton variant="secondary" :disabled="acting" @click="closeExemptionEditor">返回台账</AppButton><AppButton variant="primary" :loading="acting" :disabled="!exemptionFormValid" @click="requestExemption">提交学校审核</AppButton></div>
           </section>
           <section v-if="!exemptionEditor" class="mp-card incident-ledger"><div class="mp-card__head"><strong>豁免台账</strong></div><div class="table-wrap"><table class="mp-table"><thead><tr><th>学生 / 检查项</th><th>申请原因</th><th>有效期与状态</th><th>经办人员</th><th>操作</th></tr></thead><tbody>
-            <tr v-for="row in workbench.exemptions || []" :key="row.id"><td><strong>{{ row.studentName }}</strong><div class="cell-sub">{{ row.studentNo }}</div><div>{{ exemptionCheckText(row.checkCode) }}</div></td><td>{{ row.reason }}</td><td><span class="state-tag">{{ complianceStatusText(row.status) }}</span><div class="cell-sub">截至 {{ fmt(row.validUntil) }}</div></td><td>申请：{{ row.requestedByName || '—' }}<div class="cell-sub">审核：{{ row.reviewedByName || '待审核' }}</div></td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><button type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
+            <tr v-for="row in workbench.exemptions || []" :key="row.id"><td><strong>{{ row.studentName }}</strong><div class="cell-sub">{{ row.studentNo }}</div><div>{{ exemptionCheckText(row.checkCode) }}</div></td><td>{{ row.reason }}</td><td><span class="state-tag">{{ complianceStatusText(row.status) }}</span><div class="cell-sub">截至 {{ fmt(row.validUntil) }}</div></td><td>申请：{{ row.requestedByName || '—' }}<div class="cell-sub">审核：{{ row.reviewedByName || '待审核' }}</div></td><td class="action-cell"><template v-if="row.status === 'PENDING_REVIEW' && can('internship.compliance.exempt.approve')"><span v-if="row.exemptible === false" class="field-help">年龄条件不可豁免</span><button v-else type="button" class="mp-link" @click="openAction('exemption-review', row, 'APPROVE')">批准</button><button type="button" class="danger-link" @click="openAction('exemption-review', row, 'REJECT')">拒绝</button></template></td></tr>
             <tr v-if="showEmpty(workbench.exemptions)"><td colspan="5" class="empty-cell">暂无豁免记录</td></tr>
           </tbody></table></div></section>
         </template>
@@ -365,7 +368,7 @@
             <div class="mp-card__head"><div><strong>生成监管证据包</strong><p class="mp-note">按当前批次或单个学生汇集材料；生成后在历史记录查看缺项并下载。</p></div></div>
             <fieldset class="form-grid evidence-fields" :disabled="acting">
               <label>包类型<select v-model="forms.package.packageType"><option value="BATCH">批次包</option><option value="STUDENT">学生包</option></select></label>
-              <label v-if="forms.package.packageType === 'STUDENT'">学生<select v-model="forms.package.targetId" :disabled="!!statsError"><option value="">请选择学生</option><option v-for="student in students" :key="student.internshipId" :value="student.internshipId">{{ student.studentNo }} · {{ student.studentName }}</option></select></label>
+              <label v-if="forms.package.packageType === 'STUDENT'">学生<AppInternshipStudentPicker v-model="forms.package.targetId" :disabled="!!statsError || !batchStore.selectedBatchId" :query="{ batchId: batchStore.selectedBatchId }" placeholder="按姓名或学号选择学生" /></label>
             </fieldset>
             <p v-if="packageError" role="alert" class="dialog-error">{{ packageError }}</p>
             <AppButton v-if="can('internship.evidence.export')" variant="primary" :loading="acting" :disabled="!packageFormValid" @click="generatePackage">生成证据包</AppButton>
@@ -429,7 +432,7 @@
 import { formatDateTime } from '@/utils/dateUtils'
 import { ModulePageShell, LoadingState, ErrorState } from '@/components/business'
 import { AppButton } from '@/components/ui'
-import { AppInlineAlert } from '@/components/common'
+import { AppInlineAlert, AppInternshipStudentPicker } from '@/components/common'
 import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { fileSdk } from '@/services/file/fileSdk'
 import ActionReceipt from './components/ActionReceipt.vue'
@@ -489,7 +492,7 @@ function emptyDialog() {
 
 export default {
   name: 'InternshipComplianceView',
-  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppInlineAlert, ActionReceipt },
+  components: { ModulePageShell, LoadingState, ErrorState, AppButton, AppInlineAlert, AppInternshipStudentPicker, ActionReceipt },
   props: { ctx: { type: Object, required: true } },
   data: () => ({
     loading: false, acting: false, error: '', activeTab: 'overview', consentError: '', safetyError: '', filingError: '', incidentError: '', emergencyError: '', exemptionError: '', packageError: '', emergencyDraft: null, filingDraft: null, reviewError: '',
@@ -508,6 +511,15 @@ export default {
     loadSeq: 0
   }),
   computed: {
+    archiveReturnTo() {
+      const ref = this.$route.query.returnTo
+      if (typeof ref !== 'string' || !/^\/admin\/internship\/archive(?:\?|$)/.test(ref)) return ''
+      return new URL(ref, 'https://local.invalid').searchParams.get('batchId') === String(this.batchStore.selectedBatchId) ? ref : ''
+    },
+    incidentScopeError() {
+      const id = this.$route.query.internshipId
+      return id != null && (typeof id !== 'string' || !/^[1-9]\d{0,18}$/.test(id)) ? '事故定位参数无效，请返回归档核验重新进入。' : ''
+    },
     auditNotice() {
       if (this.auditHealthError) return {
         type: 'warning', title: '暂未取得审计状态',
@@ -538,7 +550,9 @@ export default {
     students() { return this.stats.drilldowns?.ALL || [] },
     overviewMetrics() { return this.metrics.filter(item => ['TOTAL', 'ONBOARD_READY', 'BLOCKED', 'ARCHIVE_READY', 'ARCHIVE_BLOCKED'].includes(item.metricCode)) },
     incidentRows() {
-      const rows = [...(this.workbench.incidents || [])]
+      let rows = [...(this.workbench.incidents || [])]
+      const recordId = this.$route.query.internshipId
+      if (recordId != null) rows = this.incidentScopeError ? [] : rows.filter(row => String(row.internshipId) === recordId && row.status !== 'CLOSED')
       const focusId = String(this.$route.query.id || '')
       return focusId ? rows.sort((a, b) => Number(String(b.id) === focusId) - Number(String(a.id) === focusId)) : rows
     },
@@ -704,6 +718,7 @@ export default {
     blockerText(items) { return items?.length ? items.map((item) => `${item.label}：${item.reason}`).join('；') : '无' },
     blockerOwner(codes) {
       const owners = {
+        minimumAge: '学校学生主档核验经办人',
         enterpriseAccess: '企业准入经办人', studentConsent: '学生本人', guardianConsent: '已绑定监护人',
         safetyEducation: '学生与安全教育审核人', insurance: '保险核验经办人', agreement: '协议当前确认方',
         specialFiling: '学院 / 学校备案审核人', workRights: '岗位审核经办人', emergency: '应急预案责任人'
@@ -711,7 +726,7 @@ export default {
       return (codes || []).map((code) => owners[code] || '合规经办人').filter((value, index, all) => all.indexOf(value) === index).join('、') || '合规经办人'
     },
     filingTypeText(value) { return FILING_TYPES.find((item) => item.value === value)?.label || (value ? '其他备案类型' : '-') },
-    exemptionCheckText(value) { return EXEMPTION_CHECKS.find((item) => item.value === value)?.label || (value ? '其他检查项' : '-') },
+    exemptionCheckText(value) { if (String(value || '').trim().toLowerCase() === 'minimumage') return '岗位实习年龄（不可豁免）'; return EXEMPTION_CHECKS.find((item) => item.value === value)?.label || (value ? '其他检查项' : '-') },
     complianceStatusText(value) { return COMPLIANCE_STATUS_LABELS[value] || (value ? '状态待确认' : '-') },
     severityText(value) { return ({ LOW: '一般', MEDIUM: '较大', HIGH: '重大', CRITICAL: '特别重大' })[value] || '程度待确认' },
     packageTypeText(value) { return ({ BATCH: '批次包', STUDENT: '学生包' })[value] || '其他证据包' },
@@ -1000,6 +1015,10 @@ export default {
       catch (downloadError) { this.$message?.error?.(downloadError.message || '下载失败') }
     },
     openAction(kind, row, action = '', level = '', fromRoute = false) {
+      if (kind === 'exemption-review' && action === 'APPROVE' && row.exemptible === false) {
+        this.reviewError = '岗位实习年龄不可豁免，请联系学校核实学生主档；该申请仅可拒绝。'
+        return
+      }
       const dialog = emptyDialog()
       dialog.open = true; dialog.kind = kind; dialog.row = { ...row, fileIds: [...(kind === 'exemption-review' ? row.evidenceFileIds || [] : row.fileIds || [])] }; dialog.action = action; dialog.level = level
       if (kind === 'revoke-consent') { dialog.title = '作废知情确认任务'; dialog.description = '作废后学生或监护人无法再确认，必须重新下发新任务。'; dialog.commentLabel = '作废原因（至少5字）'; dialog.commentPlaceholder = '说明作废原因'; dialog.confirmText = '确认作废' }

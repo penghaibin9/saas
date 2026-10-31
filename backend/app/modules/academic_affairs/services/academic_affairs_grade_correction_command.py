@@ -15,6 +15,7 @@
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 import functools
 import json
 from datetime import datetime
@@ -413,7 +414,7 @@ def change_request(task_id, record_id, user, body, *, command_key=None) -> dict:
         # The live-owner adapter delegates only snapshot keys, never the real
         # operator or scope. Admin scope is additionally narrowed here.
         role = str(actor.get("currentRoleCode") or "").upper()
-        if role in _core._REVIEW_ROLES or role == "COLLEGE_ADMIN":
+        if role in _core._REVIEW_ROLES or role in COLLEGE_ACADEMIC_ROLES:
             context = build_affairs_context(actor, db)
             if context.scope_type != "TENANT_ALL" and (
                     context.scope_type != "COLLEGE" or _task_college_id(db, task) not in context.college_ids):

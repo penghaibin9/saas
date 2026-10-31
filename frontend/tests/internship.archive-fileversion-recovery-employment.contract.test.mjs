@@ -26,7 +26,7 @@ test('archive recovery uses the scoped package endpoint and never blindly replay
   assert.match(api, /archive-packages\/\$\{packageId\}\/restore-check/)
   assert.match(api, /archive-packages\/\$\{encodeURIComponent\(packageId\)\}\/download/)
   assert.match(view, /archiveApi\.verifyRestore/)
-  assert.match(view, /行数与哈希一致/)
+  assert.match(view, /数量与文件完整性一致/)
   assert.match(view, /请勿盲目重复提交/)
   assert.match(view, /await this\.openDetailById\(p\.id\)/)
   assert.doesNotMatch(view, /downloadAttachment\(fileId/)
@@ -35,7 +35,7 @@ test('archive recovery uses the scoped package endpoint and never blindly replay
 test('technical FileVersion and Manifest evidence is collapsed by default', () => {
   const view = read('src/modules/internship/views/InternshipMaterialCenterView.vue')
   assert.match(view, /<details class="technical-evidence">/)
-  assert.match(view, /查看材料版本与归档清单/)
+  assert.match(view, /实施人员使用：材料版本与归档清单/)
   assert.match(view, /当前安全版本/)
   assert.doesNotMatch(view, /当前 v\{\{ activePreviewFile\.versionNo \}\} · FileVersion/)
 })

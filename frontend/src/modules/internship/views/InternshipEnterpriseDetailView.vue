@@ -66,6 +66,8 @@
       </section>
 
       <!-- 合作与资质 -->
+      <EnterpriseMemberWorkspace v-if="tab === 'members'" :key="String(detail.id)" :company-id="String(detail.id)" :contacts="contacts" :ctx="ctx" :batch-id="String($route.query.batchId || '')" />
+
       <section v-show="tab === 'coop'" class="mp-card">
         <div class="mp-card__body">
           <AppDescriptionList :items="coopFields">
@@ -237,6 +239,7 @@ import { isConflict, captureConflict, emptyConflict } from '@/modules/internship
 import { toast } from '@/utils/toast'
 import { formatDateTime } from '@/utils/dateUtils'
 import EnterpriseInspectionForm from './components/EnterpriseInspectionForm.vue'
+import EnterpriseMemberWorkspace from './components/EnterpriseMemberWorkspace.vue'
 
 const EMPTY_CFORM = () => ({ contactType: 'CONTACT', name: '', title: '', phone: '', email: '', isPrimary: false })
 const CONTACT_TYPE_OPTIONS = [{ label: '联系人', value: 'CONTACT' }, { label: '企业导师', value: 'MENTOR' }]
@@ -246,7 +249,7 @@ export default {
   components: {
     ModulePageShell, AppStatusTag, LoadingState, ErrorState, EmptyState, AppDrawer, AppButton, AppConfirmDialog,
     AppPermissionButton, AppAuditTrail, AppInlineAlert, AppDescriptionList, AppForm, AppFormItem, AppTextInput, AppSelect,
-    ConflictNotice, EnterpriseInspectionForm
+    ConflictNotice, EnterpriseInspectionForm, EnterpriseMemberWorkspace
   },
   props: { ctx: { type: Object, required: true } },
   data() {
@@ -255,6 +258,7 @@ export default {
       tabs: [
         { key: 'basic', label: '主档' },
         { key: 'contacts', label: '联系人与导师' },
+        { key: 'members', label: '企业成员与授权' },
         { key: 'coop', label: '合作与资质' },
         { key: 'positions', label: '企业岗位' },
         { key: 'inspections', label: '考察与准入' },
@@ -303,6 +307,7 @@ export default {
         { label: '企业性质', value: d.nature }, { label: '规模', value: d.scale },
         { label: '地区', value: d.region }, { label: '城市', value: d.city },
         { label: '详细地址', value: d.address }, { label: '来源', value: d.sourceLabel },
+        { label: '岗位实习适用学院', value: d.schoolWide ? '全校通用' : (d.collegeScopeNames || []).join('、'), span: 2 },
         { label: '联系人', value: d.contactPerson }, { label: '联系电话(脱敏)', value: d.contactPhoneMasked },
         { label: '累计实习生', value: String(d.internCount) }, { label: '备注', value: d.remark }
       ]

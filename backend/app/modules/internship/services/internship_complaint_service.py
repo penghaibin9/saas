@@ -88,9 +88,13 @@ def _row(c, user=None, student_name: str = ""):
         "studentId": str(c.student_id) if c.student_id else "",
         "studentName": student_name or ("企业投诉" if not c.student_id else ""),
         "batchId": str(c.batch_id) if c.batch_id else "",
-        "category": c.category or "", "severity": c.severity,
+        "category": c.category or "",
+        "title": "" if hide_business_detail else (c.title or ""),
+        "feedbackLevel": c.feedback_level or "",
+        "severity": c.severity,
         "content": "" if hide_business_detail else (c.content or ""),
         "evidenceFileId": "" if hide_business_detail else (c.evidence_file_id or ""),
+        "imageFileIds": [] if hide_business_detail else list(c.image_file_ids or []),
         "contentMasked": hide_business_detail,
         "evidenceMasked": hide_business_detail,
         "complainantContact": (
@@ -164,7 +168,7 @@ def _complaint_in_scope(db, c, user) -> bool:
 
 
 def list_complaints(page, page_size, status=None, enterprise_id=None, severity=None,
-                    batch_id=None, user=None):
+                    batch_id=None, user=None, category=None, feedback_level=None):
     from app.modules.internship.services.internship_batch_context import (
         batch_record_ids, parse_required_batch_id,
     )
@@ -196,6 +200,10 @@ def list_complaints(page, page_size, status=None, enterprise_id=None, severity=N
             q = q.where(InternshipComplaint.enterprise_id == int(enterprise_id))
         if severity:
             q = q.where(InternshipComplaint.severity == severity)
+        if category:
+            q = q.where(InternshipComplaint.category == str(category).strip())
+        if feedback_level:
+            q = q.where(InternshipComplaint.feedback_level == str(feedback_level).strip().upper())
         rows = db.scalars(q.order_by(InternshipComplaint.id.desc())).all()
         items = []
         for c in rows:

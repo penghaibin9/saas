@@ -31,12 +31,12 @@
       <LoadingState v-else-if="loading" />
       <div v-else class="aa-review-workspace">
         <aside class="aa-review-queue" aria-label="学院审核责任队列">
-          <h3>责任队列 <small>{{ pagination.total }} 项</small></h3>
-          <EmptyState v-if="!rows.length" title="暂无待审核任务" description="任课教师提交后进入本队列" />
+          <h3>待审核任务 <small>{{ pagination.total }} 项</small></h3>
+          <p v-if="!rows.length" class="mp-note" role="status">暂无待审核任务，教师提交后会显示在这里。</p>
           <button v-for="row in rows" :key="row.gradeTaskId" :class="['aa-review-queue-item', { 'is-active': String(current?.gradeTaskId) === String(row.gradeTaskId) }]" :disabled="busy" @click="selectTask(row.gradeTaskId)">
             <strong>{{ row.courseName }}</strong><span>{{ row.termCode }} · 任务 {{ row.gradeTaskId }}</span><AppStatusTag type="primary">{{ statusLabel(row.status) }}</AppStatusTag>
           </button>
-          <div class="aa-review-pages"><button class="mp-btn" :disabled="pagination.page <= 1" @click="onPageChange(pagination.page - 1)">上一页</button><span>{{ pagination.page }}</span><button class="mp-btn" :disabled="pagination.page * pagination.pageSize >= pagination.total" @click="onPageChange(pagination.page + 1)">下一页</button></div>
+          <div v-if="pagination.total > 0 || pagination.page > 1" class="aa-review-pages"><button class="mp-btn" :disabled="pagination.page <= 1" @click="onPageChange(pagination.page - 1)">上一页</button><span>{{ pagination.page }}</span><button class="mp-btn" :disabled="pagination.page * pagination.pageSize >= pagination.total" @click="onPageChange(pagination.page + 1)">下一页</button></div>
         </aside>
         <div class="aa-review-detail">
           <section v-if="current" class="aa-review-metrics" aria-label="正式成绩审核摘要">
@@ -54,7 +54,7 @@
             <span v-if="canReview && !canApprove">正式证据缺失、已变化或仍有阻断项，暂不能通过</span>
             <span v-if="!canReview">当前状态或身份不允许学院审核</span>
           </GradeReviewEvidence>
-          <EmptyState v-else title="选择需要办理的任务" description="指定任务无法读取时，不会改选其他对象" />
+          <EmptyState v-else-if="rows.length" title="请选择审核任务" description="选中后查看成绩明细和可办事项。" />
         </div>
       </div>
     </div>
@@ -342,6 +342,7 @@ export default {
 .aa-review-queue-item { display: grid; width: 100%; gap: 8px; padding: 14px; text-align: left; color: var(--text-primary); background: transparent; border: 0; border-top: 1px solid var(--border-base); cursor: pointer; }.aa-review-queue-item span { color: var(--text-secondary); font-size: 12px; }.aa-review-queue-item.is-active { background: var(--pri-bg); box-shadow: inset 3px 0 var(--pri); }
 .aa-review-reason { display: grid; gap: 8px; font-size: 13px; }.aa-review-reason textarea { width: 100%; box-sizing: border-box; padding: 10px; color: var(--text-primary); background: var(--bg-card); border: 1px solid var(--border-base); border-radius: 6px; }
 .aa-review-pages { display: flex; align-items: center; justify-content: space-between; padding: 12px; gap: 6px; }
+.aa-review-queue > .mp-note { padding: 12px 16px; }
 .aa-review-context { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; align-items: center; gap: 24px; padding: 15px 16px; border: 1px solid #dbe5f2; border-left: 3px solid var(--pri); border-radius: 11px; background: var(--bg-card); }
 .aa-review-context > div:first-child > span, .aa-review-context p, .aa-review-context__roles small { color: var(--text-secondary); font-size: 12px; }
 .aa-review-context h2 { margin: 4px 0; color: var(--text-primary); font-size: 17px; }.aa-review-context p { margin: 0; }

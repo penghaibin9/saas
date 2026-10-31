@@ -66,7 +66,7 @@
         <form class="aa-batch-filters" @submit.prevent="applyFilters">
           <label class="aa-batch-filters__search">
             <span class="aa-batch-label">批次名称</span>
-            <input v-model="filters.keyword" class="aa-input" type="search" maxlength="200" :disabled="creating || !!busyId" placeholder="搜索本页批次名称" @keydown.enter.prevent="applyFilters" />
+            <input v-model="filters.keyword" class="aa-input" type="search" maxlength="200" :disabled="creating || !!busyId" placeholder="搜索批次名称" @keydown.enter.prevent="applyFilters" />
           </label>
           <label class="aa-batch-filters__status">
             <span class="aa-batch-label">状态</span>
@@ -74,18 +74,17 @@
           </label>
           <AppButton :disabled="creating || !!busyId" @click="applyFilters">查询</AppButton>
           <AppButton variant="ghost" :disabled="creating || !!busyId" @click="clearFilters">清空</AppButton>
-          <p v-if="!loading && !error" class="aa-batch-filters__count">仅搜索本页 {{ rows.length }} 条记录</p>
+          <p v-if="!loading && !error" class="aa-batch-filters__count">共 {{ pagination.total }} 个批次 · 第 {{ pagination.page }} 页</p>
         </form>
         <p class="aa-batch-data-note">{{ missingFieldsNote }}</p>
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
         <template v-else-if="!rows.length">
-          <EmptyState :title="appliedStatus ? '当前状态下没有批次' : '当前页暂无注册批次'" description="可清空筛选查看；具有创建权限时，可在右上方建立批次。" />
+          <EmptyState :title="appliedKeyword || appliedStatus ? '没有匹配的注册批次' : '当前页暂无注册批次'" description="可清空筛选查看；具有创建权限时，可在右上方建立批次。" />
           <div v-if="pagination.page > 1" class="aa-batch-empty-return"><AppButton @click="onPageChange(1)">返回第一页</AppButton></div>
         </template>
         <template v-else>
-          <AppInlineAlert v-if="appliedKeyword && !visibleRows.length" type="info" class="aa-batch-search-empty">本页未找到匹配批次。其他页尚未搜索，可清空检索或继续翻页。</AppInlineAlert>
-          <DataTable :columns="columns" :rows="visibleRows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
+          <DataTable :columns="columns" :rows="rows" row-key="batchId" :pagination="pagination" @page-change="onPageChange">
             <template #cell-batchName="{ row }">
               <button class="mp-link aa-batch-name" :disabled="creating || !!busyId" @click="goDetail(row)">{{ row.batchName || '批次名称未提供' }}</button>
             </template>
@@ -175,10 +174,6 @@ export default {
     },
     missingFieldsNote() { return '人数按当前授权范围内的正式注册名单统计，不等同于全部候选学生；点击注册名单继续核验。' },
     statusOptions() { return [{ value: '', label: '全部状态' }, ...Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label }))] },
-    visibleRows() {
-      const keyword = this.appliedKeyword.toLocaleLowerCase()
-      return keyword ? this.rows.filter(row => String(row.batchName || '').toLocaleLowerCase().includes(keyword) || String(row.batchId).includes(keyword)) : this.rows
-    },
     canManage() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.registration.manage') },
     createBlocked() { return !this.canManage || this.creating || !!this.busyId || !!this.createWrite.pending || this.createWrite.deniedIdentity === this.batchActionIdentity() },
     createWriteVisible() { return !!this.createWrite.target && this.createWrite.target.identity === this.batchActionIdentity() && this.createWrite.target.context === this.contextKey },
@@ -260,11 +255,10 @@ export default {
       const pageSize = [10, 20, 50, 100].includes(rawSize) ? rawSize : 20
       const keyword = typeof query.keyword === 'string' ? query.keyword.trim().slice(0, 200) : ''
       const status = typeof query.status === 'string' && Object.hasOwn(STATUS_LABEL, query.status) ? query.status : ''
-      const changed = page !== this.pagination.page || pageSize !== this.pagination.pageSize || status !== this.appliedStatus
-      const selectionChanged = changed || keyword !== this.appliedKeyword
+      const changed = page !== this.pagination.page || pageSize !== this.pagination.pageSize || status !== this.appliedStatus || keyword !== this.appliedKeyword
       this.pagination.page = page; this.pagination.pageSize = pageSize
       this.filters = { keyword, status }; this.appliedKeyword = keyword; this.appliedStatus = status
-      if (selectionChanged) { this.confirm.visible = false; this.pendingAction = null }
+      if (changed) { this.confirm.visible = false; this.pendingAction = null }
       return changed
     },
     syncListQuery() {
@@ -274,17 +268,18 @@ export default {
     applyFilters() {
       if (this.creating || this.busyId || this.disposed) return
       const status = Object.hasOwn(STATUS_LABEL, this.filters.status) ? this.filters.status : ''
-      const statusChanged = status !== this.appliedStatus
-      this.appliedStatus = status; this.appliedKeyword = this.filters.keyword.trim().slice(0, 200)
+      const keyword = this.filters.keyword.trim().slice(0, 200)
+      const changed = status !== this.appliedStatus || keyword !== this.appliedKeyword
+      this.appliedStatus = status; this.appliedKeyword = keyword
       this.filters = { keyword: this.appliedKeyword, status }
       this.confirm.visible = false; this.pendingAction = null
-      if (statusChanged) this.pagination.page = 1
+      if (changed) this.pagination.page = 1
       this.syncListQuery()
-      if (statusChanged) this.load()
+      return this.load()
     },
     clearFilters() {
       if (this.creating || this.busyId || this.disposed) return
-      this.filters = { keyword: '', status: '' }; this.applyFilters()
+      this.filters = { keyword: '', status: '' }; return this.applyFilters()
     },
     batchStateHint(status) {
       return { DRAFT: '尚未开放注册', OPEN: '可进入名单核对资格', CLOSED: '本批次不再接受注册', ARCHIVED: '已进入注册归档' }[status] || '暂停状态相关操作'
@@ -304,7 +299,7 @@ export default {
       this.pagination.page = page
       this.confirm.visible = false; this.pendingAction = null
       this.syncListQuery()
-      this.load()
+      return this.load()
     },
     askClose(row) {
       if (!this.canArchive || this.batchActionsBlocked || row.status !== 'OPEN') return
@@ -452,6 +447,7 @@ export default {
       const params = { page: this.pagination.page, pageSize: this.pagination.pageSize }
       if (this.fixedType) params.registerType = this.fixedType
       if (this.appliedStatus) params.status = this.appliedStatus
+      if (this.appliedKeyword) params.keyword = this.appliedKeyword
       try {
         const res = await academicAffairsApi.getRegistrationBatches(params)
         if (this.disposed || version !== this.requestVersion || context !== this.contextKey) return
@@ -483,7 +479,7 @@ export default {
 .aa-batch-flow__note { margin: 12px 0 0; font-size: 12px; color: var(--t3, #65778b); }
 .aa-batch-list { overflow: hidden; }
 .aa-batch-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
-.aa-batch-metric { display: grid; gap: 7px; min-height: 92px; padding: 15px 16px; border: 1px solid var(--card-b, #dce5ef); border-radius: 12px; background: var(--bg-card, #fff); }
+.aa-batch-metric { display: grid; gap: 5px; padding: 10px 12px; border: 1px solid var(--card-b, #dce5ef); border-radius: 12px; background: var(--bg-card, #fff); }
 .aa-batch-metric span, .aa-batch-metric small { color: var(--t3, #65778b); font-size: 12px; }
 .aa-batch-metric strong { color: var(--t1, #18304f); font-size: 25px; line-height: 1; }
 .aa-batch-metric.is-success { border-color: #cfe6d7; }
@@ -502,7 +498,6 @@ export default {
 .aa-batch-id { display: block; margin-top: 4px; color: var(--t3, #65778b); font-size: 11px; line-height: 1.6; overflow-wrap: anywhere; }
 .aa-batch-unavailable { color: var(--t2, #4e6075); }
 .aa-batch-actions { display: flex; gap: 10px; flex-wrap: wrap; }
-.aa-batch-search-empty { margin: 0 16px 12px; }
 .aa-batch-empty-return { padding: 0 16px 18px; text-align: center; }
 .aa-cal-form { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
 .aa-cal-form__item { display: inline-flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); }

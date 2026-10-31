@@ -1325,3 +1325,19 @@ for (const formalId of ['901', '902']) {
     if (formalId !== '901') assert.equal(page.pendingApplication.returnedId, '901')
   })
 }
+
+
+test('exam returned application edits explanation and resubmits original id with version',async()=>{
+ let writes=0,payload
+ const row={deferId:'71',reason:'原来的说明',version:1,status:'RETURNED'}
+ const paged=(items,p)=>({items,page:p.page,pageSize:20,total:items.length,hasMore:false})
+ const {page}=mount('exam',{
+  getMyExamSchedule:async p=>paged([],p),getMyDeferOptions:async()=>({items:[]}),
+  getMyDeferrals:async p=>paged([{...row,...(writes?{reason:payload.reason,version:2,status:'COUNSELOR_REVIEW'}:{})}],p),
+  resubmitDefer:async(id,version,reason)=>{writes++;payload={id,version,reason};return {deferId:id}}
+ })
+ await page.load();page.resubmitReasons['71']='已经按退回意见补充说明'
+ await page.resubmit(page.d.deferrals[0])
+ assert.equal(payload.id,'71');assert.equal(payload.version,1);assert.equal(payload.reason,'已经按退回意见补充说明')
+ assert.equal(writes,1);assert.equal(page.pendingApplication,null)
+})

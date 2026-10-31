@@ -11,10 +11,10 @@
 
     <div class="mp-stack">
       <AppSectionCard title="当前注册批次">
-        <p class="mp-note">批次 ID：{{ batchId }}<template v-if="batchRecord && batchContext === detailContext"> · {{ batchRecord.batchName || '名称未提供' }}</template></p>
+        <p class="mp-note">{{ batchRecord && batchContext === detailContext ? (batchRecord.batchName || '批次名称未提供') : batchLoading ? '正在读取批次' : '批次信息未取得' }}</p>
         <p><AppStatusTag :status="batchState" dot>{{ batchStateLabel }}</AppStatusTag></p>
         <AppInlineAlert v-if="batchError" type="warning">{{ batchError }}</AppInlineAlert>
-        <AppButton :disabled="applying || batchLoading" @click="load">{{ batchLoading ? '正在核对批次…' : '重新核对批次与记录' }}</AppButton>
+        <AppButton :disabled="applying || batchLoading" @click="load">{{ batchLoading ? '正在读取…' : '刷新批次与记录' }}</AppButton>
       </AppSectionCard>
       <AppSectionCard :title="batchState === 'OPEN' ? '批量办理注册' : '批次记录查看'">
         <AaRegistrationBulkPanel :batch-id="batchId" :batch-state="batchState" :ctx="ctx" @busy="applying = $event" @applied="load" @recheck="load" />
@@ -38,7 +38,7 @@
           <template #cell-registerAt="{ row }">{{ registrationTime(row.registerAt) }}</template>
         </DataTable>
       </AppSectionCard>
-      <p class="mp-note">后续办理：返回批次队列核对其余候选、暂缓与异常；批次关闭和归档由具备相应权限的岗位办理。</p>
+      <p class="mp-note">其余学生的注册、暂缓和异常，请返回批次列表处理。</p>
     </div>
   </ModulePageShell>
 </template>

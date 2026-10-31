@@ -204,6 +204,7 @@
       </div>
     </div>
 
+    <FilePreviewer v-if="evidencePreview" :file="evidencePreview" inline :provider="evidencePreviewProvider" :allow-download="false" />
     <AppConfirmDialog v-model:visible="cd.visible" :title="cd.title" :content="cd.content"
       :danger="cd.danger" :confirm-text="cd.confirmText" :require-reason="cd.requireReason"
       reason-label="原因" :submitting="cd.submitting" :confirm-disabled="actionConflict" @confirm="onConfirm"><p v-if="panelError" class="local-error" role="alert">{{ panelError }}</p><p v-if="actionConflict" class="hint">本次确认已暂停。请取消确认并核对页面上的最新成绩，原意见已保留。</p></AppConfirmDialog>
@@ -225,6 +226,7 @@ import { useInternshipBatchStore } from '@/stores/internshipBatch'
 import { isConflict } from '@/modules/internship/composables/conflictGuard'
 import { fileSdk } from '@/services/file/fileSdk'
 import { systemConfirm } from '@/services/systemDialog'
+import FilePreviewer from '@/components/file/FilePreviewer.vue'
 
 const WEIGHTS = [
   { key: 'checkinWeight', label: '打卡' }, { key: 'weeklyWeight', label: '周报' },
@@ -256,10 +258,11 @@ export default {
   props: { ctx: { type: Object, default: () => ({}) } },
   components: { ModulePageShell, DataTable, AppButton, AppStatusTag, AppConfirmDialog, AppExportButton,
     AppPermissionButton, AppDescriptionList, AppAuditTrail, AppSearchBox, AppNumberInput, AppFormItem, AppInternshipStudentPicker,
-    AppTextarea, ActionReceipt, AppPagination, ScoreAppealWorkspace },
+    AppTextarea, ActionReceipt, AppPagination, ScoreAppealWorkspace, FilePreviewer },
   data() {
     return {
       rows: [], total: 0, page: 1, pageSize: 20, loading: false, error: '', listSequence: 0,
+      evidencePreview:null,evidencePreviewProvider:{fetchBytes:descriptor=>fileSdk.blob(descriptor.fileId),dispose(){}},
       appeals: [], appealsLoading: false, appealsError: '', appealsPage: 1, appealsTotal: 0, appealsSequence: 0,
       keyword: '', statusFilter: '', missingOnly: '', columns: COLUMNS, weightDefs: WEIGHTS, scoreInputs: SCORE_INPUTS,
       statusOptions: Object.entries(STATUS_MAP).map(([value, label]) => ({ value, label })),
@@ -447,7 +450,7 @@ export default {
     beforeUnload(event) { if (this.computeDirty || this.panel.submitting || this.cForm.uploading) { event.preventDefault(); event.returnValue = '' } },
     computeSnapshot() { const { uploading: _uploading, ...form } = this.cForm; return JSON.stringify(form) },
     showPanelError(message) { this.panelError = message; this.$nextTick?.(() => this.$el?.querySelector('.wsp [role="alert"]')?.scrollIntoView({ block: 'center' })) },
-    resetPanel() { this.detailSequence++; this.panel = emptyPanel(); this.cForm = emptyComputeForm(); this.computeInitial = ''; this.computeVersion = null; this.computeConflict = false; this.actionConflict = false; this.panelError = ''; this.keptReason = ''; this.previewingFile = ''; this.pending = null; this.cd.visible = false; this.cd.submitting = false },
+    resetPanel() { this.detailSequence++; this.evidencePreview=null; this.panel = emptyPanel(); this.cForm = emptyComputeForm(); this.computeInitial = ''; this.computeVersion = null; this.computeConflict = false; this.actionConflict = false; this.panelError = ''; this.keptReason = ''; this.previewingFile = ''; this.pending = null; this.cd.visible = false; this.cd.submitting = false },
     closePanel() {
       const query = this.batchStore.withBatchQuery({ ...this.$route.query }); delete query.id; delete query.mode
       if (query.fromAppeal) { query.stage = 'appeal'; query.appealId = query.fromAppeal; delete query.fromAppeal }
@@ -510,7 +513,7 @@ export default {
       }
       this.lastReceipt = { actionLabel: '成绩已核算', objectLabel: this.panelRow?.studentName || '实习成绩',
         id: res.data.id, version: res.data.version, statusLabel: res.data.incomplete ? '缺项待补齐' : '待复核',
-        auditText: `来源快照 ${String(res.data.sourceHash || '').slice(0, 12) || '已生成'}`,
+        auditText: '评分依据已记录',
         nextStep: res.data.incomplete ? (res.data.incompleteReason || '补齐来源后重算') : '由授权复核人核对并提交待发布' }
       toast.success(res.data.incomplete ? `已核算（缺项：${res.data.incompleteReason}）` : `已核算，总分 ${res.data.total}`)
       const doneId = String(res.data.id)
@@ -544,8 +547,8 @@ export default {
     },
     async previewEvidence(id) {
       if (this.previewingFile) return
-      const workspace = this.panel; this.previewingFile = String(id)
-      try { await fileSdk.preview(String(id)) }
+      const workspace = this.panel,batchId=this.batchStore.selectedBatchId; this.previewingFile = String(id);this.evidencePreview=null
+      try { const meta=await fileSdk.metadata(String(id));if(workspace!==this.panel||batchId!==this.batchStore.selectedBatchId)return;if(meta.readyForBusiness!==true||!meta.canPreview)throw new Error('评分依据尚未安全可用或当前身份无预览权限');this.evidencePreview=meta }
       catch (e) { if (workspace === this.panel) this.panelError = e.message || '依据暂时无法预览' }
       finally { if (workspace === this.panel) this.previewingFile = '' }
     },
@@ -583,7 +586,7 @@ export default {
       if (!row || row.version == null || this.panel.loading || this.panel.error || this.panel.submitting || this.computeDirty) return false
       const code = ['publish', 'withdraw'].includes(kind) ? 'internship.score.publish' : 'internship.score.manage'
       const statuses = { review: ['PENDING_REVIEW'], publish: ['PENDING_PUBLISH'], return: ['PENDING_REVIEW', 'PENDING_PUBLISH'], withdraw: ['PUBLISHED'] }
-      return this.canBtn(code) && !!statuses[kind]?.includes(row.status) && (!['review', 'publish'].includes(kind) || !row.incomplete)
+      return Boolean(row.allowedActions?.includes(kind) && this.canBtn(code) && !!statuses[kind]?.includes(row.status) && (!['review', 'publish'].includes(kind) || !row.incomplete))
     },
     acknowledgeAction() { if (this.panel.data && !this.panel.loading && !this.panel.error && !this.cd.submitting) { this.actionConflict = false; this.panelError = ''; this.pending = null; this.cd.visible = false } },
     confirmAct(r, kind) {

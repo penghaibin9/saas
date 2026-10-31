@@ -1,24 +1,14 @@
 <template>
   <ModulePageShell
     title="工作量申报审核"
-    subtitle="申报不能越过正式任务与学期边界"
+    subtitle="审核教师提交的工作量申报，与开课审批分别办理"
     :role-name="ctx.currentRole.roleName"
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
   >
-    <div class="mp-stack">
+    <div class="mp-stack task-workspace">
       <AaOperationReceipt :receipt="receipt" />
       <AppButton v-if="pending" :disabled="submitting || loading" @click="queryPending">查询原审核结果（不会重复提交）</AppButton>
-      <AaTeachingTaskObjectBar
-        v-if="primaryRow"
-        :name="`${primaryRow.teacherName || primaryRow.teacherKey || '教师'} · ${primaryRow.categoryLabel || '工作量申报'}`"
-        :identity="`教师工作量申报编号 ${primaryRow.declarationId} · ${primaryRow.termCode || '学期待提供'}`"
-        source="来源：教师正式申报记录；审核不越过教学任务、学期与统计口径边界。"
-        :status="statusLabel(primaryRow.status)"
-        owner="统计授权岗"
-        next-owner="授权查询/导出岗；需办理时返回业务对象"
-      />
-      <AaTeachingTaskStageRail :current="3" current-note="当前审核与统计口径" :steps="workloadSteps" />
       <div class="aa-filter">
         <label class="aa-filter-field"><span>状态</span><AppSelect v-model="status" :options="statusOptions" @change="query" /></label>
         <label class="aa-filter-field"><span>学期</span><AppTermCodePicker v-model="termCode" placeholder="全部学期" @change="query" /></label>
@@ -28,24 +18,29 @@
       <ErrorState v-if="error" :description="error" @retry="load" />
       <LoadingState v-else-if="loading" />
       <template v-else>
-        <AppSectionCard title="工作量申报台账">
+        <div class="task-workspace__split">
+        <section aria-label="工作量申报列表">
           <EmptyState v-if="!rows.length" title="暂无申报" description="教师在移动端提交工作量申报后，这里出现待审核记录" />
-          <DataTable v-else :columns="columns" :rows="rows" row-key="declarationId" :pagination="pagination" @page-change="onPageChange">
+          <DataTable v-else :columns="columns" :rows="rows" row-key="declarationId" :row-class="row => String(row.declarationId) === String(primaryRow?.declarationId) ? 'task-workspace__selected' : ''" :pagination="pagination" @page-change="onPageChange">
             <template #cell-teacher="{ row }">{{ row.teacherName || row.teacherKey }}</template>
             <template #cell-termCode="{ row }">{{ row.termCode || '—' }}</template>
             <template #cell-description="{ row }"><span :title="row.description">{{ row.description || '—' }}</span></template>
             <template #cell-status="{ row }">
               <AppStatusTag :type="statusColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag>
             </template>
-            <template #cell-actions="{ row }">
-              <template v-if="canReview && row.status === 'SUBMITTED'">
-                <button class="mp-link" :disabled="submitting || Boolean(pending)" @click="openApprove(row)">核对并通过</button>
-                <button class="mp-link mp-link--danger" :disabled="submitting || Boolean(pending)" @click="openReject(row)">驳回</button>
-              </template>
-              <span v-else class="aa-note-sm">{{ row.reviewNote || '—' }}</span>
-            </template>
+            <template #cell-actions="{ row }"><button class="mp-link" :disabled="submitting || Boolean(pending)" @click="selectDeclaration(row)">{{ selectedId === String(row.declarationId) ? '正在核对' : '核对申报' }}</button></template>
           </DataTable>
-        </AppSectionCard>
+        </section>
+        <aside class="task-workspace__panel" aria-label="核对申报">
+          <h3>核对申报</h3>
+          <template v-if="primaryRow">
+            <dl class="task-workspace__facts"><div><dt>申报教师</dt><dd>{{ primaryRow.teacherName || '教师姓名待核对' }}</dd></div><div><dt>学期</dt><dd>{{ primaryRow.termCode || '学期待核对' }}</dd></div><div><dt>申报类别</dt><dd>{{ primaryRow.categoryLabel }}</dd></div><div><dt>申报课时</dt><dd>{{ primaryRow.hours }}课时</dd></div><div><dt>申报说明</dt><dd>{{ primaryRow.description || '未提供申报说明' }}</dd></div><div v-if="primaryRow.reviewNote"><dt>审核意见</dt><dd>{{ primaryRow.reviewNote }}</dd></div></dl>
+            <p class="task-workspace__notice task-workspace__notice--warning">当前申报未提供关联教学任务与名单版本依据，请核实申报内容；系统尚未自动验证这些依据。</p>
+            <p class="task-workspace__notice">通过仅确认本次申报审核状态，不代表薪酬已核算。</p>
+            <div v-if="canReview && primaryRow.status === 'SUBMITTED'" class="task-workspace__actions"><AppButton variant="primary" :disabled="submitting || Boolean(pending)" @click="openApprove(primaryRow)">核对并通过</AppButton><AppButton :disabled="submitting || Boolean(pending)" @click="openReject(primaryRow)">驳回</AppButton></div>
+            <p class="aa-note-sm">驳回须填写原因（至少5字）。</p>
+          </template><EmptyState v-else title="选择需要核对的申报" />
+        </aside></div>
 
         <AppSectionCard v-if="rejecting" :title="`驳回：${rejecting.teacherName || rejecting.teacherKey} · ${rejecting.categoryLabel} ${rejecting.hours}课时`">
           <AppFormItem label="驳回原因" required>
@@ -77,8 +72,6 @@ import { toast } from '@/utils/toast'
 import { matchPermission } from '@/config/navPlan'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
 import AaObjectContext from '../components/parallel-a/AaObjectContext.vue'
-import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
-import AaTeachingTaskObjectBar from '../components/teaching-tasks/AaTeachingTaskObjectBar.vue'
 import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 
 const STATUS = { SUBMITTED: '待审核', APPROVED: '已通过', REJECTED: '已驳回' }
@@ -89,20 +82,14 @@ export default {
   name: 'AaWorkloadReviewView',
   components: {
     ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState,
-      AppButton, AppSectionCard, AppStatusTag, AppFormItem, AppSelect, AppTextarea, AppTermCodePicker, AppConfirmDialog, AaOperationReceipt, AaObjectContext, AaTeachingTaskStageRail, AaTeachingTaskObjectBar
+      AppButton, AppSectionCard, AppStatusTag, AppFormItem, AppSelect, AppTextarea, AppTermCodePicker, AppConfirmDialog, AaOperationReceipt, AaObjectContext
   },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      selectedId: '',
       loading: true, error: '', status: '', termCode: '', rows: [], rejecting: null, rejectNote: '', submitting: false,
       revision: 0, lifecycle: 0, receipt: null, approveTarget: null, pending: null, invalid: false, pagination: { page: 1, pageSize: 20, total: 0 },
-      workloadSteps: [
-        { label: '正式记录', note: '' },
-        { label: '范围与学期', note: '' },
-        { label: '统计口径', note: '' },
-        { label: '明细下钻', note: '' },
-        { label: '导出快照', note: '' }
-      ],
       statusOptions: [
         { label: '全部', value: '' }, { label: '待审核', value: 'SUBMITTED' },
         { label: '已通过', value: 'APPROVED' }, { label: '已驳回', value: 'REJECTED' }
@@ -110,21 +97,22 @@ export default {
       columns: [
         { key: 'teacher', title: '教师' }, { key: 'termCode', title: '学期', align: 'center' },
         { key: 'categoryLabel', title: '类别', align: 'center' }, { key: 'hours', title: '申报课时', align: 'center' },
-        { key: 'description', title: '工作说明' }, { key: 'status', title: '状态', align: 'center' },
+         { key: 'status', title: '状态', align: 'center' },
         { key: 'actions', title: '操作', align: 'center' }
       ]
     }
   },
   computed: {
     canReview() { return matchPermission(this.ctx.permissionPatterns || [], 'academicAffairs.stats.view') },
-    primaryRow() { return this.rows[0] || null }
+    primaryRow() { return this.rows.find(row => String(row.declarationId) === this.selectedId) || this.rows[0] || null }
   },
   watch: {
+    '$route.fullPath'() { this.restoreQuery(); this.load() },
     ctx: { flush: 'sync', handler() { this.lifecycle++; this.revision++; this.rows = []; this.pagination.total = 0; this.rejecting = null; this.approveTarget = null; this.rejectNote = ''; this.receipt = null; this.pending = null; this.submitting = false; this.load() } },
     termCode: { flush: 'sync', handler() { this.invalidateScope() } },
     status: { flush: 'sync', handler() { this.invalidateScope() } }
   },
-  created() { this.load() },
+  created() { this.restoreQuery(); this.load() },
   beforeUnmount() { this.revision++; this.lifecycle++; this.disposed = true },
   methods: {
     invalidateScope() { this.lifecycle++; this.revision++; this.invalid = true; this.approveTarget = null; this.rejecting = null; this.submitting = false; this.rows = []; this.pagination.total = 0; this.receipt = this.pending ? this.receipt : null },
@@ -135,8 +123,10 @@ export default {
       if (s === 'SUBMITTED') return 'primary'
       return 'default'
     },
-    query() { this.pagination.page = 1; this.load() },
-    onPageChange(page) { this.pagination.page = page; this.load() },
+    restoreQuery() { const q = this.$route.query; this.status = String(q.status || ''); this.termCode = String(q.termCode || ''); this.selectedId = String(q.declarationId || ''); this.pagination.page = Math.max(1, Number(q.page) || 1) },
+    selectDeclaration(row) { if (this.submitting || this.pending || this.rejecting) return; this.selectedId = String(row.declarationId); return this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, declarationId: this.selectedId } }) },
+    query() { return this.onPageChange(1) },
+    async onPageChange(page) { if (this.submitting || this.pending || this.rejecting) return; this.pagination.page = page; const before = this.$route.fullPath; await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, status: this.status || undefined, termCode: this.termCode || undefined, page: String(page), declarationId: undefined } }); if (before === this.$route.fullPath) await this.load() },
     async load() {
       const revision = ++this.revision, context = this.ctx
       const current = () => !this.disposed && revision === this.revision && context === this.ctx
@@ -260,6 +250,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/teaching-task-workspace.css';
 .aa-filter { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
 .aa-filter__label { font-size: 13px; color: var(--text-700, #4e5969); }
 .aa-note-sm { color: var(--text-500, #646a73); font-size: 12px; }

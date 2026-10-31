@@ -17,6 +17,48 @@ function page(api = {}, extra = {}) {
   return { state, definition, calls }
 }
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done }); return { promise, resolve } }
+
+test('referenced slots explain the restriction and never submit disable or delete', async () => {
+  let writes = 0
+  const { state } = page({ updateTimeSlot: async () => { writes++ }, deleteTimeSlot: async () => { writes++ } })
+  const row = { ...state.rows[0], referenceStatus: 'IN_USE', referenceCount: 3 }
+  state.rows = [row]
+  await state.toggleEnabled(row)
+  assert.equal(writes, 0)
+  assert.match(state.commandError, /不能停用/)
+  state.confirmDelete(row)
+  assert.equal(state.confirmVisible, false)
+  state.pendingDelete = { ...row }; state.confirmVisible = true
+  await state.doDelete()
+  assert.equal(writes, 0)
+  assert.match(state.commandError, /不能删除/)
+})
+
+test('reference count also protects renumbering while allowing a name correction', async () => {
+  let writes = 0
+  const { state } = page()
+  state.rows[0].referenceCount = 2
+  state.openEdit(state.rows[0]); state.editForm.slotNo = 7
+  state.saveEditor = async () => { writes++ }
+  await state.submitEdit()
+  assert.equal(writes, 0)
+  assert.match(state.editError, /不能修改节次编号/)
+  state.editForm.slotNo = 1; state.editForm.slotName = '新的显示名称'
+  await state.submitEdit()
+  assert.equal(writes, 1)
+})
+
+test('unreferenced slots remain operable and referenced disabled slots can be enabled', async () => {
+  const bodies = []
+  const { state } = page({ updateTimeSlot: async (id, body) => { bodies.push(body); return { code: 0 } } })
+  await state.toggleEnabled({ ...state.rows[0], referenceStatus: 'UNUSED', referenceCount: 0 })
+  await state.toggleEnabled({ ...state.rows[0], enabled: false, referenceStatus: 'IN_USE' })
+  assert.deepEqual(bodies.map(body => body.enabled), [false, true])
+  state.confirmDelete(state.rows[0])
+  assert.equal(state.confirmVisible, true)
+  state.rows[0].slotNo = 9
+  assert.equal(state.pendingDelete.slotNo, 1)
+})
 const slotAck = (id = '1') => ({ code: 0, data: { slotId: id, slotNo: 2, slotName: 'saved', startTime: '09:00', endTime: '09:45', campusCode: '', enabled: true, status: 'ENABLED', version: 1 } })
 const bandAck = (id = 'b', parent = '1') => ({ code: 0, data: { bandId: id, slotId: parent, bandName: 'saved', campusCode: 'north', effectiveStart: '2026-10-01T00:00:00', effectiveEnd: null, startTime: '09:00', endTime: '09:45', status: 'ENABLED', version: 1 } })
 const kinds = ['slotCreate', 'slotEdit', 'bandCreate', 'bandEdit']

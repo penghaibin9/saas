@@ -83,9 +83,10 @@ def _task_can_act(db, task, inst, user=None) -> bool:
     """与既有 SYS-14 节点动作策略保持同一事实源。"""
     from app.services import db_service
 
-    if inst and inst.source_biz_type == "AA_SCHEDULE_CHANGE":
+    if inst and (inst.source_biz_type == "AA_SCHEDULE_CHANGE" or (
+        inst.source_module == "internship" and inst.source_biz_type == "LEAVE"
+    )):
         return False
-
     if db_service._can_manage_all_approvals(
         user,
         workflow_code=(inst.workflow_code if inst else None),

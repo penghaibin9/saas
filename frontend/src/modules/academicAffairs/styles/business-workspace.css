@@ -98,7 +98,7 @@
 /* Filters belong together; sizing follows the usable content width, including open menu rails. */
 .aa-business-area .mps :is(.af, .aa-filter, .aa-filter-row, .aacr-filters, .aaeq-filters, .aalr-filters,
   .aacert-bar, .aacb-bar, .aalb-bar, .aarn-bar, .aarc-bar, .aaro-bar, .aarr-bar, .aamk-bar,
-  .aaev-bar, .aaql-bar, .aatb-bar, .aawc-bar, .aapc-bar, .task-batch-filters, .teacher-task__filters) {
+  .aaev-bar, .aaql-bar, .aatb-bar, .aawc-bar, .aapc-bar, .teacher-task__filters) {
   display: flex; flex-wrap: wrap; align-items: end; gap: 8px 12px;
   padding: 10px 12px; border: 1px solid var(--border-base); border-radius: 12px;
   background: var(--bg-card); min-width: 0;

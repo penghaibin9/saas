@@ -416,7 +416,6 @@
             <p>监考：{{ (r.invigilators || []).map(item => item.teacherName || '教师姓名待核对').join('、') || '尚未指定' }}</p>
             <div v-if="canArrangeRooms" class="aaexam-room-actions">
               <AppButton v-if="arrangeRooms.length === 1 && !r.plannedCount" size="small" :disabled="!arrangeCourse?.rosterIdentity?.studentIds?.length || saving" @click="assignFrozenSeats(r)">按锁定名单铺座位</AppButton>
-
               <AppTeacherPicker v-model="invigilatorForm.teacherKey" :query="teacherKeyQuery" :disabled="saving" placeholder="选择监考教师" @change="onInvigilatorPicked" />
               <AppButton size="small" :disabled="!invigilatorForm.teacherKey || saving" @click="assignRoomInvigilator(r)">指定监考</AppButton>
             </div>
@@ -702,7 +701,7 @@ export default {
       const role = this.ctx.currentRole.roleName || '当前身份'
       return `${role}在当前数据范围内可查看该申请；能否办理，仍由系统按 ${this.deferOwner(row.status)} 环节校验。`
     },
-    canReviewDefer(row) { return DEFER_ACTIVE.has(String(row?.status || '')) },
+    canReviewDefer(row) { return DEFER_ACTIVE.has(String(row?.status || '')) && Number.isSafeInteger(row?.version) && row?.allowedActions?.includes('APPROVE') === true },
     archiveHasRisk(row) {
       const summary = row?.completenessSummary || {}
       return Number(summary.absentCount || 0) + Number(summary.violationCount || 0) > 0
@@ -713,6 +712,7 @@ export default {
       return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('zh-CN', { hour12: false })
     },
     resetModeAndLoad() {
+      this.saving = false
       this.clearExamAction()
       this.autoSeq++; this.detailSeq++; this.loadSeq++
       this.current = null; this.courses = []; this.coursePagination.page = 1; this.coursePagination.total = 0; this.stats = null; this.readiness = null; this.readinessError = ''
@@ -787,20 +787,39 @@ export default {
       finally { if (current()) this.batchDetailLoading = false }
     },
     openDeferDecision(row, action) {
-      if (!this.canReviewDefer(row) || this.saving) return
+      if (!this.canReviewDefer(row) || !row.allowedActions.includes(action) || this.saving) return
       this.selectedDefer = row
       this.deferDecisionRow = { ...row }
       this.deferDecisionAction = action
       this.deferConfirmVisible = true
     },
+    async readDefer(id) {
+      const res = await api.deferList({ deferId: String(id), page: 1, pageSize: 2 })
+      if (res.code !== 0) throw res
+      const rows = res.data?.list
+      if (!Array.isArray(rows) || rows.length !== 1 || res.data.total !== 1 || String(rows[0].deferId) !== String(id)) throw new Error('未读到原缓考申请，请返回原队列核对')
+      return rows[0]
+    },
     async submitDeferDecision({ reason = '' } = {}) {
       const row = this.deferDecisionRow, action = this.deferDecisionAction, identity = this.identityKey
-      if (!row || !action || this.saving) return
+      if (!row || !action || this.saving || !this.canReviewDefer(row) || !row.allowedActions.includes(action)) return
+      const current = () => identity === this.identityKey && this.viewMode === 'defer' && this.deferDecisionRow === row
       this.saving = true
       try {
-        const res = await api.deferReview(row.deferId, action, String(reason || '').trim())
-        if (identity !== this.identityKey || this.viewMode !== 'defer') return
-        if (res.code !== 0) { toast.error(res.message || '缓考审核失败'); return }
+        const before = await this.readDefer(row.deferId)
+        if (!current()) return
+        if (before.version !== row.version || before.status !== row.status || !this.canReviewDefer(before) || !before.allowedActions.includes(action)) throw new Error('申请或办理权限已变化，请刷新原申请后再办理')
+        const command = row.status === 'COUNSELOR_REVIEW' ? api.deferCounselorReview : api.deferReview
+        const res = await command(row.deferId, action, String(reason || '').trim(), row.version)
+        if (!current()) return
+        if (res.code !== 0) throw res
+        const expected = action === 'RETURN' ? 'RETURNED' : action === 'REJECT' ? 'REJECTED'
+          : ({ COUNSELOR_REVIEW: 'TEACHER_CONFIRM', TEACHER_CONFIRM: 'COLLEGE_REVIEW', COLLEGE_REVIEW: 'ACADEMIC_FINAL', ACADEMIC_FINAL: 'APPROVED' })[row.status]
+        const formal = await this.readDefer(row.deferId)
+        if (!current()) return
+        if (String(res.data?.deferId) !== String(row.deferId) || res.data.version !== row.version + 1
+          || formal.version !== res.data.version || formal.status !== expected || res.data.status !== expected
+          || (action === 'RETURN' && formal.returnReason !== String(reason || '').trim())) throw new Error('办理回执与正式记录未能核对一致，请刷新核实，勿重复提交')
         toast.success(action === 'APPROVE' ? `已通过，下一岗位：${this.deferNextOwner(row.status)}` : action === 'RETURN' ? '已退回学生补充材料' : '已驳回缓考申请')
         this.deferConfirmVisible = false; this.deferDecisionRow = null; this.deferDecisionAction = ''
         await this.load()

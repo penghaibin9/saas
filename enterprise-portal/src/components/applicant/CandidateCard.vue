@@ -4,7 +4,7 @@ const props=defineProps({ applicant:{type:Object,required:true}, selected:Boolea
 const emit=defineEmits(['select'])
 const statusLabel=computed(()=>({PENDING:'待处理',INTERESTED:'感兴趣',INTERVIEW:'面试',ACCEPT_INTENT:'拟接收',REJECTED:'不合适'}[props.applicant.decisionStatus]||'待处理'))
 const statusClass=computed(()=>String(props.applicant.decisionStatus||'PENDING').toLowerCase())
-function displayDateTime(value){return value?String(value).replace('T',' ').slice(0,16):'申请时间待加载'}
+function displayDateTime(value){if(!value)return '申请时间待加载';const date=new Date(value);return Number.isNaN(date.getTime())?'时间待确认':date.toLocaleString('zh-CN',{hour12:false})}
 </script>
 <template><button type="button" class="candidate" :class="{selected}" @click="emit('select',applicant)"><div class="top"><div class="identity"><span class="avatar">{{ (applicant.name || '学').slice(0,1) }}</span><div><strong>{{ applicant.name || '学生' }}</strong><div class="school">{{ applicant.major || '专业待加载' }} · {{ applicant.grade || '年级待加载' }}</div></div></div><span class="volunteer">第{{ applicant.volunteerNo ?? '—' }}志愿</span></div><div class="position">{{ applicant.positionName || '申请岗位' }}</div><div class="meta"><span class="decision" :class="statusClass">{{ statusLabel }}</span><span class="time">{{ displayDateTime(applicant.appliedAt) }}</span></div></button></template>
 <style scoped>

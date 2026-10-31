@@ -20,6 +20,7 @@ export default {
 @import './styles/tokens.css';
 @import './styles/common.css';
 @import './styles/graduation-usability.css';
+@import './styles/internship-flow.css';
 
 page {
   background: var(--bg-page);

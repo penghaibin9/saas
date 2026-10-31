@@ -13,6 +13,7 @@ const moduleEntitlementUrl = pathToFileURL(
 async function loadAdminMenu() {
   const source = fs.readFileSync(adminMenuPath, 'utf8')
     .replace("from '@/config/navPlan'", `from '${navPlanUrl}'`)
+    .replace("from '@/modules/academicAffairs/config/academicRoleNavigation'", `from '${new URL('../src/modules/academicAffairs/config/academicRoleNavigation.js', import.meta.url).href}'`)
     .replace("from '@/security/moduleEntitlement'", `from '${moduleEntitlementUrl}'`)
   return import(`data:text/javascript;base64,${Buffer.from(source).toString('base64')}`)
 }

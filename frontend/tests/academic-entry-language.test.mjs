@@ -161,11 +161,11 @@ test('只读空表不指向不存在的添加控件，可编辑空表仍提示�
 })
 
 test('成绩项编码默认折叠但原值和编辑限制仍在', async () => {
-  const snippet = source.match(/<details class="aa-code">[^\n]+<\/details>/)[0]
+  const snippet = source.match(/<details(?: v-if="!schemeOnly")? class="aa-code">[^\n]+<\/details>/)[0]
   const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
   const component = { code: 'USUAL' }
   const html = await renderToString(Vue.createSSRApp({ data: () => ({ component, writeBusy: true, schemeEditable: true }), render }))
-  assert.match(html, /<details class="aa-code"><summary>实施人员使用<\/summary>/)
+  assert.match(html, /<details(?: v-if="!schemeOnly")? class="aa-code"><summary>实施人员使用<\/summary>/)
   assert.doesNotMatch(html, /<details[^>]*\bopen\b/)
   assert.match(html, /disabled/)
   assert.match(html, /USUAL/)
@@ -173,7 +173,7 @@ test('成绩项编码默认折叠但原值和编辑限制仍在', async () => {
 })
 
 test('已发布成绩的统计区不重复顶部任务状态，成绩条数和成绩项保留', async () => {
-  const snippet = source.match(/<section class="aa-grade-metrics"[\s\S]*?<\/section>/)[0]
+  const snippet = source.match(/<section(?: v-if="!schemeOnly")? class="aa-grade-metrics"[\s\S]*?<\/section>/)[0]
   const render = new Function('Vue', compile(snippet, { mode: 'function', prefixIdentifiers: true }).code)(Vue)
   const html = await renderToString(Vue.createSSRApp({ data: () => ({ readOnlyResult: true, dynamicMode: false,
     rows: [{}], gradeItemMetric: '2 项', formalSchemeMode: 'fixed', hasMidterm: false,

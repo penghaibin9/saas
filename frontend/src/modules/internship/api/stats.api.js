@@ -2,6 +2,7 @@
  * 岗位实习中心 · 统计中心 API（生产级：仅走真实后端，不回退 mock）。
  */
 import { request } from '@/services/http/client'
+import { normalizeUiError } from '@/utils/presentationSafety'
 
 function ok(data) {
   return Promise.resolve({ code: 0, data, message: 'ok' })
@@ -12,8 +13,7 @@ function fail(message, code = 1) {
 }
 
 function toErr(e) {
-  if (e?.biz) return fail(e.message, e.code || 1)
-  return fail(e?.message || '真实接口不可用', 503001)
+  return fail(normalizeUiError(e).userMessage,e?.code || 503001)
 }
 
 async function call(fn) {
@@ -27,6 +27,18 @@ async function call(fn) {
 const B = '/internship/stats'
 
 export const statsApi = {
+  getMetricDrilldown(key,params={}) {
+    return call(()=>request(`${B}/metrics/${encodeURIComponent(key)}/drilldown`,{params}))
+  },
+  exportMetricDrilldown(key,params={}) {
+    return call(()=>request(`${B}/metrics/${encodeURIComponent(key)}/drilldown/export`,{method:'POST', timeoutMs: 60000,params}))
+  },
+  getProcurementOverview(params={}) {
+    return call(()=>request(`${B}/procurement-overview`,{params}))
+  },
+  exportProcurementOverview(params={}) {
+    return call(()=>request(`${B}/procurement-overview/export`,{method:'POST', timeoutMs: 60000,params}))
+  },
   getOverview(params = {}) {
     return call(() => request(`${B}/overview`, { params }))
   },
@@ -40,6 +52,14 @@ export const statsApi = {
   },
 
   exportStats(params = {}) {
-    return call(() => request(`${B}/export`, { method: 'POST', params }))
+    return call(() => request(`${B}/export`, { method: 'POST', timeoutMs: 60000, params }))
+  },
+
+  getProcessAnalytics(params = {}) {
+    return call(() => request(`${B}/process-analytics`, { params }))
+  },
+
+  exportProcessAnalytics(params = {}) {
+    return call(() => request(`${B}/process-analytics/export`, { method: 'POST', timeoutMs: 60000, params }))
   }
 }

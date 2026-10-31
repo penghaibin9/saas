@@ -12,6 +12,7 @@
 """
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 from datetime import datetime
 from types import SimpleNamespace
 
@@ -261,7 +262,7 @@ def list_tasks(user, status=None, page=1, page_size=20):
         role = str((user or {}).get("currentRoleCode") or "").upper()
         if role in _core._REVIEW_ROLES or (user or {}).get("userType") == "PLATFORM_SUPER_ADMIN":
             pass
-        elif role == "COLLEGE_ADMIN":
+        elif role in COLLEGE_ACADEMIC_ROLES:
             from app.core.affairs_security import build_affairs_context
 
             context = build_affairs_context(user, db)
@@ -882,7 +883,7 @@ def _scoped_academic_students(db, user):
         AcademicStudent.is_deleted.is_(False),
     )
     role = str((user or {}).get("currentRoleCode") or "").upper()
-    if role == "COLLEGE_ADMIN":
+    if role in COLLEGE_ACADEMIC_ROLES:
         from app.core.affairs_security import build_affairs_context
 
         context = build_affairs_context(user, db)

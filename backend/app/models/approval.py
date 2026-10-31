@@ -22,6 +22,7 @@ class WorkflowInstance(PKMixin, TenantMixin, CommonMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="RUNNING",
                                         comment="RUNNING/APPROVED/REJECTED/RETURNED/CANCELLED（TODO 以 11 中心为准）")
     current_node: Mapped[str | None] = mapped_column(String(100))
+    snapshot_json: Mapped[dict | None] = mapped_column(JSON, comment="提交时冻结的业务流程与责任事实")
     remark: Mapped[str | None] = mapped_column(String(500))
 
 
@@ -30,6 +31,8 @@ class WorkflowTask(PKMixin, TenantMixin, CommonMixin, Base):
     __tablename__ = "t_workflow_task"
 
     instance_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True)
+    assignee_role_code: Mapped[str | None] = mapped_column(String(50))
+    sequence_no: Mapped[int | None] = mapped_column(Integer)
     node_code: Mapped[str | None] = mapped_column(String(100))
     assignee_id: Mapped[int] = mapped_column(BigInteger, nullable=False, index=True, comment="审批人 user_id")
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING",
@@ -93,6 +96,7 @@ class WorkflowDefinition(PKMixin, TenantMixin, CommonMixin, Base):
 
     workflow_code: Mapped[str] = mapped_column(String(100), nullable=False)
     workflow_name: Mapped[str] = mapped_column(String(200), nullable=False)
+    batch_id: Mapped[int | None] = mapped_column(BigInteger, index=True)
     source_module: Mapped[str] = mapped_column(String(60), nullable=False)
     source_biz_type: Mapped[str] = mapped_column(String(100), nullable=False)
     definition_version: Mapped[str] = mapped_column(String(30), nullable=False, default="2026.1")

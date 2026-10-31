@@ -55,7 +55,7 @@ export const agreementTemplateApi = {
     return call(() => request(`${BASE}/${id}/preview`, { method: 'POST', body: { internshipId } }))
   },
   exportTemplates(params = {}) {
-    return call(() => request(`${BASE}/export`, { method: 'POST', params }))
+    return call(() => request(`${BASE}/export`, { method: 'POST', timeoutMs: 60000, params }))
   },
   createTemplate(body) {
     return call(() => request(BASE, { method: 'POST', body }))

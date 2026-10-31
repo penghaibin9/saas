@@ -6,19 +6,22 @@
     :data-scope-name="ctx.dataScope.scopeName"
     show-subtitle-in-concise
   >
-    <div class="mp-stack">
+    <div class="mp-stack task-workspace">
       <AaOperationReceipt :receipt="receipt" />
+      <AppButton v-if="pendingComposition" :disabled="merging || loading" @click="queryPendingComposition">查询原合拆班结果（不会重复提交）</AppButton>
       <AppInlineAlert v-if="scopeReadOnlyReason" type="info" :description="scopeReadOnlyReason" />
       <AppInlineAlert v-if="actionError" type="warning" :description="actionError" />
-      <AaTeachingTaskStageRail :current="2" current-note="当前合拆班工作区" />
-      <AppSectionCard title="待合班任务（教师确认前，勾选同批次+同课程的 2 条及以上）">
+      <div class="task-workspace__filters"><label>学期<AppTermEntityPicker v-model="termId" clearable @change="search" /></label><label>课程或教学班<input v-model.trim="keyword" placeholder="输入课程或教学班" @keyup.enter="search" /></label><AppButton :disabled="merging" @click="search">查询</AppButton><AppButton v-if="$route.query.batchId" @click="$router.push({ path: `/admin/academic-affairs/teaching-tasks/${$route.query.batchId}`, query: { returnTo: $route.fullPath } })">返回批次</AppButton></div>
+      <div class="task-workspace__tabs"><button :aria-pressed="panel === 'candidates'" :disabled="merging" @click="switchPanel('candidates')">待合班任务</button><button :aria-pressed="panel === 'merged'" :disabled="merging" @click="switchPanel('merged')">已合班任务</button></div>
+      <div v-if="panel === 'candidates'" class="task-workspace__split">
+      <section aria-label="待合班任务">
         <ErrorState v-if="error" :description="error" @retry="load" />
         <LoadingState v-else-if="loading" />
         <EmptyState v-else-if="!candidates.length" title="暂无可合班的教学任务"
                    description="任务须在待分配/已分配（教师尚未确认）阶段才可合班" />
         <DataTable
           v-else :columns="candidateColumns" :rows="candidates" row-key="taskId"
-          :selectable="canManageMerge && !merging && !actionLoading" :selected="selected" @update:selected="selected = $event"
+          :pagination="pagination" @page-change="changePage" :selectable="canManageMerge && !merging && !actionLoading && !pendingComposition" :selected="selected" @update:selected="selected = $event"
         >
           <template #cell-course="{ row }">
             <div class="mp-cell-main">{{ row.courseName }}</div>
@@ -29,17 +32,14 @@
           <template #cell-students="{ row }">{{ row.expectedStudents ?? '—' }} 人</template>
           <template #cell-status="{ row }"><AppStatusTag :type="taskColor(row.status)" dot>{{ statusLabel(row.status) }}</AppStatusTag></template>
         </DataTable>
-        <AppBatchActionBar
-          :count="selected.length" :total="candidates.length"
-          :actions="[{ key: 'merge', label: '核对合班条件', disabled: !eligibleSelection || !canManageMerge || actionLoading, disabledReason: mergeDisabledReason }]"
-          :loading-key="merging || actionLoading ? 'merge' : ''"
-          @action="openMerge" @clear="selected = []"
-        />
-      </AppSectionCard>
+      </section>
+      <aside class="task-workspace__panel"><h3>本次合班内容</h3><dl class="task-workspace__facts"><div><dt>选择任务</dt><dd>{{ selectedRows.length }}条</dd></div><div><dt>来源教学班</dt><dd>{{ selectedRows.map(row => row.teachingClassName || row.className || '班级待核对').join('、') || '请从左侧选择任务' }}</dd></div><div><dt>预计人数</dt><dd>{{ selectedRows.length && selectedRows.every(row => row.expectedStudents != null) ? selectedRows.reduce((sum, row) => sum + Number(row.expectedStudents), 0) + '人' : '待核对' }}</dd></div></dl><p class="task-workspace__notice">仅同批次、同课程且教师确认前的任务可合班。提交时重新核对最新状态和名单关系。</p><div class="task-workspace__actions"><AppButton variant="primary" :disabled="!eligibleSelection || !canManageMerge || merging || actionLoading || Boolean(pendingComposition)" @click="openMerge({ key: 'merge' })">核对合班条件</AppButton><AppButton :disabled="merging" @click="selected = []">清空选择</AppButton></div><p class="mp-cell-sub">{{ mergeDisabledReason }}</p></aside></div>
 
-      <AppSectionCard v-if="!loading && !error" title="已合班教学任务（教师确认前可拆班还原）">
+      <ErrorState v-if="panel === 'merged' && error" :description="error" @retry="load" />
+      <LoadingState v-else-if="panel === 'merged' && loading" />
+      <AppSectionCard v-else-if="panel === 'merged'" title="已合班教学任务（教师确认前可拆班还原）">
         <EmptyState v-if="!merged.length" title="暂无已合班的教学任务" />
-        <DataTable v-else :columns="mergedColumns" :rows="merged" row-key="taskId">
+        <DataTable v-else :columns="mergedColumns" :rows="merged" row-key="taskId" :pagination="pagination" @page-change="changePage">
           <template #cell-course="{ row }">
             <div class="mp-cell-main">{{ row.courseName }}</div>
             <div class="mp-cell-sub">{{ row.teachingClassName }}</div>
@@ -53,6 +53,7 @@
           </template>
         </DataTable>
       </AppSectionCard>
+      <p class="task-workspace__notice">拆班按原合班记录恢复任务，不是任意拆分学生；教师确认后不可直接办理。</p>
     </div>
 
     <AppConfirmDialog
@@ -83,28 +84,28 @@
  * GET /academic-affairs/teaching-tasks（mergeable=true 取候选，另拉全量算已合班）+
  * POST /teaching-tasks/merge + POST /teaching-tasks/{taskId}/split。
  */
+import { AppButton } from '@/components/ui'
 import { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState } from '@/components/business'
-import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases, AppInlineAlert } from '@/components/common'
+import { AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppQuickPhrases, AppInlineAlert } from '@/components/common'
 import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { teachingTaskWorkbenchApi } from '@/modules/academicAffairs/api/teaching-task-workbench.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import { matchPermission } from '@/config/navPlan'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
-import AaTeachingTaskStageRail from '../components/teaching-tasks/AaTeachingTaskStageRail.vue'
-import { readTaskPages } from '../components/parallel-a/taskFacts'
 import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 
 const PRE_CONFIRM = ['PENDING_ASSIGN', 'ASSIGNED']
 
 export default {
   name: 'AaTaskMergeSplitView',
-  components: { ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppBatchActionBar, AppQuickPhrases, AppInlineAlert, AaOperationReceipt, AaTeachingTaskStageRail },
+  components: { AppButton, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppSectionCard, AppStatusTag, AppConfirmDialog, AppTermEntityPicker, AppQuickPhrases, AppInlineAlert, AaOperationReceipt },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {
+      panel: 'candidates', termId: '', keyword: '', pagination: { page: 1, pageSize: 20, total: 0 },
       loading: true, error: '', all: [], selected: [], merging: false,
-      revision: 0, receipt: null, splitRow: null, actionSeq: 0, operationSeq: 0, actionLoading: false, actionError: '', batchWorkbench: {},
+      revision: 0, receipt: null, pendingComposition: null, splitRow: null, actionSeq: 0, operationSeq: 0, actionLoading: false, actionError: '', batchWorkbench: {},
       mergeDialog: { visible: false, note: '' },
       candidateColumns: [
         { key: 'course', title: '课程 / 教学班' }, { key: 'batch', title: '批次' },
@@ -136,7 +137,7 @@ export default {
       const first = this.selectedRows[0]
       return Boolean(first.batchId && first.courseId) && this.selectedRows.every((r) => String(r.batchId) === String(first.batchId) && String(r.courseId) === String(first.courseId))
     },
-    canMerge() { return this.canManageMerge && this.eligibleSelection && this.batchWorkbench.actions?.canEditComposition === true && String(this.batchWorkbench.batchId || '') === String(this.selectedRows[0]?.batchId || '') },
+    canMerge() { return !this.pendingComposition && this.canManageMerge && this.eligibleSelection && this.batchWorkbench.actions?.canEditComposition === true && String(this.batchWorkbench.batchId || '') === String(this.selectedRows[0]?.batchId || '') },
     mergeDisabledReason() {
       if (!this.canManageMerge) return this.scopeReadOnlyReason || '当前没有合拆班办理权限'
       if (this.actionLoading) return '正在核对批次办理条件'
@@ -145,13 +146,19 @@ export default {
       return ''
     }
   },
-  created() { this.load() },
+  created() { this.restoreQuery(); this.load() },
   watch: {
-    ctx: { deep: true, handler() { this.revision++; this.actionSeq++; this.operationSeq++; this.all = []; this.selected = []; this.receipt = null; this.batchWorkbench = {}; this.actionError = ''; this.actionLoading = false; this.merging = false; this.mergeDialog = { visible: false, note: '' }; this.splitRow = null; this.load() } },
+    '$route.fullPath'() { this.selected = []; this.restoreQuery(); this.load() },
+    ctx: { deep: true, handler() { this.revision++; this.actionSeq++; this.operationSeq++; this.all = []; this.selected = []; this.receipt = null; this.pendingComposition = null; this.batchWorkbench = {}; this.actionError = ''; this.actionLoading = false; this.merging = false; this.mergeDialog = { visible: false, note: '' }; this.splitRow = null; this.load() } },
     selectionKey() { this.actionSeq++; this.batchWorkbench = {}; this.actionLoading = false; this.mergeDialog.visible = false }
   },
   beforeUnmount() { this.revision++; this.actionSeq++; this.disposed = true },
   methods: {
+    restoreQuery() { const q = this.$route.query; this.termId = String(q.termId || ''); this.keyword = String(q.keyword || ''); this.panel = q.panel === 'merged' ? 'merged' : 'candidates'; this.pagination.page = Math.max(1, Number(q.page) || 1) },
+    search() { return this.changePage(1) },
+    switchPanel(panel) { this.panel = panel; return this.changePage(1) },
+    async changePage(page) { if (this.merging || this.actionLoading) return; this.selected = []; this.pagination.page = page; const before = this.$route.fullPath; await this.$router.replace({ path: this.$route.path, query: { ...this.$route.query, termId: this.termId || undefined, keyword: this.keyword || undefined, panel: this.panel, page: String(page) } }); if (before === this.$route.fullPath) await this.load() },
+    async readExact(taskId) { const res = await academicAffairsApi.listAllTasks({ taskId, page: 1, pageSize: 1 }); if (res.code !== 0) throw res; return res.data?.list?.find(row => String(row.taskId) === String(taskId)) },
     onPickNote(text) {
       const el = this.$refs.noteInput
       const { value, selStart, selEnd } = insertAtCursor(el, this.mergeDialog.note, text)
@@ -160,7 +167,7 @@ export default {
     },
     taskColor,
     statusLabel(s) { return TASK_STATUS[s] || (s ? '状态待确认' : '') },
-    canInspectSplit(row) { return this.canManageMerge && Boolean(row?.isMerged) && PRE_CONFIRM.includes(row.status) },
+    canInspectSplit(row) { return !this.pendingComposition && this.canManageMerge && Boolean(row?.isMerged) && PRE_CONFIRM.includes(row.status) },
     canSplit(row) { return this.canInspectSplit(row) && this.batchWorkbench.actions?.canEditComposition === true && String(this.batchWorkbench.batchId || '') === String(row?.batchId || '') },
     async readCompositionActions(batchId) {
       const seq = ++this.actionSeq, context = this.mutationContext, ctx = this.ctx, selected = this.selectionKey
@@ -186,15 +193,15 @@ export default {
       this.error = ''
       this.all = []
       try {
-        const res = await readTaskPages(page => academicAffairsApi.listAllTasks(page), valid)
+        const res = await academicAffairsApi.listAllTasks({ batchId: this.$route.query.batchId || undefined, termId: this.termId || undefined, keyword: this.keyword || undefined, ...(this.panel === 'merged' ? { merged: true } : { mergeable: true }), page: this.pagination.page, pageSize: this.pagination.pageSize })
         if (!valid()) return false
         if (res?.code !== 0) { this.handleFailure(res, '任务读取失败'); return false }
-        this.all = res.data.list; return true
+        this.all = res.data.list; this.pagination.total = Number(res.data.total || 0); return true
       } catch (error) { if (valid()) this.handleFailure(error, '网络连接失败，请重试。'); return false }
       finally { if (valid()) this.loading = false }
     },
     async openMerge(action) {
-      if (action.key !== 'merge' || !this.canManageMerge || !this.eligibleSelection || this.actionLoading || this.merging) return
+      if (this.pendingComposition || action.key !== 'merge' || !this.canManageMerge || !this.eligibleSelection || this.actionLoading || this.merging) return
       if (await this.readCompositionActions(this.selectedRows[0].batchId) && this.canMerge) this.mergeDialog = { visible: true, note: '' }
     },
     async openSplit(row) {
@@ -206,21 +213,27 @@ export default {
       this.merging = true
       const ids = this.selected.map(String), note = this.mergeDialog.note, batchId = String(this.selectedRows[0].batchId), context = this.mutationContext, ctx = this.ctx, selected = this.selectionKey, operation = ++this.operationSeq
       const valid = () => !this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx && selected === this.selectionKey
+      let commandPhase = false
       try {
         if (!await this.load() || !valid()) return
         if (!this.eligibleSelection) { this.handleFailure({ code: 409001, message: '候选任务已变化，请核对后重新选择。' }); return }
         if (!await this.readCompositionActions(batchId) || !valid() || !this.canMerge) return
+        this.pendingComposition = { action: 'merge', ids }
+        commandPhase = true
         const res = await academicAffairsApi.mergeTasks(ids, note || undefined)
+        commandPhase = false
         if (!valid()) return
-        if (res.code !== 0) { this.handleFailure(res, '合班失败'); return }
+        if (res.code !== 0) { if (isDeniedResult(res) || isConflictResult(res) || String(res.code).startsWith('400') || res.bizCode === 'VALIDATION_ERROR') this.pendingComposition = null; this.handleFailure(res, '合班失败'); return }
         if (!await this.load() || !valid()) return
-        const rows = ids.map(id => this.all.find(row => String(row.taskId) === String(id)))
+        const rows = await Promise.all(ids.map(id => this.readExact(id)))
+        if (!valid()) return
         const survivor = rows.find(row => row?.isMerged)
         const confirmed = survivor && rows.every(row => row && (row === survivor || (row.status === 'MERGED' && String(row.mergedIntoId) === String(survivor.taskId))))
+        if (confirmed) this.pendingComposition = null
         this.receipt = { object: rows.map(row => row?.teachingClassName || row?.courseName).filter(Boolean).join('、') || `${ids.length} 个教学任务`, status: confirmed ? '已合班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: confirmed ? '核对合班教学班的正式名单及教师，再交教师本人确认。' : '请重新读取正式任务；不要重复合班。' }
         this.mergeDialog.visible = false
         if (confirmed) this.selected = []
-      } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复合班。') }
+      } catch (error) { if (valid()) { if (commandPhase && (isDeniedResult(error) || isConflictResult(error) || String(error?.code).startsWith('400') || error?.bizCode === 'VALIDATION_ERROR')) this.pendingComposition = null; this.handleFailure(error, '连接中断，请查询正式任务，勿重复合班。') } }
       finally { if (!this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx) this.merging = false }
     },
     async doSplit(row) {
@@ -228,20 +241,40 @@ export default {
       this.merging = true
       const id = String(row.taskId), batchId = String(row.batchId), context = this.mutationContext, ctx = this.ctx, operation = ++this.operationSeq
       const valid = () => !this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx && this.splitRow === row
+      let commandPhase = false
       try {
         if (!await this.load() || !valid()) return
         if (!await this.readCompositionActions(batchId) || !valid()) return
         if (!this.canSplit(this.all.find(item => String(item.taskId) === String(id)))) { this.handleFailure({ code: 409001, message: '当前任务已不允许拆班。' }); return }
+        this.pendingComposition = { action: 'split', ids: [id] }
+        commandPhase = true
         const res = await academicAffairsApi.splitTask(id)
+        commandPhase = false
         if (!valid()) return
-        if (res.code !== 0) { this.handleFailure(res, '拆班失败'); return }
+        if (res.code !== 0) { if (isDeniedResult(res) || isConflictResult(res) || String(res.code).startsWith('400') || res.bizCode === 'VALIDATION_ERROR') this.pendingComposition = null; this.handleFailure(res, '拆班失败'); return }
         if (!await this.load() || !valid()) return
-        const current = this.all.find(item => String(item.taskId) === String(id))
-        const confirmed = current && !current.isMerged && !this.all.some(item => String(item.mergedIntoId) === String(id))
+        const current = await this.readExact(id)
+        if (!valid()) return
+        const confirmed = current && !current.isMerged
+        if (confirmed) this.pendingComposition = null
         this.receipt = { object: [row.courseName, row.teachingClassName].filter(Boolean).join(' · ') || '教学任务', status: confirmed ? '已拆班，已重新读取正式任务' : '结果待确认', pending: !confirmed, next: '核对恢复的教学班及正式名单，再继续派师和确认。' }
         this.splitRow = null
-      } catch (error) { if (valid()) this.handleFailure(error, '连接中断，请查询正式任务，勿重复拆班。') }
+      } catch (error) { if (valid()) { if (commandPhase && (isDeniedResult(error) || isConflictResult(error) || String(error?.code).startsWith('400') || error?.bizCode === 'VALIDATION_ERROR')) this.pendingComposition = null; this.handleFailure(error, '连接中断，请查询正式任务，勿重复拆班。') } }
       finally { if (!this.disposed && operation === this.operationSeq && context === this.mutationContext && ctx === this.ctx) this.merging = false }
+    },
+    async queryPendingComposition() {
+      if (!this.pendingComposition || this.merging || this.loading) return
+      const pending = this.pendingComposition, context = this.ctx
+      this.merging = true
+      try {
+        const rows = await Promise.all(pending.ids.map(id => this.readExact(id)))
+        if (this.disposed || context !== this.ctx || this.pendingComposition !== pending) return
+        const survivor = rows.find(row => row?.isMerged)
+        const confirmed = pending.action === 'merge' ? survivor && rows.every(row => row && (row === survivor || (row.status === 'MERGED' && String(row.mergedIntoId) === String(survivor.taskId)))) : rows[0] && !rows[0].isMerged
+        this.receipt = { status: confirmed ? '已读取原合拆班正式结果' : '结果待确认', pending: !confirmed, next: confirmed ? '核对教学班名单，再继续分配和确认。' : '尚未读到一致的正式结果，请联系学院核对；不会重复提交。' }
+        if (confirmed) { this.pendingComposition = null; this.selected = []; this.splitRow = null; this.mergeDialog.visible = false; await this.load() }
+      } catch (error) { if (context === this.ctx) this.handleFailure(error, '原合拆班结果查询失败') }
+      finally { if (context === this.ctx) this.merging = false }
     },
     handleFailure(result, fallback) {
       this.error = result?.message || fallback
@@ -254,6 +287,7 @@ export default {
 
 <style scoped>
 @import '@/styles/module-page.css';
+@import '../styles/teaching-task-workspace.css';
 .aa-note-label { display: flex; flex-direction: column; gap: 6px; font-size: 13px; color: var(--text-700, #4e5969); margin-top: 10px; }
 .aa-input { height: 34px; padding: 0 12px; border: 1px solid var(--border-300, #d0d3d9); border-radius: 6px; background: var(--bg-white, #fff); color: var(--text-900, #1f2329); font-size: 14px; box-sizing: border-box; width: 100%; }
 </style>

@@ -9,6 +9,7 @@
     <template #actions>
       <AppButton v-if="onlyArchived" @click="$router.push('/admin/academic-affairs/schedule')">返回课表批次</AppButton>
       <AppButton v-if="$route.query.returnToken" @click="academicFlow?.back($route.query.returnToken, '/admin/academic-affairs/teaching-tasks')">返回教学任务</AppButton>
+      <AppButton v-else-if="taskReturnTo" @click="$router.push(taskReturnTo)">返回教学任务</AppButton>
       <AppButton v-if="!onlyArchived" variant="primary" @click="showCreate = !showCreate">＋ 创建排课批次</AppButton>
     </template>
 
@@ -139,6 +140,9 @@ export default {
         { key: 'actions', title: '操作', width: '360px' }
       ]
     }
+  },
+  computed: {
+    taskReturnTo() { const target = this.$route.query.returnTo; return typeof target === 'string' && /^\/admin\/academic-affairs\/teaching-tasks(?:[/?]|$)/.test(target) ? target : '' }
   },
   watch: {
     '$route.fullPath'() { this.restoreQuery(); this.load() },

@@ -2,14 +2,15 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { computed, reactive } from 'vue'
+import { scanState } from '../src/services/fileScanState.js'
 
 const source = fs.readFileSync(new URL('../src/views/internship/InternshipView.vue', import.meta.url), 'utf8')
 const actions = source.slice(source.indexOf('async function uploadInsurancePolicy('), source.indexOf('async function ackPlan('))
 const readonlySource = source.split('\n').find(line => line.startsWith('const insuranceReadOnly ='))
 function view(api = {}) {
-  const state = reactive({ busy: { value: false }, my: { value: {} }, insuranceMeta: { value: { id: '9007199254740999', version: 4, status: 'REJECTED' } }, insuranceError: { value: '' }, insuranceConflict: { value: false }, insForm: { policyNo: 'FIXTURE-01', fileId: 'old-file' } })
+  const state = reactive({ sourceStates:{insurance:{status:'data'}},pendingInsuranceFile:{value:null},busy: { value: false }, my: { value: {} }, insuranceMeta: { value: { id: '9007199254740999', version: 4, status: 'REJECTED' } }, insuranceError: { value: '' }, insuranceConflict: { value: false }, insForm: { policyNo: 'FIXTURE-01', fileId: 'old-file' } })
   const reads = [], notices = []
-  const methods = new Function(...Object.keys(state), 'internshipCoreApi', 'currentInternshipContext', 'loadTab', 'ui', 'computed', `${readonlySource}; let insuranceEpoch = 0; ${actions}; return { saveInsurance, uploadInsurancePolicy, changeContext() { insuranceEpoch++ } }`)(...Object.values(state), api, () => ({ batchId: '1', internshipId: '2' }), async (...args) => reads.push(args), { notify: value => notices.push(value) }, computed)
+  const methods = new Function(...Object.keys(state), 'internshipCoreApi', 'currentInternshipContext', 'loadTab', 'ui', 'computed', 'scanState', `${readonlySource}; let insuranceEpoch = 0; ${actions}; return { saveInsurance, uploadInsurancePolicy, changeContext() { insuranceEpoch++ } }`)(...Object.values(state), api, () => ({ batchId: '1', internshipId: '2' }), async (...args) => reads.push(args), { notify: value => notices.push(value) }, computed, scanState)
   return { ...state, ...methods, reads, notices }
 }
 

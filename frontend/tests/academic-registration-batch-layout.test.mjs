@@ -77,20 +77,39 @@ test('five workflow stages are reference navigation and never report all batches
   assert.match(html, /各批次单独办理/); assert.match(source, /:current="-1"/)
 })
 
-test('local name and exact large-ID search never invents a server keyword query or alters the real total', () => {
-  const { state, reads } = page()
-  state.rows = [row(), row({ batchId: '42', batchName: '另一个批次' })]; state.pagination.total = 412
-  state.filters.keyword = id; state.applyFilters()
-  assert.deepEqual(Array.from(state.visibleRows, item => item.batchId), [id]); assert.equal(reads.length, 0)
-  assert.equal(state.pagination.total, 412); assert.equal(state.$route.query.keyword, id)
-  state.filters.keyword = '另一个'; state.applyFilters(); assert.equal(state.visibleRows[0].batchId, '42')
-  state.clearFilters(); assert.equal(state.visibleRows.length, 2)
+test('注册关键词交给服务端跨页检索，切换条件回到第一页并使用匹配总数', async () => {
+  const reads = []
+  const { state } = page({ getRegistrationBatches: async params => {
+    reads.push(params)
+    return { code: 0, data: { list: [row({ batchName: '其他页的目标批次' })], total: params.keyword ? 1 : 412 } }
+  } })
+  state.rows = [row({ batchId: '42', batchName: '当前页无关批次' })]; state.pagination.page = 3; state.pagination.total = 412
+  state.filters.keyword = '目标'; await state.applyFilters()
+  assert.equal(reads.length, 1)
+  assert.equal(reads[0].keyword, '目标'); assert.equal(reads[0].page, 1)
+  assert.equal(state.rows[0].batchId, id); assert.equal(state.pagination.total, 1)
+  await state.onPageChange(2)
+  assert.equal(reads.at(-1).keyword, '目标'); assert.equal(reads.at(-1).page, 2)
+  await state.clearFilters()
+  assert.equal(reads.at(-1).keyword, undefined); assert.equal(reads.at(-1).page, 1)
+  assert.equal(state.pagination.total, 412)
 })
 
-test('zero local matches disclose the page boundary without claiming that the database has no batches', async () => {
-  const html = await render('ANNUAL', [row()], { appliedKeyword: '本页找不到' })
-  assert.match(html, /其他页尚未搜索/); assert.match(html, /仅搜索本页 1 条记录/)
-  assert.doesNotMatch(html, /当前页暂无注册批次/)
+test('服务端匹配为空时显示无匹配，不再宣称仅搜索本页', async () => {
+  const html = await render('ANNUAL', [], { appliedKeyword: '不存在' })
+  assert.match(html, /没有匹配的注册批次/)
+  assert.doesNotMatch(html, /其他页尚未搜索|仅检索本页/)
+})
+
+test('关键词旧请求不能覆盖新查询，返回链接只改关键词也触发重新读取', async () => {
+  const old = deferred()
+  const { state } = page({ getRegistrationBatches: p => p.keyword === '旧条件' ? old.promise : Promise.resolve({ code: 0, data: { list: [row({ batchName: '新结果' })], total: 1 } }) })
+  state.filters.keyword = '旧条件'; const pending = state.applyFilters()
+  state.filters.keyword = '新条件'; await state.applyFilters()
+  old.resolve({ code: 0, data: { list: [row({ batchName: '旧结果' })], total: 88 } }); await pending
+  assert.equal(state.rows[0].batchName, '新结果'); assert.equal(state.pagination.total, 1)
+  state.$route.query.keyword = '返回条件'
+  assert.equal(state.restoreListQuery(), true); assert.equal(state.appliedKeyword, '返回条件')
 })
 
 test('status filters use the existing formal parameter and newer status reads supersede earlier responses', async () => {

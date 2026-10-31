@@ -595,7 +595,7 @@ def review_batch(batch_id, user, action, reason="") -> dict:
 
 
 def list_batches(user, term_id=None, status=None, page=1, page_size=20, *, keyword=None):
-    from app.models import AaTerm, AaTeachingTaskBatch
+    from app.models import AaTerm, AaTeachingTaskBatch, College
 
     with session() as db:
         scope = _scope(user, db)
@@ -623,12 +623,17 @@ def list_batches(user, term_id=None, status=None, page=1, page_size=20, *, keywo
         terms = {int(term.id): f"{term.year_code} 第{term.term_no}学期" for term in db.scalars(select(AaTerm).where(
             AaTerm.tenant_id == _tid(), AaTerm.id.in_([b.term_id for b in batches] or [-1]), AaTerm.is_deleted.is_(False),
         )).all()}
+        colleges = dict(db.execute(select(College.id, College.college_name).where(
+            College.tenant_id == _tid(), College.is_deleted.is_(False),
+            College.id.in_({b.college_id for b in batches if b.college_id} or {-1}),
+        )).all())
         output = []
         for batch in batches:
             summary = summaries[int(batch.id)]
             output.append({
                 "batchId": str(batch.id), "batchName": batch.batch_name,
                 "termId": str(batch.term_id), "collegeId": str(batch.college_id or ""),
+                "collegeName": colleges.get(batch.college_id, ""),
                 "termLabel": terms.get(int(batch.term_id), "学期待核对"),
                 "status": batch.status, **summary,
                 "nextAction": _batch_next_action(batch, summary),
@@ -685,7 +690,7 @@ def list_tasks(batch_id, user, status=None, page=1, page_size=50, *, keyword=Non
 
 def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=False, mine=False,
                    page=1, page_size=50, task_id=None, *, term_id=None, keyword=None,
-                   formal_mine=False):
+                   formal_mine=False, merged=None, exclude_merged=False):
     from app.models import AaTeachingTask, AaTeachingTaskBatch
 
     with session() as db:
@@ -715,6 +720,10 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
                 AaTeachingTask.is_merged.is_(False),
                 AaTeachingTask.merged_into_id.is_(None),
             ])
+        if merged is not None:
+            conditions.append(AaTeachingTask.is_merged.is_(bool(merged)))
+        if exclude_merged:
+            conditions.append(AaTeachingTask.status != "MERGED")
         if mine and formal_mine:
             raise AppException("VALIDATION_ERROR", "“我的”与“正式我的”不可同时使用")
         if formal_mine or mine:
@@ -770,13 +779,29 @@ def list_all_tasks(user, batch_id=None, course_id=None, status=None, mergeable=F
             batch = batches.get(int(task.batch_id or 0))
             term = terms.get(int(batch.term_id)) if batch and batch.term_id else None
             course = courses.get(int(task.course_id or 0))
-            item.update(termId=str(term.id) if term else None,
+            item.update(batchName=batch.batch_name if batch else None,
+                        termId=str(term.id) if term else None,
                         termCode=_term_code_of(term) if term else None,
                         termName=term.term_name if term else None,
                         credit=float(course.credit) if course and course.credit is not None else None,
                         className=class_names.get(task.class_id))
             items.append(item)
         return items, total
+
+
+def _batch_review_records(db, batch_id):
+    from app.models import AffairsAuditTrail
+    from app.core.timeutil import iso_utc
+
+    labels = {"COLLEGE_CONFIRM": "学院核对提交", "ACADEMIC_APPROVE": "校教务终审通过", "ACADEMIC_RETURN": "退回学院"}
+    records = db.scalars(select(AffairsAuditTrail).where(
+        AffairsAuditTrail.tenant_id == _tid(),
+        AffairsAuditTrail.biz_type == "AA_TASK_BATCH", AffairsAuditTrail.biz_id == batch_id,
+        AffairsAuditTrail.action.in_(labels),
+    ).order_by(AffairsAuditTrail.occurred_at.desc(), AffairsAuditTrail.id.desc()).limit(30)).all()
+    return [{"id": str(row.id), "action": labels[row.action], "actor": row.operator or "办理人未记录",
+             "at": iso_utc(row.occurred_at),
+             "reason": row.detail if row.action == "ACADEMIC_RETURN" else ""} for row in records]
 
 
 def get_batch_workbench(batch_id, user) -> dict:
@@ -806,7 +831,7 @@ def get_batch_workbench(batch_id, user) -> dict:
             actor_id = ""
         responsibility_cache = {}
         college_owner = resolve_organization(db, "COLLEGE", batch.college_id,
-            permission_code="academicAffairs.teachingTask.manage", cache=responsibility_cache)
+            permission_code="academicAffairs.teachingTask.assign", cache=responsibility_cache)
         def college_action(action, owner=None):
             permission = "academicAffairs.teachingTask." + action
             if context.scope_type != "COLLEGE" or batch.college_id not in context.college_ids or not _match(permission, context.permission_codes):
@@ -814,7 +839,8 @@ def get_batch_workbench(batch_id, user) -> dict:
             owner = owner or resolve_organization(db, "COLLEGE", batch.college_id,
                 permission_code=permission, cache=responsibility_cache)
             return owner["resolved"] and actor_id in owner["assigneeUserIds"]
-        college_manage = college_action("manage", college_owner)
+        college_assign = college_action("assign", college_owner)
+        college_manage = college_action("manage")
         college_confirmer = resolve_organization(db, "COLLEGE", batch.college_id,
             permission_code="academicAffairs.teachingTask.confirm", cache=responsibility_cache)
         school_owner = resolve_school(db, permission_code="academicAffairs.teachingTask.confirm", cache=responsibility_cache)
@@ -831,10 +857,12 @@ def get_batch_workbench(batch_id, user) -> dict:
             "collegeId": str(batch.college_id or ""), "status": batch.status,
             "generatedAt": _core._iso(batch.generate_at), **summary,
             "nextAction": _batch_next_action(batch, summary),
+            "reviewRecords": _batch_review_records(db, batch.id) if context.scope_type in {"TENANT_ALL", "COLLEGE"} else [],
             "responsibility": school_owner if awaiting_school else college_confirmer if summary["canAdvance"] else college_owner,
             "nextStep": next_step,
             "actions": {
-                "canAssign": college_manage and batch.status in {"DRAFT", "RETURNED"},
+                "canAssign": college_assign and batch.status in {"DRAFT", "RETURNED"},
+                "canVoidDraft": college_manage and batch.status == "DRAFT",
                 "canCollegeConfirm": can_confirm and not scope.all and bool(scope.college_ids) and
                     actor_id in college_confirmer["assigneeUserIds"] and
                     batch.status in {"DRAFT", "RETURNED"} and summary["canAdvance"],

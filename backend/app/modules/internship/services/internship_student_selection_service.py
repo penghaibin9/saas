@@ -158,6 +158,7 @@ def _application_row(row: InternshipApplication) -> dict:
         "positionId": str(row.position_id or ""),
         "companyName": row.company_name or "",
         "positionName": row.position_name or "",
+        "workLocation": row.work_address or "",
         "applicationStatement": row.application_statement or "",
         "status": row.status,
         "materialSnapshotId": str(row.material_snapshot_id or ""),

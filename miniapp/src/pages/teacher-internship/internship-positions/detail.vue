@@ -1,6 +1,6 @@
 <template>
-  <view class="page-wrap">
-    <MobileNavBar variant="teacher" title="岗位详情" subtitle="指导批次 · 岗位条件核对" show-back :fallback-url="returnUrl" />
+  <view class="internship-surface mobile-page mobile-teacher page-wrap">
+    <MobileNavBar variant="teacher" title="岗位详情" show-back :fallback-url="returnUrl" />
     <MobileGlobalState :state="state" :description="error" @retry="load">
       <view v-if="detail" class="page-pad stack">
         <view class="card ipd__identity"><text class="ipd__batch">{{ detail.batchName }}</text><view class="ipd__heading"><text>{{ detail.title }}</text><MobileStatusTag :label="detail.statusLabel" :type="detail.statusTone" /></view><text class="ipd__company">{{ detail.companyName }}</text><view class="ipd__capacity"><text>剩余名额</text><text>{{ detail.remaining ?? '—' }} / {{ detail.headcount ?? '—' }} 人</text></view></view>
@@ -9,7 +9,7 @@
         <view v-for="group in groups" :key="group.title" class="card"><text class="ipd__title">{{ group.title }}</text><view v-for="item in group.items" :key="item[0]" class="ipd__fact"><text>{{ item[0] }}</text><text>{{ item[1] }}</text></view></view>
         <MobileInlineAlert type="info" :description="publicationNote" />
         <text v-if="detail.updatedAt" class="ipd__updated">资料更新于 {{ formatDateTime(detail.updatedAt) }}</text>
-        <button class="ipd__return" @click="returnToList">返回本批次岗位</button>
+        <button class="mobile-control ipd__return" @click="returnToList">返回本批次岗位</button>
       </view>
     </MobileGlobalState>
   </view>
@@ -26,7 +26,7 @@ export default {
     returnUrl() { return positionListUrl(this.scope) },
     groups() { return positionFacts(this.detail) },
     basics() { const d = this.detail || {}; return [['工作地址', d.workAddress || d.workLocation], ['专业要求', d.majorRequirement], ['年级要求', d.gradeRequirement], ['企业导师', d.mentorName]] },
-    publicationNote() { return this.detail?.campaignId ? '本页用于教师核对岗位条件。学生能否选报，还取决于招聘季开放范围、个人资格及岗位余量；审核和发布由学校经办人在 PC 端办理。' : '此岗位尚未关联招聘季，上架后也不会自动进入学生选岗目录。请联系学校经办人核对供给安排。' }
+    publicationNote() { return this.detail?.campaignId ? '志愿投递需符合招聘范围和学生资格。' : '本岗位未关联招聘季，暂不能用于志愿投递。' }
   },
   onLoad(query) { this.id = String(query?.id || ''); this.scope = positionQuery(query) },
   onShow() { this.load() },
@@ -53,4 +53,7 @@ export default {
 </script>
 <style scoped>
 .ipd__batch,.ipd__updated{display:block;font-size:12px;color:var(--text-tertiary);line-height:1.7}.ipd__identity{border-top:3px solid var(--brand-primary)}.ipd__heading{display:flex;align-items:flex-start;gap:12px;justify-content:space-between;margin:12px 0}.ipd__heading>text{flex:1;min-width:0;font-size:22px;line-height:1.5;font-weight:600;overflow-wrap:anywhere}.ipd__company{display:block;font-size:14px;color:var(--text-secondary);line-height:1.7}.ipd__capacity{display:flex;justify-content:space-between;border-top:1px solid var(--border-light);margin-top:18px;padding-top:14px;font-size:14px}.ipd__capacity>text:first-child{color:var(--text-tertiary)}.ipd__title{font-size:16px;font-weight:600}.ipd__content{display:block;font-size:14px;line-height:1.9;margin:14px 0 4px;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--text-secondary)}.ipd__fact{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;margin-top:17px;font-size:13px;line-height:1.8}.ipd__fact>text:first-child{flex:none;color:var(--text-tertiary)}.ipd__fact>text:last-child{text-align:right;overflow-wrap:anywhere;min-width:0}.ipd__return{font-size:14px;color:var(--brand-primary);background:var(--brand-50);border:0}.ipd__return::after{border:0}
+</style>
+<style scoped>
+.ipd__identity{border-top-color:var(--teacher-500)}.ipd__heading>text{font-size:20px}.ipd__heading :deep(.mst){flex:none}.ipd__batch,.ipd__updated,.ipd__fact{font-size:14px;line-height:1.6}.ipd__fact{margin-top:12px}.ipd__content{font-size:15px;line-height:1.7;margin-top:12px}.ipd__return{font-size:14px;min-height:44px;color:var(--teacher-700);background:var(--teacher-50)}
 </style>

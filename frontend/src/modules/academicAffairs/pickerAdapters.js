@@ -241,7 +241,7 @@ const gradeRecord = searchable(
 
 const graduationBatch = searchable(
   (keyword, query) => academicAffairsApi.listGradBatches({ ...query, resolveValue: undefined, keyword, page: 1, pageSize: 100 }),
-  { value: ['batchId', 'id'], label: (x) => firstDefined(x, ['batchName', 'name']), desc: (x) => x.status || '' }
+  { value: ['batchId', 'id'], label: (x) => firstDefined(x, ['batchName', 'name']), desc: (x) => academicStatusLabel(x.status) }
 )
 
 const registrationBatch = searchable(

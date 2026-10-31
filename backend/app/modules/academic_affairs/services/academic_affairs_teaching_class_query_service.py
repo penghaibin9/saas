@@ -1,6 +1,7 @@
 """独立教学班查询与数据范围 Service。"""
 from __future__ import annotations
 
+from .academic_affairs_college_roles import COLLEGE_ACADEMIC_ROLES
 import json
 
 from app.core.affairs_security import _derive_keys, build_affairs_context, no_data_scope
@@ -9,7 +10,7 @@ from app.services.db_service import _iso, _tid, session
 
 from . import academic_affairs_teaching_class_service as teaching_class_service
 
-_ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", "COLLEGE_ADMIN"}
+_ADMIN_ROLES = {"ACADEMIC_ADMIN", "SCHOOL_ADMIN", *COLLEGE_ACADEMIC_ROLES}
 
 
 def _user_keys(user) -> set[str]:
