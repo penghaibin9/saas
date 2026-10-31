@@ -1,0 +1,153 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/access-governance".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/access-governance
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				9 image
+				10 text 北京 13° 阴
+			11 button (collapsed) 10/25周日 12:25, Secondary Actions: Expand
+				12 image
+				13 text 10/25周日 12:25
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 胡
+				19 text 胡管理
+				20 text 系统管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 系统管理
+			25 button (collapsed) 当前范围, Secondary Actions: Expand
+				26 image
+				27 text 当前范围
+				28 image
+			29 button (collapsed) 本次工作 00:05:53, Secondary Actions: Expand
+				30 image
+				230 text 本次工作 00:05:53
+		32 container 二级菜单
+			33 button 展开二级菜单
+			34 container 二级菜单
+				35 button 系统概览
+				36 button 身份与账号
+				37 button 组织主数据
+				38 button 角色与权限
+				39 button 学校配置
+				40 button 流程配置
+				41 button 安全与审计
+				42 button 接口与同步
+			43 checkbox Description: 取消固定二级菜单, Value: 1
+		44 container 三级菜单
+			45 button 展开三级菜单
+			46 container 三级菜单
+				124 button 身份权限总览
+				125 button 预设角色模板
+				126 button 学校角色与成员
+				127 button 角色成员与业务身份
+				128 button 菜单与操作权限
+				129 button 数据范围规则
+				130 button 临时授权与工作移交
+				131 button 安全变更
+				132 button 访问治理
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				57 container
+					58 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					59 button 关闭系统总览
+						60 image
+				61 container
+					62 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					63 button 关闭教职工账号
+						64 image
+				65 container
+					66 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					67 button 关闭数据交换任务中心
+						68 image
+				69 container
+					70 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					71 button 关闭学生导入与账号开通
+						72 image
+				133 container
+					134 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					135 button 关闭身份权限总览
+						136 image
+				137 container
+					138 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					139 button 关闭预设角色模板
+						140 image
+				142 container
+					143 tab (selected, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 1
+访问治理
+					144 button 关闭访问治理
+						145 image
+			73 button (disabled) 恢复最近关闭的页签
+				74 image
+			75 checkbox Description: 收藏当前页面, Value: 0
+				76 image
+			77 checkbox Description: 专注模式, Value: 0
+				78 image
+			146 container
+				147 heading 访问治理, Value: 1
+					148 text 访问治理
+				149 button 访问解释
+				150 button 职责分离
+				151 button 紧急访问
+				152 button 权限复核
+				187 container
+					188 text 职责分离规则
+					189 button 新增规则
+				190 table
+					191 row
+						192 cell
+							193 text 规则
+						194 cell
+							195 text 不得兼任的两个角色
+						196 cell
+							197 text 严重度
+						198 cell
+							199 text 理由
+					200 row
+						201 cell
+							202 text 职责冲突规则
+						203 cell
+							231 text 学校管理员 ✕ 业务角色
+						205 cell
+							206 text 高
+						207 cell
+							208 text 演示学校权限复核需展示职责分离规则。
+				209 text 已检出的冲突
+				210 table
+					211 row
+						212 cell
+							213 text 规则
+						214 cell
+							215 text 人员
+						216 cell
+							217 text 持有角色
+						218 cell
+							219 text 状态
+					220 row
+						221 cell
+							222 text 职责冲突规则
+						223 cell
+							224 text 人员信息待同步
+						225 cell
+							226 text 角色信息待同步
+						227 cell
+							228 text 已解除
+				229 text 检出的冲突会阻止相关人员继续执行不相容职责。
+			122 button 我的常用
+
+The focused UI element is 150 button 职责分离

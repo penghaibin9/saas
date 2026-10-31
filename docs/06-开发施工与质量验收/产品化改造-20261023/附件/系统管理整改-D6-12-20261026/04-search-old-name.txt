@@ -1,0 +1,140 @@
+Browser tab: 2, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/admin/system/identity-import/teachers".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/system/identity-import/teachers
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) Description: 搜索功能与帮助, Value: 身份与账号
+			7 text Ctrl K
+			125 container
+				126 text 功能/页面
+				127 link Description: 系统管理 / 账号管理 / 教职工账号, Value: javascript:void(0)
+				128 link Description: 系统管理 / 账号管理 / 学生账号, Value: javascript:void(0)
+				129 link Description: 系统管理 / 账号管理 / 账号异常排查, Value: javascript:void(0)
+				130 link Description: 系统管理 / 数据任务 / 教职工导入, Value: javascript:void(0)
+				131 link Description: 系统管理 / 数据任务 / 学生导入与账号开通, Value: javascript:void(0)
+				132 link Description: 系统管理 / 数据任务 / 数据交换任务中心, Value: javascript:void(0)
+				133 link Description: 系统管理 / 安全与审计 / 登录与安全策略, Value: javascript:void(0)
+			8 button (collapsed) 北京 12° 晴, Secondary Actions: Expand
+				9 image
+				10 text 北京 12° 晴
+			11 button (collapsed) 10/26周一 20:09, Secondary Actions: Expand
+				12 image
+				134 text 10/26周一 20:09
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 整 整改验收经办人 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 整
+				19 text 整改验收经办人
+				20 text 系统管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 系统管理
+			25 button (collapsed) 当前范围, Secondary Actions: Expand
+				26 image
+				27 text 当前范围
+				28 image
+			29 button (collapsed) 本次工作 02:54:13, Secondary Actions: Expand
+				30 image
+				135 text 本次工作 02:54:13
+		32 container 二级菜单
+			33 button 收窄二级菜单
+				34 text 系统管理
+			35 container 二级菜单
+				36 button 管理概览
+				37 button 账号管理
+				38 button 组织与任职
+				39 button 角色与权限
+				40 button 数据任务
+				41 button 学校设置
+				42 button 流程管理
+				43 button 安全与审计
+				44 button 第三方对接
+				45 button 实施与交付
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 收窄三级菜单
+				49 text 数据任务
+			50 container 三级菜单
+				51 button 教职工导入
+				52 button 学生导入与账号开通
+				53 button 数据交换任务中心
+				54 button 主数据责任与数据质量
+				55 button 批处理与后台任务
+			56 checkbox Description: 取消固定三级菜单, Value: 1
+		57 container
+			58 tab group 已打开页面
+				59 container
+					60 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					61 button 关闭学校角色与成员
+						62 image
+				63 container
+					64 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					65 button 关闭操作与权限审计
+						66 image
+				67 container
+					68 tab (selectable, settable, boolean) 系统总览, Help: 管理概览 / 系统总览, Value: 0
+系统总览
+					69 button 关闭系统总览
+						70 image
+				71 container
+					72 tab (selected, settable, boolean) 教职工导入, Help: 数据任务 / 教职工导入, Value: 1
+教职工导入
+					73 button 关闭教职工导入
+						74 image
+			75 button (disabled) 恢复最近关闭的页签
+				76 image
+			77 checkbox Description: 收藏当前页面, Value: 0
+				78 image
+			79 checkbox Description: 专注模式, Value: 0
+				80 image
+			81 container
+				82 heading 教职工导入, Value: 1
+					83 text 教职工导入
+				84 button 数据交换任务
+				85 button 下载标准 XLSX 模板
+				86 content list 身份导入步骤
+					87 container
+						88 text 1 准备文件
+					89 container
+						90 text 2 安全扫描
+					91 container
+						92 text 3 预检查
+					93 container
+						94 text 4 确认导入
+					95 container
+						96 text 5 结果回执
+				97 heading 准备教职工名单, Value: 2
+					98 text 准备教职工名单
+				99 text 师生名单分开上传，不在浏览器解析或改写表格内容。
+				100 text 教职工身份
+				101 heading 选择标准 Excel 名单, Value: 3
+					102 text 选择标准 Excel 名单
+				103 text 使用本页下载的模板。文件登记成功后，还需等待安全扫描和预检查。
+				104 text 选择 .xlsx 文件
+				105 button Description: 选择身份导入文件, ID: identity-workbook
+				106 button (disabled) 上传并开始预检
+				107 text 导入前确认
+				108 heading 先把问题留在预检阶段, Value: 2
+					109 text 先把问题留在预检阶段
+				110 text 1
+				111 heading 使用正确模板, Value: 3
+					112 text 使用正确模板
+				113 text 工号、姓名、部门、预设角色与数据范围按教职工模板填写，多个角色的分隔规则以模板为准。
+				114 text 2
+				115 heading 核对角色与岗位范围, Value: 3
+					116 text 核对角色与岗位范围
+				117 text 角色来源与学院、班级范围分别校验。不能凭页面成功提示推断所有业务关系已配置。
+				118 text 3
+				119 heading 凭据单独受控下载, Value: 3
+					120 text 凭据单独受控下载
+				121 text 原文件、错误与初始凭据回执保留在任务中心。任务可见不等于有权下载凭据。
+				122 text 任务可以继续办理
+				123 text 登记成功后本页链接会保留任务编号。刷新或重新打开链接，只读取该任务，不自动重新上传或确认。
+			124 button 我的常用
+
+The focused UI element is 6 text field (settable) Description: 搜索功能与帮助, Value: 身份与账号

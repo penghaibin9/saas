@@ -1,0 +1,1573 @@
+{
+  "scope": "D6-12/D6-13相关当前文件快照；共享文件含前卡和其他任务改动，禁止按整文件回退。不是提交清单。",
+  "sourceFiles": [
+    {
+      "path": "backend/app/api/v1/dashboard.py",
+      "sha256": "82b09521b1674c82839befb659396edbca857174efa1ad48a08064b96a226c9a",
+      "bytes": 5483
+    },
+    {
+      "path": "backend/app/services/runtime_preset_install_service.py",
+      "sha256": "71484efe9576d65b8eb989712c560ae532609a9e81aaef348582ab84ef2b0fa3",
+      "bytes": 38099
+    },
+    {
+      "path": "backend/tests/test_wx_login.py",
+      "sha256": "b0dc5e998ff476fda4d211685dfc3847760be09b77fe269ea46b3871f0ab2771",
+      "bytes": 10359
+    },
+    {
+      "path": "student-portal/src/views/internship/InternshipView.vue",
+      "sha256": "225e35129068c31fba7591c384aa455e3b5dfde5d6ddaf7c1798fd806b339065",
+      "bytes": 98815
+    },
+    {
+      "path": "student-portal/tests/internship-preparation-flow.behavior.test.mjs",
+      "sha256": "7f67eef5dafd9582356cd0b224ff8f43418144e99a40d42ee452843388b83f31",
+      "bytes": 3279
+    },
+    {
+      "path": "frontend/src/components/workspace/TeacherWorkspaceFrame.vue",
+      "sha256": "186e964f560a778a3af599f436366366a62dbe29b9fa6750b1d02d86943f26e3",
+      "bytes": 33799
+    },
+    {
+      "path": "frontend/src/components/workspace/workspaceRouting.js",
+      "sha256": "2d5a4c5d183efdd94fce969cc7d9b77d466985238e21400139f870ba0cdc66fb",
+      "bytes": 6040
+    },
+    {
+      "path": "frontend/src/config/navPlan.js",
+      "sha256": "1db173517995b82cdace64f31ee825b5add21601885bbbe07c29e9c04ab458af",
+      "bytes": 103415
+    },
+    {
+      "path": "frontend/src/config/adminMenu.js",
+      "sha256": "4dfd5344739160fd70e714e7fe8e1e48b81a62eb9ab0d2dc7f0391e711083826",
+      "bytes": 13190
+    },
+    {
+      "path": "frontend/src/layouts/BasePortalLayout.vue",
+      "sha256": "b8e889e53a09da8fc0364bdf11a892ebe6a58082df72c176335d9da514050e23",
+      "bytes": 71241
+    },
+    {
+      "path": "frontend/src/config/help/verifiedHelpOverrides.js",
+      "sha256": "2c01b4ff70dec4d8c6184c55ed1aaa206cc560b4b87f3f6580c78d790156c3a3",
+      "bytes": 18145
+    },
+    {
+      "path": "frontend/src/config/help/systemHelpCards.js",
+      "sha256": "617391ea62088e8bd9cbbab61a121dad52d7ce5a6ce2975251738e69050fb32e",
+      "bytes": 19846
+    },
+    {
+      "path": "frontend/src/modules/system/systemManagementCatalog.js",
+      "sha256": "ae482a8e80f5a4a456619b3f2a76b34744792599063995ceb68fa4fdefe85fa4",
+      "bytes": 21239
+    },
+    {
+      "path": "frontend/src/modules/system/system.routes.js",
+      "sha256": "b7c26e9f23c47295a7c417a17f50794f81b632a935bf2be097516e8854c289cd",
+      "bytes": 15861
+    },
+    {
+      "path": "frontend/src/modules/system/api/system.api.js",
+      "sha256": "6659600dbc7f61c0458b4ab1a62da8eacfa24820ad96e5549890bcb0a0515929",
+      "bytes": 77767
+    },
+    {
+      "path": "frontend/src/modules/system/utils/permissionLabels.js",
+      "sha256": "c809f52ca22a80c4070a9c0de9df7f727d07398772e15ad77764e38b7f558668",
+      "bytes": 8976
+    },
+    {
+      "path": "frontend/src/modules/system/utils/workspaceContract.js",
+      "sha256": "13020e0a18d8a11ebd9a8b445111505e88e3c698a1e2cbe64cc1b6cd927d3db8",
+      "bytes": 12209
+    },
+    {
+      "path": "frontend/src/modules/system/components/SystemOrgWorkspace.vue",
+      "sha256": "bb471e5bb641b76523441529d0b6e458f9f7c3de87c9079f6a5dad17ee7588f9",
+      "bytes": 27131
+    },
+    {
+      "path": "frontend/src/modules/system/components/workspace/SystemIamGovernancePanel.vue",
+      "sha256": "b0d5b87cc70bf3a62eb256bacf567e65edbf140a5a65de4311fb2e457c37d20b",
+      "bytes": 54644
+    },
+    {
+      "path": "frontend/src/modules/system/components/workspace/SystemAccessInspector.vue",
+      "sha256": "4d501c663a6b92ef2880004939740b558d5907e2f54459ebdf6adf02c7986e25",
+      "bytes": 17043
+    },
+    {
+      "path": "frontend/src/modules/system/views/AdminSystemLayout.vue",
+      "sha256": "f5bc12a3cbe1260d582b966cb78cccdda6582ec8112a259bc45bc378f4c8eb69",
+      "bytes": 3944
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemImplementationView.vue",
+      "sha256": "8bddaad668707d103b262ab35138b3162df0df222e86145021ed47169b7b007e",
+      "bytes": 46394
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemRoleListView.vue",
+      "sha256": "0af29c2ceb267238abb1661c0d82c38f97c4d5a2f44c0ea943fbd0ef3120b16f",
+      "bytes": 29304
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemRoleAssignmentView.vue",
+      "sha256": "c45628e64a994edf21eb0faf73b3cfa1d910e8b548dbd93a2317cd3512e6d848",
+      "bytes": 31586
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemWorkflowGovernanceView.vue",
+      "sha256": "4d4064013a9f21b33237bf6f02b48d7121a999c01735afbd87949266c0c22ca7",
+      "bytes": 19511
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemLogView.vue",
+      "sha256": "14a67b97bd646e87f25c3f2cf00f1f8128206e9342b3c71268eddb113860da83",
+      "bytes": 13284
+    },
+    {
+      "path": "frontend/src/views/security/RouteAccessNotice.vue",
+      "sha256": "b2db244f927c4f81e2a8dc1244807dd4ae9552462b2b01615651b680756aef67",
+      "bytes": 2093
+    },
+    {
+      "path": "frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue",
+      "sha256": "45915a458c82c1ffc62cb7566c0c49f40dcb66007f2d2ad30c193d2a26759b40",
+      "bytes": 21266
+    },
+    {
+      "path": "frontend/tests/system-workspace-regrouping.test.mjs",
+      "sha256": "ac7f18b77f2f9e867070593ec3c1af89cc6f72840188060515c4d32fd1604145",
+      "bytes": 5819
+    },
+    {
+      "path": "frontend/tests/system-ui-surface-completion.test.mjs",
+      "sha256": "bc6d087ca582d02b86c64b4bf593142be5815c495478531e4285203a1879f719",
+      "bytes": 5701
+    },
+    {
+      "path": "frontend/tests/plat-b-four-client-contract.test.mjs",
+      "sha256": "8cb13969b55ccb2abd3668294f50e5e41411cb4a0f1ad7bb1d2fee716b5fd2d2",
+      "bytes": 6194
+    },
+    {
+      "path": "frontend/tests/system-permission-labels.test.mjs",
+      "sha256": "e32fb6c417a31a32e6c1d15e465f123691649c1394e4180ef4265f824390db38",
+      "bytes": 3998
+    },
+    {
+      "path": "frontend/tests/system-workflow-recovery.behavior.test.mjs",
+      "sha256": "538405694d36a8c34a22b69b97c736daac9ad5aa5f231498ba7f8c77d8ea8738",
+      "bytes": 5357
+    },
+    {
+      "path": "frontend/tests/system-implementation-state.behavior.test.mjs",
+      "sha256": "536a09e488e7e0ec7762448c9f7b27374345a54d4f8b5319c6559e524586babf",
+      "bytes": 6856
+    },
+    {
+      "path": "frontend/tests/graduation.shared-workspace.navigation-regression.test.mjs",
+      "sha256": "612747487ff2c23ccda16b4e36bfcd9bbfb0bbbd8c51ddf024ee8394d2534552",
+      "bytes": 7281
+    },
+    {
+      "path": "frontend/tests/admin-menu-custom-role-projection.test.mjs",
+      "sha256": "14393c0d8f7c54520294b3aae70d7f2d3b8b4dacf2ed14127b697713089eb6cb",
+      "bytes": 3281
+    },
+    {
+      "path": "frontend/tests/platform-workspace-test-support.mjs",
+      "sha256": "4d42146373ba67219ae27c79311569356dd05dae312e672d51711c9551cbe2b8",
+      "bytes": 2882
+    },
+    {
+      "path": "shared/generated/route-index.json",
+      "sha256": "521f2926e33511d392f03432bfca8069375d1403d31b6843e60f8b84dd17b699",
+      "bytes": 23745
+    },
+    {
+      "path": "shared/generated/capability-registry.json",
+      "sha256": "045a942569f7c03529a363aba1a72a62b93f63d414986071a28ec1b5b36c2a85",
+      "bytes": 446371
+    },
+    {
+      "path": "shared/contracts/navigation-surface-contract.json",
+      "sha256": "5c892f088b522189bb1ad72e5ca799d74685cc0bc251f561b83a25c7de81f3f3",
+      "bytes": 478731
+    }
+  ],
+  "evidence": [
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/01-navigation-before.jpg",
+      "sha256": "b7eb5b049e10531ce9e55ce7264dcf4a4b0b0ffb1fbf7c4145dea8588ba623a3",
+      "bytes": 84355
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/01-navigation-before.txt",
+      "sha256": "fd4065289f544f60e618f9c6ae77bd138ba43a574257179ee2c33e650377849d",
+      "bytes": 6532
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/02-regrouped-navigation.jpg",
+      "sha256": "87ceeb5a8b0e64416d15d40f310d0b88a8f5cfbe890f649472604645c91075d4",
+      "bytes": 81859
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/03-data-workspace.jpg",
+      "sha256": "e00c5cb1bc5f79b52bc2ef813afeb0abd0104f3fa5723306d1ab54a1b64150f2",
+      "bytes": 94589
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/03-data-workspace.txt",
+      "sha256": "f223838630d5a47013595c74929c86ac7c9dba785cadccb62955ae551d932181",
+      "bytes": 5236
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/04-search-old-name.jpg",
+      "sha256": "89d7946640655b207b0d4c4911b43e70cd2424f3a671e5b8b90cafd32d6a5f8c",
+      "bytes": 101229
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/04-search-old-name.txt",
+      "sha256": "c561dab7a5c6b6e778e8341add81833ac5c766a9be74539019c7fb389e1b9b8e",
+      "bytes": 6062
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/05-role-workspace.jpg",
+      "sha256": "d42f2f374f36696fa55b7a3e3330cd99c3853fca1bd19448484ab946127ff719",
+      "bytes": 81286
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/05-role-workspace.txt",
+      "sha256": "587d873c6c635c1b6259b9991a583c6bfedd2a670f8361821dd548651ebf124b",
+      "bytes": 7726
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/06-role-template-tab.txt",
+      "sha256": "3dca22e93f99c1c4ba140d51c9d2c9e388ba757d07001fff9fd45da513526763",
+      "bytes": 11925
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/07-implementation-workspace.jpg",
+      "sha256": "4a05b60d934ace4ce62756cb863bf6c06583e00f56c8add85d540745d93a5c8c",
+      "bytes": 90221
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/07-implementation-workspace.txt",
+      "sha256": "da8b6ae6801237bcde1c2cc53049c93d61a769f6ca1cb3002b76e13c07742b9b",
+      "bytes": 9660
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/08-search-denied-alias.jpg",
+      "sha256": "4926108c229a65610fc6fd76c4f62ba45d652eef441440ec1734aa8f6ab5d562",
+      "bytes": 91937
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/08-search-denied-alias.txt",
+      "sha256": "91be26e225c6a3ef371e91c5903cfb166f3c453a738e21f4d662d568e62a8043",
+      "bytes": 9787
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/09-restored-login.jpg",
+      "sha256": "10e64aa27c12643f456de7f0e09cdd8f795bca7965ddfc236e24b0e1cd43e4c0",
+      "bytes": 76437
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/10-current-overview.jpg",
+      "sha256": "6a0ee0fb30cc6abbe01198028a6caabd42b4b7c598f3bc07f27bf09c40b52f0d",
+      "bytes": 85054
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/11-acceptance-chinese.jpg",
+      "sha256": "3ba308a57e9c0462cfa007e283bf5a86ff3818338827b2ac2d77f8b79e216a88",
+      "bytes": 87968
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/11-acceptance-chinese.txt",
+      "sha256": "82e6fa32ddac855447f3a3c2b51787a5aef06afd2070498e1246a17257322244",
+      "bytes": 9374
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/class-profile-status-fixed.jpg",
+      "sha256": "f1ad4e96d402d41fedb4e2281859324cc23d4f93bf870edc2478c436c7dde337",
+      "bytes": 87976
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/class-profile-status-fixed.txt",
+      "sha256": "2c76f9fd9b77dfa1b2da599ffc92ecf57c7d5c0737dec0d9d37eb87f236835e6",
+      "bytes": 7191
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/graduation-assignment-navigation-fixed.jpg",
+      "sha256": "68553229194a7cbd988727fcb40e4f4d75274abe31fb56d7d23f9356f89e4e3a",
+      "bytes": 62972
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/graduation-assignment-navigation-fixed.txt",
+      "sha256": "7da3a725aa591efa0c6df9dcfd719bc8316d446eba522805b8b0cdb7c21fb6c0",
+      "bytes": 5942
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/graduation-assignment-navigation.jpg",
+      "sha256": "7dde0367580be36bac60b00494ce16ef802bb2b54ea98f218443ef7d012ef648",
+      "bytes": 60648
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/graduation-assignment-navigation.txt",
+      "sha256": "3fc669f4b724799da2ffcaf4a6a6fd274de3ff194b493fce432398be506fbdc4",
+      "bytes": 5695
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/graduation-refresh.txt",
+      "sha256": "33a19847929cbd3fee2616a5a0a3f9414bfb842c2f08eaa22d61c1fc80ac386f",
+      "bytes": 5942
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/graduation-return.txt",
+      "sha256": "5f2a571fdda2d3e75afc5fe7730573c020c06b3f98e533e0af0931934a9ed388",
+      "bytes": 5942
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-02.jpg",
+      "sha256": "35cfb1748a648bc5bbc7db6406c2c89fd59df2110df38ae658ccc6c7aa5b384f",
+      "bytes": 52879
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-02.txt",
+      "sha256": "26e20de02d92ab449d51940b07d1c4f574762249ace7a232912ed850e7b0fc0b",
+      "bytes": 10578
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-10.jpg",
+      "sha256": "d745b659de67a7b6469ca256cf9dd7d51bfe9d8176fb842fa86f84c1f67b44e3",
+      "bytes": 50367
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-10.txt",
+      "sha256": "b01650ace30dda7834d4648f37a612cbda1915ef2770fcdb990bc27051109a17",
+      "bytes": 8013
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-14.jpg",
+      "sha256": "acba05d9bda67100f753b7013601abbde3e8b4989038fde457aea2a6b87d2b83",
+      "bytes": 51430
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-14.txt",
+      "sha256": "95697234676326802e41dd4a415167b70f04949c9f1062de43229848728d3f92",
+      "bytes": 10800
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-17.jpg",
+      "sha256": "478f149059369c040d7b1305fc8bf3110707f10ef15f3a1be0f530fab612dd47",
+      "bytes": 49156
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-17.txt",
+      "sha256": "fc7fb8724ee36a9842db6f7446a40f2a8df679dd7a5b6616189b0a09df5987d3",
+      "bytes": 6161
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-27.jpg",
+      "sha256": "a373533829ff4a66258c5e703fb8c41c58cae8e1bfda3dee5a88b7f1e802f6a3",
+      "bytes": 46023
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-27.txt",
+      "sha256": "26af91aa095ac1aaaa95289771475073a554081ec4fe1022aac0ad1f25be068d",
+      "bytes": 8009
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-34.jpg",
+      "sha256": "af920dff87bcf1a823790355135ed2ac4923865cdead61eaeb78e88fc3e7de07",
+      "bytes": 53596
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-34.txt",
+      "sha256": "2880034aabb051122cf7950b73d40cf92ef8d4c535560e37e2e20a09371edb93",
+      "bytes": 5335
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-40.jpg",
+      "sha256": "ce5d30f28dd7af63dc3bb7603250266cdb57670ca9cea9c6f02c0946a8a7e0ff",
+      "bytes": 44852
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-40.txt",
+      "sha256": "c85f388e65268c9ea05cc33c2d6d4eeb21c8527eee71ca11b833bafe18070f2a",
+      "bytes": 5222
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-49.jpg",
+      "sha256": "dfe1e618dd6d13805ee54a925a342b325d5af60e8bf331f62dfba7c5e2f4f759",
+      "bytes": 44723
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-49.txt",
+      "sha256": "6f64cbae12cc8ad85847262a8b677f0143c1ca3844847b5bd361cdb38916dcf6",
+      "bytes": 6020
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-logs-fixed.jpg",
+      "sha256": "0aa92f50988cbbc24d6f9aa725b9b73b6230453c825b94fbf857399d02179e50",
+      "bytes": 43864
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-logs.jpg",
+      "sha256": "d0cd8cf13b2249f4040287a69d846edd53b16a949e1715a4c32b891936cf4eef",
+      "bytes": 42885
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-overview.jpg",
+      "sha256": "4557509cc64457991b62042074bb33471b21a19bd5978a729975dc6a33060cac",
+      "bytes": 49672
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-375-roles.jpg",
+      "sha256": "7df93da51d40dce9606532fe42924a1769f4e9b73a79d634f9cb79aae480ee7f",
+      "bytes": 46876
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-02.jpg",
+      "sha256": "f6c6c78da713774782856f12e4f3bb83e080ab05f386d83545c60b13fc3acf64",
+      "bytes": 54921
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-02.txt",
+      "sha256": "26e20de02d92ab449d51940b07d1c4f574762249ace7a232912ed850e7b0fc0b",
+      "bytes": 10578
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-10.jpg",
+      "sha256": "d073be17c93197403bc0d33f686d14f84cf2a200f59a6a5050cb5fdf6cd71375",
+      "bytes": 51913
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-10.txt",
+      "sha256": "0056a2a3b257923aee0b7bc296f1b7f965dd981fd91ea3b75b6de16da3e5fc2e",
+      "bytes": 8013
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-14.jpg",
+      "sha256": "92ad135a6abef9c672a52cb91dea54203a4a9154041130591dd8c89ac3a0606c",
+      "bytes": 52627
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-14.txt",
+      "sha256": "76961a8bd9b24eb780ff2e3ebbaae93132673fe35c8a485c6c597a5a122d0435",
+      "bytes": 10800
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-17.jpg",
+      "sha256": "a296300804023aadc7cc897e071f7149c8c19f0a6137032d1e67066f9f40ee87",
+      "bytes": 49720
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-17.txt",
+      "sha256": "cc990a522b1a18fd5dc8e09e29fe69c707674ef2e2c3c4afec804fe278b30e62",
+      "bytes": 6161
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-27.jpg",
+      "sha256": "566e638968db404f0ae822c246cfba7cc58d406ad09a059f2e47731080857983",
+      "bytes": 46757
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-27.txt",
+      "sha256": "f59bb63de90ae0366b59b713d4d9d19068fd8fcfedfddbc5ef4987536b37f1f7",
+      "bytes": 8009
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-34.jpg",
+      "sha256": "612b40d7ffc96ce21e1258a1d3f0c1bd09d8da9444b724d8b2aa691694039344",
+      "bytes": 54896
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-34.txt",
+      "sha256": "0e447e0dde568f01aa6d70472358c82798d91119f9920c940b3dc6a2f73d5df5",
+      "bytes": 5335
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-40.jpg",
+      "sha256": "76ce6794cd02fcc4e5af877fd01b0eccba9ba3ea318c22925c0e3205312e3aec",
+      "bytes": 46107
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-40.txt",
+      "sha256": "c85f388e65268c9ea05cc33c2d6d4eeb21c8527eee71ca11b833bafe18070f2a",
+      "bytes": 5222
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-49.jpg",
+      "sha256": "a25dfd86eefb942243a447c83c11cb0bf43b28c601bdddb04d7cb61cd4c80727",
+      "bytes": 45605
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-49.txt",
+      "sha256": "6f64cbae12cc8ad85847262a8b677f0143c1ca3844847b5bd361cdb38916dcf6",
+      "bytes": 6020
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-logs.jpg",
+      "sha256": "baaea8baea7bcae5b4e162c17e9816ec1f61d235143b55cf5b1954d31cb15534",
+      "bytes": 44667
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-390-org-fixed.jpg",
+      "sha256": "fd13354e75caf2d2e747a0f584b1949a3f5b1a23f7c4e516d07dbdfe92996aff",
+      "bytes": 49898
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-02.jpg",
+      "sha256": "890b168ce4d8419e00bedbaea74bbaf79dfdd7af3d127bf59fcbef11b1a28325",
+      "bytes": 56316
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-02.txt",
+      "sha256": "b52821ec5fc05981e437e369f3f7ba8055139efda349bc789e675727d257a761",
+      "bytes": 10578
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-10.jpg",
+      "sha256": "d553b2de36a94404d8ea0f8e5b9b03eacb5fb72a031f6272a3dcf048461fd0ee",
+      "bytes": 54342
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-10.txt",
+      "sha256": "2f0fd394b95157fa47d2cea2b9a4e428886be845e7abf7086395c970270f1470",
+      "bytes": 8013
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-14.jpg",
+      "sha256": "08e0381c5954859d6a61d22de19aabade9a6f34a411d0192d1a7b70218867cd0",
+      "bytes": 55230
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-14.txt",
+      "sha256": "3901a9ecc0f883e7ce35d56c888d602fdeaf211a69f4381c883d0af15975b121",
+      "bytes": 10800
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-17.jpg",
+      "sha256": "d28a12ef7bfafa459c49d8340200c46f08a0e9f810738e4d3d77f65f59035fdb",
+      "bytes": 53812
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-17.txt",
+      "sha256": "8148e9c544d9399733998076c569b86e10df20e8bc641be60a5e85b5df43b970",
+      "bytes": 6161
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-27.jpg",
+      "sha256": "b675c8ef175321e35b4ea090e909e7f34e4911c7d603e0d11fec061a8fa5f25e",
+      "bytes": 48628
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-27.txt",
+      "sha256": "9b220d2a627435ed4b3e2f40b11b67d4dfcde5595f7a1fb0d1c3c41066bb92bb",
+      "bytes": 8009
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-34.jpg",
+      "sha256": "1ca04273fbd0b814d20c4d250c93ceceb85450bd5b065efd096c7caa60129738",
+      "bytes": 57055
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-34.txt",
+      "sha256": "0fddd563c4d995e884cbb3f8854ed521b60773523c53de32c0d5ece42180332e",
+      "bytes": 5335
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-40.jpg",
+      "sha256": "c5cb214098291206bdbd8725762f0169f7a276a68458b41008735658741a9773",
+      "bytes": 47681
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-40.txt",
+      "sha256": "9e8d32d19d3292b6dd4ce1796f75a3342847c0cb379e4c25f9419014a48777da",
+      "bytes": 5222
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-49.jpg",
+      "sha256": "5c5a7d43b7f9d356d3a24e79aae4fcf77f597e716f98551480e14826697a78ce",
+      "bytes": 46917
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-49.txt",
+      "sha256": "609837063a0e08092913ee4b739aba4f4efb84850b36add12c2a2819f5512012",
+      "bytes": 6020
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/mobile-431-logs.jpg",
+      "sha256": "26525795853b968625c9b67f24e19b8fd947c4a2be6432137fdfc9c83e090b18",
+      "bytes": 47100
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-01.jpg",
+      "sha256": "d5d40dfaf90a24c44eac9d90cfe7344dd3be9e7835c1fd20651518ead021bd68",
+      "bytes": 5822
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-01.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-02.jpg",
+      "sha256": "d5d40dfaf90a24c44eac9d90cfe7344dd3be9e7835c1fd20651518ead021bd68",
+      "bytes": 5822
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-02.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-03.jpg",
+      "sha256": "ca57fe15ef6c47ffb44731b18a11ab54bff84c26fb46c1be60b9d089d516769e",
+      "bytes": 67823
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-03.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-04.jpg",
+      "sha256": "d5d40dfaf90a24c44eac9d90cfe7344dd3be9e7835c1fd20651518ead021bd68",
+      "bytes": 5822
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-04.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-05.jpg",
+      "sha256": "ca57fe15ef6c47ffb44731b18a11ab54bff84c26fb46c1be60b9d089d516769e",
+      "bytes": 67823
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-05.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-06.jpg",
+      "sha256": "ca57fe15ef6c47ffb44731b18a11ab54bff84c26fb46c1be60b9d089d516769e",
+      "bytes": 67823
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-06.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-07.jpg",
+      "sha256": "6dfbb26db4c8b1e4ebe784cf3c5313dedd7fa704b75541cbc0b01f898c53d7c6",
+      "bytes": 69757
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-07.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-08.jpg",
+      "sha256": "d5d40dfaf90a24c44eac9d90cfe7344dd3be9e7835c1fd20651518ead021bd68",
+      "bytes": 5822
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-08.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-09.jpg",
+      "sha256": "d5d40dfaf90a24c44eac9d90cfe7344dd3be9e7835c1fd20651518ead021bd68",
+      "bytes": 5822
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/page-09.txt",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "bytes": 0
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/platform-current-captcha.jpg",
+      "sha256": "f28ca06c7528134324fadfa6b5a19b62015d973bbf7f9362770bd35a0a0b4631",
+      "bytes": 58198
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/responsive-metrics.json",
+      "sha256": "f0658d008d12dc473e5df0e68e15175db549df1b42d0f5b6123ab94bbc6fc791",
+      "bytes": 7560
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/restricted-refresh.txt",
+      "sha256": "70cabf6fdc9bc93f8252c55cdd5332724e2977d3d964ec47a81a005fb642d8a0",
+      "bytes": 12463
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/restricted-search-after-retirement.txt",
+      "sha256": "01dbc8b110bf2ffaaba95437cec4205744c6ecd2916b7016d703d85a8ad44721",
+      "bytes": 8424
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/restricted-search-target.txt",
+      "sha256": "d34ad7866074b23bada39ff5ad6feff5c2d30f5ef893fc4ba4e96c5bbb6bd6df",
+      "bytes": 12472
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/retired-business-forms.txt",
+      "sha256": "ba8a7145fe85c81099a85de095d57a00bad3020bc2cf89e8bcef6fd8c5d84ebb",
+      "bytes": 250
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/retired-identity-import.txt",
+      "sha256": "ba8a7145fe85c81099a85de095d57a00bad3020bc2cf89e8bcef6fd8c5d84ebb",
+      "bytes": 250
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/retired-roles.jpg",
+      "sha256": "01d90ae8d1bb51631509b6e558ee509c77e9a8396edaf32331ecaacde8910ce5",
+      "bytes": 17232
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/retired-roles.txt",
+      "sha256": "ba8a7145fe85c81099a85de095d57a00bad3020bc2cf89e8bcef6fd8c5d84ebb",
+      "bytes": 250
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-01.jpg",
+      "sha256": "23f3e461a3f33dbabfdac2aca9629b7b394564662819754ae9b04d0d26057e95",
+      "bytes": 87909
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-01.txt",
+      "sha256": "33836d52ea98fa2c836442dba21b81f79df68500faa896c7d0700c893aecbfdb",
+      "bytes": 9818
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-02.jpg",
+      "sha256": "7bf856601664b229cf912d4f30c2eca4ca2844a4540cb7e516cc9cd209fbfdf8",
+      "bytes": 91267
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-02.txt",
+      "sha256": "2224714a9f45db4a3cbc8fdc3ae1b87742e0b6b8640058356557b0a5eb1a3424",
+      "bytes": 13988
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-03.jpg",
+      "sha256": "32bd933d59591064c8a3d65aeea32f28edbdad336f876b92ddb30b0e4b288bf2",
+      "bytes": 87412
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-03.txt",
+      "sha256": "0544b4582f108fa2ed8030d92206fb2646a3aa952fe4b186f3429d2dbb666376",
+      "bytes": 28722
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-04.jpg",
+      "sha256": "503662e864aa5fe6d143df16c3e744da1266bbb76c408ade8d70f246b2b641ee",
+      "bytes": 90790
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-04.txt",
+      "sha256": "0075a2f5fba9be68687e074774324309dae12b88b9305392712c93217c7a2930",
+      "bytes": 8799
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-05.jpg",
+      "sha256": "0d71ad795b68ae09bedbc6a068a1f628924e3af4ec90c938611387e0c06c9d71",
+      "bytes": 94285
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-05.txt",
+      "sha256": "66cd7bd289a72c58f4034372fbe7c803d0eff4c95e2efcc0d958a681ead54ace",
+      "bytes": 8316
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-06.jpg",
+      "sha256": "4530f6af77c7893df90d706561574ee5b81a00a79e174e45e6b0560c52942b57",
+      "bytes": 91410
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-06.txt",
+      "sha256": "42d82931a9ed06471afaa099106365d90fbea1ee2da3cc4ea247fa56554a0bcb",
+      "bytes": 8315
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-07.jpg",
+      "sha256": "3728bdd35b8d68d5e1eca51b7d53bea876d33941247175aa3e70dc86cd3cb28c",
+      "bytes": 88678
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-07.txt",
+      "sha256": "9b8a63fb972937ace00b63f058cb7929fbda58b3a723e9a2ba1670aa33a2b712",
+      "bytes": 8000
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-08.jpg",
+      "sha256": "22f48c5ee9cf3b7c62b5285d3697977d1fe91f52678af19cb8d02ea29951a70d",
+      "bytes": 89767
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-08.txt",
+      "sha256": "d65aee19e3eda1b6f90def12f924aa2a49a4b37962b8e68aa6dd02a0d19ec956",
+      "bytes": 8038
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-09.jpg",
+      "sha256": "1ee7ef4a36fa14519337f7fef346f6d90adaf53f752e4acf71201d2bd3d0b465",
+      "bytes": 87945
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-09.txt",
+      "sha256": "d7e515a565dba7b79dacb038808330b72acdf569d04079f6603197bade1699d2",
+      "bytes": 9365
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-10.jpg",
+      "sha256": "c241392143a986122a677f58f8c2274b49dcdd9d523526630c9399fc60fd650a",
+      "bytes": 93943
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-10.txt",
+      "sha256": "de3ad0cc3307ad48de559214fe0e2116dcfcaf50cda0cfed2fa764075634395a",
+      "bytes": 10852
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-11.jpg",
+      "sha256": "6e26e75b9e7977622ed219100017519fb30fffcd1ffca0a8520595568cec7125",
+      "bytes": 78836
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-11.txt",
+      "sha256": "a8efe445805e07402137ca1bca1fe868f24d4443922e351c3476a1d966985f0a",
+      "bytes": 7968
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-12.jpg",
+      "sha256": "c7babeff6ab3412690bd0224f09b6885a1f786cac74f712e0d349b6779d0829d",
+      "bytes": 97330
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-12.txt",
+      "sha256": "7a02216afd85274a11533f056c030159541bd2016f75f108c88680dbcff18793",
+      "bytes": 9110
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-13.jpg",
+      "sha256": "8afd4f12c82e2941f90e95cb0e2d01077bc600577821d1f8959352dd548afe52",
+      "bytes": 97440
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-13.txt",
+      "sha256": "3fa13638377935e69d584192e8cc5e1a8d4acf84dcea5b917e1d8a1f8c6eb9bd",
+      "bytes": 9407
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-14.jpg",
+      "sha256": "767e5e72d303457488df448fbab1629a4db8b9cbcb8b109a8b15c716709c7549",
+      "bytes": 80994
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-14.txt",
+      "sha256": "f4fbf27df6289f235dd6ebc11ac614451b59ce9d09dbafd65e82bad85af2c74c",
+      "bytes": 13969
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-15.jpg",
+      "sha256": "395a3f88ee826d729075e72e9ede572c3251805080e080bfc36132b69e043282",
+      "bytes": 78291
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-15.txt",
+      "sha256": "4161fc8318ad5157a8fe736cda6942342ca2ca8e318b2bb7d5a1c71d780f3bcc",
+      "bytes": 7975
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-16.jpg",
+      "sha256": "b05478b9e604531799edefe443eafa7fabf01589f22ca41f45500529ea4d5fd7",
+      "bytes": 101179
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-16.txt",
+      "sha256": "100ea6fbfd2650ae9515f8f7b8e0acd865bade8565b6d6023e91aeaf071c816e",
+      "bytes": 10403
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-17.jpg",
+      "sha256": "48a0474dad5a0ca7e36db0db6804f420ba2a1c78aee3f2651d1408c5567fd75e",
+      "bytes": 86930
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-17.txt",
+      "sha256": "adef99e294d85d36d51c06915dd2c11ba1fc10d97413a3bed2355c3477ce5626",
+      "bytes": 8605
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-18.jpg",
+      "sha256": "6815b608158749b423bf14d667063c7a36dfd1be4f33b93489bc8a9b53c7d111",
+      "bytes": 86761
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-18.txt",
+      "sha256": "6f843d86a81eb7dc13abec9ca2ff070afa75665cddfa8be3f74ebcd713c7579f",
+      "bytes": 8590
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-19.jpg",
+      "sha256": "931d7700ebd30ef9c61fc701a67544271571377c7c2122a7fe97c0020918b4ee",
+      "bytes": 81630
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-19.txt",
+      "sha256": "7cd02b1fc14281cea98aea87229abf047b44e3e261d110f7d579e7460454dad8",
+      "bytes": 8195
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-20.jpg",
+      "sha256": "896f08ec657695571b18b5afc6455e85596fdce49370c5e87e08ca1e8f6947b3",
+      "bytes": 84833
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-20.txt",
+      "sha256": "1b0598cbc2b8addc393ebfba887acaf09bb7b78ac33ad9c62fa6f39dc77819b8",
+      "bytes": 8522
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-21.jpg",
+      "sha256": "b4fc369dc5dccd0985fd02da64910f634b76e3a14b29b58f3cb74d68160d0be6",
+      "bytes": 89490
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-21.txt",
+      "sha256": "e57b4fec9bc5f08f6172838ef1787fa8b1eade799a4eac299cb5c545a40f6cd3",
+      "bytes": 8378
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-22.jpg",
+      "sha256": "a5484218b74d8834581ebccc7a6b90e313b71f24944fdeddc5b7cc36ce9b84ff",
+      "bytes": 96435
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-22.txt",
+      "sha256": "a8179c781e192a5f7f1fd3d374c6533c871e4474a01fb75ba2d02252d068d62b",
+      "bytes": 9632
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-23.jpg",
+      "sha256": "ed74b24f17568f8a1db9d62292c96ee02d85c81414b5ba03a8006d3b05ca836b",
+      "bytes": 99859
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-23.txt",
+      "sha256": "0b4b2d5a8a1d070941480a39a37636b256f5cb5ad1cbf53f7d49d49ad7952257",
+      "bytes": 12497
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-24.jpg",
+      "sha256": "f876b270cd1034b0982c3edfb152bc3defdf0be54ecb572090212f58fc81f769",
+      "bytes": 77205
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-24.txt",
+      "sha256": "a9c41fc00481372f53a57cadc5366c6a697b8e434414a1173bc4312ff7dfefb2",
+      "bytes": 7355
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-25.jpg",
+      "sha256": "f15d76bc0fd271d982487bc3a5eb514d095c9bebb1f8748627bedd4eb3fdaf28",
+      "bytes": 96926
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-25.txt",
+      "sha256": "3e0a053adadaa167d29bd854a8adf7537cfe2f0e96914e4c7fc2dc5b741b652b",
+      "bytes": 62826
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-26.jpg",
+      "sha256": "c1977469ea29cb45bb704d6e660817f40d0fdf092cca353ad7711cde1935f822",
+      "bytes": 80017
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-26.txt",
+      "sha256": "a7785c7c1907a26ff16ae612da57bd6d533aa1b45f2bd8b80297c69c3e990d00",
+      "bytes": 15038
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-27.jpg",
+      "sha256": "41c93fbadc0d8aa98dd7e170ccb82e9b5add947f4b1b931fa0f9ea0895655a94",
+      "bytes": 83715
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-27.txt",
+      "sha256": "bf94eb3e3c955573638438bc39bc3c368bd288766c269a6ccfd5c1e76776fad0",
+      "bytes": 11202
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-28.jpg",
+      "sha256": "4b904908856f0cb0cf0a2ddcd70e7671a14b2bf38d97b75127b3b6a49869d456",
+      "bytes": 96466
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-28.txt",
+      "sha256": "9cef549b8ea8105c36e835bc8aec3472b04f1cfea0d0aeb7d2e5f6dc35ef5ab7",
+      "bytes": 13155
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-29.jpg",
+      "sha256": "6a1f80fe23bf4f1456264822ed29dfb82538858ac2744846b23eaad7ebc24777",
+      "bytes": 91535
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-29.txt",
+      "sha256": "c8eed77ca6ac2327cbb28ad1d66ff86ef04aa31d14849dd67db65835f89d8a2b",
+      "bytes": 14971
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-30.jpg",
+      "sha256": "6bf5ed905846e76643559d5b3394045a506d81e5e662acfa71f02f79d2788ab3",
+      "bytes": 97214
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-30.txt",
+      "sha256": "402c8d87bb79e22d8cbfc863a50a9f73a28e781834849e88b4c7a8f472884eb1",
+      "bytes": 9508
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-31.jpg",
+      "sha256": "594afe991781f9954ba1053e6403b384443295766074a1c627f50aca7e468976",
+      "bytes": 67530
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-31.txt",
+      "sha256": "7b2f793437d24ff04e787971c8a5d79cfb6853a17a4c7364cb7ea9cf50ea27d5",
+      "bytes": 7840
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-32.jpg",
+      "sha256": "2abd21f8675279877c96515372d069149ffc419bf4171135f995026599fd873a",
+      "bytes": 76090
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-32.txt",
+      "sha256": "a3ba26250088ad02a9d0a77017a2dc912fe9edfe41744782ba95b921bb76b10a",
+      "bytes": 8266
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-33.jpg",
+      "sha256": "f1063270b2997c6f934418d8e56954b0f403c32f21751b48688e1df015db848b",
+      "bytes": 75957
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-33.txt",
+      "sha256": "76e78d44b6c0bc76f0b4790650a6332cc556735ead81ae3cbaff19ccd5c95392",
+      "bytes": 8093
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-34.jpg",
+      "sha256": "21aafce4928765bf5b94ac286ecc2165b7d0d80ac7fddf66892f367ca9ffe436",
+      "bytes": 97595
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-34.txt",
+      "sha256": "89c1a36b2004027469084a208f32d1147440aa3d57f154a72ec2243d4f2d89f0",
+      "bytes": 8471
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-35.jpg",
+      "sha256": "b7328fe3856fdf1037656b6dba3e5dc37c11961c8a1ede9410e3636161a81a47",
+      "bytes": 82595
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-35.txt",
+      "sha256": "a8b5e3d842c358ea83ac667056026e1c4b276a18faf3740f13ed60cf57b4e388",
+      "bytes": 10211
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-36.jpg",
+      "sha256": "05131560ef277a966626c45e0fc48a094aa675a12e872ebe8554db81530e3ec8",
+      "bytes": 74816
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-36.txt",
+      "sha256": "e6138c69507b3f2abeb01922d0b115aabbd379e024875b0d2f42e9eae877067f",
+      "bytes": 13035
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-37.jpg",
+      "sha256": "3e985459ec6d4392fb5582d4f6814625d332f59ef58ce524f2bb6b26e9ea2fba",
+      "bytes": 87296
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-37.txt",
+      "sha256": "142d73fd6efb13bd617ea4276d71d1c1f3c3c14f73e416bf7475a8afff49c696",
+      "bytes": 11934
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-38.jpg",
+      "sha256": "e0c375e50a14c447ac831902b76c817aefcfcd48ae5d18067f6a2c30cb5ae1cd",
+      "bytes": 89852
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-38.txt",
+      "sha256": "7e3126174d52caa42e0c50271451dbe9f91c9cf149591bccdda4dcbae044bc28",
+      "bytes": 9529
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-39.jpg",
+      "sha256": "5d01025e61e5de1ba7c5a66d42e5aaebaaceb8bcb3b7b0cc10b7db13a5996b3e",
+      "bytes": 73849
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-39.txt",
+      "sha256": "82e866a7309451b42a47f401b3f37ca08318d784b8311feac6b05badc6d98f79",
+      "bytes": 14190
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-40.jpg",
+      "sha256": "ba2f6af7ea7bba489ba5c95df3e8eaaf5a5638d2e1e6c72e8a4f2abe4b92109d",
+      "bytes": 77864
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-40.txt",
+      "sha256": "d5dc1538f7a6a68e0e1f61620ff65a210eaea77b7857ad3495f8ccf1f02e1007",
+      "bytes": 8405
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-41.jpg",
+      "sha256": "89c5700bdd0fbc10e39ec2f0487d3a36b294f7b93e1b1d130783cf7918bf2bff",
+      "bytes": 80222
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-41.txt",
+      "sha256": "c2912c6e23b23ffaf540ebb0c33834eb69880bbb544a735c2a2e7ff6a60fc619",
+      "bytes": 12242
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-42.jpg",
+      "sha256": "8b162988c7c077ba6e4f238a5f53399ff019707b98b39496f7f6bfacd63400ff",
+      "bytes": 84707
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-42.txt",
+      "sha256": "f4c6dd56218cb27f3107953bb94dff04c4519c16b1b70f409b848ab783bca76a",
+      "bytes": 13770
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-43.jpg",
+      "sha256": "aef86f0138bcb01e9af1dbbfadd28fccbff71b1cab3d8af551c08d599a1bd3c8",
+      "bytes": 94096
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-43.txt",
+      "sha256": "0cefa02e48db155e2156f1a0e8a59b620489c5796cac8a41d578fbf565f18031",
+      "bytes": 15344
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-44.jpg",
+      "sha256": "ca211801397981052bb4bce14b09c408e168136ea2a1f8ac5ae3c260955f26c5",
+      "bytes": 102008
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-44.txt",
+      "sha256": "8c1955c6a67d20bda0f79d58a17735c7b5a8217befcdd13e2a19aa90b0f8dde7",
+      "bytes": 14283
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-45.jpg",
+      "sha256": "1fb3195fa9af172921b3d57f5603fcad43c0de12f8f272177a966e6d339e6140",
+      "bytes": 74929
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-45.txt",
+      "sha256": "23187eafe2c67031a89cfeb63fa8b355f1635e526202568a04c24db9360fecd1",
+      "bytes": 8107
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-46.jpg",
+      "sha256": "384fff7ee0f7d898b2e8ed6cd3385a02df0425d81dbef2a2ebffa7e806d74b4e",
+      "bytes": 86897
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-46.txt",
+      "sha256": "30e012dd1d32d6610c84de1581dd7d386326a61e4c4fb95ac6fdff35a788e1ba",
+      "bytes": 16973
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-47.jpg",
+      "sha256": "2875e6d326ffafbb5bf19019ddc0a8956bc85f1b2a542b166d82715c6b730906",
+      "bytes": 68719
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-47.txt",
+      "sha256": "141d82c5e3785caea7050c3f3e38b33f6298ea3a631f80601f8fcae8a8c7c350",
+      "bytes": 5552
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-48.jpg",
+      "sha256": "1d56d8557f10a6ffaf57617feb3cfef8d0437885696f7361b5998dbe90c05665",
+      "bytes": 91611
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-48.txt",
+      "sha256": "f8d387be83dfcd9ad0a7dd99e62323c0e613217b15fb58e412f2b3e049b6db6c",
+      "bytes": 11576
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-49.jpg",
+      "sha256": "e6c67c36f1335d972afa659f523f257d73452e931d413e1ffbb7d32ddcb85231",
+      "bytes": 88947
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-49.txt",
+      "sha256": "37d08e73a03bde5756d6e75370bc911d6db5204c08079bf9167c632e3602fd10",
+      "bytes": 8833
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-50.jpg",
+      "sha256": "101d2abd0f7e23370981ecab14fe5192b1d62c6e1ef346c1ae14f1ced6cc0632",
+      "bytes": 62488
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-50.txt",
+      "sha256": "a02800fd37008e35b2bb1a145f1fbe43dcc9c05bfe5f6c90b8ab6f52e5b5ec90",
+      "bytes": 6915
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-51.jpg",
+      "sha256": "8eeb57ed4c4c4e017d52713385fa8868d933d3fb887204773924b5d81f03dd5a",
+      "bytes": 95395
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-51.txt",
+      "sha256": "5fedef0ee79bddec541fa0cc9c3b58ee306adf7d4502850fdd080a60810180e7",
+      "bytes": 8460
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-platform-forms.jpg",
+      "sha256": "6c2697d70ab6ed57e48840449dae0a433fe7150f98f7e38b9672a6d3a162da46",
+      "bytes": 117724
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-12-20261026/verified-platform-forms.txt",
+      "sha256": "b16a15ac99bc7fde62d3d2bab8ab4643e94e9c09f5231b93a08e9ff0035e85b3",
+      "bytes": 6451
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/53-affairs-classes.jpg",
+      "sha256": "b9116abc8042070c7d1702f634c34b8a6bbc3d1dbcd8e4961df3e16340f5a4c9",
+      "bytes": 84678
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/53-affairs-classes.txt",
+      "sha256": "95003f73f4a8ec410daa59ca858ec72001df047326d85c7c8c03994624dc96c4",
+      "bytes": 6991
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/54-affairs-counselor.jpg",
+      "sha256": "c6f998647ad76591b2259bb65c09be96e4f447492ee25bb5b80a047bfc1421eb",
+      "bytes": 79253
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/54-affairs-counselor.txt",
+      "sha256": "21b5c451811d50ea62b6ca1efbc6dd6739908b1e4260a21523f88068aa1b0443",
+      "bytes": 6193
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/55-student-master.jpg",
+      "sha256": "f9913778613263c96c1506ad48f03d5ad7eb5885bd3ff24cb67cce72d990f6e8",
+      "bytes": 86020
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/55-student-master.txt",
+      "sha256": "58f8b7d07462e716a71c852f70c37a90855ea6fdae7d52c9a72e64610d2ccab6",
+      "bytes": 9475
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/56-student-import-routing.jpg",
+      "sha256": "63f60ad59087d753a1bded4509a3425d0eef1c2d133aa49ef13661e3402ef50b",
+      "bytes": 92599
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/56-student-import-routing.txt",
+      "sha256": "cf90cc8211dd3317bb884efe12be636844e10a367f63ee2a0d0e58af6cb768a6",
+      "bytes": 7390
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/57-academic-roster-import.jpg",
+      "sha256": "b6b4c9f1c52128c7522f44db6791e2db6cf3f8fdef2a56fa8c243fa7bf612621",
+      "bytes": 84611
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/57-academic-roster-import.txt",
+      "sha256": "f4fd47cd013e3a07d7c53064bb35995b71454f10e32d9eef80d21945deb309f2",
+      "bytes": 6664
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/58-academic-terms.jpg",
+      "sha256": "d404ce46f5fade972fe6747b1a279c1838e393b908d799f87e7a7079c03e5339",
+      "bytes": 88301
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/58-academic-terms.txt",
+      "sha256": "a1cae6e9b50161c7fec387be2110415364136f7f05726505450fa2a37eae58d8",
+      "bytes": 7076
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/59-academic-current-term.jpg",
+      "sha256": "682ae7bf9f3a611ae49273aac74f95493d1d28694c9d4218a11b0e65811a8e31",
+      "bytes": 66314
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/59-academic-current-term.txt",
+      "sha256": "edb38472dcf5d3b921a93621ff0eac52b4e56087aeae13e3dcb1937fc3e266fa",
+      "bytes": 5623
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/60-academic-teaching-class.jpg",
+      "sha256": "21aacac90c5eba7bd842dbd778faac947d583bb045a273f0ef979dfdc5eb45cb",
+      "bytes": 86729
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/60-academic-teaching-class.txt",
+      "sha256": "39953bfce3bdb71f74e039196dc28488f5dc05d152418087435a36dfbfe910e0",
+      "bytes": 6871
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/61-graduation-overview.jpg",
+      "sha256": "e831927876c1cdddf5c8cc93cb5c8260628384b0affdc9f8d50b836ff317f968",
+      "bytes": 87684
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/61-graduation-overview.txt",
+      "sha256": "322fbe43261d884ddb23d2fdbbfb371a4b5f6f9fce038e0cbd8cc0924092be59",
+      "bytes": 7261
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/62-graduation-batches.jpg",
+      "sha256": "c36dc07c665838234d29a82fede0ececb4a90e0abb5b5698e8077bdbbff312ab",
+      "bytes": 64355
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/62-graduation-batches.txt",
+      "sha256": "056c37525e17783dee516ac83fef8ccd494dfdc9d1d123a83b87b6553571d285",
+      "bytes": 6719
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/63-graduation-mentors.jpg",
+      "sha256": "704f64f2ec84dfc17378edc3f387fce8a71891763e443c354425a9d6f62851f8",
+      "bytes": 63463
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/63-graduation-mentors.txt",
+      "sha256": "03101455e37b7f14a32a0a111ed5c3d68d7e5b715393e827afc87e4ea39673ba",
+      "bytes": 6709
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/64-graduation-assignment.jpg",
+      "sha256": "c5c8303ef938cfe5eb70b9c9df490063172e0c18eda69aadee26cbce669bb6f5",
+      "bytes": 62978
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/64-graduation-assignment.txt",
+      "sha256": "8bfb7d564b07a3734f7b24de0e8610b76034b19be278e42f4781995d2fd5f816",
+      "bytes": 5942
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/65-internship-overview.jpg",
+      "sha256": "92008ce3b69bd8a26067c7f8573462894cfc72a3ea54b1c4b4b5776dd9b618ce",
+      "bytes": 82032
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/65-internship-overview.txt",
+      "sha256": "a6da92b419e0ddb6a23aa0242f9c3e419b279f9dc8bfd0f19e933f7e2894c754",
+      "bytes": 7000
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/66-internship-batches.jpg",
+      "sha256": "731403a46e444f4c2b5fe672d62d6cf910de2364ffec63d10ac63546e02827f3",
+      "bytes": 82665
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/66-internship-batches.txt",
+      "sha256": "5a451dd1fa2a7e009596d185f2da9fcfc12841a401714b7befac6893aa25f420",
+      "bytes": 7680
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/67-internship-mentor.jpg",
+      "sha256": "5ef9af1fcc13bafa9f8588309cb57b286a4e7acf5ee3b0bd28c9cf3b013c0f92",
+      "bytes": 93720
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/67-internship-mentor.txt",
+      "sha256": "0ea7e21f9328be067e3cc4fb469a8a0323db68c2def27fd667f5609f492fa7ae",
+      "bytes": 8780
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/68-internship-enterprises.jpg",
+      "sha256": "a326c20968a52eea754c3da067a07ab95cdf3c32c32d67d32aba58ce5a8997e9",
+      "bytes": 74234
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/68-internship-enterprises.txt",
+      "sha256": "d2a25309368a6cd5d64f24726e9142bca7c94e186affc9ccb1f4a68de09f8704",
+      "bytes": 6072
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/cross-domain-navigation.json",
+      "sha256": "467cb6e4898f32cc382fd80013ea86e23bfc3a2f631e5c2128b55d7e2f3f7b18",
+      "bytes": 9376
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/historical-assignment-time.jpg",
+      "sha256": "c1d10f6c1a1392bf61a10212fdfda373199d4f56d33e15d6769e7cbdfc968b6a",
+      "bytes": 93376
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/historical-assignment-time.txt",
+      "sha256": "de39048b3270362fac98c622ff6fa66128b508adf84ebaab94b7853f00807fc3",
+      "bytes": 15534
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/persistence-readback.json",
+      "sha256": "4b8a1d8cac24a0045aa772a5fad9c0b01fef0bf7de95c84a640495b168f4c48f",
+      "bytes": 1130
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/same-student-graduation.jpg",
+      "sha256": "ee3edbdc5629bbab5a1246a26cb25ef81ce901bd952e091324c5c7521d9b41e3",
+      "bytes": 86898
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/same-student-graduation.txt",
+      "sha256": "0977c99567fc1225646ce2ca8058b45ef2d4637596545a68b5376dc7a4ffcc24",
+      "bytes": 6766
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/same-student-internship.jpg",
+      "sha256": "ac9e8ba3ff3f8cc35ffa7a20f48624a4aad0472582fb759d9f874f8c3e69d228",
+      "bytes": 87554
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/same-student-internship.txt",
+      "sha256": "26e4bfcf2f74ea4ee1c2d42d030fe8abff773f231e644e361a2d475b20a52ea6",
+      "bytes": 6113
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-a-graduation.txt",
+      "sha256": "5ac2bbcd1ccf578b8642e0a6f18b26b8d75c6782f300b076dae6b8f2dfd8e3a2",
+      "bytes": 7104
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-a-home.jpg",
+      "sha256": "044e0675f5fff0bb4e816ea5ffd31b42226c0e431978466fa6e5e7a734c50c3e",
+      "bytes": 90203
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-a-home.txt",
+      "sha256": "22fe519f9f1b5d877bd20a10f7b8b2f64473a93b00d9f772e89ae3562c2530fb",
+      "bytes": 5704
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-a-internship-fixed.jpg",
+      "sha256": "3ce92ffda970d0d637b0d5cc51237846da6336cb89020bbeb1fc440534487be2",
+      "bytes": 109668
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-a-internship-fixed.txt",
+      "sha256": "faad63b22f1d994ffc8d9b03ea3bc2db621d0faf684d99732e6173d04a457957",
+      "bytes": 4271
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-a-internship.jpg",
+      "sha256": "50ec68b930d1af3752f5dec244541bfd7e151e7b8e6b927fa1fd4cb49c22a939",
+      "bytes": 107991
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-a-internship.txt",
+      "sha256": "c89632c3f8d385a152d40fd5883626723464973c880fedd4cd2fd0b123802923",
+      "bytes": 4244
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-account-fixture.json",
+      "sha256": "8f112c5ad2d65e824c5ab670127086793682b3c9b1b76c1773c7249e22b3132a",
+      "bytes": 493
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-final-result.jpg",
+      "sha256": "8c9bd14401da6107389f1cb0e58a4afeea4dfcebb408315743322d33d23ceb63",
+      "bytes": 86377
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-leave-readback.jpg",
+      "sha256": "0fa70d478d6a3f03684a36de43c97e1c356b734e7446d51c1bb046ba2fccd65f",
+      "bytes": 105786
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-leave-readback.txt",
+      "sha256": "5a3c8fbcf90a2967134958c78b1e648a82310cf27c8e97ce085f3decd0bac0f5",
+      "bytes": 4025
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-leave-readonly-375.jpg",
+      "sha256": "aa30af1343c14824f218ab0a2732f42481716e6bd9dd449f08734a53555101ba",
+      "bytes": 49279
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-leave-readonly.txt",
+      "sha256": "37993a59bb0333d2f8b1b2cf5f5bcc9bfbee0e87fbf26fd15001c5e657436c87",
+      "bytes": 3042
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-leave-refresh.txt",
+      "sha256": "178c441029d249e4f225fb44242995a9e7d885a87c30b0e656bed780beedcfb7",
+      "bytes": 4016
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/student-login-confirmation.jpg",
+      "sha256": "8c5ee7d58964674a910ae53721d0271766ed0ab339bcd1dbcdb6e359ee101396",
+      "bytes": 89906
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/teacher-grade-object.jpg",
+      "sha256": "81e7886077e3533e464d6cba15910633478af5b82685f3c6972b7fd008170e32",
+      "bytes": 76876
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/teacher-grade-object.txt",
+      "sha256": "be7f30c0910232efb21463069a3d948ae65d07a9155e2598542b5edc2337cfff",
+      "bytes": 8489
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/teacher-own-todo.txt",
+      "sha256": "b1bbdd880a1990867ac4ab5e14f9e6793091276a25b85157a67897364206667d",
+      "bytes": 3151
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/teacher-system-denied.jpg",
+      "sha256": "8a78226c88b0d00903be6956f82e6b4b528fb959d5c1dc7c39110376547801e5",
+      "bytes": 40575
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/teacher-system-denied.txt",
+      "sha256": "f6f761847831662957bcd0f107a61528163b4e550bc8265fd49c1ca2f1631326",
+      "bytes": 1603
+    },
+    {
+      "path": "docs/06-开发施工与质量验收/产品化改造-20261023/附件/系统管理整改-D6-13-20261027/teacher-workbench.txt",
+      "sha256": "b08f55e1eb4c10d33b8167e5c28d19039055bfe171f02d42fc8eb6f18bf4f522",
+      "bytes": 2812
+    }
+  ],
+  "excluded": "私有配置、凭据、日志中的敏感原文、日常业务数据"
+}

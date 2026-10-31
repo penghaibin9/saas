@@ -1,0 +1,55 @@
+{
+  "note": "真实原业务审批、来源拒绝、失效提醒修复、消息重排及回读通过；未外发、未部署，不等于最终全量验收",
+  "card": "D6-10",
+  "status": "已完成本地验收",
+  "files": [
+    {
+      "sha256": "cc9f15be69fca1e25fe7a3c5bb95900d09115d0f86922aa6b12caee44ea49323",
+      "path": "backend/app/services/workflow_security_policy_service.py"
+    },
+    {
+      "sha256": "9536c9e7cf580b3852c51a56ad581c31092656e39184585a9cf77960f203e120",
+      "path": "backend/app/services/todo_task_service.py"
+    },
+    {
+      "sha256": "a543de8fcefb226d88a4672ed8b77a101f816e11d498012a030af692b21d5e18",
+      "path": "backend/app/services/message_event_outbox_service.py"
+    },
+    {
+      "sha256": "df949b4adbf36e9ca9bcf96e96057de58044f9ae3cf590141da78bb0983e875e",
+      "path": "backend/app/modules/system_admin/routers/system_bundle.py"
+    },
+    {
+      "sha256": "6a56e8d6ae795967833a7dc493c8145060c85b58c81435970f44f8e1b91cfe9f",
+      "path": "backend/tests/test_workflow_security_policy.py"
+    },
+    {
+      "sha256": "ed413ff439358d087f45e7a0ea7f99284626fa32f8143ea7d6910bdf6661338b",
+      "path": "backend/tests/test_communication_governance.py"
+    },
+    {
+      "sha256": "d2ccaf224924156b391953a57eee7b30e07bf1bc87af6faf752308311a469e7a",
+      "path": "backend/tests/test_system_todo_source_integrity.py"
+    },
+    {
+      "sha256": "8505f1b7f91bb908f2f5264ce37d749267df6b768506cdf73968af3c178ec1bd",
+      "path": "backend/tests/test_system_message_retry_concurrency.py"
+    },
+    {
+      "sha256": "805968e469e6185521011b6fb15b81722f87918061c345edbb470bb7212d705b",
+      "path": "frontend/src/modules/system/views/SystemWorkflowGovernanceView.vue"
+    },
+    {
+      "sha256": "c4f156c080738fdfdbf97c66a6f694197ee7d59878abd4d00c11f070440af0ed",
+      "path": "frontend/src/modules/system/views/SystemCommunicationGovernanceView.vue"
+    },
+    {
+      "sha256": "a012002a8cc0fc60d42dec1362d7fb04d110f1a7f1c209e4d48471297b3e5038",
+      "path": "frontend/src/modules/system/api/system.api.js"
+    },
+    {
+      "sha256": "2b8b8689dbe2fd2076b829d62bc3f1ce9863351f3ad063605e1c4c4b12196d17",
+      "path": "frontend/tests/system-workflow-recovery.behavior.test.mjs"
+    }
+  ]
+}

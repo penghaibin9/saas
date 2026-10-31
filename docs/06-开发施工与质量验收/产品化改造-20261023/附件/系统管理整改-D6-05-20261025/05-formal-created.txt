@@ -1,0 +1,309 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 角色与权限
+  - navigation "三级菜单":
+    - button "身份权限总览":
+      - generic: 身份权限总览
+    - button "预设角色模板":
+      - generic: 预设角色模板
+    - button "学校角色与成员":
+      - generic: 学校角色与成员
+    - button "角色成员与业务身份":
+      - generic: 角色成员与业务身份
+    - button "菜单与操作权限":
+      - generic: 菜单与操作权限
+    - button "数据范围规则":
+      - generic: 数据范围规则
+    - button "临时授权与工作移交":
+      - generic: 临时授权与工作移交
+    - button "安全变更":
+      - generic: 安全变更
+    - button "访问治理":
+      - generic: 访问治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份" [selected]:
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - strong: 正式角色授权闭环
+  - paragraph: 在既有角色治理页创建带来源、到期时间和审计原因的正式授权；高危边界由系统强制。
+  - button "刷新"
+  - region "选择本校人员":
+    - text: 姓名或工号
+    - textbox "姓名或工号": D603-T001
+    - button "查询人员"
+    - button "选择 整改验收教师甲 · D603-T001 · 未设置"
+    - text: 共 1 人 · 第 1 页
+    - button "上一页人员" [disabled]
+    - button "下一页人员" [disabled]
+  - generic: 角色
+  - combobox "角色":
+    - option "请选择角色" [selected]
+    - option "学校管理员"
+    - option "系统管理员"
+    - option "任课教师"
+    - option "整改验收教师"
+    - option "安全审计员"
+    - option "校领导"
+    - option "学院管理员"
+    - option "教务处管理员"
+    - option "学工处管理员"
+    - option "学工老师"
+    - option "辅导员"
+    - option "心理老师"
+    - option "资助老师"
+    - option "宿管老师"
+    - option "团委老师"
+    - option "组织人事"
+    - option "毕设管理员"
+    - option "学院毕设管理员"
+    - option "专业毕设负责人"
+    - option "毕设指导教师"
+    - option "毕设评阅教师"
+    - option "答辩秘书"
+    - option "答辩专家"
+    - option "毕设成绩管理员"
+    - option "实习指导教师"
+    - option "就业老师"
+    - option "普通教职工"
+    - option "学生"
+  - generic: 生效方式
+  - textbox "生效方式" [disabled]: 立即生效（未来排期暂不开放）
+  - generic: 到期时间
+  - textbox "到期时间"
+  - generic: 授权原因
+  - textbox "授权原因":
+    - /placeholder: 至少 5 个字；写入授权来源与审计
+  - button "新增正式角色授权"
+  - paragraph: 系统会拒绝停用的角色、学生与教职工角色串用、重复覆盖授权和未来时间提前生效；新增记录继续在下方台账复核、转交、回收。
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:03
+  - heading "角色成员与业务身份" [level=1]
+  - button "立即回收到期授权"
+  - button "刷新"
+  - tablist:
+    - button "固定角色成员"
+    - button "自动业务身份"
+  - generic: 首屏结论
+  - button "1 即将到期":
+    - generic: "1"
+    - generic: 即将到期
+  - button "0 过期未回收":
+    - generic: "0"
+    - generic: 过期未回收
+  - button "3 跨学期未复核":
+    - generic: "3"
+    - generic: 跨学期未复核
+  - button "3 来源不明":
+    - generic: "3"
+    - generic: 来源不明
+  - button "0 多人持有高权角色":
+    - generic: "0"
+    - generic: 多人持有高权角色
+  - table:
+    - rowgroup:
+      - row "成员与角色 有效期 来源与原因 状态 操作":
+        - columnheader "成员与角色"
+        - columnheader "有效期"
+        - columnheader "来源与原因"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "整改验收教师甲 D603-T001 · 整改验收教师 生效 2026-10-25 23:03:45 到期 2026-10-25 23:30:00 （剩 0 天） 人工分配 D605独立本人范围角色流程验收 生效中 未复核 复核 转交 回收":
+        - cell "整改验收教师甲 D603-T001 · 整改验收教师":
+          - generic: 整改验收教师甲
+          - generic: D603-T001 · 整改验收教师
+        - cell "生效 2026-10-25 23:03:45 到期 2026-10-25 23:30:00 （剩 0 天）":
+          - generic: 生效 2026-10-25 23:03:45
+          - generic: 到期 2026-10-25 23:30:00 （剩 0 天）
+        - cell "人工分配 D605独立本人范围角色流程验收":
+          - generic: 人工分配
+          - generic: D605独立本人范围角色流程验收
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "复核 转交 回收":
+          - button "复核"
+          - button "转交"
+          - button "回收"
+      - row "整改验收教师甲 D603-T001 · 任课教师 生效 2026-10-25 12:58:18 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "整改验收教师甲 D603-T001 · 任课教师":
+          - generic: 整改验收教师甲
+          - generic: D603-T001 · 任课教师
+        - cell "生效 2026-10-25 12:58:18 到期 长期有效":
+          - generic: 生效 2026-10-25 12:58:18
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "整改验收经办人 d6_auditor · 系统管理员 生效 2026-10-25 08:50:09 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "整改验收经办人 d6_auditor · 系统管理员":
+          - generic: 整改验收经办人
+          - generic: d6_auditor · 系统管理员
+        - cell "生效 2026-10-25 08:50:09 到期 长期有效":
+          - generic: 生效 2026-10-25 08:50:09
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "整改验收经办人 d6_auditor · 学校管理员 生效 2026-10-25 08:50:09 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "整改验收经办人 d6_auditor · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_auditor · 学校管理员
+        - cell "生效 2026-10-25 08:50:09 到期 长期有效":
+          - generic: 生效 2026-10-25 08:50:09
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+  - navigation "角色授权分页":
+    - generic: 共 4 条 · 每页 50 条 · 第 1 / 1 页
+    - button "上一页" [disabled]
+    - button "下一页" [disabled]
+    - text: 跳至
+    - spinbutton "授权清单页码": "1"
+    - text: 页
+    - button "跳转"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,192 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 11° 雨":
+    - generic: 北京 11° 雨
+  - button "10/25周日 20:46":
+    - generic: 10/25周日 20:46
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 03:52:40":
+  - generic: 本次工作 03:52:40
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 身份与账号
+  - navigation "三级菜单":
+    - button "教职工账号":
+      - generic: 教职工账号
+    - button "学生账号":
+      - generic: 学生账号
+    - button "教职工导入":
+      - generic: 教职工导入
+    - button "学生导入与账号开通":
+      - generic: 学生导入与账号开通
+    - button "数据交换任务中心":
+      - generic: 数据交换任务中心
+    - button "账号异常排查":
+      - generic: 账号异常排查
+    - button "登录与安全策略":
+      - generic: 登录与安全策略
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入" [selected]:
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 20:42 · 教职工导入
+  - heading "教职工导入" [level=1]
+  - button "数据交换任务"
+  - button "下载标准 XLSX 模板"
+  - list "身份导入步骤":
+    - generic: "1"
+    - generic: 准备文件
+    - generic: "2"
+    - generic: 安全扫描
+    - generic: "3"
+    - generic: 预检查
+    - generic: "4"
+    - generic: 确认导入
+    - generic: "5"
+    - generic: 结果回执
+  - heading "当前导入任务" [level=2]
+  - paragraph: 本页只处理当前身份类型的任务；任务状态以系统为准。
+  - generic: 教职工身份
+  - status: 名单仍在后台处理；可稍后重新读取，不需要重新上传。
+  - generic: ▤
+  - heading "D603-教师虚构名单.xlsx" [level=3]
+  - paragraph: 任务编号 1 · 版本 0
+  - generic: 安全扫描中
+  - term: 文件行数
+  - definition: 未取得
+  - term: 有效行
+  - definition: 未取得
+  - term: 需修正行
+  - definition: 未取得
+  - status:
+    - text: 文件已登记，尚未形成最终预检结果
+    - paragraph: 此阶段不会把缺失计数当作 0。离开页面仅停止本地轮询，不取消后台任务。
+  - button "重新读取状态"
+  - button "开始另一批"
+  - button "核对并继续" [disabled]
+  - complementary:
+    - generic: 导入前确认
+    - heading "先把问题留在预检阶段" [level=2]
+    - generic: "1"
+    - heading "使用正确模板" [level=3]
+    - paragraph: 工号、姓名、部门、预设角色与数据范围按教职工模板填写，多个角色的分隔规则以模板为准。
+    - generic: "2"
+    - heading "核对角色与岗位范围" [level=3]
+    - paragraph: 角色来源与学院、班级范围分别校验。不能凭页面成功提示推断所有业务关系已配置。
+    - generic: "3"
+    - heading "凭据单独受控下载" [level=3]
+    - paragraph: 原文件、错误与初始凭据回执保留在任务中心。任务可见不等于有权下载凭据。
+    - text: 任务可以继续办理
+    - paragraph: 登记成功后本页链接会保留任务编号。刷新或重新打开链接，只读取该任务，不自动重新上传或确认。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

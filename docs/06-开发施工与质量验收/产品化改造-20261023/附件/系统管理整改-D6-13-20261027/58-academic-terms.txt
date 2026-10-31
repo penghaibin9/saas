@@ -1,0 +1,175 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:52":
+    - generic: 10/27周二 09:52
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:48:57":
+  - generic: 本次工作 00:48:57
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "教务大屏":
+      - generic: 教务
+    - button "教务总览":
+      - generic: 教务
+    - button "教务基础":
+      - generic: 教务
+    - button "学籍管理":
+      - generic: 学籍
+    - button "培养与课程":
+      - generic: 培养
+    - button "开课管理":
+      - generic: 开课
+    - button "排课与课表":
+      - generic: 排课
+    - button "选课管理":
+      - generic: 选课
+    - button "日常教学":
+      - generic: 日常
+    - button "考务管理":
+      - generic: 考务
+    - button "成绩管理":
+      - generic: 成绩
+    - button "毕业管理":
+      - generic: 毕业
+    - button "教材管理":
+      - generic: 教材
+    - button "教学资源":
+      - generic: 教学
+    - button "教学质量":
+      - generic: 教学
+    - button "教务统计":
+      - generic: 教务
+    - button "教务归档":
+      - generic: 教务
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "学期管理":
+      - generic: 学期
+    - button "校历管理":
+      - generic: 校历
+    - button "作息时间":
+      - generic: 作息
+    - button "学院管理":
+      - generic: 学院
+    - button "专业管理":
+      - generic: 专业
+    - button "年级管理":
+      - generic: 年级
+    - button "行政班管理":
+      - generic: 行政
+    - button "教学班管理":
+      - generic: 教学
+    - button "组织核对":
+      - generic: 组织
+    - button "组织统计":
+      - generic: 组织
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学期管理" [selected]:
+    - generic: 学期管理
+  - button "关闭学期管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:52
+  - heading "学期管理" [level=1]
+  - button "新建学期"
+  - region "正式学期定义台账":
+    - heading "正式学期定义 · 台账" [level=2]
+    - generic: 共 1 个学期
+    - generic: 状态
+    - combobox "状态":
+      - option "全部" [selected]
+      - option "全部"
+      - option "草稿"
+      - option "已发布"
+      - option "已冻结"
+      - option "已归档"
+    - button "查询"
+    - button "重置"
+    - table:
+      - rowgroup:
+        - row "学年学期 起止日期 教学周数 定义状态 当前权威 办理入口":
+          - columnheader "学年学期"
+          - columnheader "起止日期"
+          - columnheader "教学周数"
+          - columnheader "定义状态"
+          - columnheader "当前权威"
+          - columnheader "办理入口"
+      - rowgroup:
+        - row "2026-2027 第 1 学期 D606验收学期 2026-09-01 — 2027-01-31 20 周 草稿 权威待核对 — 打开 —":
+          - cell "2026-2027 第 1 学期 D606验收学期":
+            - button "2026-2027 第 1 学期"
+            - generic: D606验收学期
+          - cell "2026-09-01 — 2027-01-31"
+          - cell "20 周"
+          - cell "草稿":
+            - generic: 草稿
+          - cell "权威待核对 —":
+            - generic: 权威待核对
+            - text: —
+          - cell "打开 —":
+            - button "打开"
+            - text: —
+    - generic: 共 1 条
+    - button "上一页" [disabled]: ‹
+    - button "1"
+    - button "下一页" [disabled]: ›
+  - region "关联办理":
+    - generic: 关联办理
+    - button "校历管理"
+    - button "作息时间"
+    - button "当前学期"
+    - button "方案列表"
+    - generic: 下一责任：校历与节次管理员；当前学期激活按学校治理权限办理。
+  - paragraph: 历史学期列表始终可读。点击学期名称可查看基本信息、关联业务和状态记录。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

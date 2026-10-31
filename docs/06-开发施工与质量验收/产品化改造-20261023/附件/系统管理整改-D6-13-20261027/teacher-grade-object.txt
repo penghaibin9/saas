@@ -1,0 +1,218 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索功能与帮助":
+    - /placeholder: 搜索功能或帮助
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 10:08":
+    - generic: 10/27周二 10:08
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 任课教师":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 任课教师
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:01:44":
+  - generic: 本次工作 00:01:44
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "我的教学":
+      - generic: 我的
+    - button "我的课表":
+      - generic: 我的
+    - button "课表查询":
+      - generic: 课表
+    - button "成绩与考勤":
+      - generic: 成绩
+    - button "教材与资源":
+      - generic: 教材
+    - button "教学资料":
+      - generic: 教学
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "成绩录入与提交":
+      - generic: 成绩
+    - button "成绩更正申请":
+      - generic: 成绩
+    - button "课堂考勤":
+      - generic: 课堂
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "成绩录入与提交" [selected]:
+    - generic: 成绩录入与提交
+  - button "关闭成绩录入与提交":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:08
+  - heading "成绩录入" [level=1]
+  - button "返回成绩队列"
+  - button "我的录入任务"
+  - button "提交学院审核"
+  - region "当前成绩任务":
+    - text: 当前成绩任务
+    - heading "D611虚构待录成绩" [level=2]
+    - paragraph: 学期待核对
+    - generic: 录入中
+    - generic: 当前办理
+    - strong: 任课教师或授权成绩管理员
+    - generic: 下一步
+    - strong: 学院成绩审核岗
+  - list "成绩业务阶段":
+    - generic: ✓
+    - strong: 教学任务
+    - generic: 已完成
+    - generic: ✓
+    - strong: 建立成绩任务
+    - generic: 已完成
+    - generic: "3"
+    - strong: 录入提交
+    - generic: 当前环节
+    - generic: "4"
+    - strong: 学院审核
+    - generic: 等待前序完成
+    - generic: "5"
+    - strong: 教务发布
+    - generic: 等待前序完成
+  - region "成绩任务关键信息":
+    - article:
+      - generic: 学生名单
+      - strong: 待核对
+      - generic: 当前录入表 3 人，含待保存行
+    - article:
+      - generic: 成绩项
+      - strong: 2 项
+    - article:
+      - generic: 录入模式
+      - strong: 固定两段
+    - article:
+      - generic: 质量核验
+      - strong: 逐行核对
+      - generic: 提交前检查成绩是否完整
+  - alert:
+    - generic: ℹ
+    - generic: 逐行保存成绩后，还需提交学院审核。
+  - heading "录入设置" [level=3]
+  - button "返回"
+  - generic: 及格线 60
+  - generic: 未设置提交截止时间
+  - button "固定两段"
+  - button "动态成绩项"
+  - heading "教学名单" [level=3]
+  - generic: 仅可为教学班名单内的学生录入成绩。
+  - button "刷新教学名单"
+  - button "导入成绩（Excel）"
+  - heading "固定两段成绩录入表" [level=3]
+  - paragraph: 未录分数保持空白，缺考、缓考等请选异常标记。
+  - paragraph: 平时 30% · 期末 70%
+  - region "数据表格，可横向滚动":
+    - table:
+      - rowgroup:
+        - row "学生 学号 平时 30% 期末 70% 已存总评 异常标记 结果 / 保存":
+          - columnheader "学生"
+          - columnheader "学号"
+          - columnheader "平时 30%"
+          - columnheader "期末 70%"
+          - columnheader "已存总评"
+          - columnheader "异常标记"
+          - columnheader "结果 / 保存"
+      - rowgroup:
+        - row "四域虚构学生甲 D606-S001 — 正常 保存":
+          - cell "四域虚构学生甲":
+            - strong: 四域虚构学生甲
+          - cell "D606-S001"
+          - cell:
+            - spinbutton
+          - cell:
+            - spinbutton
+          - cell "—"
+          - cell "正常":
+            - combobox:
+              - option "正常" [selected]
+              - option "缺考"
+              - option "缓考"
+              - option "免修"
+              - option "作弊"
+            - generic: ▾
+          - cell "保存":
+            - button "保存"
+        - row "四域虚构学生乙 D606-S002 — 正常 保存":
+          - cell "四域虚构学生乙":
+            - strong: 四域虚构学生乙
+          - cell "D606-S002"
+          - cell:
+            - spinbutton
+          - cell:
+            - spinbutton
+          - cell "—"
+          - cell "正常":
+            - combobox:
+              - option "正常" [selected]
+              - option "缺考"
+              - option "缓考"
+              - option "免修"
+              - option "作弊"
+            - generic: ▾
+          - cell "保存":
+            - button "保存"
+        - row "第十卡虚构验收学生 D610-UI-ONLY — 正常 保存":
+          - cell "第十卡虚构验收学生":
+            - strong: 第十卡虚构验收学生
+          - cell "D610-UI-ONLY"
+          - cell:
+            - spinbutton
+          - cell:
+            - spinbutton
+          - cell "—"
+          - cell "正常":
+            - combobox:
+              - option "正常" [selected]
+              - option "缺考"
+              - option "缓考"
+              - option "免修"
+              - option "作弊"
+            - generic: ▾
+          - cell "保存":
+            - button "保存"
+  - heading "提交审核" [level=3]
+  - button "提交进入学院审核"
+  - generic: 提交后锁定学生名单，名单变更需退回重建。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,344 @@
+http://127.0.0.1:5173/admin/system/audit-evidence
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:41":
+    - generic: 10/25周日 14:41
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:21:09":
+  - generic: 本次工作 02:21:09
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - navigation "三级菜单":
+    - button "操作与权限审计":
+      - generic: 操作与权限审计
+    - button "登录与安全审计":
+      - generic: 登录与安全审计
+    - button "敏感与导入导出审计":
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性" [active]:
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+    - button "文件存储治理":
+      - generic: 文件存储治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "数据字典":
+    - generic: 数据字典
+  - button "关闭数据字典":
+  - tab "模块授权与业务开关":
+    - generic: 模块授权与业务开关
+  - button "关闭模块授权与业务开关":
+  - tab "主数据责任与数据质量":
+    - generic: 主数据责任与数据质量
+  - button "关闭主数据责任与数据质量":
+  - tab "合规与业务表单":
+    - generic: 合规与业务表单
+  - button "关闭合规与业务表单":
+  - tab "学年学期与业务日历":
+    - generic: 学年学期与业务日历
+  - button "关闭学年学期与业务日历":
+  - tab "流程安全与运行治理":
+    - generic: 流程安全与运行治理
+  - button "关闭流程安全与运行治理":
+  - tab "统一消息、待办与通知治理":
+    - generic: 统一消息、待办与通知治理
+  - button "关闭统一消息、待办与通知治理":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "登录与安全审计":
+    - generic: 登录与安全审计
+  - button "关闭登录与安全审计":
+  - tab "敏感与导入导出审计":
+    - generic: 敏感与导入导出审计
+  - button "关闭敏感与导入导出审计":
+  - tab "安全审计证据与完整性" [selected]:
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - heading "安全审计证据与完整性" [level=1]
+  - button "刷新"
+  - generic: 首屏结论
+  - generic: "4"
+  - generic: 登录风险
+  - generic: "1"
+  - generic: 高危变更
+  - generic: "0"
+  - generic: 敏感下载
+  - generic: "0"
+  - generic: 权限激活
+  - generic: "0"
+  - generic: 紧急访问
+  - generic: "1"
+  - generic: 审计缺口
+  - paragraph: 业务操作 · 缺失字段：必要信息
+  - generic: 证据查询
+  - generic: 高危动作自动做完整性判定
+  - textbox "按动作名称或编码查询"
+  - button "查询"
+  - button "登记证据包导出"
+  - table:
+    - rowgroup:
+      - row "动作 操作人 结果 时间":
+        - columnheader "动作"
+        - columnheader "操作人"
+        - columnheader "结果"
+        - columnheader "时间"
+    - rowgroup:
+      - row "业务操作 相关业务对象 · 请求编号 req-c9e7290859674c30 胡管理 结果待确认 2026-10-25T06:38:48Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-c9e7290859674c30":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-c9e7290859674c30
+        - cell "胡管理"
+        - cell "结果待确认":
+          - generic: 结果待确认
+        - cell "2026-10-25T06:38:48Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-ab629c59101c4425 — 成功 2026-10-25T06:34:37Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-ab629c59101c4425":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-ab629c59101c4425
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T06:34:37Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-191f0b4eb1fe4c92 — 成功 2026-10-25T06:30:50Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-191f0b4eb1fe4c92":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-191f0b4eb1fe4c92
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T06:30:50Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-54fe88d201594f57 — 成功 2026-10-25T04:24:41Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-54fe88d201594f57":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-54fe88d201594f57
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:24:41Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-5f0743d799b44535 — 成功 2026-10-25T04:24:14Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-5f0743d799b44535":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-5f0743d799b44535
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:24:14Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-e54f426d9dd94759 — 成功 2026-10-25T04:22:01Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-e54f426d9dd94759":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-e54f426d9dd94759
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:22:01Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-e1f5050e05624ffa 胡管理 成功 2026-10-25T04:20:14Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-e1f5050e05624ffa":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-e1f5050e05624ffa
+        - cell "胡管理"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:20:14Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-b2c553acb91848b9 — 成功 2026-10-25T04:19:56Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-b2c553acb91848b9":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-b2c553acb91848b9
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:19:56Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-7b8d612fc67b40d6 胡管理 成功 2026-10-25T04:19:53Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-7b8d612fc67b40d6":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-7b8d612fc67b40d6
+        - cell "胡管理"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:19:53Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-b6b56edfe3714df9 — 结果待确认 2026-10-25T04:14:37Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-b6b56edfe3714df9":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-b6b56edfe3714df9
+        - cell "—"
+        - cell "结果待确认":
+          - generic: 结果待确认
+        - cell "2026-10-25T04:14:37Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-8484c449b1be4853 胡管理 结果待确认 2026-10-25T04:13:07Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-8484c449b1be4853":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-8484c449b1be4853
+        - cell "胡管理"
+        - cell "结果待确认":
+          - generic: 结果待确认
+        - cell "2026-10-25T04:13:07Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-2e942684bc4e4211 — 成功 2026-10-25T04:06:15Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-2e942684bc4e4211":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-2e942684bc4e4211
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:06:15Z"
+      - row "业务操作 相关业务对象 · 请求编号 - Local operator - user authorized 成功 2026-10-25T04:05:30Z":
+        - cell "业务操作 相关业务对象 · 请求编号 -":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 -
+        - cell "Local operator - user authorized"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-25T04:05:30Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-5738dabb741e4f89 — 结果待确认 2026-10-25T04:04:03Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-5738dabb741e4f89":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-5738dabb741e4f89
+        - cell "—"
+        - cell "结果待确认":
+          - generic: 结果待确认
+        - cell "2026-10-25T04:04:03Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-aa30f676c24a40b6 — 结果待确认 2026-10-25T04:03:11Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-aa30f676c24a40b6":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-aa30f676c24a40b6
+        - cell "—"
+        - cell "结果待确认":
+          - generic: 结果待确认
+        - cell "2026-10-25T04:03:11Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-c1d73c22d7cd4f5a — 结果待确认 2026-10-25T04:02:28Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-c1d73c22d7cd4f5a":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-c1d73c22d7cd4f5a
+        - cell "—"
+        - cell "结果待确认":
+          - generic: 结果待确认
+        - cell "2026-10-25T04:02:28Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-955f3e651fdb4653 — 成功 2026-10-24T06:06:28Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-955f3e651fdb4653":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-955f3e651fdb4653
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-24T06:06:28Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-763652c049d143ac — 成功 2026-10-24T05:52:53Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-763652c049d143ac":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-763652c049d143ac
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-24T05:52:53Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-dabd0f46ef174599 — 成功 2026-10-24T05:52:42Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-dabd0f46ef174599":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-dabd0f46ef174599
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-24T05:52:42Z"
+      - row "业务操作 相关业务对象 · 请求编号 req-bf51ae68fe404045 — 成功 2026-10-24T05:52:38Z":
+        - cell "业务操作 相关业务对象 · 请求编号 req-bf51ae68fe404045":
+          - generic: 业务操作
+          - generic: 相关业务对象 · 请求编号 req-bf51ae68fe404045
+        - cell "—"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-24T05:52:38Z"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

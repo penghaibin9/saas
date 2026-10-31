@@ -1,0 +1,130 @@
+http://127.0.0.1:5196/admin/internship/students/2?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 岗位实习中心
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日工作
+    - button "实习中心大屏":
+      - generic: 实习中心大屏
+    - button "批次与学生":
+      - generic: 批次与学生
+    - button "企业与岗位":
+      - generic: 企业与岗位
+    - button "申请与落岗":
+      - generic: 申请与落岗
+    - button "实习过程":
+      - generic: 实习过程
+    - button "风险与变更":
+      - generic: 风险与变更
+    - button "评价与成绩":
+      - generic: 评价与成绩
+    - button "归档与分析":
+      - generic: 归档与分析
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 今日工作
+  - navigation "三级菜单":
+    - button "待办与进度":
+      - generic: 待办与进度
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面"
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面" [disabled]:
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:41
+  - heading "四域虚构学生乙 · 实习档案" [active] [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "D606实习批次 · D606-INTERN" [selected]
+  - generic: 草稿
+  - button "返回系统管理"
+  - generic: 准备中
+  - generic: D606实习批次
+  - generic: 校内指导教师 · 整改验收教师甲
+  - navigation "学生实习档案分区":
+    - link "基本资料":
+      - /url: /admin/internship/students/2?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2&section=profile
+    - link "资格审核":
+      - /url: /admin/internship/students/2?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2&section=eligibility
+    - link "岗位去向":
+      - /url: /admin/internship/students/2?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2&section=placement
+    - link "处理记录":
+      - /url: /admin/internship/students/2?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2&section=history
+  - heading "学生与实习信息" [level=2]
+  - term: 姓名
+  - definition: 四域虚构学生乙
+  - term: 学号
+  - definition:
+    - generic: D****2
+  - term: 班级
+  - definition: D606关系验收班
+  - term: 联系电话
+  - definition: 未登记
+  - term: 实习批次
+  - definition: D606实习批次
+  - term: 实习时间
+  - definition: 待安排
+  - term: 校内指导教师
+  - definition: 整改验收教师甲
+  - term: 实习去向
+  - definition: 未落实
+  - term: 备注
+  - definition: 暂无备注
+  - complementary:
+    - generic: 当前进度
+    - heading "实习资格尚未认定合格，不能直接推进上岗" [level=2]
+    - paragraph: 先完成实习资格认定，再分配岗位或标记真实去向。
+    - link "办理资格审核":
+      - /url: /admin/internship/students/2?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2&section=eligibility
+    - link "查看岗位与去向 →":
+      - /url: /admin/internship/students/2?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2&section=placement
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

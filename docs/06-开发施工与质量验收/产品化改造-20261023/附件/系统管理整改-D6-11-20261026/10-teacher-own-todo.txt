@@ -1,0 +1,114 @@
+Browser tab: 2, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/workbench".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/workbench
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索功能与帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 12° 晴, Secondary Actions: Expand
+				9 image
+				10 text 北京 12° 晴
+			11 button (collapsed) 10/26周一 18:55, Secondary Actions: Expand
+				12 image
+				13 text 10/26周一 18:55
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 整 整改验收经办人 任课教师, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 整
+				19 text 整改验收经办人
+				20 text 任课教师
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+			25 button (collapsed) 当前范围, Secondary Actions: Expand
+				26 image
+				27 text 当前范围
+				28 image
+			29 button (collapsed) 本次工作 00:00:27, Secondary Actions: Expand
+				30 image
+				31 text 本次工作 00:00:27
+		32 container 二级菜单
+			33 button 展开二级菜单
+			34 container 二级菜单
+				35 button 学工工作台
+			36 checkbox Description: 取消固定二级菜单, Value: 1
+		37 container 三级菜单
+			38 button 展开三级菜单
+			39 container 三级菜单
+				40 button 我的工作台
+				41 button 我的待办
+				42 button 审批中心
+				43 button 消息中心
+				44 button 最近访问
+				45 button 帮助中心
+			46 checkbox Description: 取消固定三级菜单, Value: 1
+		47 container
+			48 tab group 已打开页面
+				49 container
+					50 tab (selected, settable, boolean) 我的工作台, Help: 学工工作台 / 我的工作台, Value: 1
+我的工作台
+					51 button 关闭我的工作台
+						52 image
+			53 button (disabled) 恢复最近关闭的页签
+				54 image
+			55 checkbox Description: 收藏当前页面, Value: 0
+				56 image
+			57 checkbox Description: 专注模式, Value: 0
+				58 image
+			59 container
+				60 heading 我的工作台, Value: 1
+					61 text 我的工作台
+				62 button 刷新
+				63 button (collapsed) 自定义, Secondary Actions: Expand
+				64 button 帮助
+				65 button (expanded) 我的待办与个人设置, Secondary Actions: Collapse
+					66 text 我的待办与个人设置
+				67 container 待办汇总
+					68 button 待我处理 0
+						69 text 待我处理
+						70 text 0
+					71 button 已逾期 0
+						72 text 已逾期
+						73 text 0
+					74 button 24小时内到期 0
+						75 text 24小时内到期
+						76 text 0
+					77 button 今日已完成 0
+						78 text 今日已完成
+						79 text 0
+				80 container 待处理事项
+					81 container
+						82 container 事项类型
+							83 checkbox 待我审批, Value: 0, ID: approval-tab
+							84 checkbox 业务待办 1, Value: 1, ID: business-tab
+						85 button 全部待办
+					86 container 按业务查看待办
+						87 button 待录成绩 1
+							88 text 待录成绩 
+							89 text 1
+					90 container 业务待办 1, ID: workbench-task-panel
+						91 content list
+							92 container
+								93 text D611任课教师本人待录成绩（仅验身份） 待录成绩 未设时限
+								94 button 去处理, Help: D611任课教师本人待录成绩（仅验身份）
+						95 text 已展示 1 项
+				96 container 个人常用入口
+					97 text 常用
+					98 button 成绩录入
+					99 button 我的课表
+					100 button 教学任务
+					101 button 发起调停课
+					102 button 消息
+				103 container
+					104 heading 今日课程 10月26日周一, Value: 2
+						105 text 今日课程  10月26日周一
+					106 button 查看课表
+					107 text 今日无课程安排
+				108 button (collapsed) 业务概况, Secondary Actions: Expand
+					109 text 业务概况
+			110 button 我的常用
+
+The focused UI element is 84 checkbox 业务待办 1, Value: 1, ID: business-tab

@@ -1,0 +1,138 @@
+http://127.0.0.1:5173/admin/student-affairs/counselor-assignments
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:47":
+    - generic: 10/25周日 14:47
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:41:07":
+  - generic: 本次工作 02:41:07
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "学工工作台":
+      - generic: 工作
+    - button "学生主档":
+      - generic: 学生
+    - button "班级与辅导员":
+      - generic: 班级
+    - button "数字迎新":
+      - generic: 迎新
+    - button "请假销假":
+      - generic: 请假
+    - button "宿舍与公寓":
+      - generic: 住宿
+    - button "风险预警与处置":
+      - generic: 风险
+    - button "困难认定":
+      - generic: 认定
+    - button "奖助勤贷补":
+      - generic: 奖助
+    - button "违纪处分":
+      - generic: 处分
+    - button "谈心家校":
+      - generic: 家校
+    - button "心理关注":
+      - generic: 心理
+    - button "活动二课与社团":
+      - generic: 活动
+    - button "统计与档案":
+      - generic: 统计
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "班级管理":
+      - generic: 班级
+    - button "辅导员责任台账":
+      - generic: 辅导
+    - button "辅导员考评":
+      - generic: 辅导
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "辅导员责任台账" [selected]:
+    - generic: 辅导员责任台账
+  - button "关闭辅导员责任台账":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - region "临时代班到期治理":
+    - strong: 临时代班到期治理
+    - generic: 生产环境由定时任务自动结束到期的临时授权；这里提供人工立即同步作为兜底，重复同步不会产生重复记录，并保留审计。
+    - button "同步到期代班"
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:47
+  - heading "辅导员责任台账" [level=1]
+  - tablist "责任台账视图":
+    - button "辅导员台账"
+    - button "空缺班级"
+    - button "按班分配"
+  - button "分配责任"
+  - table:
+    - rowgroup:
+      - row "辅导员 带班数 学生数 主责班级 临时代班":
+        - columnheader "辅导员"
+        - columnheader "带班数"
+        - columnheader "学生数"
+        - columnheader "主责班级"
+        - columnheader "临时代班"
+    - rowgroup:
+      - row "王老师 1 50 1 0":
+        - cell "王老师":
+          - generic: 王老师
+        - cell "1"
+        - cell "50"
+        - cell "1"
+        - cell "0"
+  - generic: 共 1 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+  - paragraph:
+    - strong: 影响说明：
+    - text: 数据按当前角色与数据范围裁剪。主辅导员变更会结束旧主责关系并同步班级主辅导员；历史记录保留用于追溯。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

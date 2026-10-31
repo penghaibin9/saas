@@ -1,0 +1,225 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/workflow-governance".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/workflow-governance
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				17 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:13, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:13
+			18 button 帮助与引导
+			19 button 消息中心
+				20 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:07:38, Secondary Actions: Expand
+				33 image
+				154 text 本次工作 00:07:38
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				50 button 流程模板与运行
+				51 button 流程安全与运行治理
+				52 button 统一消息、待办与通知治理
+				53 button 批处理与后台任务
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				61 container
+					62 tab (selectable, settable, boolean) 业务关系中心, Help: 组织主数据 / 业务关系中心, Value: 0
+业务关系中心
+					63 button 关闭业务关系中心
+						64 image
+				65 container
+					66 tab (selectable, settable, boolean) 变更版本, Help: 组织主数据 / 变更版本, Value: 0
+变更版本
+					67 button 关闭变更版本
+						68 image
+				69 container
+					70 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					71 button 关闭身份权限总览
+						72 image
+				73 container
+					74 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					75 button 关闭预设角色模板
+						76 image
+				77 container
+					78 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					79 button 关闭学校角色与成员
+						80 image
+				81 container
+					82 tab (selectable, settable, boolean) 角色成员与业务身份, Help: 角色与权限 / 角色成员与业务身份, Value: 0
+角色成员与业务身份
+					83 button 关闭角色成员与业务身份
+						84 image
+				85 container
+					86 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					87 button 关闭菜单与操作权限
+						88 image
+				89 container
+					90 tab (selectable, settable, boolean) 数据范围规则, Help: 角色与权限 / 数据范围规则, Value: 0
+数据范围规则
+					91 button 关闭数据范围规则
+						92 image
+				93 container
+					94 tab (selectable, settable, boolean) 临时授权与工作移交, Help: 角色与权限 / 临时授权与工作移交, Value: 0
+临时授权与工作移交
+					95 button 关闭临时授权与工作移交
+						96 image
+				97 container
+					98 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					99 button 关闭安全变更
+						100 image
+				101 container
+					102 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					103 button 关闭访问治理
+						104 image
+				105 container
+					106 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					107 button 关闭学校信息与品牌
+						108 image
+				109 container
+					110 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					111 button 关闭数据字典
+						112 image
+				113 container
+					114 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					115 button 关闭模块授权与业务开关
+						116 image
+				117 container
+					118 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					119 button 关闭主数据责任与数据质量
+						120 image
+				121 container
+					122 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					123 button 关闭合规与业务表单
+						124 image
+				125 container
+					126 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					127 button 关闭学年学期与业务日历
+						128 image
+				129 container
+					130 tab (selected, settable, boolean) 流程安全与运行治理, Help: 流程配置 / 流程安全与运行治理, Value: 1
+流程安全与运行治理
+					131 button 关闭流程安全与运行治理
+						132 image
+				133 container
+					134 tab (selectable, settable, boolean) 统一消息、待办与通知治理, Help: 流程配置 / 统一消息、待办与通知治理, Value: 0
+统一消息、待办与通知治理
+					135 button 关闭统一消息、待办与通知治理
+						136 image
+				150 container
+					151 tab (selectable, settable, boolean) 批处理与后台任务, Help: 流程配置 / 批处理与后台任务, Value: 0
+批处理与后台任务
+					152 button 关闭批处理与后台任务
+						153 image
+			137 button (disabled) 恢复最近关闭的页签
+				138 image
+			139 checkbox Description: 收藏当前页面, Value: 0
+				140 image
+			141 checkbox Description: 专注模式, Value: 0
+				142 image
+			155 container
+				156 heading 流程安全与运行治理, Value: 1
+					157 text 流程安全与运行治理
+				158 button 刷新
+				159 text 首屏结论
+				160 text 1/1 已启用流程 0 无审批人节点 8 在途实例 8 超30天未动 1 生效中节点策略 1 生效中版本策略
+				161 container
+					162 text 节点动作与版本策略 页面权限 ≠ 流程动作权限；激活须两人复核
+				163 text field (settable) 流程编码
+				164 text field (settable) 节点编码
+				165 pop up button (collapsed, settable) Value: 节点动作权限, Secondary Actions: Expand
+					166 menu
+						167 (selected) 节点动作权限
+						168 版本变更策略
+				169 text field (settable) 动作权限编码
+				170 button 保存草稿
+				171 table
+					172 row
+						173 cell
+							174 text 流程 / 节点
+						175 cell
+							176 text 规则
+						177 cell
+							178 text 状态
+						179 cell
+							180 text 操作
+					181 row
+						182 cell
+							183 text 学生请假审批（007 标准）
+							184 text 整个流程 · 版本变更策略
+							185 button (collapsed) 查看配置编码（策略 18）, Secondary Actions: Expand
+								186 text 查看配置编码（策略 18）
+						187 cell
+							188 text 办理中禁止改动配置
+						189 cell
+							190 text 已启用
+						191 cell
+							192 button 下线
+					193 row
+						194 cell
+							195 text 学生请假审批（007 标准）
+							196 text 辅导员审核 · 节点动作权限
+							197 button (collapsed) 查看配置编码（策略 17）, Secondary Actions: Expand
+								198 text 查看配置编码（策略 17）
+						199 cell
+							200 text 办理审批任务
+						201 cell
+							202 text 已启用
+						203 cell
+							204 button 下线
+				205 container
+					206 text 人工推进（解卡异常任务） 必须填写理由，全程留痕，不代替业务判断
+				207 text field (settable)
+				208 pop up button (collapsed, settable) Value: 强制通过, Secondary Actions: Expand
+					209 menu
+						210 (selected) 强制通过
+						211 强制驳回
+						212 强制作废
+				213 button 人工推进
+			148 button 我的常用
+
+The focused UI element is 51 button 流程安全与运行治理

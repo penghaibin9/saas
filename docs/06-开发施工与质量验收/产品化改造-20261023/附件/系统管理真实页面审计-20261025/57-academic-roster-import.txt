@@ -1,0 +1,222 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/academic-affairs/roster/import-export?from=student-center".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/academic-affairs/roster/import-export?from=student-center
+	1 container app
+		2 container
+			10 text 高校学生全生命周期管理平台
+			3 image
+			4 text field (settable) 搜索学生、功能或帮助
+			11 text Ctrl K
+			5 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				6 image
+				12 text 北京 13° 阴
+			7 button (collapsed) 10/25周日 12:16, Secondary Actions: Expand
+				8 image
+				13 text 10/25周日 12:16
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			9 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:10:37, Secondary Actions: Expand
+				32 image
+				33 text 本次工作 00:10:37
+		34 container 二级菜单
+			35 button 收窄二级菜单
+				36 text 教务中心
+			37 container 二级菜单
+				38 button 教务大屏
+				39 button 教务总览
+				40 button 教务基础
+				41 button 学籍管理
+				42 button 培养与课程
+				43 button 开课管理
+				44 button 排课与课表
+				45 button 选课管理
+				46 button 日常教学
+				47 button 考务管理
+				48 button 成绩管理
+				49 button 毕业管理
+				50 button 教材管理
+				51 button 教学资源
+				52 button 教学质量
+				53 button 教务统计
+				54 button 教务归档
+			55 checkbox Description: 取消固定二级菜单, Value: 1
+		56 container 三级菜单
+			57 button 收窄三级菜单
+				58 text 学籍管理
+			59 button (collapsed) 全部业务与设置, Secondary Actions: Expand
+			60 container 三级菜单
+				61 button 学籍名册
+				62 button 学籍导入导出
+				63 button 学籍信息更正
+				64 button 注册批次
+				65 button 注册资格核验
+				66 button 分流批次
+				67 button 异动台账
+				68 button 异动审批
+				69 button 预警扫描与列表
+				70 button 预警跟进
+			71 checkbox Description: 取消固定三级菜单, Value: 1
+		72 container
+			73 tab group 已打开页面
+				74 container
+					75 tab (selectable, settable, boolean) 运行总览, Help: 教务总览 / 运行总览, Value: 0
+运行总览
+					76 button 关闭运行总览
+						77 image
+				78 container
+					79 tab (selectable, settable, boolean) 成绩总览, Help: 成绩管理 / 成绩总览, Value: 0
+成绩总览
+					80 button 关闭成绩总览
+						81 image
+				82 container
+					83 tab (selectable, settable, boolean) 成绩复查, Help: 成绩管理 / 成绩复查, Value: 0
+成绩复查
+					84 button 关闭成绩复查
+						85 image
+				86 container
+					87 tab (selectable, settable, boolean) 调停课审批, Help: 日常教学 / 调停课审批, Value: 0
+调停课审批
+					88 button 关闭调停课审批
+						89 image
+				90 container
+					91 tab (selectable, settable, boolean) 方案列表, Help: 培养与课程 / 方案列表, Value: 0
+方案列表
+					92 button 关闭方案列表
+						93 image
+				94 container
+					95 tab (selectable, settable, boolean) 课程列表, Help: 培养与课程 / 课程列表, Value: 0
+课程列表
+					96 button 关闭课程列表
+						97 image
+				98 container
+					99 tab (selectable, settable, boolean) 新增课程, Help: 培养与课程 / 新增课程, Value: 0
+新增课程
+					100 button 关闭新增课程
+						101 image
+				102 container
+					103 tab (selectable, settable, boolean) 选课批次, Help: 选课管理 / 选课批次, Value: 0
+选课批次
+					104 button 关闭选课批次
+						105 image
+				106 container
+					107 tab (selectable, settable, boolean) 选课规则, Help: 选课管理 / 选课规则, Value: 0
+选课规则
+					108 button 关闭选课规则
+						109 image
+				110 container
+					111 tab (selectable, settable, boolean) 课表发布, Help: 排课与课表 / 课表发布, Value: 0
+课表发布
+					112 button 关闭课表发布
+						113 image
+				114 container
+					115 tab (selectable, settable, boolean) 方案版本, Help: 培养与课程 / 方案版本, Value: 0
+方案版本
+					116 button 关闭方案版本
+						117 image
+				118 container
+					119 tab (selectable, settable, boolean) 学分要求, Help: 培养与课程 / 学分要求, Value: 0
+学分要求
+					120 button 关闭学分要求
+						121 image
+				122 container
+					123 tab (selectable, settable, boolean) 方案制定, Help: 培养与课程 / 方案制定, Value: 0
+方案制定
+					124 button 关闭方案制定
+						125 image
+				126 container
+					127 tab (selected, settable, boolean) 学籍导入导出, Help: 学籍管理 / 学籍导入导出, Value: 1
+学籍导入导出
+					128 button 关闭学籍导入导出
+						129 image
+			130 button (disabled) 恢复最近关闭的页签
+				131 image
+			132 checkbox Description: 收藏当前页面, Value: 0
+				133 image
+			134 checkbox Description: 专注模式, Value: 0
+				135 image
+			136 container
+				137 heading 学籍导入导出, Value: 1
+					138 text 学籍导入导出
+				139 container
+					140 heading 学籍导入, Value: 3
+						141 text 学籍导入
+					142 text 原始 Excel 先完成安全扫描，再由系统对同一份文件预检查
+				143 text 学号、姓名、班级必填，班级须为已存在的行政班。页面只展示系统预检结果，不再把名单回传作为写入依据； 扫描或解析未完成时不能确认，确认请求仅包含任务编号和任务版本。
+				144 button 打开批量导入
+				145 container
+					146 heading 学籍导出, Value: 3
+						147 text 学籍导出
+					148 text 生成导出文件和导出任务，不再直接下载
+				149 container
+					150 text 关键字
+					151 text field (settable) 关键字
+				152 container
+					153 text 学籍状态
+					154 pop up button (collapsed, settable) 学籍状态, Value: 全部, Secondary Actions: Expand
+						155 menu
+							156 (disabled) 全部
+							157 正常
+							158 待注册
+							159 在籍注册
+							160 未注册
+							161 休学
+							162 留级
+							163 退学
+							164 转学
+							165 毕业
+							166 结业
+							167 肄业
+				168 button 创建导出任务
+				169 text 文件带水印并记录用途；下载使用短时一次性票据，任务过期或撤销后不可继续下载。
+				170 container
+					171 heading 教务数据交换任务, Value: 3
+						172 text 教务数据交换任务
+					173 text 刷新页面任务不丢失；这里只展示当前操作者的教务任务
+				174 text 共 5 个任务
+				175 button 刷新
+				176 container
+					177 text 导出 · 教务数据 状态 已过期 · 任务编号 11 · 2026-09-09T11:34:49
+				178 container
+					179 text 导出 · 教务数据 状态 已过期 · 任务编号 10 · 2026-09-09T11:15:57
+				180 container
+					181 text 导出 · 教务数据 状态 已过期 · 任务编号 9 · 2026-09-09T07:44:37
+				182 container
+					183 text 导出 · 教务数据 状态 已完成 · 任务编号 8 · 2026-08-31T00:29:46
+					184 button 下载
+					185 button 撤销
+				186 container
+					187 text 导入 · 教务数据 状态 已完成 · 任务编号 6 · 2026-08-31T00:29:46
+			188 container 快捷操作
+				189 text 我的
+				190 text 常用
+				191 button 教务运行大屏, Help: 教务大屏 / 教务运行大屏
+					192 image
+					193 text 教务运行大屏
+				194 button 运行总览, Help: 教务总览 / 运行总览
+					195 image
+					196 text 运行总览
+				197 button 学业过程, Help: 教务总览 / 学业过程
+					198 image
+					199 text 学业过程
+				200 button 成绩提交进度, Help: 教务总览 / 成绩提交进度
+					201 image
+					202 text 成绩提交进度
+				203 button 编辑快捷栏
+				204 button 收起快捷栏
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/academic-affairs/roster/import-export?from=student-center

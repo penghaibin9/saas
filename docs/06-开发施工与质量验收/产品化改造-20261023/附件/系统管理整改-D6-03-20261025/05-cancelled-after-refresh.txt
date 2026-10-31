@@ -1,0 +1,201 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 11° 雨":
+    - generic: 北京 11° 雨
+  - button "10/25周日 19:15":
+    - generic: 10/25周日 19:15
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:20:51":
+  - generic: 本次工作 02:20:51
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 流程配置
+  - navigation "三级菜单":
+    - button "流程模板与运行":
+      - generic: 流程模板与运行
+    - button "流程安全与运行治理":
+      - generic: 流程安全与运行治理
+    - button "统一消息、待办与通知治理":
+      - generic: 统一消息、待办与通知治理
+    - button "批处理与后台任务":
+      - generic: 批处理与后台任务
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务" [selected]:
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main [active]:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 19:12
+  - heading "批处理与后台任务" [level=1]
+  - button "刷新"
+  - generic: 首屏结论
+  - generic: "0"
+  - generic: 运行中
+  - generic: "0"
+  - generic: 失败
+  - generic: "0"
+  - generic: 积压
+  - generic: 业务数据导入：共0 · 运行0 · 失败0 · 积压0
+  - generic: 业务数据导出：共1 · 运行0 · 失败0 · 积压0
+  - generic: 文件安全处理：共0 · 运行0 · 失败0 · 积压0
+  - generic: 表格数据导入：共0 · 运行0 · 失败0 · 积压0
+  - generic: 学工批量处理：共0 · 运行0 · 失败0 · 积压0
+  - generic: 任务列表
+  - generic: 统一查看各业务模块任务；可执行的操作以当前任务状态为准
+  - combobox:
+    - option "全部类型" [selected]
+    - option "业务数据导入"
+    - option "业务数据导出"
+    - option "文件安全处理"
+    - option "表格数据导入"
+    - option "学工批量处理"
+  - combobox:
+    - option "全部状态" [selected]
+    - option "待开始"
+    - option "等待处理"
+    - option "文件已上传"
+    - option "校验完成"
+    - option "运行中"
+    - option "处理中"
+    - option "校验中"
+    - option "确认中"
+    - option "已完成"
+    - option "已完成"
+    - option "已导入"
+    - option "已确认"
+    - option "失败"
+    - option "处理终止"
+    - option "处理超时"
+    - option "已取消"
+    - option "安全扫描中"
+    - option "预检查中"
+    - option "预检未通过"
+    - option "已过期"
+    - option "已撤销"
+  - button "查询"
+  - table:
+    - rowgroup:
+      - row "任务 状态 操作":
+        - columnheader "任务"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "业务数据导出 来源：系统管理 · 发起：业务经办人 · 2026-10-25 18:54 已取消 授权证据 当前仅可查看":
+        - cell "业务数据导出 来源：系统管理 · 发起：业务经办人 · 2026-10-25 18:54":
+          - generic: 业务数据导出
+          - generic: 来源：系统管理 · 发起：业务经办人 · 2026-10-25 18:54
+        - cell "已取消":
+          - generic: 已取消
+        - cell "授权证据 当前仅可查看":
+          - button "授权证据"
+          - text: 当前仅可查看
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

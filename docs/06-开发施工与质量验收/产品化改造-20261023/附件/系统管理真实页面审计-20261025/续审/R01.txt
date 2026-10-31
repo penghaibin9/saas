@@ -1,0 +1,220 @@
+http://127.0.0.1:5173/admin/system/overview
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 15:06":
+    - generic: 10/25周日 15:06
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 03:00:37":
+  - generic: 本次工作 03:00:37
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统
+    - button "身份与账号":
+      - generic: 身份
+    - button "组织主数据":
+      - generic: 组织
+    - button "角色与权限":
+      - generic: 角色
+    - button "学校配置":
+      - generic: 学校
+    - button "流程配置":
+      - generic: 流程
+    - button "安全与审计":
+      - generic: 安全
+    - button "接口与同步":
+      - generic: 接口
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "系统总览":
+      - generic: 系统
+    - button "实施总览":
+      - generic: 实施
+    - button "首次开局向导":
+      - generic: 首次
+    - button "预设方案":
+      - generic: 预设
+    - button "职业教育国家标准库":
+      - generic: 职业
+    - button "数据导入与智能匹配":
+      - generic: 数据
+    - button "已安装配置":
+      - generic: 已安
+    - button "变更与升级":
+      - generic: 变更
+    - button "上线检查与验收":
+      - generic: 上线
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "系统总览" [selected]:
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:59
+  - heading "系统管理" [level=1]
+  - generic "系统运行摘要":
+    - strong: 6/6
+    - text: 可用业务模块
+    - strong: "0"
+    - text: 上线阻断
+    - strong: "0"
+    - text: 同步失败
+  - button "学生导入与账号开通"
+  - button "≡ 操作日志"
+  - button "账号 教职工账号":
+    - generic: 账号
+    - strong: 教职工账号
+    - generic: →
+  - button "权限 学校角色与权限":
+    - generic: 权限
+    - strong: 学校角色与权限
+    - generic: →
+  - button "范围 数据范围":
+    - generic: 范围
+    - strong: 数据范围
+    - generic: →
+  - button "组织 组织与班级":
+    - generic: 组织
+    - strong: 组织与班级
+    - generic: →
+  - button "配置 模块与业务开关":
+    - generic: 配置
+    - strong: 模块与业务开关
+    - generic: →
+  - button "审计 操作审计":
+    - generic: 审计
+    - strong: 操作审计
+    - generic: →
+  - generic: 现在需要处理
+  - button "实施与验收 →"
+  - button "1 项 学校基本信息 在学校信息与品牌中补全 去处理 →":
+    - generic: 1 项
+    - generic: 学校基本信息
+    - generic: 在学校信息与品牌中补全
+    - generic: 去处理 →
+  - button "1 项 接口 按需登记接口凭证 去处理 →":
+    - generic: 1 项
+    - generic: 接口
+    - generic: 按需登记接口凭证
+    - generic: 去处理 →
+  - generic: 安全提醒
+  - button "登录日志 →"
+  - list:
+    - text: 1 条高危操作审计证据不完整
+    - generic: 中风险
+    - generic: 1 条高危操作审计证据不完整
+    - generic: 实时检查
+  - generic: 最近系统操作
+  - button "查看全部 →"
+  - table:
+    - rowgroup:
+      - row "操作人 动作 时间":
+        - columnheader "操作人"
+        - columnheader "动作"
+        - columnheader "时间"
+    - rowgroup:
+      - row "王老师 业务操作 2026-10-25 06:58":
+        - cell "王老师"
+        - cell "业务操作"
+        - cell "2026-10-25 06:58"
+      - row "王老师 业务操作 2026-10-25 06:51":
+        - cell "王老师"
+        - cell "业务操作"
+        - cell "2026-10-25 06:51"
+      - row "王老师 业务操作 2026-10-25 06:50":
+        - cell "王老师"
+        - cell "业务操作"
+        - cell "2026-10-25 06:50"
+      - row "王老师 业务操作 2026-10-25 06:49":
+        - cell "王老师"
+        - cell "业务操作"
+        - cell "2026-10-25 06:49"
+      - row "胡管理 业务操作 2026-10-25 06:45":
+        - cell "胡管理"
+        - cell "业务操作"
+        - cell "2026-10-25 06:45"
+      - row "胡管理 业务操作 2026-10-25 06:45":
+        - cell "胡管理"
+        - cell "业务操作"
+        - cell "2026-10-25 06:45"
+      - row "胡管理 业务操作 2026-10-25 06:43":
+        - cell "胡管理"
+        - cell "业务操作"
+        - cell "2026-10-25 06:43"
+      - row "胡管理 业务操作 2026-10-25 06:38":
+        - cell "胡管理"
+        - cell "业务操作"
+        - cell "2026-10-25 06:38"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

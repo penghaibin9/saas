@@ -1,0 +1,320 @@
+✔ 确认归档只消费服务端严格许可，角色名或管理权限本身不能代替责任许可 (19.3899ms)
+✔ 打开确认框前同单回读撤回许可或缺字段，只显示原因且不打开对话框 (6.0491ms)
+✔ 打开确认框前网络错误或回读错单，丢弃缓存许可且保留可见错误 (4.2305ms)
+✔ 开框后发送前再次核验同单责任许可，撤权不写并使确认框停止确认 (2.7546ms)
+✔ 有效责任账号仍沿原确认命令，只有正式写回执及同单十三域归档回读才成功 (2.2357ms)
+✔ 已发确认回执未知时保留原pendingCommand，刷新观察不当成功且不重放写 (2.4054ms)
+✔ 确认前正式拒绝清旧数据并保持可见拒绝原因，不误显示空批次成功 (2.2897ms)
+✔ 责任恢复后只读重新核对可清除旧拒绝提示，不发送归档命令 (2.2003ms)
+✔ 身份、权限版本、路径和卸载失效后的迟到许可不打开确认框 (9.5275ms)
+✔ 发送前读取失败不沿用缓存许可，原确认内容保持 (3.2657ms)
+✔ 真实按钮与对话框模板缺许可时禁用，原因及重新核对入口可见 (42.6757ms)
+✔ 发起及二审只消费严格服务端许可，未知、角色文本、非布尔值都不可写 (15.7439ms)
+✔ 发起开框与发送前回读同批次许可，撤权不写且保留输入 (3.5237ms)
+✔ 当前批次资格读取失败或错单不沿用缓存许可 (7.3762ms)
+✔ 二审开框前按同单详情核对本人及当前责任，拒绝原因可见 (3.3122ms)
+✔ 批准与驳回发送前二次回读，撤权或读取失败不写，原驳回理由保留 (10.2041ms)
+✔ 已确认写回执后正式列表、清单、同单详情全回读才报告完成 (6.8142ms)
+✔ 未知写回执仅在上次提交目标结果核对完成后解锁，绝不重放写 (9.6333ms)
+✔ 批准与驳回的原单目标终态及归档清单通过后，即使已关详情也可只读恢复 (5.6638ms)
+✔ 创建已确认单号但首次回读失败，恢复时精确核对原单并解锁，绝不重发 (11.8071ms)
+✔ 恢复时待二审、未知状态、错单、清单异常或未确认值均保持原锁 (18.4472ms)
+✔ 恢复期间命令替换或身份失效时，旧终态响应不能解除新锁 (4.6704ms)
+✔ 正式写回执成功但清单校验失败只能报告部分完成，不能成功提示或丢弃锁 (6.0164ms)
+✔ 同单读取失败或返回别的归档批次立即清除旧证据和办理许可 (10.775ms)
+✔ 换身份、换归档批次、路由离开及卸载后的迟到许可不能开框和写入 (22.8865ms)
+✔ 真实模板无资格禁用发起、隐藏二审动作且展示原因，中文事实摘要保留证据 (71.7324ms)
+✔ W1 archive correction API exposes the formal server-authoritative loop (1.2269ms)
+✔ ARCHIVED batch stays inside the existing archive console with three W1 workspaces (0.4808ms)
+✔ mutations always reread correction, manifest and parent batch state from server (0.3319ms)
+✔ review UI consumes server facts and requires formal high-risk confirmation (0.3245ms)
+✔ AA-260/262/264/265 archive console keeps the 13-domain workflow and object responsibility chain (8.0218ms)
+✔ AA-261 keeps BLOCKED/UNKNOWN honest and routes the first missing domain to its owner (2.892ms)
+✔ AA-263 export binds an archived batch, purpose and server audit receipt before download completion (3.1621ms)
+✔ 下载记录以中文显示动作与用途，无法解析的内部账号不冒充姓名 (55.8002ms)
+✔ 单类导出打开抽屉保留已填用途，切换批次不沿用旧成功提示 (3.2293ms)
+✔ 封存页切换学期清除旧批次定位，待核实命令期间禁止切换 (3.1834ms)
+✔ 学院批次只显示学校进度与本院预检入口，空明细和空计数不冒充检查通过 (33.0123ms)
+✔ 真实上下文仅有 dataScope.scope 时，无批次的学院仍展示学院责任范围 (34.77ms)
+✔ 只读校级身份的空批次说明交给校教务，有办理权限的学校身份仍可新建 (40.8478ms)
+✔ 学院已封存批次保留真实封存时间，不能渲染学校材料或纠错工作区 (17.1093ms)
+✔ 终态未返回责任时按正式封存或取消事实展示，不误报需配置任职 (63.8125ms)
+✔ 终态仍优先展示服务端实际责任与下一步，不被状态或学校范围默认文字覆盖 (44.1523ms)
+✔ 非终态缺失责任或未知状态仍显示待明确，责任与下一步分别使用真实字段 (4.4616ms)
+✔ 学院范围阻止学校归档动作并携带字符串学期进入原预检页 (2.7877ms)
+✔ 归档批次列表每页带有效网址学期，新建沿用本学期且无学期保持原查询 (3.1662ms)
+✔ 归档非法学期清旧批次且不请求，显式批次深链与当前学期冲突时拒绝显示 (2.6179ms)
+✔ 归档学期切换后迟到列表不能覆盖新学期，也不自动选其他学期批次 (2.1966ms)
+✔ 未知批次写入切学期后刷新查看返回原学期原批次，保持禁止重发 (2.3117ms)
+✔ 未知新建回执切学期后只读返回原学期列表，不重发创建 (2.2803ms)
+✔ 学校缺失计数为空时显示待核对，正式零计数保持真实含义 (2.1088ms)
+✔ 归档预检深链读取指定学期，服务端返回其他学期时拒绝展示 (2.8307ms)
+✔ 归档预检去处理和归档批次入口保留当前正式学期与已有查询上下文 (1.526ms)
+✔ 换学期清除旧结论，旧请求 success 最后返回不覆盖新学期 (1.1048ms)
+✔ 换学期清除旧结论，旧请求 error 最后返回不覆盖新学期 (1.0688ms)
+✔ 身份切换与卸载后的迟到预检不得恢复旧范围结果 (2.7051ms)
+✔ 无效学期深链不发请求，默认学期回填不触发第二次预检 (2.6999ms)
+✔ 学院可处理阻断优先于学校统筹待核验，学校范围仍按实际阻断数量排序 (1.5655ms)
+✔ 学期选择器同步正式查询参数并清旧结果，保留原查询上下文 (1.7008ms)
+✔ 学院预检明确本院范围与学校统筹待核验，读取失败不能显示零缺项结论 (12.6697ms)
+✔ 学院导出页读取批次后不请求学校日志或导出，也不显示虚构零记录 (9.9175ms)
+✔ 学校导出页继续读取学校日志，学院身份切换拒收旧学校日志 (5.5556ms)
+✔ 导出列表或日志失败显示错误，不能伪装暂无已归档批次或暂无下载记录 (16.6521ms)
+✔ 导出详情真实重试按钮重新读取同一批次，身份清除后不恢复旧选择 (11.6347ms)
+✔ 学校日志权限拒绝清除全部私有材料，同时在主页面保留可见错误 (6.4152ms)
+✔ 学校只读领导保留正式进度且不暴露归档管理入口，范围不代替权限 (35.4713ms)
+✔ 归档弹窗及确认闭包在权限收回后停止写入，仍可只读学校进度 (9.3581ms)
+✔ 归档命令异步回读期间撤权，发送前复核阻止检查取消和确认 (10.7278ms)
+✔ V5 has exactly six states and unknown machine values never become business success or English labels (2.2559ms)
+✔ responsibility keeps business names but never guesses a user from a role or revives expired assignment (8.1567ms)
+✔ flow payload validation rejects incomplete data, wrong term, unsafe numeric IDs and cross-college results (1.8507ms)
+✔ 专业视角仅接受服务端字符串专业范围，不从班级范围推断专业 (14.2745ms)
+✔ 专业培养方案与应开对账只展示正式摘要和计数，不渲染学院办理或学校矩阵 (21.9902ms)
+✔ 学院归档就绪时保留本院责任，并在当前阶段和责任事项显示服务端学校封存责任 (14.4692ms)
+✔ 正式封存后展示只读回执，保留历史进度而不再催办责任或伪造历史通过 (9.9112ms)
+✔ college navigation preserves all 17 workspaces, routes, leaf identities and permissions without mutating the catalog (5.2888ms)
+✔ matrix renders the ready college independently of the blocked college and shows real offering responsibility (1.0675ms)
+✔ school gate does not render a publish command or invent readiness from unit counts (1.0917ms)
+✔ term, role and scope changes discard late flow results and clear previous facts before reloading (12.5581ms)
+✔ refresh after assignment expiry reads again; failed or forbidden requests never become empty progress (10.9497ms)
+✔ API preserves string identifiers and rejects malformed parameters before sending requests (2.1679ms)
+✔ overview actions retain selected term and a scoped return token on the existing navigation preflight (14.2905ms)
+✔ formal program blocker summaries are shown in business Chinese (0.1615ms)
+✔ object responsibility is bound to its string ID and does not infer assignees or render another command (4.3277ms)
+✔ program editor uses live responsibility and next step, without reviving expired assignees (3.6578ms)
+✔ program publishing reads responsibility from the exact program detail without requiring a term (4.3056ms)
+✔ late program detail from another object, identity, or disposed page cannot restore old responsibility (9.2698ms)
+✔ wrong program detail is a visible failure instead of a responsibility fallback from its list row (3.5602ms)
+✔ exam responsibility replaces the list snapshot only after reading the selected batch detail (8.47ms)
+✔ failed or mismatched exam detail never exposes list responsibility or authorizes old status actions (6.2073ms)
+✔ late exam details are discarded after batch and identity changes (5.1374ms)
+✔ public course scheduling mode is the server mode and missing configuration is never school-centralized by default (2.9318ms)
+✔ 归档终态说明已完成事项，不把空责任冒充缺少任职；真实责任各自优先 (2.9073ms)
+✔ 非终态或未知归档状态缺少责任时仍明确待核对，不猜测办理人 (3.6285ms)
+✔ exam archive responsibility is re-read from its exact detail rather than an archived list snapshot (2.4622ms)
+✔ grade queue renders separate responsibility and handoff for every concrete task row (27.6925ms)
+✔ selection detail failures release loading, preserve an error and do not revive list responsibility (5.1066ms)
+✔ 培养方案只读账号不能打开或发送发布与状态变更 (2.4625ms)
+✔ 培养方案发布与变更独立授权，弹窗打开后撤权或换身份不发请求 (2.709ms)
+✔ 培养方案合法发布和状态变更仍发送正式原对象且不重复确认 (3.0101ms)
+✔ 生成培养方案新版本使用正式编制权限，不混用状态变更权限 (3.0296ms)
+✔ 当前培养方案工作区的实际状态按钮模板按变更权限展示 (8.3216ms)
+✔ 电脑端枚举标签不再以原始英文值作为字典兜底 (665.1371ms)
+✔ 重点页面不再展示后端状态码和英文技术说明 (7.6509ms)
+✔ PR147 direct pagination controls do not expose an unbound page-size changer (7.6506ms)
+✔ PR147 graduation audit batch picker loads every server page instead of silently capping at 100 (2.661ms)
+✔ PR147 archive console loads every server page instead of silently capping historical batches at 100 (3.322ms)
+✔ Stage D 归档预检首屏只消费后端真实语义结果与阻断计数 (6.6942ms)
+✔ Stage D 归档预检必须把阻断域放在通过域之前并按阻断项排序 (1.4808ms)
+✔ Stage D 归档预检保留真实证据与责任模块跳转，不改正式归档状态机 (2.3752ms)
+✔ Stage D 归档预检具备阻断优先与移动端响应式收口 (1.3613ms)
+✔ D-W1 Archive 四态必须在 UI 中可区分且 UNKNOWN 绝不绿色 (1.1054ms)
+✔ D-W1 正式归档控制台必须按 result 四态展示，且不存在整体强制归档死入口 (1.887ms)
+✔ D-W1 正式归档控制台不可逆动作必须防重复提交并在窄屏收成单栏 (1.9287ms)
+✔ D-W1 实际确认方法拒绝越权、重复及待核实动作并处理异常 (4.186ms)
+✔ 归档与教务主层不输出 evidence JSON、规则码或批次数据库 ID (8.5084ms)
+✖ 系统治理页面使用业务选择器和结构化摘要 (6.0615ms)
+✔ 平台学生门户配置由租户上下文驱动且不输出 JSON 预览 (4.8175ms)
+ℹ tests 117
+ℹ suites 0
+ℹ pass 116
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 850.7707
+
+✖ failing tests:
+
+test at tests\ui-presentation-v3-contract.test.mjs:21:1
+✖ 系统治理页面使用业务选择器和结构化摘要 (6.0615ms)
+  AssertionError [ERR_ASSERTION]: The input did not match the regular expression /授权依据摘要/. Input:
+  
+  '<template>\r\n' +
+    '  <ModulePageShell\r\n' +
+    '    title="批处理与后台任务"\r\n' +
+    '    subtitle="查看各业务模块的后台任务进度、失败原因与授权依据"\r\n' +
+    '    :role-name="ctx.currentRole.roleName"\r\n' +
+    '    :data-scope-name="ctx.dataScope.scopeName"\r\n' +
+    '  >\r\n' +
+    '    <template #actions>\r\n' +
+    `      <ModuleToolbar :actions="[{ key: 'refresh', label: '刷新' }]" @action="load" />\r\n` +
+    '    </template>\r\n' +
+    '\r\n' +
+    '    <div class="mp-stack">\r\n' +
+    '      <ErrorState v-if="error" :description="error" @retry="load" />\r\n' +
+    '      <LoadingState v-else-if="loading" />\r\n' +
+    '      <template v-else>\r\n' +
+    '        <section class="mp-card">\r\n' +
+    '          <header class="mp-card__head"><span class="mp-card__title">首屏结论</span></header>\r\n' +
+    '          <div class="mp-card__body jc-summary">\r\n' +
+    '            <div class="jc-stat"><span class="jc-stat__num">{{ overview.running || 0 }}</span><span class="jc-stat__label">运行中</span></div>\r\n' +
+    `            <div class="jc-stat" :class="{ 'jc-stat--warn': overview.failed }"><span class="jc-stat__num">{{ overview.failed || 0 }}</span><span class="jc-stat__label">失败</span></div>\r\n` +
+    '            <div class="jc-stat"><span class="jc-stat__num">{{ overview.backlog || 0 }}</span><span class="jc-stat__label">积压</span></div>\r\n' +
+    '          </div>\r\n' +
+    '          <div class="mp-card__body jc-per-kind">\r\n' +
+    '            <span v-for="k in overview.perKind || []" :key="k.kind" class="jc-kind-chip">\r\n' +
+    '              {{ kindLabel(k.kind) }}：共{{ k.total }} · 运行{{ k.running }} · 失败{{ k.failed }} · 积压{{ k.backlog }}\r\n' +
+    '            </span>\r\n' +
+    '          </div>\r\n' +
+    '        </section>\r\n' +
+    '\r\n' +
+    '        <section class="mp-card">\r\n' +
+    '          <header class="mp-card__head">\r\n' +
+    '            <span class="mp-card__title">任务列表</span>\r\n' +
+    '            <span class="mp-note">统一查看各业务模块任务；可执行的操作以当前任务状态为准</span>\r\n' +
+    '          </header>\r\n' +
+    '          <div class="mp-card__body jc-filters">\r\n' +
+    '            <select v-model="filterKind" class="jc-input" @change="search">\r\n' +
+    '              <option value="">全部类型</option>\r\n' +
+    '              <option v-for="k in jobTypes" :key="k.kind" :value="k.kind">{{ kindLabel(k.kind) }}</option>\r\n' +
+    '            </select>\r\n' +
+    '            <select v-model="filterStatus" class="jc-input" @change="search">\r\n' +
+    '              <option value="">全部状态</option>\r\n' +
+    '              <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>\r\n' +
+    '            </select>\r\n' +
+    '            <button class="mp-link" @click="search">查询</button>\r\n' +
+    '          </div>\r\n' +
+    '          <div class="mp-card__body">\r\n' +
+    '            <EmptyState v-if="!jobs.length" title="当前筛选没有任务" description="可调整任务类型或状态重新查询" />\r\n' +
+    '            <DataTable v-else :columns="jobColumns" :rows="jobs" row-key="jobId" :pagination="pagination" @page-change="changePage">\r\n' +
+    '              <template #cell-scope="{ row }">\r\n' +
+    '                <div class="mp-cell-main">{{ kindLabel(row.kind) }} · 任务编号 {{ taskNumber(row) }}</div>\r\n' +
+    `                <div class="mp-cell-sub">来源：{{ moduleLabel(row.ownerModule) }} · 发起：{{ row.initiator ? '业务经办人' : '未记录发起人' }} · {{ formatTime(row) }}</div>\r\n` +
+    '              </template>\r\n' +
+    '              <template #cell-status="{ row }">\r\n' +
+    '                <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />\r\n' +
+    '              </template>\r\n' +
+    '              <template #cell-ops="{ row }">\r\n' +
+    '                <button class="mp-link" @click="viewEvidence(row)">授权证据</button>\r\n' +
+    `                <button v-if="row.availableActions?.retry?.allowed" class="mp-link" :disabled="busy" @click="prepareAction('retry', row)">重试</button>\r\n` +
+    `                <button v-if="row.availableActions?.cancel?.allowed" class="mp-link" :disabled="busy" @click="prepareAction('cancel', row)">取消</button>\r\n` +
+    '                <span v-if="!row.availableActions?.retry?.allowed && !row.availableActions?.cancel?.allowed" class="mp-note">当前仅可查看</span>\r\n' +
+    '              </template>\r\n' +
+    '            </DataTable>\r\n' +
+    '          </div>\r\n' +
+    '        </section>\r\n' +
+    '\r\n' +
+    '        <section v-if="evidence" class="mp-card">\r\n' +
+    '          <header class="mp-card__head"><span class="mp-card__title">当前操作授权核对</span></header>\r\n' +
+    '          <div class="mp-card__body jc-evidence">\r\n' +
+    '            <p>以下核对当前身份现在能否办理，不替代任务创建时的历史审计。</p>\r\n' +
+    '            <p>执行身份：<strong>{{ authorizationActorLabel(evidence) }}</strong></p>\r\n' +
+    '            <p>授权方式：<strong>{{ authorizationPolicyLabel(evidence.currentActorAuthorization?.policyType) }}</strong></p>\r\n' +
+    '            <p>作用范围：<strong>{{ scopeSummary(evidence.scopeSnapshot) }}</strong></p>\r\n' +
+    "            <p>有效期：<strong>{{ evidence.currentActorAuthorization?.delegationExpiresAt || '未记录固定到期时间，执行时重新鉴权' }}</strong>\r\n" +
+    '              <span v-if="evidence.currentActorAuthorization?.delegatedSubject">\r\n' +
+    '                （临时授权）\r\n' +
+    '              </span>\r\n' +
+    '            </p>\r\n' +
+    '          </div>\r\n' +
+    '        </section>\r\n' +
+    '      </template>\r\n' +
+    '    </div>\r\n' +
+    `    <WorkspaceConfirmDialog :visible="!!pending" :title="pending?.type === 'retry' ? '核对任务重试' : '核对任务取消'"\r\n` +
+    `      :confirm-text="pending?.type === 'retry' ? '确认重试任务' : '确认取消任务'" require-reason reason-label="操作原因"\r\n` +
+    '      :submitting="busy" :confirm-disabled="actionNeedsReview" @update:visible="closeAction" @confirm="performAction">\r\n' +
+    '      <p v-if="pending">{{ kindLabel(pending.row.kind) }} · 任务编号 {{ taskNumber(pending.row) }} · 当前状态：{{ statusLabel(pending.row.status) }} · 版本 {{ pending.row.version }}</p>\r\n' +
+    '      <p>只办理当前选中的任务；执行前再次检查权限、状态和版本。</p>\r\n' +
+    '      <p v-if="actionError" role="alert">{{ actionError }}</p>\r\n' +
+    '    </WorkspaceConfirmDialog>\r\n' +
+    '  </ModulePageShell>\r\n' +
+    '</template>\r\n' +
+    '\r\n' +
+    '<script>\r\n' +
+    "import { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from '@/components/business'\r\n" +
+    "import { systemApi } from '@/modules/system/api/system.api'\r\n" +
+    "import { toast } from '@/utils/toast'\r\n" +
+    "import { safeEnumLabel } from '@/utils/presentationSafety'\r\n" +
+    "import { formatDateTime } from '@/utils/dateUtils'\r\n" +
+    "import WorkspaceConfirmDialog from '@/modules/system/components/workspace/WorkspaceConfirmDialog.vue'\r\n" +
+    "import { contextFingerprint } from '@/modules/system/utils/workspaceContract'\r\n" +
+    '\r\n' +
+    "const KIND_LABEL = { IMPORT: '业务数据导入', EXPORT: '业务数据导出', FILE_JOB: '文件安全处理', EXCEL_IMPORT: '表格数据导入', AFFAIRS_BATCH: '学工批量处理' }\r\n" +
+    "const MODULE_LABEL = { dataExchange: '数据交换中心', fileStorage: '文件中心', studentAffairs: '学工中心', systemAdmin: '系统管理', academicAffairs: '教务中心', graduationDesign: '毕业设计中心', internship: '岗位实习中心' }\r\n" +
+    'const STATUS_LABEL = {\r\n' +
+    "  CREATED: '待开始', PENDING: '等待处理', UPLOADED: '文件已上传', VALIDATED: '校验完成',\r\n" +
+    "  RUNNING: '运行中', PROCESSING: '处理中', VALIDATING: '校验中', CONFIRMING: '确认中',\r\n" +
+    "  SUCCEEDED: '已完成', SUCCESS: '已完成', IMPORTED: '已导入', CONFIRMED: '已确认',\r\n" +
+    "  FAILED: '失败', DEAD: '处理终止', TIMEOUT: '处理超时', CANCELLED: '已取消',\r\n" +
+    "  SCANNING: '安全扫描中', PARSING: '预检查中', VALIDATION_FAILED: '预检未通过', EXPIRED: '已过期', REVOKED: '已撤销'\r\n" +
+    '}\r\n' +
+    "const POLICY_LABEL = { USER_DELEGATED: '临时职责授权', SERVICE_POLICY: '后台服务授权', TENANT_SYSTEM_TASK: '本校岗位授权' }\r\n" +
+    '\r\n' +
+    'export default {\r\n' +
+    "  name: 'SystemJobCenterView',\r\n" +
+    '  components: {\r\n' +
+    '    ModulePageShell, ModuleToolbar, DataTable, StatusTag, WorkspaceConfirmDialog,\r\n' +
+    '    LoadingState, ErrorState, EmptyState\r\n' +
+    '  },\r\n' +
+    '  props: { ctx: { type: Object, required: true } },\r\n' +
+    '  data() {\r\n' +
+    '    return {\r\n' +
+    '      loading: true,\r\n' +
+    '      busy: false,\r\n' +
+    "      pending: null, actionError: '', actionNeedsReview: false, loadVersion: 0, disposed: false,\r\n" +
+    "      error: '',\r\n" +
+    '      overview: {},\r\n' +
+    '      jobTypes: [],\r\n' +
+    '      jobs: [],\r\n' +
+    '      pagination: { page: 1, pageSize: 20, total: 0 },\r\n' +
+    "      filterKind: '',\r\n" +
+    "      filterStatus: '',\r\n" +
+    '      evidence: null,\r\n' +
+    '      statusOptions: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),\r\n' +
+    '      jobColumns: [\r\n' +
+    "        { key: 'scope', title: '任务' },\r\n" +
+    "        { key: 'status', title: '状态' },\r\n" +
+    "        { key: 'ops', title: '操作' }\r\n" +
+    '      ]\r\n' +
+    '    }\r\n' +
+    '  },\r\n' +
+    '  created() { this.load() },\r\n' +
+    '  beforeUnmount() { this.disposed = true; this.loadVersion += 1 },\r\n' +
+    '  methods: {\r\n' +
+    '    search() { this.pagination.page = 1; this.load() },\r\n' +
+    '    changePage(page) { this.pagination.page = page; this.load() },\r\n' +
+    "    taskNumber(row) { return String(row.jobId || '').split(':')[1] || '未记录' },\r\n" +
+    "    formatTime(row) { return formatDateTime(row.createdAt, '未记录时间', row.timeZone) },\r\n" +
+    "    kindLabel(value) { return safeEnumLabel({ value, dictionary: KIND_LABEL, unknownLabel: '其他业务任务' }) },\r\n" +
+    "    moduleLabel(value) { return safeEnumLabel({ value, dictionary: MODULE_LABEL, unknownLabel: '来源待核对' }) },\r\n" +
+    "    statusLabel(value) { return safeEnumLabel({ value, dictionary: STATUS_LABEL, unknownLabel: '状态待确认' }) },\r\n" +
+    "    authorizationPolicyLabel(value) { return safeEnumLabel({ value, dictionary: POLICY_LABEL, unknownLabel: value ? '授权方式待确认' : '当前无可用授权' }) },\r\n" +
+    "    authorizationActorLabel(evidence) { return evidence?.currentActorAuthorization?.policyType === 'SERVICE_POLICY' ? '后台服务身份' : '当前经办人' },\r\n" +
+    '    scopeSummary(scope) {\r\n' +
+    "      if (!scope || typeof scope !== 'object') return '未记录任务范围'\r\n" +
+    '      const label = scope.scopeName || scope.orgName || scope.collegeName || scope.className\r\n' +
+    "      return label || (Array.isArray(scope.actionPrefixAllowlist) ? `创建时保存的 ${scope.actionPrefixAllowlist.length} 个动作范围` : '未记录可解释的范围摘要')\r\n" +
+    '    },\r\n' +
+    '    statusTone(s) {\r\n' +
+    "      if (['FAILED', 'DEAD', 'TIMEOUT'].includes(s)) return 'danger'\r\n" +
+    "      if (['RUNNING', 'PROCESSING', 'VALIDATING', 'CONFIRMING'].includes(s)) return 'warning'\r\n" +
+    "      if (['SUCCEEDED', 'SUCCESS', 'IMPORTED', 'CONFIRMED'].includes(s)) return 'success'\r\n" +
+    "      return 'default'\r\n" +
+    '    },\r\n' +
+    '    async viewEvidence(row) {\r\n' +
+    '      const res = await systemApi.getJobAuthorizationEvidence(row.jobId)\r\n' +
+    '      if (res.code === 0) this.evidence = res.data\r\n' +
+    '      else toast.error(res.message)\r\n' +
+    '    },\r\n' +
+    '    prepareAction(type, row) {\r\n' +
+    "      if (this.busy || !['retry', 'cancel'].includes(type) || row.availableActions?.[type]?.allowed !== true) return\r\n" +
+    '      this.pending = { type, row: { ...row }, context: contextFingerprint(this.ctx) }\r\n' +
+    "      this.actionError = ''; this.actionNeedsReview = false\r\n" +
+    '    },\r\n' +
+    '    closeAction() { if (!this.busy) this.pending = null },\r\n' +
+    '    async performAction({ reason }) {\r\n' +
+    '      if (this.busy || !this.pending || this.actionNeedsReview) return\r\n' +
+    '      const command = this.pending\r\n' +
+    '      if (command.context !='... 3024 more characters
+  
+      at TestContext.<anonymous> (file:///C:/Users/10850/Desktop/%E8%81%8C%E6%A0%A1%E5%AD%A6%E7%94%9F%E5%85%A8%E7%94%9F%E5%91%BD%E5%91%A8%E6%9C%9F%E7%B3%BB%E7%BB%9F/frontend/tests/ui-presentation-v3-contract.test.mjs:29:10)
+      at async Test.run (node:internal/test_runner/test:1208:7)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:831:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: '<template>\r\n  <ModulePageShell\r\n    title="批处理与后台任务"\r\n    subtitle="查看各业务模块的后台任务进度、失败原因与授权依据"\r\n    :role-name="ctx.currentRole.roleName"\r\n    :data-scope-name="ctx.dataScope.scopeName"\r\n  >\r\n    <template #actions>\r\n      <ModuleToolbar :actions="[{ key: \'refresh\', label: \'刷新\' }]" @action="load" />\r\n    </template>\r\n\r\n    <div class="mp-stack">\r\n      <ErrorState v-if="error" :description="error" @retry="load" />\r\n      <LoadingState v-else-if="loading" />\r\n      <template v-else>\r\n        <section class="mp-card">\r\n          <header class="mp-card__head"><span class="mp-card__title">首屏结论</span></header>\r\n          <div class="mp-card__body jc-summary">\r\n            <div class="jc-stat"><span class="jc-stat__num">{{ overview.running || 0 }}</span><span class="jc-stat__label">运行中</span></div>\r\n            <div class="jc-stat" :class="{ \'jc-stat--warn\': overview.failed }"><span class="jc-stat__num">{{ overview.failed || 0 }}</span><span class="jc-stat__label">失败</span></div>\r\n            <div class="jc-stat"><span class="jc-stat__num">{{ overview.backlog || 0 }}</span><span class="jc-stat__label">积压</span></div>\r\n          </div>\r\n          <div class="mp-card__body jc-per-kind">\r\n            <span v-for="k in overview.perKind || []" :key="k.kind" class="jc-kind-chip">\r\n              {{ kindLabel(k.kind) }}：共{{ k.total }} · 运行{{ k.running }} · 失败{{ k.failed }} · 积压{{ k.backlog }}\r\n            </span>\r\n          </div>\r\n        </section>\r\n\r\n        <section class="mp-card">\r\n          <header class="mp-card__head">\r\n            <span class="mp-card__title">任务列表</span>\r\n            <span class="mp-note">统一查看各业务模块任务；可执行的操作以当前任务状态为准</span>\r\n          </header>\r\n          <div class="mp-card__body jc-filters">\r\n            <select v-model="filterKind" class="jc-input" @change="search">\r\n              <option value="">全部类型</option>\r\n              <option v-for="k in jobTypes" :key="k.kind" :value="k.kind">{{ kindLabel(k.kind) }}</option>\r\n            </select>\r\n            <select v-model="filterStatus" class="jc-input" @change="search">\r\n              <option value="">全部状态</option>\r\n              <option v-for="option in statusOptions" :key="option.value" :value="option.value">{{ option.label }}</option>\r\n            </select>\r\n            <button class="mp-link" @click="search">查询</button>\r\n          </div>\r\n          <div class="mp-card__body">\r\n            <EmptyState v-if="!jobs.length" title="当前筛选没有任务" description="可调整任务类型或状态重新查询" />\r\n            <DataTable v-else :columns="jobColumns" :rows="jobs" row-key="jobId" :pagination="pagination" @page-change="changePage">\r\n              <template #cell-scope="{ row }">\r\n                <div class="mp-cell-main">{{ kindLabel(row.kind) }} · 任务编号 {{ taskNumber(row) }}</div>\r\n                <div class="mp-cell-sub">来源：{{ moduleLabel(row.ownerModule) }} · 发起：{{ row.initiator ? \'业务经办人\' : \'未记录发起人\' }} · {{ formatTime(row) }}</div>\r\n              </template>\r\n              <template #cell-status="{ row }">\r\n                <StatusTag :type="statusTone(row.status)" :label="statusLabel(row.status)" dot />\r\n              </template>\r\n              <template #cell-ops="{ row }">\r\n                <button class="mp-link" @click="viewEvidence(row)">授权证据</button>\r\n                <button v-if="row.availableActions?.retry?.allowed" class="mp-link" :disabled="busy" @click="prepareAction(\'retry\', row)">重试</button>\r\n                <button v-if="row.availableActions?.cancel?.allowed" class="mp-link" :disabled="busy" @click="prepareAction(\'cancel\', row)">取消</button>\r\n                <span v-if="!row.availableActions?.retry?.allowed && !row.availableActions?.cancel?.allowed" class="mp-note">当前仅可查看</span>\r\n              </template>\r\n            </DataTable>\r\n          </div>\r\n        </section>\r\n\r\n        <section v-if="evidence" class="mp-card">\r\n          <header class="mp-card__head"><span class="mp-card__title">当前操作授权核对</span></header>\r\n          <div class="mp-card__body jc-evidence">\r\n            <p>以下核对当前身份现在能否办理，不替代任务创建时的历史审计。</p>\r\n            <p>执行身份：<strong>{{ authorizationActorLabel(evidence) }}</strong></p>\r\n            <p>授权方式：<strong>{{ authorizationPolicyLabel(evidence.currentActorAuthorization?.policyType) }}</strong></p>\r\n            <p>作用范围：<strong>{{ scopeSummary(evidence.scopeSnapshot) }}</strong></p>\r\n            <p>有效期：<strong>{{ evidence.currentActorAuthorization?.delegationExpiresAt || \'未记录固定到期时间，执行时重新鉴权\' }}</strong>\r\n              <span v-if="evidence.currentActorAuthorization?.delegatedSubject">\r\n                （临时授权）\r\n              </span>\r\n            </p>\r\n          </div>\r\n        </section>\r\n      </template>\r\n    </div>\r\n    <WorkspaceConfirmDialog :visible="!!pending" :title="pending?.type === \'retry\' ? \'核对任务重试\' : \'核对任务取消\'"\r\n      :confirm-text="pending?.type === \'retry\' ? \'确认重试任务\' : \'确认取消任务\'" require-reason reason-label="操作原因"\r\n      :submitting="busy" :confirm-disabled="actionNeedsReview" @update:visible="closeAction" @confirm="performAction">\r\n      <p v-if="pending">{{ kindLabel(pending.row.kind) }} · 任务编号 {{ taskNumber(pending.row) }} · 当前状态：{{ statusLabel(pending.row.status) }} · 版本 {{ pending.row.version }}</p>\r\n      <p>只办理当前选中的任务；执行前再次检查权限、状态和版本。</p>\r\n      <p v-if="actionError" role="alert">{{ actionError }}</p>\r\n    </WorkspaceConfirmDialog>\r\n  </ModulePageShell>\r\n</template>\r\n\r\n<script>\r\nimport { ModulePageShell, ModuleToolbar, DataTable, StatusTag, LoadingState, ErrorState, EmptyState } from \'@/components/business\'\r\nimport { systemApi } from \'@/modules/system/api/system.api\'\r\nimport { toast } from \'@/utils/toast\'\r\nimport { safeEnumLabel } from \'@/utils/presentationSafety\'\r\nimport { formatDateTime } from \'@/utils/dateUtils\'\r\nimport WorkspaceConfirmDialog from \'@/modules/system/components/workspace/WorkspaceConfirmDialog.vue\'\r\nimport { contextFingerprint } from \'@/modules/system/utils/workspaceContract\'\r\n\r\nconst KIND_LABEL = { IMPORT: \'业务数据导入\', EXPORT: \'业务数据导出\', FILE_JOB: \'文件安全处理\', EXCEL_IMPORT: \'表格数据导入\', AFFAIRS_BATCH: \'学工批量处理\' }\r\nconst MODULE_LABEL = { dataExchange: \'数据交换中心\', fileStorage: \'文件中心\', studentAffairs: \'学工中心\', systemAdmin: \'系统管理\', academicAffairs: \'教务中心\', graduationDesign: \'毕业设计中心\', internship: \'岗位实习中心\' }\r\nconst STATUS_LABEL = {\r\n  CREATED: \'待开始\', PENDING: \'等待处理\', UPLOADED: \'文件已上传\', VALIDATED: \'校验完成\',\r\n  RUNNING: \'运行中\', PROCESSING: \'处理中\', VALIDATING: \'校验中\', CONFIRMING: \'确认中\',\r\n  SUCCEEDED: \'已完成\', SUCCESS: \'已完成\', IMPORTED: \'已导入\', CONFIRMED: \'已确认\',\r\n  FAILED: \'失败\', DEAD: \'处理终止\', TIMEOUT: \'处理超时\', CANCELLED: \'已取消\',\r\n  SCANNING: \'安全扫描中\', PARSING: \'预检查中\', VALIDATION_FAILED: \'预检未通过\', EXPIRED: \'已过期\', REVOKED: \'已撤销\'\r\n}\r\nconst POLICY_LABEL = { USER_DELEGATED: \'临时职责授权\', SERVICE_POLICY: \'后台服务授权\', TENANT_SYSTEM_TASK: \'本校岗位授权\' }\r\n\r\nexport default {\r\n  name: \'SystemJobCenterView\',\r\n  components: {\r\n    ModulePageShell, ModuleToolbar, DataTable, StatusTag, WorkspaceConfirmDialog,\r\n    LoadingState, ErrorState, EmptyState\r\n  },\r\n  props: { ctx: { type: Object, required: true } },\r\n  data() {\r\n    return {\r\n      loading: true,\r\n      busy: false,\r\n      pending: null, actionError: \'\', actionNeedsReview: false, loadVersion: 0, disposed: false,\r\n      error: \'\',\r\n      overview: {},\r\n      jobTypes: [],\r\n      jobs: [],\r\n      pagination: { page: 1, pageSize: 20, total: 0 },\r\n      filterKind: \'\',\r\n      filterStatus: \'\',\r\n      evidence: null,\r\n      statusOptions: Object.entries(STATUS_LABEL).map(([value, label]) => ({ value, label })),\r\n      jobColumns: [\r\n        { key: \'scope\', title: \'任务\' },\r\n        { key: \'status\', title: \'状态\' },\r\n        { key: \'ops\', title: \'操作\' }\r\n      ]\r\n    }\r\n  },\r\n  created() { this.load() },\r\n  beforeUnmount() { this.disposed = true; this.loadVersion += 1 },\r\n  methods: {\r\n    search() { this.pagination.page = 1; this.load() },\r\n    changePage(page) { this.pagination.page = page; this.load() },\r\n    taskNumber(row) { return String(row.jobId || \'\').split(\':\')[1] || \'未记录\' },\r\n    formatTime(row) { return formatDateTime(row.createdAt, \'未记录时间\', row.timeZone) },\r\n    kindLabel(value) { return safeEnumLabel({ value, dictionary: KIND_LABEL, unknownLabel: \'其他业务任务\' }) },\r\n    moduleLabel(value) { return safeEnumLabel({ value, dictionary: MODULE_LABEL, unknownLabel: \'来源待核对\' }) },\r\n    statusLabel(value) { return safeEnumLabel({ value, dictionary: STATUS_LABEL, unknownLabel: \'状态待确认\' }) },\r\n    authorizationPolicyLabel(value) { return safeEnumLabel({ value, dictionary: POLICY_LABEL, unknownLabel: value ? \'授权方式待确认\' : \'当前无可用授权\' }) },\r\n    authorizationActorLabel(evidence) { return evidence?.currentActorAuthorization?.policyType === \'SERVICE_POLICY\' ? \'后台服务身份\' : \'当前经办人\' },\r\n    scopeSummary(scope) {\r\n      if (!scope || typeof scope !== \'object\') return \'未记录任务范围\'\r\n      const label = scope.scopeName || scope.orgName || scope.collegeName || scope.className\r\n      return label || (Array.isArray(scope.actionPrefixAllowlist) ? `创建时保存的 ${scope.actionPrefixAllowlist.length} 个动作范围` : \'未记录可解释的范围摘要\')\r\n    },\r\n    statusTone(s) {\r\n      if ([\'FAILED\', \'DEAD\', \'TIMEOUT\'].includes(s)) return \'danger\'\r\n      if ([\'RUNNING\', \'PROCESSING\', \'VALIDATING\', \'CONFIRMING\'].includes(s)) return \'warning\'\r\n      if ([\'SUCCEEDED\', \'SUCCESS\', \'IMPORTED\', \'CONFIRMED\'].includes(s)) return \'success\'\r\n      return \'default\'\r\n    },\r\n    async viewEvidence(row) {\r\n      const res = await systemApi.getJobAuthorizationEvidence(row.jobId)\r\n      if (res.code === 0) this.evidence = res.data\r\n      else toast.error(res.message)\r\n    },\r\n    prepareAction(type, row) {\r\n      if (this.busy || ![\'retry\', \'cancel\'].includes(type) || row.availableActions?.[type]?.allowed !== true) return\r\n      this.pending = { type, row: { ...row }, context: contextFingerprint(this.ctx) }\r\n      this.actionError = \'\'; this.actionNeedsReview = false\r\n    },\r\n    closeAction() { if (!this.busy) this.pending = null },\r\n    async performAction({ reason }) {\r\n      if (this.busy || !this.pending || this.actionNeedsReview) return\r\n      const command = this.pending\r\n      if (command.context !='... 3024 more characters,
+    expected: /授权依据摘要/,
+    operator: 'match',
+    diff: 'simple'
+  }

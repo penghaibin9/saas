@@ -1,0 +1,1106 @@
+{
+  "capturedOn": "2026-10-25",
+  "scope": "52个系统入口、16个四域关联页面及补充状态；不含业务写入验收",
+  "beforeDocumentSha256": "7912ec5c43eb6255d0ae68665dabda4cb659c973314786a70363b7c825b943a0",
+  "documentSha256": "c7a019cd77486ea75975a6509dc50df23fdacf7f4ff1282bbb275ae2d83dda5b",
+  "files": [
+    {
+      "file": "R01.jpg",
+      "bytes": 137518,
+      "sha256": "b3d7a21465bde81e5753fbce1a043613bc78cd3f34d2fcc7682c195da4ac338a",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R01.txt",
+      "bytes": 8249,
+      "sha256": "dd117c0bb6631f7a8261d891f0b0a9093aca7d0cc4ac61e301f394daff6ce6e2",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R02.jpg",
+      "bytes": 181278,
+      "sha256": "d88e05fd96f665c8ec52e974bfe13030e1cb4f2193bd46425848d6aaae19d6f9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R02.txt",
+      "bytes": 6835,
+      "sha256": "370d77d1dca4851808fc974bb001e176818f98e814271175008a08dd09cb847d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R03.jpg",
+      "bytes": 182609,
+      "sha256": "cf65d691dc4c9e1a3646b58ebd01cb81af0abdccc8035f62e0e8b60948f83cbd",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R03.txt",
+      "bytes": 12782,
+      "sha256": "2be69cd4e122f670bf3e9ba4be369c92897e91c786f702e156c6f3d45bf2d7e6",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R03a.jpg",
+      "bytes": 83540,
+      "sha256": "88642f96bd998549417bfcc4ea4af617819a8312ee6a7e0bc3dde36a08e9b42e",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R03a.txt",
+      "bytes": 13112,
+      "sha256": "7106f2d12aa669c799f27fcb362b8b8c117b4ae74447de5d4e96f0dfa6fc42ce",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R04.jpg",
+      "bytes": 147462,
+      "sha256": "44db256b1917e37ba1129a3ec68d2281fbd41b3608ed8b785d7ffc0e73556ec4",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R04.txt",
+      "bytes": 4738,
+      "sha256": "38dcfc7ad14b137ec726e8e73b8d618f6b3f97a730191165c65aece033f6aad5",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R05.jpg",
+      "bytes": 271238,
+      "sha256": "b27f310e78305d070b62465c2b2557e1ce2a00880f02c2aa8ddbf9c0897a9534",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R05.txt",
+      "bytes": 25710,
+      "sha256": "8ce129a09ecfa580452fb0162df7d1623c1fa9348b6a0e1391f09435e024e1af",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R06.jpg",
+      "bytes": 142337,
+      "sha256": "fa6abcc3c83e77550e4d0ad737b7a239da625fceb81c13ff73498a280e39a909",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R06.txt",
+      "bytes": 5855,
+      "sha256": "a39ee1e7c95d687e669029bb74590e5cd20b15586807c5efa6ebf9ca885e227b",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R07.jpg",
+      "bytes": 119396,
+      "sha256": "4682a9540ea3917af7805117b85d7be01c645abd6773d1bf976d1505a33a5942",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R07.txt",
+      "bytes": 4598,
+      "sha256": "ce7de34876a252c89de47e5f63bade344ce6275c688041e63df059454b12e9ba",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R08.jpg",
+      "bytes": 121946,
+      "sha256": "ab13dd20991865be39e09a808923bba255d372b68bbafaee2386d30704722f01",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R08.txt",
+      "bytes": 4831,
+      "sha256": "3b6ea51a559fe369c93b58fb9684a8b8317a86d7941ff3d5b31ca094fc9fd765",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R09.jpg",
+      "bytes": 137027,
+      "sha256": "dcf9e23af2ffc3bc5b177fd4aea8f424259524a62e562047a95aa3438893a182",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R09.txt",
+      "bytes": 5382,
+      "sha256": "5a1492e8d05524d9f0ed039bb2d811f7475abfd614c6a5591f69940459ec37d5",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R10.jpg",
+      "bytes": 205735,
+      "sha256": "31f159109f06bb040c788fdd8e4746bffea4f24c90200805e79e2a4addbc4525",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R10.txt",
+      "bytes": 11975,
+      "sha256": "392bd7da42c9ab142a71b61784644661b8f800c135f5d86770d93dbcccd97f71",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R10a.jpg",
+      "bytes": 112009,
+      "sha256": "2ba64c6235e475e7683b3464703559a8ebdedd119995dd3d0a1f7b97fad684f9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R10a.txt",
+      "bytes": 13625,
+      "sha256": "adb36d340538f3d1f677580cd81731769d49728181786a6633ee8a5ec91efffd",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R11.jpg",
+      "bytes": 220474,
+      "sha256": "0ddf96cf272dce56ddf4fdc0fe7f28f3c71d862c70634438169e0c19a4d941c3",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R11.txt",
+      "bytes": 30313,
+      "sha256": "08099a358a4be23b7ef87b3bba2e2c82fef41abbae041cc66ccc0759aeaf36f5",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R12.jpg",
+      "bytes": 145482,
+      "sha256": "d92c53ba8e3d9247b8288b70586d82c9ac37afee11e95f3c8ee380c79db6b02e",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R12.txt",
+      "bytes": 7153,
+      "sha256": "162c82e2138ac3af0c671c8f022688eea59b0632c4517f705c923199dbaf32c4",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R13.jpg",
+      "bytes": 146471,
+      "sha256": "8d333e9c53ad6fe5db21f7efd7079b2d3cd3dcc84d43eaf14a08843b827072e9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R13.txt",
+      "bytes": 7165,
+      "sha256": "2c1fff75a3e1cff6ffdd23912e6355690b6d478fdc91fec5c2aa46e84ea515ca",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R14.jpg",
+      "bytes": 135178,
+      "sha256": "01b4e97b90560abc67ac9bc4866def58964186bfc213d1eed0f85053bb822e25",
+      "usedInDocument": false,
+      "evidenceState": "过程记录"
+    },
+    {
+      "file": "R14.txt",
+      "bytes": 7234,
+      "sha256": "e8b745318715a13d91bf0f7d64bc41c979640ce5285067e27cf086e848e115c0",
+      "usedInDocument": false,
+      "evidenceState": "过程记录"
+    },
+    {
+      "file": "R14a.jpg",
+      "bytes": 181357,
+      "sha256": "7aed9a839f878e480ef0892ae43f132f92b58695a2407d20bf9b4a75fe31a2ef",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R14a.txt",
+      "bytes": 18424,
+      "sha256": "94a4f11a6fe5d4b44288b0496053ee79f3abf9f72a8b1c1d9e6c14f4fcb58d41",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R15.jpg",
+      "bytes": 127444,
+      "sha256": "fe927bc72cd459e85661854d561f825fdd5122f097649a4f31fe33625dd19c6c",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R15.txt",
+      "bytes": 6920,
+      "sha256": "aa4c1b0a91021263a980bd3d8b4c86c2663eee342f96285dfde033d4143a200c",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R16.jpg",
+      "bytes": 164906,
+      "sha256": "289d5dd8ef4d656d488bab00617b12535618f625091320159f329f4ba668c561",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R16.txt",
+      "bytes": 8894,
+      "sha256": "b39a240efd355e3d767062cc35a4410bcf1613dfc555c722698e4cb86717943b",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R17.jpg",
+      "bytes": 174624,
+      "sha256": "4124540f87536142e687afcd9756b62580088ff7bbe0e548ddcd551173ef31e2",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R17.txt",
+      "bytes": 12166,
+      "sha256": "fc3d5a338545fef5b25e7a54a9ff5a3d2c65277316bf7c1b55df2174d752bc96",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R18.jpg",
+      "bytes": 174871,
+      "sha256": "7d63239217fa58e2777c65e4690ca3b39e2eda5cdd05eb2f8294351965ccc0d9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R18.txt",
+      "bytes": 12394,
+      "sha256": "79c1747497a06ad24e13429b8c6914ade067fa1d3addcf9ae2713a83911cef5f",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R19.jpg",
+      "bytes": 173782,
+      "sha256": "48913aa6508e6a7fcffd7d03d06d6c72e56dd4efdeb396018874a92e566c9f83",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R19.txt",
+      "bytes": 12500,
+      "sha256": "ddba5f06affd911fa2efd8bce6940a8443ee6afb93028b157a537691df3cb9d0",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R20.jpg",
+      "bytes": 181714,
+      "sha256": "02639e8243593c292b6032bc194781af7450e86c6de559fd56f1c5dacddf5011",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R20.txt",
+      "bytes": 12773,
+      "sha256": "19309dcbb67dc789fc7e6107262c9bc8e1bb38ef14bb825636635ac1893f9ee7",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R21.jpg",
+      "bytes": 171112,
+      "sha256": "51302401d29c5b6aea84cbd4b7f325bf708816850797a6f1b48ad77c7ebd4b51",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R21.txt",
+      "bytes": 122153,
+      "sha256": "a65e379feadef373d3727d71e6573dba8e46329866d7627e92864bbc2a7ddb4d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R22.jpg",
+      "bytes": 190898,
+      "sha256": "6219f9725c284555ad67aff692bb3e8e0e1da0ad15f1ab0e0d6f454beabca43c",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R22.txt",
+      "bytes": 151738,
+      "sha256": "14a8246d78747f37877811113b84619033b70b352e0b40025a4db8738bd9459f",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R23.jpg",
+      "bytes": 195776,
+      "sha256": "6855ea6808518785cc4a833424ac853931127f8356470af34ec72fb356880282",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R23.txt",
+      "bytes": 6681,
+      "sha256": "5f4827364759912d5d97790b412458ac33a6769b451aefdc24114a6563ff090f",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R24.jpg",
+      "bytes": 113911,
+      "sha256": "aaa005d5561b33ea017c7c8fb960eb8d8a91defcf53ceabf5260edf1b205eb78",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R24.txt",
+      "bytes": 7479,
+      "sha256": "45791c50fd4f5a4701b9bd93da1a9e7088d8f906a1be39f235ef03817a83c23b",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R25.jpg",
+      "bytes": 167647,
+      "sha256": "a4620dcdc5aba0d9c563aae74e2c66451f079d79ac675ad501c34eee36b242d1",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R25.txt",
+      "bytes": 62284,
+      "sha256": "b098c8a1b87113c26d219f3efee0410dd13513e75c09d99d4090def74a174794",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R26.jpg",
+      "bytes": 175674,
+      "sha256": "7ddf3fe0a236c9fb42c05da0af0fcca45525875f4d9fae99326d72ecdd0d1b25",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R26.txt",
+      "bytes": 14526,
+      "sha256": "61a643a7b7730ceb151bf419650f464d284b3642cf42d022269ccc8431d56ef1",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R27.jpg",
+      "bytes": 196732,
+      "sha256": "4cca85ecd8b3e64601045bb49a4571f68f3805636b691aa7bdd38296707424a2",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R27.txt",
+      "bytes": 10613,
+      "sha256": "bdc89c662063135624daa2efb9fbdb999150543f24466b5b68fc6d5f9dbb1a3a",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R28.jpg",
+      "bytes": 209723,
+      "sha256": "d1b479fc6f4df5cfeb9ce7c75381c2463762c39cc1dbd6ddd4ca61a386a6de1c",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R28.txt",
+      "bytes": 46250,
+      "sha256": "fa0787d43bfe3179ea86bf71c79ee4e6254265fdbd23a8c6677596f4d30ba6a6",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R28a.jpg",
+      "bytes": 218140,
+      "sha256": "b8aaf23cb11bf7b5bacd77296c653d1f058585664f98ead0e94caf649e27ac82",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R28a.txt",
+      "bytes": 1219371,
+      "sha256": "f9c61593ecd3846b2a56ad7569f98993e9e6d3cba8e2f8f13adf78a32bf69b7d",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R29.jpg",
+      "bytes": 155550,
+      "sha256": "f95500d89f3878c50820796e906bb03d4231da01eb4f90395222c17b63849c67",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R29.txt",
+      "bytes": 9681,
+      "sha256": "0faf38d6854a48dda01a8d6a21823d8a18adac1c468bfd2bc9006028ede3b065",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R29a.jpg",
+      "bytes": 177954,
+      "sha256": "73a4317797f50006b21e0de914158aeeb3c9f159fc6e10898d03bf032c9f8ec6",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R29a.txt",
+      "bytes": 10189,
+      "sha256": "606b5dfcfb0d29bbcb2e3d6bf449a66a31385aff9091598cea500f5557a1640d",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R30.jpg",
+      "bytes": 189189,
+      "sha256": "7d5757c0028192421255d11ba8c5fb930f70181b905a22bd3f2989e0ed0995a1",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R30.txt",
+      "bytes": 9463,
+      "sha256": "44376a742d773731dec588322bad83844de41ef8344d06217b958a7f691e74b9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R31.jpg",
+      "bytes": 100451,
+      "sha256": "f8605cfc875829b001726b3827be7e6b5db21179f3926b969a0e6e3f742e9450",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R31.txt",
+      "bytes": 6816,
+      "sha256": "9fcf8212c2f493acfd8003ab6b62aae52ed4927984f931510be8504d226f4537",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R32.jpg",
+      "bytes": 126072,
+      "sha256": "e2a1979d5318c63b9c1c2df3cfd4cccdac5d1290518837b83cc1081c02d18239",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R32.txt",
+      "bytes": 8030,
+      "sha256": "7c6ae38ab76e8657e5c1038cc761e9c2fbd97e07b0e01a80ed771da80051bace",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R33.jpg",
+      "bytes": 121744,
+      "sha256": "6efd2609a40dc319fdb44968931751d3d87b254267b3232033e2a5e933543cbd",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R33.txt",
+      "bytes": 13297,
+      "sha256": "1770c9630010297840b7d1cfba16044890d16a5a1ca516babe39f6a8612e6017",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R34.jpg",
+      "bytes": 146963,
+      "sha256": "782d29ec7e23b1079cd17a6a7d859169bb6db26e777edf8a2861381af44ce621",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R34.txt",
+      "bytes": 7789,
+      "sha256": "e2cf03cbf0d468fb158af7ad62eb86a54231ff73b907f197d17631105bd08c25",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R35.jpg",
+      "bytes": 129877,
+      "sha256": "575e72a80c9596d2e470b58bd7d4a64665800d7c24751ae15d1fc70338906544",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R35.txt",
+      "bytes": 9593,
+      "sha256": "22b66027c2adf857188ed3065cebdeed14db943032f05413d0daea5d2b289afa",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R36.jpg",
+      "bytes": 176091,
+      "sha256": "3d827e705a576213e0ae2152ed870c5769dae2d976d03face7e23d285dc8a3d9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R36.txt",
+      "bytes": 12495,
+      "sha256": "31889b0f77bae1aa6ae111b8f1e851c91b8f09ad996420510092ee809cae341d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R37.jpg",
+      "bytes": 158615,
+      "sha256": "4820bfda75b64c43252ac43c4acf8ee7331aad37bbd71720b8836c52d189f2bd",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R37.txt",
+      "bytes": 10010,
+      "sha256": "5f6e6eeb9f397cbb09e59ff390d0790ab3b301641f1fcb5b0d208fcbdff4b719",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R38.jpg",
+      "bytes": 102302,
+      "sha256": "cd84f45e400f69ed5ef31d16b8b8ee0a024c1293c55a3335595084171b3e882d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R38.txt",
+      "bytes": 5106,
+      "sha256": "e6d190aa0836ccb68cf14d0e8acecff2b1e030c7165f13b2cd90d022fc3a80a6",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R39.jpg",
+      "bytes": 183949,
+      "sha256": "1f6b2eb1629431741dc211915d62e5fef5e8d048d9f665516bcb11979c3700f3",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R39.txt",
+      "bytes": 10807,
+      "sha256": "6ef57a138c05d5450c0063394334ad12ff7ebc5684c21444cb204d3967b361de",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R40.jpg",
+      "bytes": 83683,
+      "sha256": "11e430a3365ed2016ceeb5cb48baadc133bdfaaae4bb8ba2abef1253206975ad",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R40.txt",
+      "bytes": 2934,
+      "sha256": "172f3cc0bffd585db3b02e17fb47801ef25cc60469af57b2e49812111a8821ae",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R41.jpg",
+      "bytes": 146829,
+      "sha256": "0f6e54d6eefa70de572b5de8467747604f1fd52634e5d4957a34e104d8cddd8d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R41.txt",
+      "bytes": 8664,
+      "sha256": "4cf912f6e6f8a29ad9ce4adb620f04c503db08613070e35a1d2c6bb300a2324a",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R42.jpg",
+      "bytes": 295380,
+      "sha256": "e4e3d4091ee24b2adc7fb2272638e6bb03dbdb8d05b77366f5bbdaad30e30ab1",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R42.txt",
+      "bytes": 18660,
+      "sha256": "77d066ea410f84c3f7a7516b2186180fa71aa8e8985520e0c3beb151bd5fd7b4",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R43.jpg",
+      "bytes": 182103,
+      "sha256": "3f89909d5c536b9ca4fa095bc7132afe8a1856dd6f94851132e829bc6db23a2d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R43.txt",
+      "bytes": 19219,
+      "sha256": "492296a7451b16411a398ef5b4a845e4d5d3dd37628eb9b60fe89b1facc311d4",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R44.jpg",
+      "bytes": 205200,
+      "sha256": "3e234d41bc076b41cf434207ac8132ad56573254e230d2ab1fbf9773e94252a3",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R44.txt",
+      "bytes": 13356,
+      "sha256": "51d25a2ecb26667649dc8ab202d8d6d0f88d0a6e8605b055ed78152611f64d18",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R45.jpg",
+      "bytes": 249190,
+      "sha256": "99d74e880db4ec309b7de9053a558149b47b3c17d06b2fbd400842a20d15c77a",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R45.txt",
+      "bytes": 13259,
+      "sha256": "530604a1bf15601f64a593e1341b2362c09eadfb3e8879646a429f7fe70d26b8",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R46.jpg",
+      "bytes": 177512,
+      "sha256": "01ba670c48bfea55f36e637bdf25d7b6c15e54a952e1851ec34d9ccda66dbaab",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R46.txt",
+      "bytes": 10703,
+      "sha256": "1dd2feeb638c94ebb03d11cd5980aa1bb70f9276e5e44182327ac277339afc64",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R47.jpg",
+      "bytes": 177637,
+      "sha256": "bda25b84bf5d6ec5646a9076ac709b52c6cd8850a514e5f5392848d24a741443",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R47.txt",
+      "bytes": 16215,
+      "sha256": "c4557c832613b134067aa8a84ab329b84e7b05780e5cbde8f6ed8f8009bc98d9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R48.jpg",
+      "bytes": 100816,
+      "sha256": "fa714e4962563c70f5b7f82a05945829dfa06bcb7fc80e9a5c653e0265e6239a",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R48.txt",
+      "bytes": 5572,
+      "sha256": "15072a64db7a655875d5b758160e590363afe91e3122d0c653c612efc849856e",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R49.jpg",
+      "bytes": 184562,
+      "sha256": "7132298b5bfa9b1bba80746986405a953e037b1f37f01950380b93039749bc11",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R49.txt",
+      "bytes": 13149,
+      "sha256": "ff293ad2508ac5f3be5d5267a1b245eb4b3f394ca4eef3e2b998eddee71ad80e",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R50.jpg",
+      "bytes": 171335,
+      "sha256": "04c06a8bf696f07e69db21e70cc2df2b0badef51f1abd922630a5bda51404851",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R50.txt",
+      "bytes": 6882,
+      "sha256": "efaf210302cb8562f1aa1f55aab1d65c5eafd78b7021f63b21f32c57200b160d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R51.jpg",
+      "bytes": 94772,
+      "sha256": "aa944e641b64df1ef2c5a187333564e04692dcd49c2ee515c40c79d8ef5ffc19",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R51.txt",
+      "bytes": 5029,
+      "sha256": "87285ecb44fe3087d53f91a65e776758881cdda8af68ed42c3f5335963431232",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R52.jpg",
+      "bytes": 253588,
+      "sha256": "4421397b0baf8dc7d06a0f7a749da1d429914a6f3458e75e53541ae0ba8c1cd8",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R52.txt",
+      "bytes": 14884,
+      "sha256": "2027e7e1fbcad0ae1b70d450c25c8b0b36df5fea66eb62dab6b18615d196ad4d",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R53.jpg",
+      "bytes": 179711,
+      "sha256": "520da2cc7ff87b611343e4d15d850e4724543e1c0f78b05961e1a21e61e083ba",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R53.txt",
+      "bytes": 11027,
+      "sha256": "54e2ed0c1ad59ca93f7a5d627c40867880d3f0a491cd6f3195d49a55303776cd",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R54.jpg",
+      "bytes": 113795,
+      "sha256": "f1d7d907796c524ad079feed04d1372e48d3dd03be8509bf3c828fcf35af4261",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R54.txt",
+      "bytes": 5703,
+      "sha256": "709afd7081389955da4cff1b8adeab8dc54a70c633b8fdd7263a5dc31dceae3a",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R55.jpg",
+      "bytes": 208467,
+      "sha256": "ca22579b6f68fae0aa1d928cc0ca9c5dbed7c4b71863cc7f3be7bd82c1ec6cb8",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R55.txt",
+      "bytes": 22779,
+      "sha256": "c89405a527a3ad94dc93ad7951786266751f971c6872f64b76427d433c6f1ca8",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R56.jpg",
+      "bytes": 146677,
+      "sha256": "40adab972b40e891ba9a74a25ee619e4d85aae99d318084a64f318f887cfbc28",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R56.txt",
+      "bytes": 6889,
+      "sha256": "3ee34302498dc0f801e1d60e940afb6b82851338ac272ffb931d94c33a274b4f",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R57.jpg",
+      "bytes": 189982,
+      "sha256": "8349ff78fb824ca5c37f5fb35a6887982b97aae1dddfb04f420f634c2fb10297",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R57.txt",
+      "bytes": 8978,
+      "sha256": "360376eed49fc9fae4ee775a4f16511f0c6203110c333b826de13c833a981ad9",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R58.jpg",
+      "bytes": 190609,
+      "sha256": "384fe3fb37be8f72677380e7248c39787e293a80caa4336bb5bc27d74b9e1592",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R58.txt",
+      "bytes": 11713,
+      "sha256": "e92c6734145001b16c3d7ea116500482268002635b17049b1040730d89a83593",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R59.jpg",
+      "bytes": 174062,
+      "sha256": "b6ce4248bd14b250218222ebd4d1862c693b4dd49724c3adb9b1ee97ca9d68e5",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R59.txt",
+      "bytes": 8392,
+      "sha256": "f67562f712bcca4bc320d83fd671a08f6390ab1b5c6bdde539e4c58f352daf39",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R60.jpg",
+      "bytes": 273516,
+      "sha256": "b1f9985a12857762847f60344aa139046648b838ae32b08bb51e147d6f5450fd",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R60.txt",
+      "bytes": 16032,
+      "sha256": "4e5b9f7eb82524bd2b3fe35c3e3e1b5caa44f4b0e891e902eeb32a067e3515eb",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R61.jpg",
+      "bytes": 197331,
+      "sha256": "4c060906312bc575b860e4443f684654583f07f6ce61324e02aceae2d60246a0",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R61.txt",
+      "bytes": 11465,
+      "sha256": "3cf151c53da970b3a22195411e331935aaf943492fe037a1ed35d6144e6145a4",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R62.jpg",
+      "bytes": 122581,
+      "sha256": "247223007a7d7982a79aa8e104306369e0ca856b2c42de42f41cbd576e098e55",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R62.txt",
+      "bytes": 7074,
+      "sha256": "fe2151f3f010717b66175e116553a5dd654fe67aa1cced1a03925097ed34fa9b",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R63.jpg",
+      "bytes": 180958,
+      "sha256": "9350eefee644bab576882d70bac0a27532870e466bba167bc8413e2204dff787",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R63.txt",
+      "bytes": 11464,
+      "sha256": "7eefea87265c7769bb013469ee50225cbfdeb11097e06a0f69ad3d3516ebdd83",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R64.jpg",
+      "bytes": 154009,
+      "sha256": "277e18745961923db5311b18fe94a457a8d512995714807fc0cdfb88bea0d9ff",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R64.txt",
+      "bytes": 10152,
+      "sha256": "0deeffd0b1caba912055df4d4af2a05b66636cb29c85229c2e3a6f4fe8c90f7a",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R65.jpg",
+      "bytes": 181627,
+      "sha256": "0cb6ca0643387f0fb3b68d1b9a103d31f929a6be363fc9cba22a7f9dbc019b11",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R65.txt",
+      "bytes": 10325,
+      "sha256": "d6e930ff3250fc364e750ffd5cb6fa64347b2a13a1a247ee75f9f5cd9ceb8db0",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R66.jpg",
+      "bytes": 125481,
+      "sha256": "ae6ec1a3c482f2f7283ee8cf94433facfdc9e7755a21bd9a4753872a642194ad",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R66.txt",
+      "bytes": 7576,
+      "sha256": "fbabb988c024694c531e0b871453e92c34d9e7f03effb45ffca202d2c29faf19",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R67.jpg",
+      "bytes": 182719,
+      "sha256": "ae67d70bced3ae45a2c5a15bf12cf1d38e56417b3918e11b3659f6502fa3e5e7",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R67.txt",
+      "bytes": 13358,
+      "sha256": "e3bb8e739f81454cf0e7f047bab160798a11cd0c78255224f5c214d5ef29a3ba",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R68.jpg",
+      "bytes": 191393,
+      "sha256": "8dc1dc208376d79733080f1e3b71cc355602468d0b3ac65bec26d38f7b8cf3de",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R68.txt",
+      "bytes": 29938,
+      "sha256": "7937c1ba43d7fa173855578f4ea917070e6b4cb380544645ae482d0e4d6423c1",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R69.jpg",
+      "bytes": 127525,
+      "sha256": "a869db8649172d4fa48c1d3a9f6b96c3100462fa48a29965d6f67dbffc3f4a59",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R69.txt",
+      "bytes": 19111,
+      "sha256": "ad7fbd514d9b8eac9b7829714c4f5bfa38f21776e64cc19da5795f1bfd6f2d2c",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R70.jpg",
+      "bytes": 44737,
+      "sha256": "596b6b276c42effeba951a4357e57a30f1f3d00b26cb8ddd96a8daec25d7e561",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R70.txt",
+      "bytes": 17668,
+      "sha256": "92eec36058463faa4fe4b84201dbfc267091aa63ac91a23206674daaedb8b61e",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R71.jpg",
+      "bytes": 45888,
+      "sha256": "2f37cb355b8b58bd4fe8cf8a1d63ddda5536f3fbd077bf46493f3767f203b0ad",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R71.txt",
+      "bytes": 17668,
+      "sha256": "92eec36058463faa4fe4b84201dbfc267091aa63ac91a23206674daaedb8b61e",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R72.jpg",
+      "bytes": 49984,
+      "sha256": "c6a119ed2fdb8ca40280e3b881ac40fb8e480165fa52dcce44d47ccaa94656cf",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R72.txt",
+      "bytes": 17668,
+      "sha256": "92eec36058463faa4fe4b84201dbfc267091aa63ac91a23206674daaedb8b61e",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R72a.jpg",
+      "bytes": 52309,
+      "sha256": "4930131cdd2666276aa719fc2aadd7354ab375c0a60e8dc683310a17f36ba17c",
+      "usedInDocument": true,
+      "evidenceState": "已查看的页面状态"
+    },
+    {
+      "file": "R72a.txt",
+      "bytes": 17668,
+      "sha256": "92eec36058463faa4fe4b84201dbfc267091aa63ac91a23206674daaedb8b61e",
+      "usedInDocument": false,
+      "evidenceState": "已查看的页面状态"
+    }
+  ],
+  "imageFormatNote": "浏览器返回原始JPEG图像；仅纠正文件后缀，原始图像字节未改动",
+  "evidenceNotes": {
+    "R14": "加载过程，不作页面完成证据；稳定页面使用R14a",
+    "desktop": "多数复核为实测1800像素；R69实测1440像素",
+    "narrow": "R70=375、R71=390、R72及R72a=431，未宣称精确430"
+  }
+}

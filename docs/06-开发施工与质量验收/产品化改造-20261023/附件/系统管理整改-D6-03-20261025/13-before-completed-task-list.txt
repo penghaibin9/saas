@@ -1,0 +1,272 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 身份与账号
+  - navigation "三级菜单":
+    - button "教职工账号":
+      - generic: 教职工账号
+    - button "学生账号":
+      - generic: 学生账号
+    - button "教职工导入":
+      - generic: 教职工导入
+    - button "学生导入与账号开通":
+      - generic: 学生导入与账号开通
+    - button "数据交换任务中心":
+      - generic: 数据交换任务中心
+    - button "账号异常排查":
+      - generic: 账号异常排查
+    - button "登录与安全策略":
+      - generic: 登录与安全策略
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心" [selected]:
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:07
+  - heading "数据交换任务" [level=1]
+  - button "刷新状态"
+  - button "老系统迁移"
+  - button "导入学生"
+  - button "导入教职工"
+  - region "任务可见范围":
+    - generic: 任务视图
+    - button "本人任务" [pressed]
+    - button "模块任务"
+    - button "全校任务"
+    - paragraph: 只读取本人创建的任务。查看、确认与下载分别鉴权。
+  - region "独立任务汇总":
+    - article:
+      - generic: 全部任务
+      - strong: "4"
+      - generic: 导入 1 · 导出 3
+    - article:
+      - generic: 待处理
+      - strong: "0"
+      - generic: 待确认或生成中
+    - article:
+      - generic: 异常任务
+      - strong: "0"
+      - generic: 预检或执行失败
+    - article:
+      - generic: 有效导出文件
+      - strong: "1"
+      - generic: 不代表当前身份有下载权限
+  - paragraph: 汇总统计当前授权视图，不随下方关键词和状态筛选变化；不同状态统计不应直接相加。扫描解析中 0 项 · 已过期 0 项。
+  - textbox "查找数据交换任务":
+    - /placeholder: 任务类型编码、批次号、模块或操作人
+  - combobox "任务类型":
+    - option "全部类型" [selected]
+    - option "导入任务"
+    - option "导出与回执"
+  - combobox "任务状态":
+    - option "全部状态" [selected]
+    - option "安全扫描中"
+    - option "后台已领取"
+    - option "预检查中"
+    - option "预检通过 · 待确认"
+    - option "预检未通过"
+    - option "正在确认"
+    - option "等待生成"
+    - option "正在生成"
+    - option "已完成"
+    - option "处理失败"
+    - option "已取消"
+    - option "已过期"
+    - option "已撤销"
+  - button "查询"
+  - button "重置"
+  - region "数据交换任务清单":
+    - table:
+      - rowgroup:
+        - row "任务与来源 当前状态 数据量 创建时间 / 有效期 下一步":
+          - columnheader "任务与来源"
+          - columnheader "当前状态"
+          - columnheader "数据量"
+          - columnheader "创建时间 / 有效期"
+          - columnheader "下一步"
+      - rowgroup:
+        - 'row "初始账号凭据回执 系统管理 · 导出 #3 强敏感回执 · 下载独立授权 已完成 1 行 已下载 0 次 2026-10-25 12:58:18 有效至 2026-10-26 12:58:18 核对回执 →"':
+          - 'cell "初始账号凭据回执 系统管理 · 导出 #3 强敏感回执 · 下载独立授权"':
+            - text: 初始账号凭据回执
+            - generic: "系统管理 · 导出 #3"
+            - generic: 强敏感回执 · 下载独立授权
+          - cell "已完成":
+            - generic: 已完成
+          - cell "1 行 已下载 0 次":
+            - text: 1 行
+            - generic: 已下载 0 次
+          - cell "2026-10-25 12:58:18 有效至 2026-10-26 12:58:18":
+            - text: 2026-10-25 12:58:18
+            - generic: 有效至 2026-10-26 12:58:18
+          - cell "核对回执 →":
+            - button "核对回执 →"
+        - 'row "教职工导入 系统管理 · 导入 #1 已完成 总行数 1 有效 1 · 错误 0 2026-10-25 12:43:57 有效至 2026-10-26 12:43:57 继续办理 →"':
+          - 'cell "教职工导入 系统管理 · 导入 #1"':
+            - text: 教职工导入
+            - generic: "系统管理 · 导入 #1"
+          - cell "已完成":
+            - generic: 已完成
+          - cell "总行数 1 有效 1 · 错误 0":
+            - text: 总行数 1
+            - generic: 有效 1 · 错误 0
+          - cell "2026-10-25 12:43:57 有效至 2026-10-26 12:43:57":
+            - text: 2026-10-25 12:43:57
+            - generic: 有效至 2026-10-26 12:43:57
+          - cell "继续办理 →":
+            - button "继续办理 →"
+        - 'row "导出任务 其他授权模块 · 导出 #2 已取消 未取得 行 已下载 未取得 次 2026-10-25 11:48:11 未设置单独有效期 核对回执 →"':
+          - 'cell "导出任务 其他授权模块 · 导出 #2"':
+            - text: 导出任务
+            - generic: "其他授权模块 · 导出 #2"
+          - cell "已取消":
+            - generic: 已取消
+          - cell "未取得 行 已下载 未取得 次":
+            - text: 未取得 行
+            - generic: 已下载 未取得 次
+          - cell "2026-10-25 11:48:11 未设置单独有效期":
+            - text: 2026-10-25 11:48:11
+            - generic: 未设置单独有效期
+          - cell "核对回执 →":
+            - button "核对回执 →"
+        - 'row "导出任务 其他授权模块 · 导出 #1 已取消 未取得 行 已下载 未取得 次 2026-10-25 10:54:24 未设置单独有效期 核对回执 →"':
+          - 'cell "导出任务 其他授权模块 · 导出 #1"':
+            - text: 导出任务
+            - generic: "其他授权模块 · 导出 #1"
+          - cell "已取消":
+            - generic: 已取消
+          - cell "未取得 行 已下载 未取得 次":
+            - text: 未取得 行
+            - generic: 已下载 未取得 次
+          - cell "2026-10-25 10:54:24 未设置单独有效期":
+            - text: 2026-10-25 10:54:24
+            - generic: 未设置单独有效期
+          - cell "核对回执 →":
+            - button "核对回执 →"
+  - generic: 共 4 个任务 · 每页 20 项 · 第 1 页
+  - button "上一页" [disabled]
+  - button "下一页" [disabled]
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

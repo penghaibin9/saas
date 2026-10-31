@@ -1,0 +1,280 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/academic-calendar".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/academic-calendar
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 10° 阴, Secondary Actions: Expand
+				9 image
+				10 text 北京 10° 阴
+			11 button (collapsed) 10/26周一 08:09, Secondary Actions: Expand
+				12 image
+				13 text 10/26周一 08:09
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 胡
+				19 text 胡管理
+				20 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:32:02, Secondary Actions: Expand
+				33 image
+				34 text 本次工作 00:32:02
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				50 button 学校信息与品牌
+				51 button 数据字典
+				52 button 模块授权与业务开关
+				53 button 主数据责任与数据质量
+				54 button 合规与业务表单
+				55 button 学年学期与业务日历
+			56 checkbox Description: 取消固定三级菜单, Value: 1
+		57 container
+			58 tab group 已打开页面
+				59 container
+					60 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					61 button 关闭教职工账号
+						62 image
+				63 container
+					64 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					65 button 关闭数据交换任务中心
+						66 image
+				67 container
+					68 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					69 button 关闭菜单与操作权限
+						70 image
+				71 container
+					72 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					73 button 关闭系统总览
+						74 image
+				75 container
+					76 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					77 button 关闭数据导入与智能匹配
+						78 image
+				79 container
+					80 tab (selectable, settable, boolean) 接口、凭证与 Webhook, Help: 接口与同步 / 接口、凭证与 Webhook, Value: 0
+接口、凭证与 Webhook
+					81 button 关闭接口、凭证与 Webhook
+						82 image
+				83 container
+					84 tab (selectable, settable, boolean) 同步任务与失败中心, Help: 接口与同步 / 同步任务与失败中心, Value: 0
+同步任务与失败中心
+					85 button 关闭同步任务与失败中心
+						86 image
+				87 container
+					88 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					89 button 关闭身份权限总览
+						90 image
+				91 container
+					92 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					93 button 关闭首次开局向导
+						94 image
+				95 container
+					96 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					97 button 关闭上线检查与验收
+						98 image
+				99 container
+					100 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					101 button 关闭已安装配置
+						102 image
+				103 container
+					104 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					105 button 关闭变更与升级
+						106 image
+				107 container
+					108 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					109 button 关闭实施总览
+						110 image
+				111 container
+					112 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					113 button 关闭学校信息与品牌
+						114 image
+				115 container
+					116 tab (selected, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 1
+学年学期与业务日历
+					117 button 关闭学年学期与业务日历
+						118 image
+				119 container
+					120 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					121 button 关闭数据字典
+						122 image
+				123 container
+					124 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					125 button 关闭操作与权限审计
+						126 image
+			127 button (disabled) 恢复最近关闭的页签
+				128 image
+			129 checkbox Description: 收藏当前页面, Value: 0
+				130 image
+			131 checkbox Description: 专注模式, Value: 0
+				132 image
+			133 container
+				134 heading 学年学期与业务日历, Value: 1
+					135 text 学年学期与业务日历
+				136 text 当前生效学期
+				137 container
+					138 text 2026-2027 第1学期  2026-2027学年第一学期
+				139 text 激活于 2026-07-29 10:30 · 北京时间
+				140 text 2 已纳入治理 3 未纳入治理 0 已排期待激活
+				141 container
+					142 text 学期治理 切换影响：教务中心；未接入模块不会同步切换
+				143 table
+					144 row
+						145 cell
+							146 text 学期
+						147 cell
+							148 text 全校状态
+						149 cell
+							150 text 教务状态
+						151 cell
+							152 text 时间范围
+						153 cell
+							154 text 排期激活
+						155 cell
+							156 text 操作
+					157 row
+						158 cell
+							159 text 2026-2027 第1学期 2026-2027学年第一学期
+						160 cell
+							161 text 全校生效
+						162 cell
+							163 text 已发布  教务当前
+						164 cell
+							165 text 2026-09-01 ~ 2027-01-15
+						166 cell
+							167 text 2026-07-29 10:30
+						168 cell
+							169 button 详情
+							170 button 开始结期
+					171 row
+						172 cell
+							173 text 2024-2025 第1学期 2024-2025学年第一学期
+						174 cell
+							175 text 草稿
+						176 cell
+							177 text 已归档
+						178 cell
+							179 text 2024-09-02 ~ 2025-01-17
+						180 cell
+							181 text —
+						182 cell
+							183 button 详情
+							184 button 校验通过
+				185 text 教务已建、尚未纳入全校治理
+				186 table
+					187 row
+						188 cell
+							189 text 学期
+						190 cell
+							191 text 教务状态
+						192 cell
+							193 text 操作
+					194 row
+						195 cell
+							196 text 2024-2025 第2学期 2024-2025学年第二学期
+						197 cell
+							198 text 已归档
+						199 cell
+							200 button 纳入治理
+					201 row
+						202 cell
+							203 text 2025-2026 第1学期 2025-2026学年第一学期
+						204 cell
+							205 text 已归档
+						206 cell
+							207 button 纳入治理
+					208 row
+						209 cell
+							210 text 2025-2026 第2学期 2025-2026学年第二学期
+						211 cell
+							212 text 已归档
+						213 cell
+							214 button 纳入治理
+				215 container
+					216 text 切换影响的模块 未接入的模块仍按各自口径取值，后续统一收口
+				217 table
+					218 row
+						219 cell
+							220 text 模块
+						221 cell
+							222 text 依赖学期的业务
+						223 cell
+							224 text 接入状态
+					225 row
+						226 cell
+							227 text 教务中心
+						228 cell
+							229 text 教学任务、考勤、成绩、归档
+						230 cell
+							231 text 已接入
+					232 row
+						233 cell
+							234 text 学工中心
+						235 cell
+							236 text 请假、违纪、资助批次
+						237 cell
+							238 text 未接入
+					239 row
+						240 cell
+							241 text 岗位实习中心
+						242 cell
+							243 text 实习批次与周报周期
+						244 cell
+							245 text 未接入
+					246 row
+						247 cell
+							248 text 毕业设计中心
+						249 cell
+							250 text 毕设批次与答辩场次
+						251 cell
+							252 text 未接入
+					253 row
+						254 cell
+							255 text 就业中心
+						256 cell
+							257 text 就业统计年度口径
+						258 cell
+							259 text 未接入
+			260 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/academic-calendar

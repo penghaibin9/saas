@@ -1,0 +1,19 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "phase": "import-after",
+  "jobId": "1",
+  "status": "SUCCEEDED",
+  "version": 5,
+  "totalRows": 1,
+  "validRows": 1,
+  "confirmedRows": 1,
+  "createdAccountCount": 1,
+  "scanRequired": true,
+  "scanStatus": "CLEAN",
+  "engine": "CLAMAV",
+  "engineVersion": "ClamAV 1.5.4",
+  "signatureVersion": "28163",
+  "fileStoredInsideTaskDirectory": true,
+  "uploadedFileHashVerified": true,
+  "credentialReceiptFileId": "2"
+}

@@ -1,0 +1,401 @@
+http://127.0.0.1:5173/admin/system/migration
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:42":
+    - generic: 10/25周日 14:42
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:22:27":
+  - generic: 本次工作 02:22:27
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 接口与同步
+  - navigation "三级菜单":
+    - button "接口、凭证与 Webhook":
+      - generic: 接口、凭证与 Webhook
+    - button "同步任务与失败中心":
+      - generic: 同步任务与失败中心
+    - button "老系统数据迁移" [active]:
+      - generic: 老系统数据迁移
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "数据字典":
+    - generic: 数据字典
+  - button "关闭数据字典":
+  - tab "模块授权与业务开关":
+    - generic: 模块授权与业务开关
+  - button "关闭模块授权与业务开关":
+  - tab "主数据责任与数据质量":
+    - generic: 主数据责任与数据质量
+  - button "关闭主数据责任与数据质量":
+  - tab "合规与业务表单":
+    - generic: 合规与业务表单
+  - button "关闭合规与业务表单":
+  - tab "学年学期与业务日历":
+    - generic: 学年学期与业务日历
+  - button "关闭学年学期与业务日历":
+  - tab "流程安全与运行治理":
+    - generic: 流程安全与运行治理
+  - button "关闭流程安全与运行治理":
+  - tab "统一消息、待办与通知治理":
+    - generic: 统一消息、待办与通知治理
+  - button "关闭统一消息、待办与通知治理":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "登录与安全审计":
+    - generic: 登录与安全审计
+  - button "关闭登录与安全审计":
+  - tab "敏感与导入导出审计":
+    - generic: 敏感与导入导出审计
+  - button "关闭敏感与导入导出审计":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "完整性异常中心":
+    - generic: 完整性异常中心
+  - button "关闭完整性异常中心":
+  - tab "文件存储治理":
+    - generic: 文件存储治理
+  - button "关闭文件存储治理":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移" [selected]:
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:42
+  - heading "老系统数据迁移" [level=1]
+  - generic: 迁移地图（21 域 · 学工 + 教务全量历史）
+  - generic: 老系统只要能导出 Excel 即可迁移；原始 XLSX、预检和确认结果统一进入数据交换任务中心。
+  - generic: "20005"
+  - generic: 学生主档
+  - generic: 18/21
+  - generic: 已有数据域
+  - generic: "0"
+  - generic: 迁移批次
+  - generic: 迁移域（按依赖顺序执行）
+  - generic: 灰色域表示前置依赖未完成；确认只提交统一的任务编号与任务版本
+  - generic: "1"
+  - generic: 学年学期
+  - generic: 教务
+  - generic: 重复覆盖
+  - text: 导入对象：
+  - strong: 学年学期
+  - generic: 唯一键：学年+学期号
+  - generic: 前置依赖： 无
+  - generic: 库内数据：5 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "2"
+  - generic: 校历事件
+  - generic: 教务
+  - generic: 重复覆盖
+  - text: 导入对象：
+  - strong: 校历事件
+  - generic: 唯一键：学期+事件类型+开始日期
+  - generic: 前置依赖： 学年学期（已满足）
+  - generic: 库内数据：4 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "3"
+  - generic: 作息节次
+  - generic: 教务
+  - generic: 重复覆盖
+  - text: 导入对象：
+  - strong: 作息节次
+  - generic: 唯一键：节次号+校区编码
+  - generic: 前置依赖： 无
+  - generic: 库内数据：10 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "4"
+  - generic: 学籍名册（状态初始化）
+  - generic: 教务
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 学籍名册（状态初始化）
+  - generic: 唯一键：学号（每生一行）
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：7 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "5"
+  - generic: 学籍异动历史
+  - generic: 教务
+  - generic: 重复跳过
+  - text: 导入对象：
+  - strong: 学籍异动历史
+  - generic: 唯一键：学号+异动类型+生效日期
+  - generic: 前置依赖： 学籍名册（状态初始化）（已满足）
+  - generic: 库内数据：7 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "6"
+  - generic: 历史成绩
+  - generic: 教务
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 历史成绩
+  - generic: 唯一键：学号+课程名称+学期
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：0 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "7"
+  - generic: 家庭联系人
+  - generic: 学工
+  - generic: 重复覆盖
+  - text: 导入对象：
+  - strong: 家庭联系人
+  - generic: 唯一键：学号+联系人类型
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：1 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "8"
+  - generic: 班干部任免
+  - generic: 学工
+  - generic: 重复跳过
+  - text: 导入对象：
+  - strong: 班干部任免
+  - generic: 唯一键：班级+学号+职务+学期
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：768 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "9"
+  - generic: 宿舍房源（楼/房/床）
+  - generic: 学工
+  - generic: 重复覆盖
+  - text: 导入对象：
+  - strong: 宿舍房源（楼/房/床）
+  - generic: 唯一键：楼栋编码+房号
+  - generic: 前置依赖： 无
+  - generic: 库内数据：2016 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "10"
+  - generic: 住宿分配
+  - generic: 学工
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 住宿分配
+  - generic: 唯一键：学号（一生一床）
+  - generic: 前置依赖： 学生主档、宿舍房源（楼/房/床）（已满足）
+  - generic: 库内数据：11051 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "11"
+  - generic: 请假历史
+  - generic: 学工
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 请假历史
+  - generic: 唯一键：学号+开始时间+请假类型
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：1630 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "12"
+  - generic: 困难认定历史
+  - generic: 学工
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 困难认定历史
+  - generic: 唯一键：学号+学年
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：1560 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "13"
+  - generic: 奖助获得记录
+  - generic: 学工
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 奖助获得记录
+  - generic: 唯一键：学号+项目名称+学年
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：1300 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "14"
+  - generic: 处分历史
+  - generic: 学工
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 处分历史
+  - generic: 唯一键：学号+文号
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：80 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "15"
+  - generic: 谈心谈话历史
+  - generic: 学工
+  - generic: 重复跳过
+  - text: 导入对象：
+  - strong: 谈心谈话历史
+  - generic: 唯一键：学号+谈话时间+主题类型
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：652 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "16"
+  - generic: 风险学生名单
+  - generic: 学工
+  - generic: 重复跳过
+  - text: 导入对象：
+  - strong: 风险学生名单
+  - generic: 唯一键：学号+风险描述
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：0 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "17"
+  - generic: 课程库
+  - generic: 教务
+  - generic: 重复覆盖
+  - text: 导入对象：
+  - strong: 课程库
+  - generic: 唯一键：课程编码+版本
+  - generic: 前置依赖： 无
+  - generic: 库内数据：756 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "18"
+  - generic: 培养方案
+  - generic: 教务
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 培养方案
+  - generic: 唯一键：专业+年级+版本
+  - generic: 前置依赖： 课程库（已满足）
+  - generic: 库内数据：103 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "19"
+  - generic: 教学任务
+  - generic: 教务
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 教学任务
+  - generic: 唯一键：学期+课程+班级
+  - generic: 前置依赖： 学年学期、课程库（已满足）
+  - generic: 库内数据：1799 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "20"
+  - generic: 课表
+  - generic: 教务
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 课表
+  - generic: 唯一键：班级+星期+节次+周次
+  - generic: 前置依赖： 作息节次、教学任务（已满足）
+  - generic: 库内数据：0 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: "21"
+  - generic: 历届毕业结论
+  - generic: 教务
+  - generic: 重复即报错
+  - text: 导入对象：
+  - strong: 历届毕业结论
+  - generic: 唯一键：毕业年份+学号
+  - generic: 前置依赖： 学生主档（已满足）
+  - generic: 库内数据：4 条
+  - button "下载模板"
+  - button "上传导入"
+  - generic: 迁移批次记录
+  - button "任务中心"
+  - button "刷新"
+  - generic: 暂无迁移批次；先在上方选择迁移域并上传老系统导出的 XLSX 文件。
+  - generic: 实施口径（对学校可承诺的验收方式）
+  - list:
+    - listitem: 老系统原始 XLSX、预检错误、确认结果和任务版本全部可追溯，刷新页面任务不丢。
+    - listitem: 预校验存在任何错误行时禁止确认；确认阶段整批一个事务，任一行失败全部回滚。
+    - listitem: 历史数据只进终态：不产生待办、不触发工作流；导入行为全部写入安全审计。
+    - listitem: 导入完成后按域对账：库内数量与老系统报表逐项核对一致方可签认。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

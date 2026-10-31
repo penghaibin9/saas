@@ -1,0 +1,8 @@
+{
+  "engineVersion": "ClamAV 1.5.4/28163/Sat Oct 24 06:26:10 2026",
+  "required": true,
+  "enabled": true,
+  "nativeTemplateScan": "CLEAN",
+  "bridge": "127.0.0.1:13310",
+  "sharedServiceUse": "只读流扫描，不改容器、文件或网络配置"
+}

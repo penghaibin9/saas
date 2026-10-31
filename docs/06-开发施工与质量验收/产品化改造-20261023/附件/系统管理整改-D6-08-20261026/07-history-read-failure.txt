@@ -1,0 +1,263 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/login-policy".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/login-policy
+	2 container app
+		3 container
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button 帮助与引导
+			8 button 消息中心
+				9 image
+			10 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				11 text 胡
+				12 text 胡管理
+				13 text 学校管理员
+		14 container
+			15 container 一级菜单
+				16 button 学工中心
+				17 button 教务中心
+				18 button 毕业设计中心
+				19 button 岗位实习中心
+				20 button 系统管理
+			21 button (collapsed) 当前范围, Secondary Actions: Expand
+				22 image
+				23 text 当前范围
+				24 image
+		25 container
+			26 button 目录
+			27 tab group 已打开页面
+				28 container
+					29 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					30 button 关闭教职工账号
+						31 image
+				32 container
+					33 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					34 button 关闭数据交换任务中心
+						35 image
+				36 container
+					37 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					38 button 关闭菜单与操作权限
+						39 image
+				40 container
+					41 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					42 button 关闭系统总览
+						43 image
+				44 container
+					45 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					46 button 关闭数据导入与智能匹配
+						47 image
+				48 container
+					49 tab (selectable, settable, boolean) 接口、凭证与 Webhook, Help: 接口与同步 / 接口、凭证与 Webhook, Value: 0
+接口、凭证与 Webhook
+					50 button 关闭接口、凭证与 Webhook
+						51 image
+				52 container
+					53 tab (selectable, settable, boolean) 同步任务与失败中心, Help: 接口与同步 / 同步任务与失败中心, Value: 0
+同步任务与失败中心
+					54 button 关闭同步任务与失败中心
+						55 image
+				56 container
+					57 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					58 button 关闭身份权限总览
+						59 image
+				60 container
+					61 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					62 button 关闭首次开局向导
+						63 image
+				64 container
+					65 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					66 button 关闭上线检查与验收
+						67 image
+				68 container
+					69 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					70 button 关闭已安装配置
+						71 image
+				72 container
+					73 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					74 button 关闭变更与升级
+						75 image
+				76 container
+					77 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					78 button 关闭实施总览
+						79 image
+				80 container
+					81 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					82 button 关闭学校信息与品牌
+						83 image
+				84 container
+					85 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					86 button 关闭学年学期与业务日历
+						87 image
+				88 container
+					89 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					90 button 关闭数据字典
+						91 image
+				92 container
+					93 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					94 button 关闭操作与权限审计
+						95 image
+				96 container
+					97 tab (selected, settable, boolean) 登录与安全策略, Help: 身份与账号 / 登录与安全策略, Value: 1
+登录与安全策略
+					98 button 关闭登录与安全策略
+						99 image
+			100 button (disabled) 恢复最近关闭的页签
+				101 image
+			102 checkbox Description: 收藏当前页面, Value: 0
+				103 image
+			104 checkbox Description: 专注模式, Value: 0
+				105 image
+			106 container
+				107 text 配置继承与恢复
+				108 text 撤销学校层当前和计划中的覆盖后，恢复继承上级设置，不需要手填“默认值”。
+				109 button 刷新
+				110 table
+					111 row
+						112 cell
+							113 text 配置
+						114 cell
+							115 text 当前/计划值
+						116 cell
+							117 text 覆盖链
+						118 cell
+							119 text 当前生效时间
+						120 cell
+							121 text 操作
+					122 row
+						123 cell
+							124 text 登录失败锁定阈值（次）
+							125 text 学校安全配置
+						126 cell
+							127 text 5
+						128 cell
+							129 text 1 条学校覆盖
+						130 cell
+							131 text 2026-07-29 10:30:00
+						132 cell
+							133 button 恢复继承
+			134 container
+				135 heading 登录与安全策略, Value: 1
+					136 text 登录与安全策略
+				137 container
+					138 text 安全策略 变更需填写原因并写入审计；越过平台底线会被拒绝
+				139 table
+					140 row
+						141 cell
+							142 text 配置项
+						143 cell
+							144 text 当前值
+						145 cell
+							146 text 生效来源
+						147 cell
+							148 text 平台允许范围
+						149 cell
+							150 text 真实读取方
+						151 cell
+							152 text 操作
+					153 row
+						154 cell
+							155 text 登录失败锁定阈值（次）
+							156 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								157 text 实施人员使用
+						158 cell
+							159 text 5
+						160 cell
+							161 text 学校覆盖
+						162 cell
+							163 text 3 ~ 10
+						164 cell
+							165 text 登录失败计数与锁定
+						166 cell
+							167 button 编辑
+							168 button 历史
+					169 row
+						170 cell
+							171 text 登录锁定时长（分钟）
+							172 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								173 text 实施人员使用
+						174 cell
+							175 text 5
+						176 cell
+							177 text 学校配置
+						178 cell
+							179 text 5 ~ 120
+						180 cell
+							181 text 登录锁定时长校验
+						182 cell
+							183 button 编辑
+							184 button 历史
+					185 row
+						186 cell
+							187 text 密码最小长度
+							188 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								189 text 实施人员使用
+						190 cell
+							191 text 8
+						192 cell
+							193 text 套餐默认
+						194 cell
+							195 text 6 ~ 32
+						196 cell
+							197 text 修改密码校验
+						198 cell
+							199 button 编辑
+							200 button 历史
+					201 row
+						202 cell
+							203 text 已验证手机号加密码登录（原账号始终保留）
+							204 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								205 text 实施人员使用
+						206 cell
+							207 text 已关闭
+						208 cell
+							209 text 套餐默认
+						210 cell
+							211 text 关闭 / 启用
+						212 cell
+							213 text 手机号密码登录
+						214 cell
+							215 button 编辑
+							216 button 历史
+					217 row
+						218 cell
+							219 text 普通账号已验证手机号找回密码（高权限独立核验）
+							220 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								221 text 实施人员使用
+						222 cell
+							223 text 已关闭
+						224 cell
+							225 text 套餐默认
+						226 cell
+							227 text 关闭 / 启用
+						228 cell
+							229 text 手机号找回密码
+						230 cell
+							231 button 编辑
+							232 button 历史
+			233 button 我的常用
+	237 container 变更历史 · 登录失败锁定阈值（次）
+		238 container
+			239 heading 变更历史 · 登录失败锁定阈值（次）, Value: 3
+				240 text 变更历史 · 登录失败锁定阈值（次）
+			241 button 关闭
+		242 container
+			243 text ! 加载失败 数据加载失败，请稍后重试
+			244 button 重试
+			245 button 返回
+
+The focused UI element is 168 button 历史

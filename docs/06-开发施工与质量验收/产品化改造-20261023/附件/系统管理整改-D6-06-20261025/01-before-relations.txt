@@ -1,0 +1,242 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心" [selected]:
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- navigation "组织主数据":
+  - button "树形定位工作台"
+  - button "学院与部门"
+  - button "专业管理"
+  - button "年级与班级"
+  - button "岗位管理"
+  - button "教职工任职归属查询"
+  - button "业务关系中心"
+  - button "变更版本"
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 23:11
+  - heading "业务关系中心" [level=1]
+  - button "刷新"
+  - generic: 关系登记表
+  - generic: 共 6 种关系，登记异常 1 种
+  - table:
+    - rowgroup:
+      - row "业务关系 归属模块 权威数据位置 登记校验 关系缺口 操作":
+        - columnheader "业务关系"
+        - columnheader "归属模块"
+        - columnheader "权威数据位置"
+        - columnheader "登记校验"
+        - columnheader "关系缺口"
+        - columnheader "操作"
+    - rowgroup:
+      - row "辅导员-班级 COUNSELOR_CLASS studentAffairs app.models.org.SchoolClass.counselor_id 范围 COUNSELOR_CLASSES 登记正常 无缺口 重新校验":
+        - cell "辅导员-班级 COUNSELOR_CLASS":
+          - generic: 辅导员-班级
+          - generic: COUNSELOR_CLASS
+        - cell "studentAffairs"
+        - cell "app.models.org.SchoolClass.counselor_id 范围 COUNSELOR_CLASSES":
+          - generic: app.models.org.SchoolClass.counselor_id
+          - generic: 范围 COUNSELOR_CLASSES
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "无缺口":
+          - generic: 无缺口
+        - cell "重新校验":
+          - button "重新校验"
+      - row "班主任-班级 HEAD_TEACHER_CLASS studentAffairs app.models.org.SchoolClass.head_teacher_id 范围 COUNSELOR_CLASSES 登记正常 无缺口 重新校验":
+        - cell "班主任-班级 HEAD_TEACHER_CLASS":
+          - generic: 班主任-班级
+          - generic: HEAD_TEACHER_CLASS
+        - cell "studentAffairs"
+        - cell "app.models.org.SchoolClass.head_teacher_id 范围 COUNSELOR_CLASSES":
+          - generic: app.models.org.SchoolClass.head_teacher_id
+          - generic: 范围 COUNSELOR_CLASSES
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "无缺口":
+          - generic: 无缺口
+        - cell "重新校验":
+          - button "重新校验"
+      - row "毕设导师-学生 GD_MENTOR_STUDENT graduationDesign app.models.graduation.GraduationStudent.mentor_id 范围 GD_STUDENTS 登记正常 无缺口 重新校验":
+        - cell "毕设导师-学生 GD_MENTOR_STUDENT":
+          - generic: 毕设导师-学生
+          - generic: GD_MENTOR_STUDENT
+        - cell "graduationDesign"
+        - cell "app.models.graduation.GraduationStudent.mentor_id 范围 GD_STUDENTS":
+          - generic: app.models.graduation.GraduationStudent.mentor_id
+          - generic: 范围 GD_STUDENTS
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "无缺口":
+          - generic: 无缺口
+        - cell "重新校验":
+          - button "重新校验"
+      - row "实习校内指导教师-学生 INTERNSHIP_ADVISOR_STUDENT internship app.models.internship.InternshipRecord.advisor_user_id 范围 INTERN_STUDENTS 登记正常 无缺口 重新校验":
+        - cell "实习校内指导教师-学生 INTERNSHIP_ADVISOR_STUDENT":
+          - generic: 实习校内指导教师-学生
+          - generic: INTERNSHIP_ADVISOR_STUDENT
+        - cell "internship"
+        - cell "app.models.internship.InternshipRecord.advisor_user_id 范围 INTERN_STUDENTS":
+          - generic: app.models.internship.InternshipRecord.advisor_user_id
+          - generic: 范围 INTERN_STUDENTS
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "无缺口":
+          - generic: 无缺口
+        - cell "重新校验":
+          - button "重新校验"
+      - row "任课教师-教学班 TEACHING_CLASS_TEACHER academicAffairs app.models.academic_affairs_teaching_class.AaTeachingClassTeacher.teacher_id 范围 COURSE 登记正常 无缺口 重新校验":
+        - cell "任课教师-教学班 TEACHING_CLASS_TEACHER":
+          - generic: 任课教师-教学班
+          - generic: TEACHING_CLASS_TEACHER
+        - cell "academicAffairs"
+        - cell "app.models.academic_affairs_teaching_class.AaTeachingClassTeacher.teacher_id 范围 COURSE":
+          - generic: app.models.academic_affairs_teaching_class.AaTeachingClassTeacher.teacher_id
+          - generic: 范围 COURSE
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "无缺口":
+          - generic: 无缺口
+        - cell "重新校验":
+          - button "重新校验"
+      - row "宿管-楼栋 DORM_MANAGER_BUILDING studentAffairs app.models.affairs_dorm.DormBuilding.manager_teacher_key 范围 DORM_BUILDING 登记异常 UNSTABLE_KEY 关系键是文本（manager_teacher_key），改名即失联，待整改 无缺口 重新校验":
+        - cell "宿管-楼栋 DORM_MANAGER_BUILDING":
+          - generic: 宿管-楼栋
+          - generic: DORM_MANAGER_BUILDING
+        - cell "studentAffairs"
+        - cell "app.models.affairs_dorm.DormBuilding.manager_teacher_key 范围 DORM_BUILDING":
+          - generic: app.models.affairs_dorm.DormBuilding.manager_teacher_key
+          - generic: 范围 DORM_BUILDING
+        - cell "登记异常 UNSTABLE_KEY 关系键是文本（manager_teacher_key），改名即失联，待整改":
+          - generic: 登记异常
+          - generic: UNSTABLE_KEY
+          - text: 关系键是文本（manager_teacher_key），改名即失联，待整改
+        - cell "无缺口":
+          - generic: 无缺口
+        - cell "重新校验":
+          - button "重新校验"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

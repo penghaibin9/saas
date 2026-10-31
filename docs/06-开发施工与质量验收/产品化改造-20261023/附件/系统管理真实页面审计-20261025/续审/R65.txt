@@ -1,0 +1,227 @@
+http://127.0.0.1:5173/admin/internship?batchId=47
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:50":
+    - generic: 10/25周日 14:50
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:43:59":
+  - generic: 本次工作 02:43:59
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日
+    - button "实习中心大屏":
+      - generic: 实习
+    - button "批次与学生":
+      - generic: 批次
+    - button "企业与岗位":
+      - generic: 企业
+    - button "申请与落岗":
+      - generic: 申请
+    - button "实习过程":
+      - generic: 实习
+    - button "风险与变更":
+      - generic: 风险
+    - button "评价与成绩":
+      - generic: 评价
+    - button "归档与分析":
+      - generic: 归档
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "待办与进度":
+      - generic: 待办
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "待办与进度" [selected]:
+    - generic: 待办与进度
+  - button "关闭待办与进度":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - heading "今日工作" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "2025 年暑期行业见习（历史归档样本） · INT-2025-SUMMER-HIST"
+    - option "2024级岗位实习（进行中） · INT-2024-2026FALL" [selected]
+  - generic: 进行中
+  - generic: 2026-07-20 ~ 2027-01-15
+  - button "＋ 新增实习批次"
+  - button "管理学生名单"
+  - button "统计报表"
+  - button "分配记录"
+  - region "按实习流程办理":
+    - link "01 批次与学生":
+      - /url: /admin/internship/batches?panel=list&batchId=47
+      - generic: "01"
+      - strong: 批次与学生
+    - link "02 企业与岗位":
+      - /url: /admin/internship/enterprises?panel=list&batchId=47
+      - generic: "02"
+      - strong: 企业与岗位
+    - link "03 申请与落岗":
+      - /url: /admin/internship/volunteer-review?batchId=47
+      - generic: "03"
+      - strong: 申请与落岗
+    - link "04 实习过程":
+      - /url: /admin/internship/attendance?panel=checkins&batchId=47
+      - generic: "04"
+      - strong: 实习过程
+    - link "05 风险与变更":
+      - /url: /admin/internship/risks?panel=board&batchId=47
+      - generic: "05"
+      - strong: 风险与变更
+    - link "06 评价与成绩":
+      - /url: /admin/internship/enterprise-evals?batchId=47
+      - generic: "06"
+      - strong: 评价与成绩
+    - link "07 归档与分析":
+      - /url: /admin/internship/archive?panel=records&batchId=47
+      - generic: "07"
+      - strong: 归档与分析
+  - generic: 优先待办 · 1232 项
+  - paragraph: 汇集风险、考勤异常与周报，最多显示 8 项；其他事项从上方流程入口办理。
+  - button "刷新待办"
+  - navigation "待办类型":
+    - button "全部 8" [pressed]
+    - button "风险处置 4"
+    - button "考勤异常 4"
+    - button "报告批阅 0"
+  - article:
+    - text: 考勤异常
+    - heading "萧欣怡 · 缺卡待核实" [level=3]
+    - paragraph: 连续 1 天 · 设备信号待核实
+    - generic: 等待有处理权限的教师核对完整证据并作出判断
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+    - button "核实异常 →"
+  - article:
+    - text: 考勤异常
+    - heading "吴思雨 · 缺卡待核实" [level=3]
+    - paragraph: 连续 1 天 · 设备信号待核实
+    - generic: 等待有处理权限的教师核对完整证据并作出判断
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+    - button "核实异常 →"
+  - article:
+    - text: 考勤异常
+    - heading "罗天佑 · 缺卡待核实" [level=3]
+    - paragraph: 连续 1 天 · 设备信号待核实
+    - generic: 等待有处理权限的教师核对完整证据并作出判断
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+    - button "核实异常 →"
+  - article:
+    - text: 考勤异常
+    - heading "萧佳宁 · 缺卡待核实" [level=3]
+    - paragraph: 连续 1 天 · 设备信号待核实
+    - generic: 等待有处理权限的教师核对完整证据并作出判断
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+    - button "核实异常 →"
+  - article:
+    - text: 开放风险
+    - heading "罗致远 · 近期打卡存在定位异常" [level=3]
+    - paragraph: 中风险 · 跟进中 · 责任人 王泽宇
+    - generic: 等待王泽宇继续跟进
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+    - button "进入风险处置 →"
+  - article:
+    - text: 开放风险
+    - heading "萧予安 · 近期打卡存在定位异常" [level=3]
+    - paragraph: 中风险 · 待处理 · 责任人 冯若溪
+    - generic: 等待冯若溪继续跟进
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+    - button "进入风险处置 →"
+  - article:
+    - text: 开放风险
+    - heading "吴宇轩 · 近期打卡存在定位异常" [level=3]
+    - paragraph: 中风险 · 跟进中 · 责任人 李泽宇
+    - generic: 等待李泽宇继续跟进
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+    - button "进入风险处置 →"
+  - article:
+    - text: 开放风险
+    - heading "罗诗涵 · 近期打卡存在定位异常" [level=3]
+    - paragraph: 中风险 · 待处理 · 责任人 张泽宇
+    - generic: 等待张泽宇继续跟进
+    - generic "查看办理依据与交接"
+    - generic: 办理回执：动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+    - button "进入风险处置 →"
+  - generic: 开放风险摘要
+  - button "风险处置 →"
+  - list:
+    - text: 萧俊杰 · 近期打卡存在定位异常
+    - generic: 中风险
+    - button "去处置"
+    - text: 罗诗涵 · 近期打卡存在定位异常
+    - generic: 中风险
+    - button "去处置"
+    - text: 吴宇轩 · 近期打卡存在定位异常
+    - generic: 中风险
+    - button "去处置"
+    - text: 萧予安 · 近期打卡存在定位异常
+    - generic: 中风险
+    - button "去处置"
+    - text: 罗致远 · 近期打卡存在定位异常
+    - generic: 中风险
+    - button "去处置"
+  - generic: 办理提示
+  - paragraph:
+    - strong: 一个对象，一次判断。
+    - text: 进入周报或考勤详情后，队列会保留同类对象顺序。
+  - paragraph: 处理成功后自动给出下一条；版本冲突会停在当前对象，保留输入并要求刷新。
+  - paragraph: 调岗、退岗或事故发生后，从“风险与变更”跟进；符合条件后，再回到实习过程继续办理。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

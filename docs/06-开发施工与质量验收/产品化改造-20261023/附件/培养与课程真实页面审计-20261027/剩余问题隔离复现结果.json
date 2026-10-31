@@ -1,0 +1,9 @@
+{
+  "evidence": "isolated-page-methods",
+  "materialResult": {
+    "selectedCourse": "B",
+    "displayedMaterial": "A材料"
+  },
+  "consecutiveSaveRequests": 2,
+  "realNetworkOrDatabaseWrites": false
+}

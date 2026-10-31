@@ -1,0 +1,15 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "projectNo": "IMP-20261025180727540150",
+  "projectVersion": 3,
+  "projectStatus": "VERIFYING",
+  "installationNo": "INS-20261025184924",
+  "pendingPolicies": 25,
+  "blockingChecks": [
+    "business_relation",
+    "workflow",
+    "go_live_check"
+  ],
+  "rejectedChangeNotCreated": true,
+  "scope": "独立虚构环境真实页面操作后，只读回查持久化；不代表验收封存完成"
+}

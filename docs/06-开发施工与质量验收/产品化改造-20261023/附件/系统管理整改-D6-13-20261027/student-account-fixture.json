@@ -1,0 +1,21 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "accounts": [
+    {
+      "loginName": "d613_student_a",
+      "userId": "5",
+      "studentId": "1",
+      "roleId": "28",
+      "linkId": "1"
+    },
+    {
+      "loginName": "d613_student_leave",
+      "userId": "6",
+      "studentId": "3",
+      "roleId": "28",
+      "linkId": "2"
+    }
+  ],
+  "existingBusinessModified": false,
+  "rollback": "停用这两个测试账号；保留业务与历史身份链接"
+}

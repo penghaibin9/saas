@@ -1,0 +1,257 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/master-data".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/master-data
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:13, Secondary Actions: Expand
+				11 image
+				1078 text 10/25周日 12:13
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:06:47, Secondary Actions: Expand
+				32 image
+				1089 text 本次工作 00:06:47
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		714 container 三级菜单
+			715 button 展开三级菜单
+			716 container 三级菜单
+				1058 button 学校信息与品牌
+				1059 button 数据字典
+				1060 button 模块授权与业务开关
+				1061 button 主数据责任与数据质量
+				1062 button 合规与业务表单
+				1063 button 学年学期与业务日历
+			726 checkbox Description: 取消固定三级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				642 container
+					643 tab (selectable, settable, boolean) 学院与部门, Help: 组织主数据 / 学院与部门, Value: 0
+学院与部门
+					644 button 关闭学院与部门
+						645 image
+				647 container
+					648 tab (selectable, settable, boolean) 专业管理, Help: 组织主数据 / 专业管理, Value: 0
+专业管理
+					649 button 关闭专业管理
+						650 image
+				652 container
+					653 tab (selectable, settable, boolean) 年级与班级, Help: 组织主数据 / 年级与班级, Value: 0
+年级与班级
+					654 button 关闭年级与班级
+						655 image
+				657 container
+					658 tab (selectable, settable, boolean) 岗位管理, Help: 组织主数据 / 岗位管理, Value: 0
+岗位管理
+					659 button 关闭岗位管理
+						660 image
+				662 container
+					663 tab (selectable, settable, boolean) 教职工任职归属查询, Help: 组织主数据 / 教职工任职归属查询, Value: 0
+教职工任职归属查询
+					664 button 关闭教职工任职归属查询
+						665 image
+				667 container
+					668 tab (selectable, settable, boolean) 业务关系中心, Help: 组织主数据 / 业务关系中心, Value: 0
+业务关系中心
+					669 button 关闭业务关系中心
+						670 image
+				672 container
+					673 tab (selectable, settable, boolean) 变更版本, Help: 组织主数据 / 变更版本, Value: 0
+变更版本
+					674 button 关闭变更版本
+						675 image
+				728 container
+					729 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					730 button 关闭身份权限总览
+						731 image
+				733 container
+					734 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					735 button 关闭预设角色模板
+						736 image
+				747 container
+					748 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					749 button 关闭学校角色与成员
+						750 image
+				752 container
+					753 tab (selectable, settable, boolean) 角色成员与业务身份, Help: 角色与权限 / 角色成员与业务身份, Value: 0
+角色成员与业务身份
+					754 button 关闭角色成员与业务身份
+						755 image
+				757 container
+					758 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					759 button 关闭菜单与操作权限
+						760 image
+				897 container
+					898 tab (selectable, settable, boolean) 数据范围规则, Help: 角色与权限 / 数据范围规则, Value: 0
+数据范围规则
+					899 button 关闭数据范围规则
+						900 image
+				979 container
+					980 tab (selectable, settable, boolean) 临时授权与工作移交, Help: 角色与权限 / 临时授权与工作移交, Value: 0
+临时授权与工作移交
+					981 button 关闭临时授权与工作移交
+						982 image
+				991 container
+					992 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					993 button 关闭安全变更
+						994 image
+				1053 container
+					1054 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					1055 button 关闭访问治理
+						1056 image
+				1064 container
+					1065 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					1066 button 关闭学校信息与品牌
+						1067 image
+				1069 container
+					1070 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					1071 button 关闭数据字典
+						1072 image
+				1074 container
+					1075 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					1076 button 关闭模块授权与业务开关
+						1077 image
+				1080 container
+					1081 tab (selected, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 1
+主数据责任与数据质量
+					1082 button 关闭主数据责任与数据质量
+						1083 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 收藏当前页面, Value: 0
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			1084 container
+				1085 heading 主数据责任与数据质量, Value: 1
+					1086 text 主数据责任与数据质量
+				1087 button 执行质量扫描
+				1088 button 刷新
+				1090 text 首屏结论
+				1091 text 100 最低质量分 0 最高优先级待处理 0 已逾期 0 例外中 0 无责任人数据域
+				1092 text 数据域与责任人
+				1093 table
+					1094 row
+						1095 cell
+							1096 text 数据域
+						1097 cell
+							1098 text 权威数据位置
+						1099 cell
+							1100 text 责任人
+						1101 cell
+							1102 text 质量分
+						1103 cell
+							1104 text 操作
+					1105 row
+						1106 cell
+							1107 text 课程主数据
+							1108 text 归属 教务管理
+						1109 cell
+							1110 text 业务主数据来源
+						1111 cell
+							1112 text 责任人信息待同步
+						1113 cell
+							1114 text 100
+							1115 text 未闭环 0 · 逾期 0
+						1116 cell
+							1117 button 指定责任人
+					1118 row
+						1119 cell
+							1120 text 组织主数据
+							1121 text 归属 系统管理
+						1122 cell
+							1123 text 业务主数据来源
+						1124 cell
+							1125 text 责任人信息待同步
+						1126 cell
+							1127 text 100
+							1128 text 未闭环 0 · 逾期 0
+						1129 cell
+							1130 button 指定责任人
+					1131 row
+						1132 cell
+							1133 text 学生主数据
+							1134 text 归属 学生工作
+						1135 cell
+							1136 text 学生主档
+						1137 cell
+							1138 text 责任人信息待同步
+						1139 cell
+							1140 text 100
+							1141 text 未闭环 0 · 逾期 0
+						1142 cell
+							1143 button 指定责任人
+				1144 container
+					1145 text 问题队列 修复后必须复扫验证，问题还在会自动打回
+				1146 table
+					1147 row
+						1148 cell
+							1149 text 问题
+						1150 cell
+							1151 text 严重度
+						1152 cell
+							1153 text 状态
+						1154 cell
+							1155 text 处理时限
+						1156 cell
+							1157 text 操作
+					1158 row
+						1159 cell
+							1160 text 待处理的数据质量问题
+							1161 text 学生主数据 · 数据质量检查
+						1162 cell
+							1163 text 一般
+						1164 cell
+							1165 text 已闭环
+							1166 text 复扫 问题已消除
+						1167 cell
+							1168 text 无 SLA
+						1169 cell
+							1170 button 指派
+							1171 button 登记处理
+							1172 button 复扫验证
+							1173 button 例外
+			199 button 我的常用
+
+The focused UI element is 1061 button 主数据责任与数据质量

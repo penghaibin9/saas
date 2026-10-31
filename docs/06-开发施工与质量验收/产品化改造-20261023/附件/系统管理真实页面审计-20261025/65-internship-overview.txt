@@ -1,0 +1,202 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/internship?batchId=47".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/internship?batchId=47
+	1 container app
+		2 container
+			17 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				18 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:18, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:18
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 教务中心
+				26 button 毕业设计中心
+				27 button 岗位实习中心
+				28 button 系统管理
+			29 button (collapsed) 当前范围, Secondary Actions: Expand
+				30 image
+				31 text 当前范围
+				32 image
+			33 button (collapsed) 本次工作 00:12:26, Secondary Actions: Expand
+				34 image
+				200 text 本次工作 00:12:26
+		36 container 二级菜单
+			37 button 展开二级菜单
+			38 container 二级菜单
+				39 button 今日工作
+				40 button 实习中心大屏
+				41 button 批次与学生
+				42 button 企业与岗位
+				43 button 申请与落岗
+				44 button 实习过程
+				45 button 风险与变更
+				46 button 评价与成绩
+				47 button 归档与分析
+			48 checkbox Description: 取消固定二级菜单, Value: 1
+		49 container 三级菜单
+			50 button 展开三级菜单
+			51 container 三级菜单
+				52 button 待办与进度
+			53 checkbox Description: 取消固定三级菜单, Value: 1
+		54 container
+			55 tab group 已打开页面
+				56 container
+					57 tab (selected, settable, boolean) 待办与进度, Help: 今日工作 / 待办与进度, Value: 1
+待办与进度
+					58 button 关闭待办与进度
+						59 image
+			60 button (disabled) 恢复最近关闭的页签
+				61 image
+			62 checkbox Description: 收藏当前页面, Value: 0
+				63 image
+			64 checkbox Description: 专注模式, Value: 0
+				65 image
+			66 container
+				67 heading 今日工作, Value: 1
+					68 text 今日工作
+				69 text 当前批次
+				70 pop up button (collapsed, settable) Description: 选择实习批次, Value: 2024级岗位实习（进行中） · INT-2024-2026FALL, Secondary Actions: Expand
+					71 menu
+						72 2025 年暑期行业见习（历史归档样本） · INT-2025-SUMMER-HIST
+						73 (selected) 2024级岗位实习（进行中） · INT-2024-2026FALL
+				74 text 进行中 2026-07-20 ~ 2027-01-15
+				75 button ＋ 新增实习批次
+				76 button 管理学生名单
+				77 button 统计报表
+				78 button 分配记录
+				79 container 按实习流程办理
+					80 link Description: 01 批次与学生, Help: 确定实习周期、学生名单和参与资格, Value: 127.0.0.1:5173/admin/internship/batches?panel=list&batchId=47
+					81 link Description: 02 企业与岗位, Help: 核对企业准入，准备可用岗位, Value: 127.0.0.1:5173/admin/internship/enterprises?panel=list&batchId=47
+					82 link Description: 03 申请与落岗, Help: 申请审核 → 岗位与导师 → 协议保险 → 上岗核验, Value: 127.0.0.1:5173/admin/internship/volunteer-review?batchId=47
+					83 link Description: 04 实习过程, Help: 考勤、请假、报告与指导持续跟进, Value: 127.0.0.1:5173/admin/internship/attendance?panel=checkins&batchId=47
+					84 link Description: 05 风险与变更, Help: 核实问题、跟进变更，办结后返回实习过程, Value: 127.0.0.1:5173/admin/internship/risks?panel=board&batchId=47
+					85 link Description: 06 评价与成绩, Help: 多方评价 → 成绩核算 → 审核发布与申诉, Value: 127.0.0.1:5173/admin/internship/enterprise-evals?batchId=47
+					86 link Description: 07 归档与分析, Help: 核对材料、完成归档，衔接就业跟进, Value: 127.0.0.1:5173/admin/internship/archive?panel=records&batchId=47
+				87 container idb-todos
+					88 text 优先待办 · 1232 项
+					89 text 汇集风险、考勤异常与周报，最多显示 8 项；其他事项从上方流程入口办理。
+					90 button 刷新待办
+					91 container 待办类型
+						92 checkbox 全部 8, Value: 1
+						93 checkbox 风险处置 4, Value: 0
+						94 checkbox 考勤异常 4, Value: 0
+						95 checkbox 报告批阅 0, Value: 0
+					96 container
+						97 text 考勤异常
+						98 heading 萧欣怡 · 缺卡待核实, Value: 3
+							99 text 萧欣怡 · 缺卡待核实
+						100 text 连续 1 天 · 设备信号待核实
+						101 text 等待有处理权限的教师核对完整证据并作出判断
+						102 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							103 text 查看办理依据与交接
+						104 text 办理回执： 提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+						105 button 核实异常 →
+					106 container
+						107 text 考勤异常
+						108 heading 吴思雨 · 缺卡待核实, Value: 3
+							109 text 吴思雨 · 缺卡待核实
+						110 text 连续 1 天 · 设备信号待核实
+						111 text 等待有处理权限的教师核对完整证据并作出判断
+						112 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							113 text 查看办理依据与交接
+						114 text 办理回执： 提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+						115 button 核实异常 →
+					116 container
+						117 text 考勤异常
+						118 heading 罗天佑 · 缺卡待核实, Value: 3
+							119 text 罗天佑 · 缺卡待核实
+						120 text 连续 1 天 · 设备信号待核实
+						121 text 等待有处理权限的教师核对完整证据并作出判断
+						122 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							123 text 查看办理依据与交接
+						124 text 办理回执： 提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+						125 button 核实异常 →
+					126 container
+						127 text 考勤异常
+						128 heading 萧佳宁 · 缺卡待核实, Value: 3
+							129 text 萧佳宁 · 缺卡待核实
+						130 text 连续 1 天 · 设备信号待核实
+						131 text 等待有处理权限的教师核对完整证据并作出判断
+						132 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							133 text 查看办理依据与交接
+						134 text 办理回执： 提交后返回判定结果、版本和审计记录；冲突时保留当前输入并要求刷新事实。
+						135 button 核实异常 →
+					136 container
+						137 text 开放风险
+						138 heading 罗致远 · 近期打卡存在定位异常, Value: 3
+							139 text 罗致远 · 近期打卡存在定位异常
+						140 text 中风险 · 跟进中 · 责任人 王泽宇
+						141 text 等待王泽宇继续跟进
+						142 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							143 text 查看办理依据与交接
+						144 text 办理回执： 动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+						145 button 进入风险处置 →
+					146 container
+						147 text 开放风险
+						148 heading 萧予安 · 近期打卡存在定位异常, Value: 3
+							149 text 萧予安 · 近期打卡存在定位异常
+						150 text 中风险 · 待处理 · 责任人 冯若溪
+						151 text 等待冯若溪继续跟进
+						152 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							153 text 查看办理依据与交接
+						154 text 办理回执： 动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+						155 button 进入风险处置 →
+					156 container
+						157 text 开放风险
+						158 heading 吴宇轩 · 近期打卡存在定位异常, Value: 3
+							159 text 吴宇轩 · 近期打卡存在定位异常
+						160 text 中风险 · 跟进中 · 责任人 李泽宇
+						161 text 等待李泽宇继续跟进
+						162 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							163 text 查看办理依据与交接
+						164 text 办理回执： 动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+						165 button 进入风险处置 →
+					166 container
+						167 text 开放风险
+						168 heading 罗诗涵 · 近期打卡存在定位异常, Value: 3
+							169 text 罗诗涵 · 近期打卡存在定位异常
+						170 text 中风险 · 待处理 · 责任人 张泽宇
+						171 text 等待张泽宇继续跟进
+						172 button (collapsed) 查看办理依据与交接, Secondary Actions: Expand
+							173 text 查看办理依据与交接
+						174 text 办理回执： 动作会返回最新状态、版本和合法下一步，并写入风险审计时间线。
+						175 button 进入风险处置 →
+				176 text 开放风险摘要
+				177 button 风险处置 →
+				178 content list
+					179 container
+						180 text 萧俊杰 · 近期打卡存在定位异常  中风险
+						181 button 去处置
+					182 container
+						183 text 罗诗涵 · 近期打卡存在定位异常  中风险
+						184 button 去处置
+					185 container
+						186 text 吴宇轩 · 近期打卡存在定位异常  中风险
+						187 button 去处置
+					188 container
+						189 text 萧予安 · 近期打卡存在定位异常  中风险
+						190 button 去处置
+					191 container
+						192 text 罗致远 · 近期打卡存在定位异常  中风险
+						193 button 去处置
+				194 text 办理提示
+				195 container
+					196 text 一个对象，一次判断。 进入周报或考勤详情后，队列会保留同类对象顺序。
+				197 text 处理成功后自动给出下一条；版本冲突会停在当前对象，保留输入并要求刷新。
+				198 text 调岗、退岗或事故发生后，从“风险与变更”跟进；符合条件后，再回到实习过程继续办理。
+			199 button 我的常用
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/internship?batchId=47

@@ -1,0 +1,111 @@
+{
+  "card": "D6-09",
+  "status": "已完成本地验收",
+  "note": "平台及学校正常角色真实页面、隔离持久化与权限并发回归完成；不代表部署、真实学校或最终全量验收",
+  "files": [
+    {
+      "path": "backend/app/api/v1/file_governance.py",
+      "sha256": "3a68412139c27a66b1fda0be64695144a5fbb99ed160f493368fed2e4df0cfde"
+    },
+    {
+      "path": "backend/app/modules/platform/routers/business_forms_control.py",
+      "sha256": "c1c702a956ead68ebdd42318caa8d56e8db78df64bcdcfc8da21254e8734f0d3"
+    },
+    {
+      "path": "backend/app/modules/platform/routers/platform_router.py",
+      "sha256": "d212809d809c4f1721c888646ff64dd9c2d0d1dfff4475a6ff261d89c278a2eb"
+    },
+    {
+      "path": "backend/app/services/file_storage_quota_reservation_service.py",
+      "sha256": "2c927c08d3f0b16745115bdb2c29c70a93194df01e51f88b83ebfbc4370986c2"
+    },
+    {
+      "path": "backend/app/services/module_commerce_quota_guard.py",
+      "sha256": "f29b7297fb404ea345fab5c44efae842576eed85eb613516f8b5659c7a5c9113"
+    },
+    {
+      "path": "backend/app/services/platform_access_governance_service.py",
+      "sha256": "5eecec598e08a44c1878c648b23085a9a3bc7b61ff1560fa95d17bc55faf8075"
+    },
+    {
+      "path": "backend/tests/test_file_storage_quota_reservation.py",
+      "sha256": "ca066263a91bbf1a12c8d3566ea783bf2f4b67edf8d01753639eaa0ff1cb7c4e"
+    },
+    {
+      "path": "backend/tests/test_platform_business_forms_control.py",
+      "sha256": "b8999962998711d1a874f3ec44f6a252fa3f70e4327bd76f7431f898dfb825b3"
+    },
+    {
+      "path": "backend/tests/test_platform_governance_privacy.py",
+      "sha256": "0d193d9d4e32df82754dc71044fd7d4c6eba175f64059c514ee29bd7d3526429"
+    },
+    {
+      "path": "frontend/scripts/check-navigation-route-parity.mjs",
+      "sha256": "997319c877d5e6521ec92027df56ac28232bb30d29b56a51bef47019445ee536"
+    },
+    {
+      "path": "frontend/src/modules/platform/api/businessFormsControl.api.js",
+      "sha256": "61c50e7262c91720a45877e6040bc7596aa2017b60d2206dede263d05eefc05e"
+    },
+    {
+      "path": "frontend/src/modules/platform/businessForms/components/BusinessFormVersionWorkbench.vue",
+      "sha256": "4be80804372cd60845bfe57ceea666566384fb0eb4bd10a9eadd7540ed9ee6d5"
+    },
+    {
+      "path": "frontend/src/modules/platform/constants/platform-display.constants.js",
+      "sha256": "ef6cf4aabb29677478b5429f2fd1fa08d49f99106ef45015e6fcf7e3b06b677e"
+    },
+    {
+      "path": "frontend/src/modules/platform/platform.routes.js",
+      "sha256": "7c7796497d0c0dba647a0273cd3f688ccac61f84a3ab28a06b844b9029d124e1"
+    },
+    {
+      "path": "frontend/src/modules/platform/platformManagementCatalog.js",
+      "sha256": "d4994bea5d522abb778572e40ad3a5d085aad70f9ea2c571dafdc288862e8372"
+    },
+    {
+      "path": "frontend/src/modules/platform/views/AdminPlatformLayout.vue",
+      "sha256": "ffb22dc51f6d945bdd9c04492af865a211bfb4ae90502c7ac5eb4aab15b51506"
+    },
+    {
+      "path": "frontend/src/modules/platform/views/control/PlatformBusinessFormsView.vue",
+      "sha256": "95f20fad13c939599ba11e8bb5f0cd518f89d1780a062f5573fbcb9ce8323dff"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemBusinessFormsView.vue",
+      "sha256": "28720cf4423b632cef8b258c4d01e4d9737515295a488e69af79bb378129f907"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemFileStorageGovernanceView.vue",
+      "sha256": "21e9534e303f3ab0bf6a893ad62f5735cef2fbba7d3204fb10699315fc7687b1"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemIntegrationView.vue",
+      "sha256": "0baad540e5d0bff3dcfc9af8078a23fd31ca7f07bcd2389887ddb3011906a142"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemModuleFeatureView.vue",
+      "sha256": "0f5808f726dfe424341bb23fa07b541ec197a43a27ebccc98c189c1d99dab453"
+    },
+    {
+      "path": "frontend/src/security/platformAccessGate.js",
+      "sha256": "9a9fe19ddf507f320a80abc0a586e0350e36a006a912a17427e6f0471241f554"
+    },
+    {
+      "path": "frontend/tests/platform-business-forms.behavior.test.mjs",
+      "sha256": "56676a57062b25373574293a3a7036ae0da7b2205a3464f596cbba7fa8a394e8"
+    },
+    {
+      "path": "frontend/tests/system-platform-boundary.behavior.test.mjs",
+      "sha256": "1f6bdeb7c5b2356d118b8053a2340e3e78408b57bc1ea326589aead6ca01332a"
+    },
+    {
+      "path": "shared/contracts/navigation-surface-contract.json",
+      "sha256": "a847ba6e1f706a4518a278ac94f39cecf46f8a3b5ce1807db830822c1179188f"
+    },
+    {
+      "path": "shared/contracts/permission-catalog.json",
+      "sha256": "0d1c8216cb5204938ddb06d4277251a8da882de439fa1512a6c1ede79341bb4b"
+    }
+  ]
+}

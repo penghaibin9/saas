@@ -1,0 +1,322 @@
+http://127.0.0.1:5173/admin/system/file-storage-governance
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:41":
+    - generic: 10/25周日 14:41
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:21:18":
+  - generic: 本次工作 02:21:18
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - navigation "三级菜单":
+    - button "操作与权限审计":
+      - generic: 操作与权限审计
+    - button "登录与安全审计":
+      - generic: 登录与安全审计
+    - button "敏感与导入导出审计":
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性":
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+    - button "文件存储治理" [active]:
+      - generic: 文件存储治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "数据字典":
+    - generic: 数据字典
+  - button "关闭数据字典":
+  - tab "模块授权与业务开关":
+    - generic: 模块授权与业务开关
+  - button "关闭模块授权与业务开关":
+  - tab "主数据责任与数据质量":
+    - generic: 主数据责任与数据质量
+  - button "关闭主数据责任与数据质量":
+  - tab "合规与业务表单":
+    - generic: 合规与业务表单
+  - button "关闭合规与业务表单":
+  - tab "学年学期与业务日历":
+    - generic: 学年学期与业务日历
+  - button "关闭学年学期与业务日历":
+  - tab "流程安全与运行治理":
+    - generic: 流程安全与运行治理
+  - button "关闭流程安全与运行治理":
+  - tab "统一消息、待办与通知治理":
+    - generic: 统一消息、待办与通知治理
+  - button "关闭统一消息、待办与通知治理":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "登录与安全审计":
+    - generic: 登录与安全审计
+  - button "关闭登录与安全审计":
+  - tab "敏感与导入导出审计":
+    - generic: 敏感与导入导出审计
+  - button "关闭敏感与导入导出审计":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "完整性异常中心":
+    - generic: 完整性异常中心
+  - button "关闭完整性异常中心":
+  - tab "文件存储治理" [selected]:
+    - generic: 文件存储治理
+  - button "关闭文件存储治理":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:41
+  - heading "文件存储治理" [level=1]
+  - heading "先看结论，再处理异常" [level=3]
+  - paragraph: 当前发现 11 项治理信号，优先处理扫描失败、长期隔离和未核验对象存储文件。
+  - button "刷新治理数据"
+  - article:
+    - strong: 0.01 吉比字节
+    - generic: 已用容量
+  - article:
+    - strong: 50.00 吉比字节
+    - generic: 平台商业上限
+  - article:
+    - strong: 100.00 吉比字节
+    - generic: 学校治理配额
+  - article:
+    - strong: 0.01%
+    - generic: 配额使用率
+  - article:
+    - strong: 0.00 吉比字节
+    - generic: 近 30 天增长
+  - article:
+    - strong: "23"
+    - generic: 文件对象
+  - article:
+    - strong: "11"
+    - generic: 待处理异常
+  - heading "容量与配额" [level=3]
+  - paragraph: 硬限额在所有物理写入和对象存储直传签发前统一执行。
+  - text: 总配额（吉比字节）
+  - spinbutton "总配额（吉比字节）": "100"
+  - text: 预警阈值（%）
+  - spinbutton "预警阈值（%）": "80"
+  - checkbox "达到配额后拒绝新文件" [checked]
+  - text: 达到配额后拒绝新文件
+  - text: 说明
+  - textbox "说明":
+    - /placeholder: 例如：本学年学校文件总配额
+  - text: 教务中心（吉比字节）
+  - spinbutton "教务中心（吉比字节）": "0"
+  - text: 毕业设计（吉比字节）
+  - spinbutton "毕业设计（吉比字节）": "0"
+  - text: 其他业务模块（吉比字节）
+  - spinbutton "其他业务模块（吉比字节）": "0"
+  - text: 学工中心（吉比字节）
+  - spinbutton "学工中心（吉比字节）": "0"
+  - text: 系统管理（吉比字节）
+  - spinbutton "系统管理（吉比字节）": "0"
+  - text: 其他业务模块（吉比字节）
+  - spinbutton "其他业务模块（吉比字节）": "10"
+  - text: 其他业务模块（吉比字节）
+  - spinbutton "其他业务模块（吉比字节）": "30"
+  - button "保存配额"
+  - table:
+    - rowgroup:
+      - row "业务类型 文件数 容量":
+        - columnheader "业务类型"
+        - columnheader "文件数"
+        - columnheader "容量"
+    - rowgroup:
+      - row "其他业务模块 · 其他业务文件 1 0.00 吉比字节":
+        - cell "其他业务模块 · 其他业务文件"
+        - cell "1"
+        - cell "0.00 吉比字节"
+      - row "教务中心 · 其他业务文件 1 0.00 吉比字节":
+        - cell "教务中心 · 其他业务文件"
+        - cell "1"
+        - cell "0.00 吉比字节"
+      - row "教务中心 · 其他业务文件 1 0.00 吉比字节":
+        - cell "教务中心 · 其他业务文件"
+        - cell "1"
+        - cell "0.00 吉比字节"
+      - row "系统管理 · 其他业务文件 7 0.00 吉比字节":
+        - cell "系统管理 · 其他业务文件"
+        - cell "7"
+        - cell "0.00 吉比字节"
+      - row "其他业务模块 · 其他业务文件 4 0.00 吉比字节":
+        - cell "其他业务模块 · 其他业务文件"
+        - cell "4"
+        - cell "0.00 吉比字节"
+      - row "毕业设计 · 其他业务文件 2 0.00 吉比字节":
+        - cell "毕业设计 · 其他业务文件"
+        - cell "2"
+        - cell "0.00 吉比字节"
+      - row "毕业设计 · 其他业务文件 2 0.01 吉比字节":
+        - cell "毕业设计 · 其他业务文件"
+        - cell "2"
+        - cell "0.01 吉比字节"
+      - row "学工中心 · 其他业务文件 2 0.00 吉比字节":
+        - cell "学工中心 · 其他业务文件"
+        - cell "2"
+        - cell "0.00 吉比字节"
+      - row "其他业务模块 · 其他业务文件 1 0.00 吉比字节":
+        - cell "其他业务模块 · 其他业务文件"
+        - cell "1"
+        - cell "0.00 吉比字节"
+      - row "其他业务模块 · 其他业务文件 2 0.00 吉比字节":
+        - cell "其他业务模块 · 其他业务文件"
+        - cell "2"
+        - cell "0.00 吉比字节"
+  - heading "存储异常" [level=3]
+  - paragraph: 这里只显示数量与状态，不绕过业务授权读取学校敏感文档。
+  - article:
+    - strong: "0"
+    - generic: 隔离超 1 小时
+    - generic: 检查扫描服务与病毒检测服务
+  - article:
+    - strong: "0"
+    - generic: 扫描失败
+    - generic: 失败关闭，不允许业务提交
+  - article:
+    - strong: "0"
+    - generic: 到期待清理
+    - generic: 先预演再执行
+  - article:
+    - strong: "0"
+    - generic: 对象存储未核验
+    - generic: 执行对象存在性与文件摘要巡检
+  - article:
+    - strong: "11"
+    - generic: 未绑定超 24 小时
+    - generic: 可能是中断上传或孤儿对象
+  - article:
+    - strong: "0"
+    - generic: 法律保留
+    - generic: 自动清理不会触碰
+  - heading "保留策略" [level=3]
+  - paragraph: 优先级越小越先匹配；法律保留始终覆盖自动清理。
+  - textbox "策略编码，如 EXPORT_7D"
+  - combobox:
+    - option "全部分区" [selected]
+    - option "安全隔离区"
+    - option "安全文件区"
+    - option "预览文件区"
+    - option "归档文件区"
+    - option "导出文件区"
+    - option "风险文件区"
+    - option "临时文件区"
+  - textbox "业务类型（可空）"
+  - spinbutton: "7"
+  - spinbutton: "100"
+  - button "保存策略"
+  - table:
+    - rowgroup:
+      - row "策略 匹配范围 保留 动作 状态":
+        - columnheader "策略"
+        - columnheader "匹配范围"
+        - columnheader "保留"
+        - columnheader "动作"
+        - columnheader "状态"
+    - rowgroup:
+      - row "007-GOV-2026-APPROVAL 优先级 50 其他业务模块 / 其他业务文件 / 其他存储分区 1095 天 按安全策略清理 启用":
+        - cell "007-GOV-2026-APPROVAL 优先级 50":
+          - text: 007-GOV-2026-APPROVAL
+          - generic: 优先级 50
+        - cell "其他业务模块 / 其他业务文件 / 其他存储分区"
+        - cell "1095 天"
+        - cell "按安全策略清理"
+        - cell "启用"
+  - heading "安全清理与法律保留" [level=3]
+  - paragraph: 必须先预演；有当前版本、有效绑定、有效归档或法律保留的文件不会删除。
+  - button "补算历史保留期" [disabled]
+  - button "预演到期清理" [disabled]
+  - button "执行已预演清理" [disabled]
+  - textbox "文件 ID"
+  - spinbutton: "1"
+  - textbox "法律保留或解除原因（不少于 5 字）"
+  - button "设置法律保留"
+  - button "解除法律保留"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

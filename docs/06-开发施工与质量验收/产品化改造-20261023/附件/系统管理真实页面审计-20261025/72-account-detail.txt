@@ -1,0 +1,438 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/accounts/staff".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/accounts/staff
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				9 image
+				18 text 北京 13° 阴
+			11 button (collapsed) 10/25周日 12:21, Secondary Actions: Expand
+				12 image
+				214 text 10/25周日 12:21
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			14 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				15 text 胡
+				16 text 胡管理
+				17 text 系统管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 系统管理
+			26 button (collapsed) 当前范围, Secondary Actions: Expand
+				27 image
+				28 text 当前范围
+				29 image
+			30 button (collapsed) 本次工作 00:01:59, Secondary Actions: Expand
+				31 image
+				309 text 本次工作 00:01:59
+		33 container 二级菜单
+			34 button 展开二级菜单
+			35 container 二级菜单
+				36 button 系统概览
+				37 button 身份与账号
+				38 button 组织主数据
+				39 button 角色与权限
+				40 button 学校配置
+				41 button 流程配置
+				42 button 安全与审计
+				43 button 接口与同步
+			44 checkbox Description: 取消固定二级菜单, Value: 1
+		45 container 三级菜单
+			46 button 展开三级菜单
+			47 container 三级菜单
+				188 button 教职工账号
+				189 button 学生账号
+				190 button 教职工导入
+				191 button 学生导入与账号开通
+				192 button 数据交换任务中心
+				193 button 账号异常排查
+				194 button 登录与安全策略
+			57 checkbox Description: 取消固定三级菜单, Value: 1
+		58 container
+			59 tab group 已打开页面
+				60 container
+					61 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					62 button 关闭系统总览
+						63 image
+				195 container
+					196 tab (selected, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 1
+教职工账号
+					197 button 关闭教职工账号
+						198 image
+			64 button (disabled) 恢复最近关闭的页签
+				65 image
+			66 checkbox Description: 收藏当前页面, Value: 0
+				67 image
+			68 checkbox Description: 专注模式, Value: 0
+				69 image
+			199 container
+				200 heading 教职工账号, Value: 1
+					216 text 教职工账号
+				201 button ⇪ 教职工导入
+				202 button ⇩ 批量导出
+				203 button 手机号治理
+				217 text 操作均写入审计日志
+				204 button ▥ 列设置
+				218 text 关键词
+				205 text field (settable) 关键词, Value: admin2
+				219 text 角色
+				206 pop up button (collapsed, settable) 角色, Value: 全部, Secondary Actions: Expand
+					207 menu
+						208 (selected) 全部
+						220 任课教师
+						221 普通教职工
+						222 沙箱联调角色0913
+						223 沙箱联调角色0913（自定义）
+						224 专业毕设负责人
+						225 团委老师
+						226 学工处管理员
+						227 学工老师
+						228 学校管理员
+						229 学院毕设管理员
+						230 学院管理员
+						231 安全审计员
+						232 实习指导教师
+						233 宿管老师
+						234 就业老师
+						235 心理老师
+						236 教务处管理员
+						237 校院领导
+						238 毕设成绩管理员
+						239 毕设指导教师
+						240 毕设管理员
+						241 毕设评阅教师
+						242 答辩专家
+						243 答辩秘书
+						244 系统管理员
+						245 组织人事
+						246 资助老师
+						247 辅导员
+				248 text 账号状态
+				209 pop up button (collapsed, settable) 账号状态, Value: 全部, Secondary Actions: Expand
+					210 menu
+						211 (selected) 全部
+						249 启用中
+						250 已停用
+						251 已锁定
+				212 button 查询
+				213 button 重置
+				253 table
+					254 row
+						255 cell
+							256 checkbox (settable, integer) 0
+						257 cell
+							258 text 教职工
+						259 cell
+							260 text 业务归属
+						261 cell
+							262 text 角色
+						263 cell
+							264 text 手机号（脱敏）
+						265 cell
+							266 text 状态
+						267 cell
+							268 text 最近登录
+						269 cell
+							270 text 操作
+					271 row
+						272 cell
+							273 checkbox (settable, integer) 0
+						274 cell
+							275 text 胡管理
+							276 text admi****n2
+						277 cell
+							278 text 未设置
+						279 cell
+							280 text 学校管理员
+							281 text 任课教师
+							282 text 学工处管理员
+							283 text 实习指导教师
+							284 text 学院毕设管理员
+							285 text 专业毕设负责人
+							286 text 学工老师
+							287 text 系统管理员
+						288 cell
+							289 text 未登记
+						290 cell
+							291 text 启用中
+						292 cell
+							293 text 从未登录
+						294 cell
+							295 button 查看
+							296 button 编辑
+							297 button 重置密码
+							298 button 停用
+				299 text 共 1 条
+				300 button (disabled) 上一页
+				301 button 1
+				302 button (disabled) 下一页
+			186 button 我的常用
+	304 container 账号详情 · 胡管理
+		305 container
+			306 heading 账号详情 · 胡管理, Value: 3
+				310 text 账号详情 · 胡管理
+			308 button 关闭
+		311 container
+			312 text 工号 / 账号 admi****n2 业务归属 未设置 手机号 未登记  （完整号码需审计授权）
+			313 container 手机号治理
+				314 heading 手机号登录凭据, Value: 3
+					315 text 手机号登录凭据
+				316 text 联系方式不等于登录凭据。本人短信验证前仅为待核验；原学号 / 工号和密码始终保留。
+				317 container
+					318 text 号码状态
+					319 pop up button (collapsed, settable) 号码状态, Value: 全部, Secondary Actions: Expand
+						320 menu
+							321 (disabled) 全部
+							322 (disabled) 未绑定
+							323 (disabled) 待本人验证
+							324 (disabled) 已验证
+							325 (disabled) 号码冲突
+							326 (disabled) 已撤销
+					327 text 精确手机号
+					328 text field (settable) 精确手机号
+					329 button 查询 / 重新读取
+				330 container
+					331 text 提醒 / 导出用途
+					332 text field (settable) 提醒 / 导出用途
+				333 button 预览待验证本人提醒
+				334 button 预览筛选范围脱敏台账
+				335 table
+					336 row
+						337 cell
+							338 text 原账号 / 姓名
+						339 cell
+							340 text 登录号码
+						341 cell
+							342 text 待核验号码
+						343 cell
+							344 text 来源 / 版本
+						345 cell
+							346 text 办理
+					347 row
+						348 cell
+							349 text admin2
+							350 text 胡管理
+						351 cell
+							352 text 未绑定
+							353 text 未绑定
+						354 cell
+							355 text 未登记
+							356 text 无候选
+						357 cell
+							358 text 无候选来源
+							359 text 凭据 0 / 候选 0
+						360 cell
+							361 text 当前不可办理
+				362 text 共 1 个账号 · 第 1 页
+				363 button (disabled) 上一页
+				364 button (disabled) 下一页
+			365 text 邮箱 未登记 状态 启用中 账号来源 系统创建
+			366 heading 角色与数据范围, Value: 4
+				367 text 角色与数据范围
+			368 text 学校管理员 SCHOOL 任课教师 ASSIGNED 学工处管理员 SCHOOL 实习指导教师 INTERN_STUDENTS 学院毕设管理员 COLLEGE 专业毕设负责人 MAJOR 学工老师 COLLEGE 系统管理员 SCHOOL
+			369 button 调整角色分配
+			370 heading 最近登录, Value: 4
+				371 text 最近登录
+			372 container
+				373 text ▢ 暂无登录记录 该账号尚未登录过系统
+				374 button 返回
+			375 heading 操作留痕, Value: 4
+				376 text 操作留痕
+			377 table
+				378 row
+					379 cell
+						380 text 操作人
+					381 cell
+						382 text 动作
+					383 cell
+						384 text 影响
+					385 cell
+						386 text 时间
+				387 row
+					388 cell
+						389 text 系统
+					390 cell
+						391 text 业务操作
+					392 cell
+						393 text admin2
+					394 cell
+						395 text 2026-10-25 04:14:37
+				396 row
+					397 cell
+						398 text 系统
+					399 cell
+						400 text 业务操作
+					401 cell
+						402 text admin2
+					403 cell
+						404 text 2026-10-25 04:04:03
+				405 row
+					406 cell
+						407 text 系统
+					408 cell
+						409 text 业务操作
+					410 cell
+						411 text admin2
+					412 cell
+						413 text 2026-10-25 04:03:11
+				414 row
+					415 cell
+						416 text 系统
+					417 cell
+						418 text 业务操作
+					419 cell
+						420 text admin2
+					421 cell
+						422 text 2026-10-25 04:02:28
+				423 row
+					424 cell
+						425 text 系统
+					426 cell
+						427 text 业务操作
+					428 cell
+						429 text admin2
+					430 cell
+						431 text 2026-10-23 16:17:31
+				432 row
+					433 cell
+						434 text 系统
+					435 cell
+						436 text 业务操作
+					437 cell
+						438 text admin2
+					439 cell
+						440 text 2026-10-23 16:17:25
+				441 row
+					442 cell
+						443 text 系统
+					444 cell
+						445 text 业务操作
+					446 cell
+						447 text admin2
+					448 cell
+						449 text 2026-10-23 16:17:12
+				450 row
+					451 cell
+						452 text 系统
+					453 cell
+						454 text 业务操作
+					455 cell
+						456 text admin2
+					457 cell
+						458 text 2026-10-23 16:10:26
+				459 row
+					460 cell
+						461 text 系统
+					462 cell
+						463 text 业务操作
+					464 cell
+						465 text admin2
+					466 cell
+						467 text 2026-10-23 16:10:15
+				468 row
+					469 cell
+						470 text 系统
+					471 cell
+						472 text 业务操作
+					473 cell
+						474 text admin2
+					475 cell
+						476 text 2026-10-23 16:10:06
+				477 row
+					478 cell
+						479 text 系统
+					480 cell
+						481 text 业务操作
+					482 cell
+						483 text admin2
+					484 cell
+						485 text 2026-10-06 06:06:14
+				486 row
+					487 cell
+						488 text 系统
+					489 cell
+						490 text 业务操作
+					491 cell
+						492 text admin2
+					493 cell
+						494 text 2026-10-06 06:02:57
+				495 row
+					496 cell
+						497 text 系统
+					498 cell
+						499 text 业务操作
+					500 cell
+						501 text admin2
+					502 cell
+						503 text 2026-10-06 06:02:31
+				504 row
+					505 cell
+						506 text 系统
+					507 cell
+						508 text 业务操作
+					509 cell
+						510 text admin2
+					511 cell
+						512 text 2026-10-06 06:02:22
+				513 row
+					514 cell
+						515 text 系统
+					516 cell
+						517 text 业务操作
+					518 cell
+						519 text admin2
+					520 cell
+						521 text 2026-10-06 03:41:52
+				522 row
+					523 cell
+						524 text 系统
+					525 cell
+						526 text 业务操作
+					527 cell
+						528 text admin2
+					529 cell
+						530 text 2026-10-03 09:12:26
+				531 row
+					532 cell
+						533 text 系统
+					534 cell
+						535 text 业务操作
+					536 cell
+						537 text admin2
+					538 cell
+						539 text 2026-10-02 13:50:14
+				540 row
+					541 cell
+						542 text 系统
+					543 cell
+						544 text 业务操作
+					545 cell
+						546 text admin2
+					547 cell
+						548 text 2026-10-02 13:45:50
+				549 row
+					550 cell
+						551 text 系统
+					552 cell
+						553 text 业务操作
+					554 cell
+						555 text admin2
+					556 cell
+						557 text 2026-09-28 14:30:23
+				558 row
+					559 cell
+						560 text 系统
+					561 cell
+						562 text 业务操作
+					563 cell
+						564 text admin2
+					565 cell
+						566 text 2026-09-28 14:30:16
+
+The focused UI element is 295 button 查看

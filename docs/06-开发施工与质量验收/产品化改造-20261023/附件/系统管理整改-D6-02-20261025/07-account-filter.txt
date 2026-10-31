@@ -1,0 +1,172 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 11° 阴":
+    - generic: 北京 11° 阴
+  - button "10/25周日 17:45":
+    - generic: 10/25周日 17:45
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:51:35":
+  - generic: 本次工作 00:51:35
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统
+    - button "身份与账号":
+      - generic: 身份
+    - button "组织主数据":
+      - generic: 组织
+    - button "角色与权限":
+      - generic: 角色
+    - button "学校配置":
+      - generic: 学校
+    - button "流程配置":
+      - generic: 流程
+    - button "安全与审计":
+      - generic: 安全
+    - button "接口与同步":
+      - generic: 接口
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "操作与权限审计":
+      - generic: 操作
+    - button "登录与安全审计":
+      - generic: 登录
+    - button "敏感与导入导出审计":
+      - generic: 敏感
+    - button "安全审计证据与完整性":
+      - generic: 安全
+    - button "完整性异常中心":
+      - generic: 完整
+    - button "文件存储治理":
+      - generic: 文件
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计" [selected]:
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 17:44
+  - heading "日志中心" [level=1]
+  - button "⇩ 导出日志"
+  - generic: 导出动作本身也会写入审计日志
+  - button "操作日志"
+  - button "登录日志"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 工号
+    - text: d6_auditor
+  - generic: 开始日期
+  - combobox "全部时间"
+  - generic: 结束日期
+  - combobox "全部时间"
+  - generic: 结果
+  - combobox "结果":
+    - option "全部" [selected]
+    - option "成功"
+    - option "失败"
+    - option "越权拦截"
+    - option "已拦截"
+    - option "结果未确认"
+  - button "查询" [active]
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "时间 事件 账号 结果 说明 IP（脱敏） 地点 设备":
+        - columnheader "时间"
+        - columnheader "事件"
+        - columnheader "账号"
+        - columnheader "结果"
+        - columnheader "说明"
+        - columnheader "IP（脱敏）"
+        - columnheader "地点"
+        - columnheader "设备"
+    - rowgroup:
+      - row "2026-10-25 17:44 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-25 17:44"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-25 17:34 登录 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-25 17:34"
+        - cell "登录"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+  - generic: 共 2 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+  - paragraph: 合规说明：审计日志不提供删除 / 修改入口（含系统管理员）；日志中的 IP、账号已固定脱敏，明文仅存于安全存储并需专项审计流程调取。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

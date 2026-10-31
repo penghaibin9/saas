@@ -1,0 +1,137 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:48":
+    - generic: 10/27周二 09:48
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:45:25":
+  - generic: 本次工作 00:45:25
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 毕业设计中心
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ① 准备
+    - button "② 选题":
+      - generic: ② 选题
+    - button "③ 过程与中期":
+      - generic: ③ 过程与中期
+    - button "④ 论文与评阅":
+      - generic: ④ 论文与评阅
+    - button "⑤ 答辩":
+      - generic: ⑤ 答辩
+    - button "⑥ 成绩与归档":
+      - generic: ⑥ 成绩与归档
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: ① 准备
+  - navigation "三级菜单":
+    - button "批次与时间节点":
+      - generic: 批次与时间节点
+    - button "学生与进度":
+      - generic: 学生与进度
+    - button "导师与分配":
+      - generic: 导师与分配
+    - button "材料规则":
+      - generic: 材料规则
+    - button "分配冲突检测":
+      - generic: 分配冲突检测
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "导师与分配" [selected]:
+    - generic: 导师与分配
+  - button "关闭导师与分配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:47
+  - heading "导师管理" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "D606毕设批次" [selected]
+  - generic: 草稿
+  - button "一键批量分配"
+  - button "导师名单"
+  - button "导师分配"
+  - text: 未分配导师学生共
+  - generic: "0"
+  - text: 人；分配须导师「已认证」且未满员，调导师原因≥5字。
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 学号
+  - button "查询"
+  - button "重置"
+  - status:
+    - generic: ▢
+    - generic: 暂无未分配导师学生
+    - generic: 当前条件下没有可展示的内容，可尝试调整筛选或创建新数据
+    - button "返回"
+  - generic: 分配记录
+  - table:
+    - rowgroup:
+      - row "学生 ← 导师 状态 操作":
+        - columnheader "学生 ← 导师"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup
+  - generic: 共 0 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+  - dialog "页面操作引导":
+    - generic: 1 / 4
+    - heading "谁能带毕设，各带几个人" [level=3]
+    - paragraph: 这里管两件事：导师名单（谁有资格带）和学生分配（谁带谁）。两件事都做完，学生才算真正有人管。
+    - button "跳过引导"
+    - button "下一步"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

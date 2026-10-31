@@ -1,0 +1,190 @@
+- link "跳到工作区":
+  - /url: "#student-workspace-main"
+- banner:
+  - link "高校学生全生命周期管理平台":
+    - /url: /portal/home
+    - strong: 高校学生全生命周期管理平台
+  - button "搜索我的事项或服务 Ctrl K":
+    - generic: 搜索我的事项或服务
+    - generic: Ctrl K
+  - time: 10/27周二 10:50
+  - button "消息通知":
+  - button "打开学生账户":
+    - generic: 四
+    - strong: 四域虚构学生甲
+    - generic: 在读学生
+    - generic: ⌄
+- navigation "一级菜单":
+  - button "在校服务"
+  - button "教务学业"
+  - button "毕业设计"
+  - button "岗位实习"
+  - button "就业服务"
+- generic "所有业务仅限当前学生本人": 本人范围
+- button "本次使用 00:00:23":
+  - text: 本次使用
+  - time: 00:00:23
+- complementary "二级菜单":
+  - button "展开二级菜单":
+  - navigation "二级菜单":
+    - button "我的办理":
+      - generic: 办理
+    - button "请假返校":
+      - generic: 请假
+    - button "我的住宿":
+      - generic: 住宿
+    - button "困难认定":
+      - generic: 认定
+    - button "奖助服务":
+      - generic: 奖助
+    - button "活动成长":
+      - generic: 活动
+    - button "谈心关怀":
+      - generic: 关怀
+    - button "决定与申诉":
+      - generic: 申诉
+    - button "我的档案":
+      - generic: 档案
+    - button "材料补交":
+      - generic: 材料
+    - button "迎新报到":
+      - generic: 报到
+    - button "离校手续":
+      - generic: 离校
+    - button "消息通知":
+      - generic: 消息
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+  - navigation "三级菜单":
+    - button "我的工作台":
+      - generic: 待办
+    - button "办事大厅":
+      - generic: 大厅
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "我的工作台" [selected]
+- button "恢复关闭页签" [disabled]: 恢复
+- button "已收藏" [pressed]
+- button "专注"
+- main "我的工作台":
+  - heading "我的工作台" [level=1]
+  - generic: 学号
+  - generic: D606-S001
+  - generic: 班级
+  - generic: D606关系验收班
+  - strong: 在读阶段
+  - generic: 2 个环节已有业务数据
+  - generic: ✓
+  - strong: 今天暂无紧急事项
+  - generic: 可以查看课表、消息或继续关注成长进度。
+  - article:
+    - text: 已修学分
+    - strong: "0"
+    - emphasis
+    - text: 培养要求 —
+  - article:
+    - text: 平均绩点
+    - strong: —
+    - emphasis
+    - text: 截至最新学期
+  - article:
+    - text: 待办事项
+    - strong: "0"
+    - emphasis: 项
+    - text: 待我处理
+  - article:
+    - text: 未读消息
+    - strong: "0"
+    - emphasis: 条
+    - text: 未读通知
+  - heading "我的下一步" [level=2]
+  - paragraph: 等我提交、确认、补充或整改的真实事项。
+  - generic: 0 项待办
+  - generic: 📭
+  - generic: 暂未收到待办，请结合下方办理进度核对各项手续
+  - heading "消息速览" [level=2]
+  - paragraph: 重要通知与业务结果。
+  - button "全部消息"
+  - generic: 📭
+  - generic: 暂无新消息
+  - heading "环节状态" [level=2]
+  - paragraph: 查看各项服务的办理状态。
+  - generic: 数字迎新
+  - generic: 状态待同步
+  - generic: 岗位实习
+  - generic: 状态待确认
+  - generic: 学业过程
+  - generic: 正常
+  - generic: 就业去向
+  - generic: 状态待同步
+  - heading "我的成长航线" [level=2]
+  - paragraph: 跨模块统一查看当前阶段和下一步。
+  - generic: 0 / 6 已完成
+  - button "1 迎新入学 尚未开始":
+    - generic: "1"
+    - strong: 迎新入学
+    - generic: 尚未开始
+  - button "2 学习生活 进行中":
+    - generic: "2"
+    - strong: 学习生活
+    - generic: 进行中
+  - button "3 成长事务 状态待同步":
+    - generic: "3"
+    - strong: 成长事务
+    - generic: 状态待同步
+  - button "4 岗位实习 进行中":
+    - generic: "4"
+    - strong: 岗位实习
+    - generic: 进行中
+  - button "5 毕业设计 状态待同步":
+    - generic: "5"
+    - strong: 毕业设计
+    - generic: 状态待同步
+  - button "6 就业离校 尚未开始":
+    - generic: "6"
+    - strong: 就业离校
+    - generic: 尚未开始
+  - heading "快捷服务" [level=2]
+  - paragraph: 查看学校为你开通的服务。
+  - button "我的档案 进入模块":
+    - generic: 我的档案
+    - generic: 进入模块
+  - button "教务学业 进入模块":
+    - generic: 教务学业
+    - generic: 进入模块
+  - button "毕业设计 进入模块":
+    - generic: 毕业设计
+    - generic: 进入模块
+  - button "岗位实习 进入模块":
+    - generic: 岗位实习
+    - generic: 进入模块
+  - button "就业服务 进入模块":
+    - generic: 就业服务
+    - generic: 进入模块
+  - button "迎新报到 进入模块":
+    - generic: 迎新报到
+    - generic: 进入模块
+  - button "在校服务 进入模块":
+    - generic: 在校服务
+    - generic: 进入模块
+  - button "消息通知 进入模块":
+    - generic: 消息通知
+    - generic: 进入模块
+- navigation "快捷操作":
+  - text: 我的
+  - text: 常用
+  - button "我的工作台":
+    - generic: 我的工作台
+  - button "本人资料":
+    - generic: 本人资料
+  - button "请假与返校":
+    - generic: 请假与返校
+  - button "住宿与调宿":
+    - generic: 住宿与调宿
+  - button "我的课表":
+    - generic: 我的课表
+  - button "补交材料":
+    - generic: 补交材料
+  - button "编辑快捷栏": 编辑
+  - button "收起快捷栏": 收起

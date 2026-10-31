@@ -1,0 +1,153 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:53":
+    - generic: 10/27周二 09:53
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:50:20":
+  - generic: 本次工作 00:50:20
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 岗位实习中心
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日工作
+    - button "实习中心大屏":
+      - generic: 实习中心大屏
+    - button "批次与学生":
+      - generic: 批次与学生
+    - button "企业与岗位":
+      - generic: 企业与岗位
+    - button "申请与落岗":
+      - generic: 申请与落岗
+    - button "实习过程":
+      - generic: 实习过程
+    - button "风险与变更":
+      - generic: 风险与变更
+    - button "评价与成绩":
+      - generic: 评价与成绩
+    - button "归档与分析":
+      - generic: 归档与分析
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 今日工作
+  - navigation "三级菜单":
+    - button "待办与进度":
+      - generic: 待办与进度
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "待办与进度" [selected]:
+    - generic: 待办与进度
+  - button "关闭待办与进度":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - heading "今日工作" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "D611跨批次跳转验证 · D611-OTHER-UI"
+    - option "D606实习批次 · D606-INTERN" [selected]
+  - generic: 草稿
+  - button "＋ 新增实习批次"
+  - button "管理学生名单"
+  - button "统计报表"
+  - button "分配记录"
+  - region "按实习流程办理":
+    - link "01 批次与学生":
+      - /url: /admin/internship/batches?panel=list&batchId=1
+      - generic: "01"
+      - strong: 批次与学生
+    - link "02 企业与岗位":
+      - /url: /admin/internship/enterprises?panel=list&batchId=1
+      - generic: "02"
+      - strong: 企业与岗位
+    - link "03 申请与落岗":
+      - /url: /admin/internship/volunteer-review?batchId=1
+      - generic: "03"
+      - strong: 申请与落岗
+    - link "04 实习过程":
+      - /url: /admin/internship/attendance?panel=checkins&batchId=1
+      - generic: "04"
+      - strong: 实习过程
+    - link "05 风险与变更":
+      - /url: /admin/internship/risks?panel=board&batchId=1
+      - generic: "05"
+      - strong: 风险与变更
+    - link "06 评价与成绩":
+      - /url: /admin/internship/enterprise-evals?batchId=1
+      - generic: "06"
+      - strong: 评价与成绩
+    - link "07 归档与分析":
+      - /url: /admin/internship/archive?panel=records&batchId=1
+      - generic: "07"
+      - strong: 归档与分析
+  - generic: 优先待办 · 0 项
+  - paragraph: 汇集风险、考勤异常与周报，最多显示 8 项；其他事项从上方流程入口办理。
+  - button "刷新待办"
+  - navigation "待办类型":
+    - button "全部 0" [pressed]
+    - button "风险处置 0"
+    - button "考勤异常 0"
+    - button "报告批阅 0"
+  - status:
+    - heading "暂无风险、考勤异常或周报待办" [level=3]
+    - paragraph: 可切换待办类型；名单资格、协议与上岗核验等事项，请从上方对应流程进入。
+  - generic: 开放风险摘要
+  - button "风险处置 →"
+  - status:
+    - heading "暂无开放风险" [level=3]
+    - paragraph: 系统预警与人工创建的风险单将在此展示。
+  - generic: 办理提示
+  - paragraph:
+    - strong: 一个对象，一次判断。
+    - text: 进入周报或考勤详情后，队列会保留同类对象顺序。
+  - paragraph: 处理成功后自动给出下一条；版本冲突会停在当前对象，保留输入并要求刷新。
+  - paragraph: 调岗、退岗或事故发生后，从“风险与变更”跟进；符合条件后，再回到实习过程继续办理。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

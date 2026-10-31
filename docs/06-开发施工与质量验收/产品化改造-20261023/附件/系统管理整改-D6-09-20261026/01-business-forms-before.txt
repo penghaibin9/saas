@@ -1,0 +1,62 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/business-forms".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/business-forms
+	2 container app
+		3 container
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button 帮助与引导
+			8 button 消息中心
+				9 image
+			10 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				11 text 胡
+				12 text 胡管理
+				13 text 学校管理员
+		14 container
+			15 container 一级菜单
+				16 button 学工中心
+				17 button 教务中心
+				18 button 毕业设计中心
+				19 button 岗位实习中心
+				20 button 系统管理
+			21 button (collapsed) 当前范围, Secondary Actions: Expand
+				22 image
+				23 text 当前范围
+				24 image
+		25 container
+			26 button 目录
+			27 tab group 已打开页面
+				28 container
+					29 tab (selected, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 1
+合规与业务表单
+					30 button 关闭合规与业务表单
+						31 image
+			32 button (disabled) 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			38 container
+				39 text PLAT-B
+				40 heading 合规与业务表单, Value: 1
+					41 text 合规与业务表单
+				42 text 发布版本不可变；提交只调用原业务的正式提交。
+				43 button 刷新
+				44 text 当前账号没有执行此操作的权限
+				45 heading 表单定义, Value: 2
+					46 text 表单定义
+				47 text 尚无定义。
+				48 text 选择一个表单定义查看版本。
+				49 container
+					50 heading 来源合规评估, Value: 2
+						51 text 来源合规评估
+					52 text field (settable) INTERNSHIP_NATIVE
+					53 text field (settable) INTERNSHIP
+					54 text field (settable) INTERNSHIP
+					55 text field (settable)
+					56 text field (settable) ONBOARD
+					57 button 评估
+			58 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/business-forms

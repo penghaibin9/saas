@@ -1,0 +1,73 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/approval/todos/179".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/approval/todos/179
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				9 image
+				10 text 北京 13° 阴
+			11 button (collapsed) 10/25周日 12:20, Secondary Actions: Expand
+				12 image
+				13 text 10/25周日 12:20
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 胡
+				19 text 胡管理
+				20 text 系统管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 系统管理
+			25 button (collapsed) 当前范围, Secondary Actions: Expand
+				26 image
+				27 text 当前范围
+				28 image
+			29 button (collapsed) 本次工作 00:00:36, Secondary Actions: Expand
+				30 image
+				70 text 本次工作 00:00:36
+		32 container 二级菜单
+			33 button 展开二级菜单
+			34 container 二级菜单
+				35 button 学工工作台
+			36 checkbox Description: 取消固定二级菜单, Value: 1
+		37 container 三级菜单
+			38 button 展开三级菜单
+			39 container 三级菜单
+				40 button 我的工作台
+				41 button 我的待办
+				42 button 审批中心
+				43 button 消息中心
+				44 button 最近访问
+				45 button 帮助中心
+			46 checkbox Description: 取消固定三级菜单, Value: 1
+		47 container
+			48 tab group 已打开页面
+				49 container
+					50 tab (selected, settable, boolean) 我的待办, Help: 学工工作台 / 我的待办, Value: 1
+我的待办
+					51 button 关闭我的待办
+						52 image
+			53 button (disabled) 恢复最近关闭的页签
+				54 image
+			55 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				56 image
+			57 checkbox Description: 专注模式, Value: 0
+				58 image
+			59 container 本栏目页面
+				60 link Description: 待办看板, Value: 127.0.0.1:5173/admin/approval
+				61 link Description: 我的待办, Value: 127.0.0.1:5173/admin/approval/todos
+			62 container
+				63 text 审批详情
+				64 heading 当前身份暂不能办理此业务, Value: 1
+					65 text 当前身份暂不能办理此业务
+				66 text 当前身份缺少此页面所需权限。请在右上角切换已有的业务身份，或由有授权职责的管理员核对角色与数据范围。
+				67 button 重新检查
+				68 button 返回工作台
+			69 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/approval/todos/179

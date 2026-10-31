@@ -1,0 +1,209 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/roles".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/roles
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				9 image
+				10 text 北京 13° 阴
+			11 button (collapsed) 10/25周日 12:24, Secondary Actions: Expand
+				12 image
+				13 text 10/25周日 12:24
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 胡
+				19 text 胡管理
+				20 text 系统管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 系统管理
+			25 button (collapsed) 当前范围, Secondary Actions: Expand
+				26 image
+				27 text 当前范围
+				28 image
+			29 button (collapsed) 本次工作 00:04:32, Secondary Actions: Expand
+				30 image
+				207 text 本次工作 00:04:32
+		32 container 二级菜单
+			33 button 展开二级菜单
+			34 container 二级菜单
+				35 button 学工工作台
+			36 checkbox Description: 取消固定二级菜单, Value: 1
+		37 container 三级菜单
+			38 button 展开三级菜单
+			39 container 三级菜单
+				40 button 我的工作台
+				41 button 我的待办
+				42 button 审批中心
+				43 button 消息中心
+				44 button 最近访问
+				45 button 帮助中心
+			46 checkbox Description: 取消固定三级菜单, Value: 1
+		47 container
+			48 tab group 已打开页面
+			49 button (disabled) 恢复最近关闭的页签
+				50 image
+			51 checkbox (disabled) Description: 收藏当前页面, Value: 0
+				52 image
+			53 checkbox Description: 专注模式, Value: 0
+				54 image
+			55 container
+				56 heading 学校角色与成员, Value: 1
+					57 text 学校角色与成员
+				58 button 治理概览
+				59 button 刷新目录
+				60 button 新增角色
+				61 tab group 角色目录类型
+					62 tab (selected, settable, boolean) 学校角色, Value: 1
+					63 tab (selectable, settable, boolean) 已发布模板, Value: 0
+				64 text field (settable) 搜索学校角色
+				65 pop up button (collapsed, settable) Description: 角色类型, Value: 全部角色, Secondary Actions: Expand
+					66 menu
+						67 (selected) 全部角色
+						68 自定义角色
+						69 预设角色
+				70 pop up button (collapsed, settable) Description: 角色状态, Value: 全部状态, Secondary Actions: Expand
+					71 menu
+						72 (selected) 全部状态
+						73 启用中
+						74 已停用
+				75 button 查询
+				76 button 重置
+				77 heading 任课教师, Value: 3
+					78 text 任课教师
+				79 text 启用中
+				80 text 自定义角色
+				81 text ACADEMIC_TEACHER
+				82 text 919
+				83 text 角色成员
+				84 text 按角色指派
+				85 text 默认范围
+				86 text 2
+				87 text 当前版本
+				88 button 配置权限
+				89 button 管理成员
+				90 button 详情与维护
+				91 heading 沙箱联调角色0913, Value: 3
+					92 text 沙箱联调角色0913
+				93 text 启用中
+				94 text 自定义角色
+				95 text CUSTOM_6C4E81F1
+				96 text 0
+				97 text 角色成员
+				98 text 本人
+				99 text 默认范围
+				100 text 1
+				101 text 当前版本
+				102 button 配置权限
+				103 button 管理成员
+				104 button 详情与维护
+				105 heading 沙箱联调角色0913（自定义）, Value: 3
+					106 text 沙箱联调角色0913（自定义）
+				107 text 启用中
+				108 text 自定义角色
+				109 text CUSTOM_6C4E81F1_CUSTOM_1
+				110 text 1
+				111 text 角色成员
+				112 text 本人
+				113 text 默认范围
+				114 text 1
+				115 text 当前版本
+				116 button 配置权限
+				117 button 管理成员
+				118 button 详情与维护
+				119 heading 普通教职工, Value: 3
+					120 text 普通教职工
+				121 text 启用中
+				122 text 自定义角色
+				123 text STAFF
+				124 text 1
+				125 text 角色成员
+				126 text 自定义范围
+				127 text 默认范围
+				128 text 2
+				129 text 当前版本
+				130 button 配置权限
+				131 button 管理成员
+				132 button 详情与维护
+				133 heading 教务处管理员, Value: 3
+					134 text 教务处管理员
+				135 text 启用中
+				136 text 预设角色
+				137 text ACADEMIC_ADMIN
+				138 text 57
+				139 text 角色成员
+				140 text 全校
+				141 text 默认范围
+				142 text 0
+				143 text 当前版本
+				144 button 查看权限
+				145 button 管理成员
+				146 button 详情与维护
+				147 heading 学院管理员, Value: 3
+					148 text 学院管理员
+				149 text 启用中
+				150 text 预设角色
+				151 text COLLEGE_ADMIN
+				152 text 27
+				153 text 角色成员
+				154 text 本学院
+				155 text 默认范围
+				156 text 0
+				157 text 当前版本
+				158 button 查看权限
+				159 button 管理成员
+				160 button 详情与维护
+				161 heading 辅导员, Value: 3
+					162 text 辅导员
+				163 text 启用中
+				164 text 预设角色
+				165 text COUNSELOR
+				166 text 98
+				167 text 角色成员
+				168 text 本人所带班级
+				169 text 默认范围
+				170 text 0
+				171 text 当前版本
+				172 button 查看权限
+				173 button 管理成员
+				174 button 详情与维护
+				175 heading 宿管老师, Value: 3
+					176 text 宿管老师
+				177 text 启用中
+				178 text 预设角色
+				179 text DORM_MANAGER
+				180 text 13
+				181 text 角色成员
+				182 text 范围待核对
+				183 text 默认范围
+				184 text 0
+				185 text 当前版本
+				186 button 查看权限
+				187 button 管理成员
+				188 button 详情与维护
+				189 heading 就业老师, Value: 3
+					190 text 就业老师
+				191 text 启用中
+				192 text 预设角色
+				193 text EMPLOYMENT_TEACHER
+				194 text 33
+				195 text 角色成员
+				196 text 按角色指派
+				197 text 默认范围
+				198 text 0
+				199 text 当前版本
+				200 button 查看权限
+				201 button 管理成员
+				202 button 详情与维护
+				203 text 共 29 个角色 · 第 1 页
+				204 button (disabled) 上一页
+				205 button 下一页
+			206 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/roles

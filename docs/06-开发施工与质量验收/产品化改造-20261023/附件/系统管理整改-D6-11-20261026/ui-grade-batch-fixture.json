@@ -1,0 +1,11 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "gradeTaskId": "1",
+  "workflowTaskId": "1",
+  "workflowInstanceId": "1",
+  "otherInternshipBatchId": "2",
+  "initialGradeStatus": "SUBMITTED",
+  "initialApprovalStatus": "PENDING",
+  "purpose": "仅验证待审批投影和身份隔离，不执行成绩审核、不声明成绩业务全流程验收",
+  "existingRowsModified": false
+}

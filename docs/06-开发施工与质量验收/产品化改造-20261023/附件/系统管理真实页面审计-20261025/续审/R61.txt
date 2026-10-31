@@ -1,0 +1,288 @@
+http://127.0.0.1:5173/admin/graduation?batchId=51
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:48":
+    - generic: 10/25周日 14:48
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:42:11":
+  - generic: 本次工作 02:42:11
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ①
+    - button "② 选题":
+      - generic: ②
+    - button "③ 过程与中期":
+      - generic: ③
+    - button "④ 论文与评阅":
+      - generic: ④
+    - button "⑤ 答辩":
+      - generic: ⑤
+    - button "⑥ 成绩与归档":
+      - generic: ⑥
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "毕设总览":
+      - generic: 毕设
+    - button "开工检查":
+      - generic: 开工
+    - button "我的毕设工作":
+      - generic: 我的
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "毕设总览" [selected]:
+    - generic: 毕设总览
+  - button "关闭毕设总览":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - heading "毕设总览" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "2026 届毕业设计历史归档批次 · 2026届"
+    - option "2027届毕业设计（论文）（进行中） · 2027届" [selected]
+  - generic: 进行中
+  - generic "当前批次关键指标":
+    - generic "毕设学生":
+      - generic: 毕设学生
+      - strong: "6402"
+    - generic "待批 320":
+      - generic: 开题待审阅
+      - strong: "320"
+    - generic "待批 0":
+      - generic: 成果待审阅
+      - strong: "0"
+    - generic "未发布 0 组":
+      - generic: 答辩待发布
+      - strong: "0"
+    - generic "高风险学生":
+      - generic: 高风险学生
+      - strong: "0"
+  - button "＋ 新增毕设批次"
+  - button "导入学生名单"
+  - button "导出进度统计"
+  - button "操作日志"
+  - region "开工检查":
+    - strong: 开工检查：还差 1 步
+    - paragraph: 下一步：材料规则覆盖全流程。材料规则缺少：任务书、中期检查材料、论文初稿、论文定稿。学生走到这些环节会提交失败，请到「材料规则」页面补全并启用
+    - button "去完成 →"
+  - region "当前最高优先工作":
+    - generic: 已逾期
+    - generic: 现在先处理
+    - strong: 马浩然
+    - generic: 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - generic: 当前等待学生
+    - generic: 下一责任人指导教师
+    - generic: 最近变化当前仍未提交
+    - button "查看并催交：马浩然": 查看并催交 →
+  - generic: 后续工作
+  - generic: 共 20 项
+  - article:
+    - generic: 已逾期
+    - strong: 罗浩然 · 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - button "查看并催交 →"
+  - article:
+    - generic: 已逾期
+    - strong: 梁浩然 · 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - button "查看并催交 →"
+  - article:
+    - generic: 已逾期
+    - strong: 宋浩然 · 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - button "查看并催交 →"
+  - article:
+    - generic: 已逾期
+    - strong: 郑浩然 · 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - button "查看并催交 →"
+  - article:
+    - generic: 已逾期
+    - strong: 谢浩然 · 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - button "查看并催交 →"
+  - article:
+    - generic: 已逾期
+    - strong: 韩浩然 · 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - button "查看并催交 →"
+  - article:
+    - generic: 已逾期
+    - strong: 唐浩然 · 开题催交
+    - paragraph: 已完成选题确认但尚未提交开题报告，后续节点可能被阻塞。
+    - button "查看并催交 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 周启航 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 孙宇轩 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 胡宇轩 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 朱宇轩 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 高宇轩 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 林宇轩 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 何宇轩 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 郭宇轩 · 中期检查
+    - paragraph: 开题已通过，可以进行中期检查。
+    - button "去中期检查 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 郭景行 · 开题批阅
+    - paragraph: 学生已提交开题报告，正在等待当前职责范围内的批阅。
+    - button "批阅开题 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 马景行 · 开题批阅
+    - paragraph: 学生已提交开题报告，正在等待当前职责范围内的批阅。
+    - button "批阅开题 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 罗景行 · 开题批阅
+    - paragraph: 学生已提交开题报告，正在等待当前职责范围内的批阅。
+    - button "批阅开题 →"
+  - article:
+    - generic: 等待评阅
+    - strong: 梁景行 · 开题批阅
+    - paragraph: 学生已提交开题报告，正在等待当前职责范围内的批阅。
+    - button "批阅开题 →"
+  - generic: 队列入口
+  - button "全部学生 →"
+  - button "320 开题材料待审阅 指导教师批阅开题报告 进入 →":
+    - generic: "320"
+    - strong: 开题材料待审阅
+    - generic: 指导教师批阅开题报告
+    - generic: 进入 →
+  - button "1279 开题未提交催交 已确认选题但未交开题 进入 →":
+    - generic: "1279"
+    - strong: 开题未提交催交
+    - generic: 已确认选题但未交开题
+    - generic: 进入 →
+  - button "0 成果待审阅 论文初稿/定稿批阅 进入 →":
+    - generic: "0"
+    - strong: 成果待审阅
+    - generic: 论文初稿/定稿批阅
+    - generic: 进入 →
+  - button "481 中期待检查/复核 待检查 481 · 整改待复核 0 进入 →":
+    - generic: "481"
+    - strong: 中期待检查/复核
+    - generic: 待检查 481 · 整改待复核 0
+    - generic: 进入 →
+  - button "0 答辩组待发布 分组排期完成后发布 进入 →":
+    - generic: "0"
+    - strong: 答辩组待发布
+    - generic: 分组排期完成后发布
+    - generic: 进入 →
+  - button "1 未处理风险 受理并处置过程风险 进入 →":
+    - generic: "1"
+    - strong: 未处理风险
+    - generic: 受理并处置过程风险
+    - generic: 进入 →
+  - generic: 风险提醒
+  - button "风险台账 →"
+  - button "GD-R01 · 未选题 联通学生甲 · 指导 王老师 · 待受理 中风险 去受理 →":
+    - strong: GD-R01 · 未选题
+    - generic: 联通学生甲 · 指导 王老师 · 待受理
+    - generic: 中风险
+    - generic: 去受理 →
+  - generic: 批次进度
+  - generic: 2027届毕业设计（论文） · 状态待确认（进行中）
+  - strong: "4162"
+  - generic: 选题中
+  - strong: "0"
+  - generic: 任务书确认
+  - strong: "2240"
+  - generic: 指导中
+  - strong: "0"
+  - generic: 中期检查
+  - strong: "0"
+  - generic: 成果检查
+  - strong: "0"
+  - generic: 答辩中
+  - strong: "0"
+  - generic: 已完成
+  - strong: "0"
+  - generic: 已归档
+  - generic "跨模块统计"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,14 @@
+{
+  "jobId": "IMPORT:1",
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "repeatHttpStatuses": [
+    409,
+    409
+  ],
+  "accountCount": 1,
+  "confirmedRows": 1,
+  "version": 5,
+  "receiptFileUnchanged": true,
+  "taskAndAccountUnchanged": true,
+  "credentialsDownloaded": false
+}

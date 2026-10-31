@@ -1,0 +1,154 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:51":
+    - generic: 10/27周二 09:51
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:48:39":
+  - generic: 本次工作 00:48:39
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 学工中心
+  - navigation "二级菜单":
+    - button "学工工作台":
+      - generic: 学工工作台
+    - button "学生主档":
+      - generic: 学生主档
+    - button "班级与辅导员":
+      - generic: 班级与辅导员
+    - button "数字迎新":
+      - generic: 数字迎新
+    - button "请假销假":
+      - generic: 请假销假
+    - button "宿舍与公寓":
+      - generic: 宿舍与公寓
+    - button "风险预警与处置":
+      - generic: 风险预警与处置
+    - button "困难认定":
+      - generic: 困难认定
+    - button "奖助勤贷补":
+      - generic: 奖助勤贷补
+    - button "违纪处分":
+      - generic: 违纪处分
+    - button "谈心家校":
+      - generic: 谈心家校
+    - button "心理关注":
+      - generic: 心理关注
+    - button "活动二课与社团":
+      - generic: 活动二课与社团
+    - button "统计与档案":
+      - generic: 统计与档案
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 班级与辅导员
+  - navigation "三级菜单":
+    - button "班级管理":
+      - generic: 班级管理
+    - button "辅导员责任台账":
+      - generic: 辅导员责任台账
+    - button "辅导员考评":
+      - generic: 辅导员考评
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "班级管理" [selected]:
+    - generic: 班级管理
+  - button "关闭班级管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:51
+  - heading "班级管理" [level=1]
+  - generic: 🔍
+  - searchbox "按班级名称搜索"
+  - textbox "年级，如 2024"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "班级 年级 辅导员 / 班主任 人数 当前请假 在办风险 操作":
+        - columnheader "班级"
+        - columnheader "年级"
+        - columnheader "辅导员 / 班主任"
+        - columnheader "人数"
+        - columnheader "当前请假"
+        - columnheader "在办风险"
+        - columnheader "操作"
+    - rowgroup:
+      - row "D606关系验收班 D606四域验收学院 · D606验收专业 2026 整改验收教师甲 班主任：四域验收教师乙 3 0 0 班级画像":
+        - cell "D606关系验收班 D606四域验收学院 · D606验收专业":
+          - generic: D606关系验收班
+          - generic: D606四域验收学院 · D606验收专业
+        - cell "2026"
+        - cell "整改验收教师甲 班主任：四域验收教师乙":
+          - generic: 整改验收教师甲
+          - generic: 班主任：四域验收教师乙
+        - cell "3"
+        - cell "0"
+        - cell "0"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "D606待补辅导员班 D606四域验收学院 · D606验收专业 2026 整改验收教师甲 班主任：— 0 0 0 班级画像":
+        - cell "D606待补辅导员班 D606四域验收学院 · D606验收专业":
+          - generic: D606待补辅导员班
+          - generic: D606四域验收学院 · D606验收专业
+        - cell "2026"
+        - cell "整改验收教师甲 班主任：—":
+          - generic: 整改验收教师甲
+          - generic: 班主任：—
+        - cell "0"
+        - cell "0"
+        - cell "0"
+        - cell "班级画像":
+          - button "班级画像"
+  - generic: 共 2 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+  - paragraph: 班级是全学工数据范围载体：辅导员看本人绑定班级、学院看本院、学工处看全校。点击「班级画像」查看学生名单、材料与班干部。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,192 @@
+http://127.0.0.1:5173/admin/system/config?tab=brand
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:38":
+    - generic: 10/25周日 14:38
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:18:21":
+  - generic: 本次工作 02:18:21
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 学校配置
+  - navigation "三级菜单":
+    - button "学校信息与品牌" [active]:
+      - generic: 学校信息与品牌
+    - button "数据字典":
+      - generic: 数据字典
+    - button "模块授权与业务开关":
+      - generic: 模块授权与业务开关
+    - button "主数据责任与数据质量":
+      - generic: 主数据责任与数据质量
+    - button "合规与业务表单":
+      - generic: 合规与业务表单
+    - button "学年学期与业务日历":
+      - generic: 学年学期与业务日历
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "账号异常排查":
+    - generic: 账号异常排查
+  - button "关闭账号异常排查":
+  - tab "登录与安全策略":
+    - generic: 登录与安全策略
+  - button "关闭登录与安全策略":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "学院与部门":
+    - generic: 学院与部门
+  - button "关闭学院与部门":
+  - tab "专业管理":
+    - generic: 专业管理
+  - button "关闭专业管理":
+  - tab "年级与班级":
+    - generic: 年级与班级
+  - button "关闭年级与班级":
+  - tab "岗位管理":
+    - generic: 岗位管理
+  - button "关闭岗位管理":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心":
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+  - tab "变更版本":
+    - generic: 变更版本
+  - button "关闭变更版本":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌" [selected]:
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - heading "系统与品牌配置" [level=1]
+  - button "⇩ 导出配置快照"
+  - button "品牌配置"
+  - button "系统参数"
+  - generic: 学校品牌项
+  - text: 学校名称
+  - generic: （平台核定，学校侧不可修改）
+  - textbox "请输入" [disabled]: 跃科职业技术学院（演示）
+  - text: 平台显示名
+  - generic: （平台核定，学校侧不可修改）
+  - textbox "请输入" [disabled]: 高校学生全生命周期管理平台
+  - text: 学校简称
+  - generic: "*"
+  - textbox "请输入": 跃科职院
+  - generic: 租户主色
+  - textbox: "#2563eb"
+  - generic: "#2563EB"
+  - generic: 登录页口号
+  - textbox "请输入"
+  - generic: 水印文案
+  - textbox "请输入": 演示环境 · 数据均为虚构
+  - generic: 实际水印 = 水印文案 · 当前用户 · 时间，淡色克制平铺
+  - generic: 水印密度
+  - textbox "请输入": 适中
+  - generic: 页脚说明
+  - textbox "请输入"
+  - button "保存品牌配置"
+  - button "恢复默认"
+  - generic: 效果预览
+  - generic: 保存前实时预览
+  - generic: 跃科
+  - text: 跃科职业技术学院（演示）
+  - generic: 高校学生全生命周期管理平台
+  - generic: 胡管理
+  - generic: 跃科职业技术学院（演示） · 管理端
+  - generic: 水印预览：演示环境 · 数据均为虚构 · 胡管理 · 2026/10/25 14:38:15
+  - button "主色按钮"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

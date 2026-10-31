@@ -1,0 +1,67 @@
+{
+  "status": "已完成本地验收",
+  "files": [
+    {
+      "sha256": "9441be71363bdbaf32bea18eb4582749461743e864c2b90e43691bcaf82edc3f",
+      "path": "backend/app/services/workbench_todo_service.py"
+    },
+    {
+      "sha256": "1675550e49648264797a5820758982c9a33aec0aad490ebc061b2aeaf04c530c",
+      "path": "backend/app/services/todo_route_registry.py"
+    },
+    {
+      "sha256": "633ad51dde7aeea3dd04a7b5c5784aef8231426478a58d8ab8b6d623abdb48a6",
+      "path": "backend/app/services/approval_service.py"
+    },
+    {
+      "sha256": "46e26e783427a80016123e05053b82c01e5efe0af1b5d3dc140345f5e6be8b3c",
+      "path": "backend/app/services/approval_runtime_service.py"
+    },
+    {
+      "sha256": "268021488c209dd837754c03935e5265ed1fd27263002a407b05a5078f868a20",
+      "path": "backend/app/services/db_service.py"
+    },
+    {
+      "sha256": "70813e9c7b55a0f0ddac2714a73fafc7bbd7953e51c7679ca3cf8fd2688f9be4",
+      "path": "backend/app/services/workbench_snapshot_service.py"
+    },
+    {
+      "sha256": "39d4237c9732ea329116b9c6e21b05f5d791dbebb303c882ee1344c5d193e017",
+      "path": "backend/app/services/mobile_performance_service.py"
+    },
+    {
+      "sha256": "c228cfe6e74f9d04a7bdab99809a8efcb3c2008433d5414a973e862e83196820",
+      "path": "frontend/src/modules/approval/api/approval.api.js"
+    },
+    {
+      "sha256": "09c12fc21b9955edfc7491225dec7d99b35d0eca044d28f714742d6fef726ac7",
+      "path": "backend/tests/test_system_workbench_active_identity.py"
+    },
+    {
+      "sha256": "d09e65afe83628168d8e7bdad0a2b87579c223e3d15fdfe4d8dcb2e07c3ebf13",
+      "path": "backend/tests/test_system_grade_approval_identity.py"
+    },
+    {
+      "sha256": "bbc9db2f4810eec985d61b79110724d5bcd0b0895815dcb07b0a07a265e886de",
+      "path": "backend/tests/test_system_todo_batch_link.py"
+    },
+    {
+      "sha256": "ea80af8673ad8fe18f221a833f8bf593e0210cf82cafb5a5132fdc8a3ae9520c",
+      "path": "backend/tests/test_system_material_todo_identity.py"
+    },
+    {
+      "sha256": "5d7dbf4816910b7975d763bfb4a835f953662a16f9e7c2a0a3643d220a57a069",
+      "path": "backend/tests/test_workbench_stats_scope.py"
+    },
+    {
+      "sha256": "c1b4ca0024a25515f77f1a88bf4a7f2dd3ec7491b94483550e9ebd4710e28502",
+      "path": "backend/tests/test_workbench_snapshot.py"
+    },
+    {
+      "sha256": "19da756a082ac53afebbcdcf922dc2268501b8930247664aacd7710d0572105a",
+      "path": "frontend/tests/approval-language.test.mjs"
+    }
+  ],
+  "card": "D6-11",
+  "note": "三身份与跨批次实页、隔离权限及迟到响应检查通过；不是生产或四端最终验收"
+}

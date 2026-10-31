@@ -1,0 +1,195 @@
+[
+  {
+    "source": "53-affairs-classes.txt",
+    "url": "http://127.0.0.1:5196/admin/campus-service/classes",
+    "result": [
+      "  - heading \"班级管理\" [level=1]",
+      "      - row \"D606关系验收班 D606四域验收学院 · D606验收专业 2026 整改验收教师甲 班主任：四域验收教师乙 3 0 0 班级画像\":",
+      "        - cell \"D606关系验收班 D606四域验收学院 · D606验收专业\":",
+      "          - generic: D606关系验收班",
+      "          - generic: D606四域验收学院 · D606验收专业",
+      "      - row \"D606待补辅导员班 D606四域验收学院 · D606验收专业 2026 整改验收教师甲 班主任：— 0 0 0 班级画像\":",
+      "        - cell \"D606待补辅导员班 D606四域验收学院 · D606验收专业\":",
+      "          - generic: D606待补辅导员班",
+      "          - generic: D606四域验收学院 · D606验收专业"
+    ]
+  },
+  {
+    "source": "54-affairs-counselor.txt",
+    "url": "http://127.0.0.1:5196/admin/student-affairs/counselor-assignments",
+    "result": [
+      "  - heading \"辅导员责任台账\" [level=1]"
+    ]
+  },
+  {
+    "source": "55-student-master.txt",
+    "url": "http://127.0.0.1:5196/admin/student/list",
+    "result": [
+      "    - option \"D606关系验收班\"",
+      "    - option \"D606待补辅导员班\"",
+      "      - row \"四域虚构学生甲 D606-S001 · D606关系验收班 D606四域验收学院 / D606验收专业 未登记 在读 核验服务未配置 无 56% 学生360 编辑 作废\":",
+      "        - cell \"四域虚构学生甲 D606-S001 ·\":",
+      "          - generic: D606-S001 ·",
+      "        - cell \"D606关系验收班 D606四域验收学院 / D606验收专业\":",
+      "          - generic: D606关系验收班",
+      "          - generic: D606四域验收学院 / D606验收专业",
+      "      - row \"四域虚构学生乙 D606-S002 · D606关系验收班 D606四域验收学院 / D606验收专业 未登记 在读 核验服务未配置 无 56% 学生360 编辑 作废\":",
+      "        - cell \"四域虚构学生乙 D606-S002 ·\":",
+      "          - generic: D606-S002 ·",
+      "        - cell \"D606关系验收班 D606四域验收学院 / D606验收专业\":",
+      "          - generic: D606关系验收班",
+      "          - generic: D606四域验收学院 / D606验收专业",
+      "      - row \"第十卡虚构验收学生 D610-UI-ONLY · D606关系验收班 D606四域验收学院 / D606验收专业 未登记 在读 核验服务未配置 无 56% 学生360 编辑 作废\":",
+      "        - cell \"第十卡虚构验收学生 D610-UI-ONLY ·\":",
+      "          - generic: D610-UI-ONLY ·",
+      "        - cell \"D606关系验收班 D606四域验收学院 / D606验收专业\":",
+      "          - generic: D606关系验收班",
+      "          - generic: D606四域验收学院 / D606验收专业"
+    ]
+  },
+  {
+    "source": "56-student-import-routing.txt",
+    "url": "http://127.0.0.1:5196/admin/student/import",
+    "result": [
+      "  - heading \"导入学生\" [level=1]"
+    ]
+  },
+  {
+    "source": "57-academic-roster-import.txt",
+    "url": "http://127.0.0.1:5196/admin/academic-affairs/roster/import-export?from=student-center",
+    "result": [
+      "  - heading \"学籍导入导出\" [level=1]",
+      "  - heading \"学籍导入\" [level=3]",
+      "  - heading \"学籍导出\" [level=3]",
+      "  - heading \"教务数据交换任务\" [level=3]"
+    ]
+  },
+  {
+    "source": "58-academic-terms.txt",
+    "url": "http://127.0.0.1:5196/admin/academic-affairs/terms",
+    "result": [
+      "  - heading \"学期管理\" [level=1]",
+      "    - heading \"正式学期定义 · 台账\" [level=2]",
+      "        - row \"2026-2027 第 1 学期 D606验收学期 2026-09-01 — 2027-01-31 20 周 草稿 权威待核对 — 打开 —\":",
+      "          - cell \"2026-2027 第 1 学期 D606验收学期\":",
+      "            - generic: D606验收学期"
+    ]
+  },
+  {
+    "source": "59-academic-current-term.txt",
+    "url": "http://127.0.0.1:5196/admin/academic-affairs/terms/current",
+    "result": [
+      "  - heading \"当前学期\" [level=1]",
+      "  - heading \"操作说明与最近切换记录\" [level=3]"
+    ]
+  },
+  {
+    "source": "60-academic-teaching-class.txt",
+    "url": "http://127.0.0.1:5196/admin/academic-affairs/orgs?tab=teaching&_workspace=aa.orgs.orgs.tab.teaching",
+    "result": [
+      "  - heading \"教学班管理\" [level=1]",
+      "      - strong: D606四域验收学院",
+      "        - generic: D606验收专业",
+      "  - alert:",
+      "  - heading \"教学班列表\" [level=2]",
+      "      - row \"D606正式教学班 D606-TC D606验收学期 D606跨域验收课程 整改验收教师甲 名单待正式化 查看教学任务\":",
+      "        - cell \"D606正式教学班\"",
+      "        - cell \"D606-TC\"",
+      "        - cell \"D606验收学期\"",
+      "        - cell \"D606跨域验收课程\""
+    ]
+  },
+  {
+    "source": "61-graduation-overview.txt",
+    "url": "http://127.0.0.1:5196/admin/graduation?batchId=1",
+    "result": [
+      "  - heading \"毕设总览\" [level=1]",
+      "    - option \"D606毕设批次\" [selected]",
+      "    - strong: 当前批次暂无待处理事项",
+      "  - strong: 暂无新的风险提醒",
+      "  - generic: D606毕设批次 · 状态待确认（草稿）"
+    ]
+  },
+  {
+    "source": "62-graduation-batches.txt",
+    "url": "http://127.0.0.1:5196/admin/graduation/batches?panel=list&batchId=1",
+    "result": [
+      "  - heading \"毕设批次\" [level=1]",
+      "    - option \"D606毕设批次\" [selected]",
+      "      - row \"D606毕设批次 D606-GD · — · — 未设置 ~ 未设置 0 草稿 打开D606毕设批次详情配置 编辑D606毕设批次 启用 作废\":",
+      "        - cell \"D606毕设批次 D606-GD · — · —\":",
+      "          - generic: D606毕设批次",
+      "          - generic: D606-GD · — · —",
+      "        - cell \"打开D606毕设批次详情配置 编辑D606毕设批次 启用 作废\":",
+      "          - button \"打开D606毕设批次详情配置\": 详情/配置",
+      "          - button \"编辑D606毕设批次\": 编辑",
+      "    - heading \"一届毕设 = 一个批次\" [level=3]"
+    ]
+  },
+  {
+    "source": "63-graduation-mentors.txt",
+    "url": "http://127.0.0.1:5196/admin/graduation/mentors?panel=list&batchId=1",
+    "result": [
+      "  - heading \"导师管理\" [level=1]",
+      "    - option \"D606毕设批次\" [selected]",
+      "    - heading \"谁能带毕设，各带几个人\" [level=3]"
+    ]
+  },
+  {
+    "source": "64-graduation-assignment.txt",
+    "url": "http://127.0.0.1:5196/admin/graduation/mentors?panel=assign&batchId=1",
+    "result": [
+      "  - heading \"导师管理\" [level=1]",
+      "    - option \"D606毕设批次\" [selected]",
+      "    - generic: 暂无未分配导师学生",
+      "    - heading \"谁能带毕设，各带几个人\" [level=3]"
+    ]
+  },
+  {
+    "source": "65-internship-overview.txt",
+    "url": "http://127.0.0.1:5196/admin/internship?batchId=1",
+    "result": [
+      "  - heading \"今日工作\" [level=1]",
+      "    - option \"D606实习批次 · D606-INTERN\" [selected]",
+      "    - heading \"暂无风险、考勤异常或周报待办\" [level=3]",
+      "    - heading \"暂无开放风险\" [level=3]"
+    ]
+  },
+  {
+    "source": "66-internship-batches.txt",
+    "url": "http://127.0.0.1:5196/admin/internship/batches?panel=list&batchId=1",
+    "result": [
+      "  - heading \"批次管理\" [level=1]",
+      "    - option \"D606实习批次 · D606-INTERN\" [selected]",
+      "        - row \"D606实习批次 D606-INTERN — 至 — 3 / 0 草稿 查看详情 配置名单\":",
+      "          - cell \"D606实习批次 D606-INTERN\":",
+      "            - link \"D606实习批次\":",
+      "            - generic: D606-INTERN"
+    ]
+  },
+  {
+    "source": "67-internship-mentor.txt",
+    "url": "http://127.0.0.1:5196/admin/internship/students?panel=mentor&batchId=1",
+    "result": [
+      "  - heading \"导师分配\" [level=1]",
+      "    - option \"D606实习批次 · D606-INTERN\" [selected]",
+      "      - row \"第十卡虚构验收学生 D****Y · D606关系验收班 待认定 未落实 准备中 整改验收经办人 调整导师 档案\":",
+      "        - cell \"第十卡虚构验收学生 D****Y · D606关系验收班\":",
+      "          - text: · D606关系验收班",
+      "      - row \"四域虚构学生乙 D****2 · D606关系验收班 待认定 未落实 准备中 整改验收教师甲 调整导师 档案\":",
+      "        - cell \"四域虚构学生乙 D****2 · D606关系验收班\":",
+      "          - text: · D606关系验收班",
+      "      - row \"四域虚构学生甲 D****1 · D606关系验收班 待认定 未落实 准备中 四域验收教师乙 调整导师 档案\":",
+      "        - cell \"四域虚构学生甲 D****1 · D606关系验收班\":",
+      "          - text: · D606关系验收班"
+    ]
+  },
+  {
+    "source": "68-internship-enterprises.txt",
+    "url": "http://127.0.0.1:5196/admin/internship/enterprises?panel=list&batchId=1",
+    "result": [
+      "  - heading \"企业库\" [level=1]",
+      "    - option \"D606实习批次 · D606-INTERN\" [selected]"
+    ]
+  }
+]

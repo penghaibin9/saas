@@ -1,0 +1,342 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:21":
+    - generic: 10/27周二 09:21
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:18:01":
+  - generic: 本次工作 00:18:01
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 实施与交付
+  - navigation "三级菜单":
+    - button "实施总览":
+      - generic: 实施总览
+    - button "首次开局向导":
+      - generic: 首次开局向导
+    - button "预设方案":
+      - generic: 预设方案
+    - button "职业教育国家标准库":
+      - generic: 职业教育国家标准库
+    - button "数据导入与智能匹配":
+      - generic: 数据导入与智能匹配
+    - button "已安装配置":
+      - generic: 已安装配置
+    - button "变更与升级":
+      - generic: 变更与升级
+    - button "上线检查与验收":
+      - generic: 上线检查与验收
+    - button "老系统数据迁移":
+      - generic: 老系统数据迁移
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览" [selected]:
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "取消收藏" [pressed]:
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - heading "实施与上线验收" [level=1]
+  - button "运行上线检查"
+  - button "刷新"
+  - region "实施项目统一摘要":
+    - paragraph: 项目：D607独立实施验收项目 · IMP-20261025180727540150
+    - paragraph: 项目版本：3 · 配置覆盖：100%
+    - paragraph: 配置覆盖仅表示配置段已加载，不代表安装、检查或验收完成。
+    - paragraph: 验收尚未封板，仍需按真实检查结果推进。
+  - text: 实施项目
+  - heading "D607独立实施验收项目" [level=2]
+  - paragraph: 当前阶段 检查中；未取得证据的项目明确显示“待检查 / 待读取 / 待预览”。
+  - generic: 检查中
+  - status:
+    - text: 仍有 3 个上线阻断
+    - paragraph: 按检查项的责任角色逐个处理，处理后重新运行检查，不要在页面上直接改成通过。
+  - link "进入上线检查":
+    - /url: /admin/system/implementation/acceptance
+  - link "核对开局配置":
+    - /url: /admin/system/implementation/wizard
+  - region "实施项目关键结论":
+    - generic: 上线阻断
+    - strong: "3"
+    - generic: 来自最近一次检查记录
+    - generic: 未确认流程政策
+    - strong: "25"
+    - generic: 来自运行时预设服务
+    - generic: 待安装对象
+    - strong: 待预览
+    - generic: 生成预览后才有可靠数量
+    - generic: 未授权模块
+    - strong: 待预览
+    - generic: 未预览时不猜测为 0
+    - generic: 验收证据
+    - strong: 未验收
+    - generic: 没有证据就不标记通过
+  - text: 上线检查
+  - paragraph: 已保存检查记录不代表当前四大模块已就绪；未取得记录时保持“待检查”。
+  - generic: 3 个阻断
+  - table:
+    - rowgroup:
+      - row "检查项 结果 级别 责任角色":
+        - columnheader "检查项"
+        - columnheader "结果"
+        - columnheader "级别"
+        - columnheader "责任角色"
+    - rowgroup:
+      - row "学校开通 通过 警告 学校管理员":
+        - cell "学校开通"
+        - cell "通过":
+          - generic: 通过
+        - cell "警告":
+          - generic: 警告
+        - cell "学校管理员"
+      - row "角色与权限 通过 阻断项 学校管理员":
+        - cell "角色与权限"
+        - cell "通过":
+          - generic: 通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "组织结构 通过 阻断项 学校管理员":
+        - cell "组织结构"
+        - cell "通过":
+          - generic: 通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "师生导入 通过 阻断项 学校管理员":
+        - cell "师生导入"
+        - cell "通过":
+          - generic: 通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "业务关系 不通过 阻断项 学校管理员":
+        - cell "业务关系"
+        - cell "不通过":
+          - generic: 不通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "流程 不通过 阻断项 学校管理员":
+        - cell "流程"
+        - cell "不通过":
+          - generic: 不通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "字典与编号 通过 警告 学校管理员":
+        - cell "字典与编号"
+        - cell "通过":
+          - generic: 通过
+        - cell "警告":
+          - generic: 警告
+        - cell "学校管理员"
+      - row "安全与审计 通过 警告 学校管理员":
+        - cell "安全与审计"
+        - cell "通过":
+          - generic: 通过
+        - cell "警告":
+          - generic: 警告
+        - cell "学校管理员"
+      - row "菜单与工作台 通过 阻断项 学校管理员":
+        - cell "菜单与工作台"
+        - cell "通过":
+          - generic: 通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "消息与通知 通过 阻断项 学校管理员":
+        - cell "消息与通知"
+        - cell "通过":
+          - generic: 通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "上线检查 不通过 阻断项 学校管理员":
+        - cell "上线检查"
+        - cell "不通过":
+          - generic: 不通过
+        - cell "阻断项":
+          - generic: 阻断项
+        - cell "学校管理员"
+      - row "模块业务 通过 警告 学校管理员":
+        - cell "模块业务"
+        - cell "通过":
+          - generic: 通过
+        - cell "警告":
+          - generic: 警告
+        - cell "学校管理员"
+  - complementary:
+    - generic: 学校准备清单
+    - link "01 首次开局向导 学校基础配置与实施项目 →":
+      - /url: /admin/system/implementation/wizard
+      - generic: "01"
+      - generic: 首次开局向导
+      - generic: 学校基础配置与实施项目
+      - generic: →
+    - link "02 预设方案 核对将安装的流程与工作台 →":
+      - /url: /admin/system/implementation/presets
+      - generic: "02"
+      - generic: 预设方案
+      - generic: 核对将安装的流程与工作台
+      - generic: →
+    - link "03 数据导入与智能匹配 主数据与关系映射 →":
+      - /url: /admin/system/implementation/data-mapping
+      - generic: "03"
+      - generic: 数据导入与智能匹配
+      - generic: 主数据与关系映射
+      - generic: →
+    - link "04 已安装配置 核对实际安装版本 →":
+      - /url: /admin/system/implementation/installed
+      - generic: "04"
+      - generic: 已安装配置
+      - generic: 核对实际安装版本
+      - generic: →
+    - link "05 变更与升级 通过变更项目持续维护 →":
+      - /url: /admin/system/implementation/changes
+      - generic: "05"
+      - generic: 变更与升级
+      - generic: 通过变更项目持续维护
+      - generic: →
+    - link "06 上线检查与验收 真实检查、阻断与封板证据 →":
+      - /url: /admin/system/implementation/acceptance
+      - generic: "06"
+      - generic: 上线检查与验收
+      - generic: 真实检查、阻断与封板证据
+      - generic: →
+    - generic: 验收原则
+    - text: 先验核心业务，再看页面
+    - paragraph: 账号、权限、数据范围拒绝、审计回执必须有真实的请求和保存记录作为依据。
+    - text: 不同角色分别验
+    - paragraph: 管理员通过不能替代普通老师、只读角色与配置角色的验收。
+    - text: 错误状态必须能恢复
+    - paragraph: 无权限、数据已变化、超时、扫描失败与缓存失效必须分开呈现。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

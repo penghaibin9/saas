@@ -1,0 +1,118 @@
+http://127.0.0.1:5173/admin/system/sync-jobs
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:55":
+    - generic: 10/25周日 14:55
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:49:11":
+  - generic: 本次工作 02:49:11
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统
+    - button "身份与账号":
+      - generic: 身份
+    - button "组织主数据":
+      - generic: 组织
+    - button "角色与权限":
+      - generic: 角色
+    - button "学校配置":
+      - generic: 学校
+    - button "流程配置":
+      - generic: 流程
+    - button "安全与审计":
+      - generic: 安全
+    - button "接口与同步":
+      - generic: 接口
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "接口、凭证与 Webhook":
+      - generic: 接口
+    - button "同步任务与失败中心" [active]:
+      - generic: 同步
+    - button "老系统数据迁移":
+      - generic: 老系
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心" [selected]:
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:54
+  - heading "同步任务与失败中心" [level=1]
+  - button "＋ 登记同步任务"
+  - status:
+    - generic: ▢
+    - generic: 暂无同步任务
+    - generic: 可登记手工同步或等待接口自动排队
+    - button "返回"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

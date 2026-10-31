@@ -1,0 +1,409 @@
+http://127.0.0.1:5173/admin/academic-affairs/orgs?tab=teaching&_workspace=aa.orgs.orgs.tab.teaching
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 天气":
+    - generic: 北京 天气
+  - button "10/25周日 14:48":
+    - generic: 10/25周日 14:48
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:42:06":
+  - generic: 本次工作 02:42:06
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 教务中心
+  - navigation "二级菜单":
+    - button "教务大屏":
+      - generic: 教务大屏
+    - button "教务总览":
+      - generic: 教务总览
+    - button "教务基础":
+      - generic: 教务基础
+    - button "学籍管理":
+      - generic: 学籍管理
+    - button "培养与课程":
+      - generic: 培养与课程
+    - button "开课管理":
+      - generic: 开课管理
+    - button "排课与课表":
+      - generic: 排课与课表
+    - button "选课管理":
+      - generic: 选课管理
+    - button "日常教学":
+      - generic: 日常教学
+    - button "考务管理":
+      - generic: 考务管理
+    - button "成绩管理":
+      - generic: 成绩管理
+    - button "毕业管理":
+      - generic: 毕业管理
+    - button "教材管理":
+      - generic: 教材管理
+    - button "教学资源":
+      - generic: 教学资源
+    - button "教学质量":
+      - generic: 教学质量
+    - button "教务统计":
+      - generic: 教务统计
+    - button "教务归档":
+      - generic: 教务归档
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 教务基础
+  - button "全部业务与设置"
+  - navigation "三级菜单":
+    - button "学期管理":
+      - generic: 学期管理
+    - button "校历管理":
+      - generic: 校历管理
+    - button "作息时间":
+      - generic: 作息时间
+    - button "学院管理":
+      - generic: 学院管理
+    - button "专业管理":
+      - generic: 专业管理
+    - button "年级管理":
+      - generic: 年级管理
+    - button "行政班管理":
+      - generic: 行政班管理
+    - button "教学班管理":
+      - generic: 教学班管理
+    - button "组织核对":
+      - generic: 组织核对
+    - button "组织统计":
+      - generic: 组织统计
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "运行总览":
+    - generic: 运行总览
+  - button "关闭运行总览":
+  - tab "成绩总览":
+    - generic: 成绩总览
+  - button "关闭成绩总览":
+  - tab "成绩复查":
+    - generic: 成绩复查
+  - button "关闭成绩复查":
+  - tab "调停课审批":
+    - generic: 调停课审批
+  - button "关闭调停课审批":
+  - tab "方案列表":
+    - generic: 方案列表
+  - button "关闭方案列表":
+  - tab "课程列表":
+    - generic: 课程列表
+  - button "关闭课程列表":
+  - tab "新增课程":
+    - generic: 新增课程
+  - button "关闭新增课程":
+  - tab "选课批次":
+    - generic: 选课批次
+  - button "关闭选课批次":
+  - tab "选课规则":
+    - generic: 选课规则
+  - button "关闭选课规则":
+  - tab "课表发布":
+    - generic: 课表发布
+  - button "关闭课表发布":
+  - tab "方案版本":
+    - generic: 方案版本
+  - button "关闭方案版本":
+  - tab "学分要求":
+    - generic: 学分要求
+  - button "关闭学分要求":
+  - tab "方案制定":
+    - generic: 方案制定
+  - button "关闭方案制定":
+  - tab "学籍导入导出":
+    - generic: 学籍导入导出
+  - button "关闭学籍导入导出":
+  - tab "学期管理":
+    - generic: 学期管理
+  - button "关闭学期管理":
+  - tab "当前学期":
+    - generic: 当前学期
+  - button "关闭当前学期":
+  - tab "教学班管理" [selected]:
+    - generic: 教学班管理
+  - button "关闭教学班管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - heading "教学班管理" [level=1]
+  - complementary:
+    - strong: 组织与引用
+    - generic: 431 个组织节点
+    - list:
+      - strong: 联通试用学院
+      - list:
+        - generic: 联通软件技术
+        - generic: 2 个班
+      - strong: 智能排课验收学院
+      - list:
+        - generic: 智能排课验收专业
+        - generic: 1 个班
+      - strong: 信息工程学院
+      - list:
+        - generic: 软件技术
+        - generic: 18 个班
+        - generic: 大数据技术
+        - generic: 15 个班
+        - generic: 计算机网络技术
+        - generic: 12 个班
+        - generic: 人工智能技术应用
+        - generic: 12 个班
+      - strong: 智能制造学院
+      - list:
+        - generic: 机电一体化技术
+        - generic: 15 个班
+        - generic: 工业机器人技术
+        - generic: 12 个班
+        - generic: 数控技术
+        - generic: 12 个班
+        - generic: 电气自动化技术
+        - generic: 12 个班
+      - strong: 汽车工程学院
+      - list:
+        - generic: 新能源汽车技术
+        - generic: 15 个班
+        - generic: 汽车检测与维修技术
+        - generic: 12 个班
+        - generic: 智能网联汽车技术
+        - generic: 12 个班
+        - generic: 汽车制造与试验技术
+        - generic: 9 个班
+      - strong: 经济管理学院
+      - list:
+        - generic: 电子商务
+        - generic: 15 个班
+        - generic: 大数据与会计
+        - generic: 15 个班
+        - generic: 市场营销
+        - generic: 12 个班
+        - generic: 现代物流管理
+        - generic: 12 个班
+      - strong: 文化旅游学院
+      - list:
+        - generic: 旅游管理
+        - generic: 9 个班
+        - generic: 酒店管理与数字化运营
+        - generic: 9 个班
+        - generic: 烹饪工艺与营养
+        - generic: 12 个班
+        - generic: 空中乘务
+        - generic: 9 个班
+      - strong: 建筑工程学院
+      - list:
+        - generic: 建筑工程技术
+        - generic: 12 个班
+        - generic: 工程造价
+        - generic: 12 个班
+        - generic: 建筑室内设计
+        - generic: 12 个班
+        - generic: 建设工程管理
+        - generic: 9 个班
+      - strong: 医药健康学院
+      - list:
+        - generic: 护理
+        - generic: 24 个班
+        - generic: 康复治疗技术
+        - generic: 12 个班
+        - generic: 婴幼儿托育服务与管理
+        - generic: 9 个班
+        - generic: 健康管理
+        - generic: 9 个班
+      - strong: 艺术设计学院
+      - list:
+        - generic: 数字媒体艺术设计
+        - generic: 12 个班
+        - generic: 广告艺术设计
+        - generic: 9 个班
+        - generic: 动漫设计
+        - generic: 9 个班
+        - generic: 视觉传达设计
+        - generic: 6 个班
+  - alert:
+    - generic: ℹ
+    - generic: 教学班由教学任务形成；名单版本锁定后用于课表、成绩和考勤，维护入口回到对应教学任务。
+  - heading "教学班列表" [level=2]
+  - generic: 共 1799 条
+  - combobox:
+    - generic: 全部学期
+    - generic: ▾
+  - textbox "教学班或课程名称"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "教学班 代码 学期 课程 任课关系 名单版本 操作":
+        - columnheader "教学班"
+        - columnheader "代码"
+        - columnheader "学期"
+        - columnheader "课程"
+        - columnheader "任课关系"
+        - columnheader "名单版本"
+        - columnheader "操作"
+    - rowgroup:
+      - row "软件技术2501班-软件测试技术 N-2025-C01M01-01-05 2026-2027学年第一学期 软件测试技术 何晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2501班-软件测试技术"
+        - cell "N-2025-C01M01-01-05"
+        - cell "2026-2027学年第一学期"
+        - cell "软件测试技术"
+        - cell "何晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2501班-企业级应用项目实战 N-2025-C01M01-01-06 2026-2027学年第一学期 企业级应用项目实战 郭晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2501班-企业级应用项目实战"
+        - cell "N-2025-C01M01-01-06"
+        - cell "2026-2027学年第一学期"
+        - cell "企业级应用项目实战"
+        - cell "郭晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2501班-大学英语 N-2025-C01M01-01-PUB002 2026-2027学年第一学期 大学英语 马晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2501班-大学英语"
+        - cell "N-2025-C01M01-01-PUB002"
+        - cell "2026-2027学年第一学期"
+        - cell "大学英语"
+        - cell "马晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2501班-体育与健康 N-2025-C01M01-01-PUB003 2026-2027学年第一学期 体育与健康 罗晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2501班-体育与健康"
+        - cell "N-2025-C01M01-01-PUB003"
+        - cell "2026-2027学年第一学期"
+        - cell "体育与健康"
+        - cell "罗晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2502班-软件测试技术 N-2025-C01M01-02-05 2026-2027学年第一学期 软件测试技术 梁晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2502班-软件测试技术"
+        - cell "N-2025-C01M01-02-05"
+        - cell "2026-2027学年第一学期"
+        - cell "软件测试技术"
+        - cell "梁晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2502班-企业级应用项目实战 N-2025-C01M01-02-06 2026-2027学年第一学期 企业级应用项目实战 宋晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2502班-企业级应用项目实战"
+        - cell "N-2025-C01M01-02-06"
+        - cell "2026-2027学年第一学期"
+        - cell "企业级应用项目实战"
+        - cell "宋晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2502班-大学英语 N-2025-C01M01-02-PUB002 2026-2027学年第一学期 大学英语 郑晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2502班-大学英语"
+        - cell "N-2025-C01M01-02-PUB002"
+        - cell "2026-2027学年第一学期"
+        - cell "大学英语"
+        - cell "郑晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2502班-体育与健康 N-2025-C01M01-02-PUB003 2026-2027学年第一学期 体育与健康 谢晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2502班-体育与健康"
+        - cell "N-2025-C01M01-02-PUB003"
+        - cell "2026-2027学年第一学期"
+        - cell "体育与健康"
+        - cell "谢晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2503班-软件测试技术 N-2025-C01M01-03-05 2026-2027学年第一学期 软件测试技术 韩晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2503班-软件测试技术"
+        - cell "N-2025-C01M01-03-05"
+        - cell "2026-2027学年第一学期"
+        - cell "软件测试技术"
+        - cell "韩晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+      - row "软件技术2503班-企业级应用项目实战 N-2025-C01M01-03-06 2026-2027学年第一学期 企业级应用项目实战 唐晨曦 正式名单 V1 查看教学任务":
+        - cell "软件技术2503班-企业级应用项目实战"
+        - cell "N-2025-C01M01-03-06"
+        - cell "2026-2027学年第一学期"
+        - cell "企业级应用项目实战"
+        - cell "唐晨曦"
+        - cell "正式名单 V1":
+          - generic: 正式名单 V1
+        - cell "查看教学任务":
+          - button "查看教学任务"
+  - generic: 共 1799 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "180"
+  - button "下一页": ›
+  - paragraph: 按学期查看教学班，教学安排请从对应的教学任务中维护。
+- navigation "快捷操作":
+  - text: 我的
+  - text: 常用
+  - button "教务运行大屏":
+    - generic: 教务运行大屏
+  - button "运行总览":
+    - generic: 运行总览
+  - button "学业过程":
+    - generic: 学业过程
+  - button "成绩提交进度":
+    - generic: 成绩提交进度
+  - button "编辑快捷栏": 编辑
+  - button "收起快捷栏": 收起

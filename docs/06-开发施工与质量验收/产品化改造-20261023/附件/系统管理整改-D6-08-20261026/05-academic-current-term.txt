@@ -1,0 +1,707 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/academic-affairs".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/academic-affairs
+	2 container app
+		3 container
+			661 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			662 button (collapsed) 北京 10° 阴, Secondary Actions: Expand
+				663 image
+				664 text 北京 10° 阴
+			665 button (collapsed) 10/26周一 08:09, Secondary Actions: Expand
+				666 image
+				667 text 10/26周一 08:09
+			7 button 帮助与引导
+			8 button 消息中心
+				9 image
+			10 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				11 text 胡
+				12 text 胡管理
+				13 text 学校管理员
+		14 container
+			15 container 一级菜单
+				16 button 学工中心
+				17 button 教务中心
+				18 button 毕业设计中心
+				19 button 岗位实习中心
+				20 button 系统管理
+			21 button (collapsed) 当前范围, Secondary Actions: Expand
+				22 image
+				23 text 当前范围
+				24 image
+			668 button (collapsed) 本次工作 00:31:34, Secondary Actions: Expand
+				669 image
+				670 text 本次工作 00:31:34
+		671 container 二级菜单
+			672 button 收窄二级菜单
+				673 text 教务中心
+			674 container 二级菜单
+				675 button 教务大屏
+				676 button 教务总览
+				677 button 教务基础
+				678 button 学籍管理
+				679 button 培养与课程
+				680 button 开课管理
+				681 button 排课与课表
+				682 button 选课管理
+				683 button 日常教学
+				684 button 考务管理
+				685 button 成绩管理
+				686 button 毕业管理
+				687 button 教材管理
+				688 button 教学资源
+				689 button 教学质量
+				690 button 教务统计
+				691 button 教务归档
+			692 checkbox Description: 取消固定二级菜单, Value: 1
+		693 container 三级菜单
+			694 button 收窄三级菜单
+				695 text 教务总览
+			696 button (collapsed) 全部业务与设置, Secondary Actions: Expand
+			697 container 三级菜单
+				698 button 运行总览
+				699 button 学业过程
+				700 button 教务待办
+				701 button 今日教学运行
+			702 checkbox Description: 取消固定三级菜单, Value: 1
+		25 container
+			27 tab group 已打开页面
+				28 container
+					29 tab (selectable, settable, boolean) 教学班管理, Help: 教务基础 / 教学班管理, Value: 0
+教学班管理
+					30 button 关闭教学班管理
+						31 image
+				32 container
+					33 tab (selectable, settable, boolean) 归档与封存, Help: 教务归档 / 归档与封存, Value: 0
+归档与封存
+					34 button 关闭归档与封存
+						35 image
+				36 container
+					37 tab (selected, settable, boolean) 运行总览, Help: 教务总览 / 运行总览, Value: 1
+运行总览
+					38 button 关闭运行总览
+						39 image
+			40 button (disabled) 恢复最近关闭的页签
+				41 image
+			42 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				43 image
+			44 checkbox Description: 专注模式, Value: 0
+				45 image
+			46 container 当前位置
+				47 text 教务中心 / 教务总览 / 运行总览
+			48 container
+				49 heading 运行总览, Value: 1
+					50 text 运行总览
+				51 button 查看运行大屏
+				52 button 更新责任队列
+				53 container 学期责任接力
+					54 container
+						55 heading 学校教学运行总控, Value: 2
+							56 text 学校教学运行总控
+						57 text 2026-2027学年第一学期  · 全校授权范围
+						58 combo box (collapsed) Value: 当前学期, Secondary Actions: Expand
+							59 text 当前学期
+						60 button 更新责任进度
+					61 container
+						62 heading 当前阶段 · 注册学籍, Value: 3
+							63 text 当前阶段 · 注册学籍
+						64 text 待办理
+					65 container 当前责任
+						66 text 当前责任组织
+						67 text 责任组织待明确
+						68 text 责任岗位
+						69 text 责任岗位待明确
+						70 text 责任人
+						71 text 具体责任人待配置
+						72 text 责任尚未配置，请由组织与任职管理人员核对
+					73 button 查看注册学籍
+					74 container 下一责任
+						75 text 完成后交给下一责任方
+						76 text 培养方案与课程
+					77 container 学院进度
+						78 container
+							79 heading 各学院并行进度, Value: 2
+								80 text 各学院并行进度
+							81 text 各责任单位分别推进，学校统一办理条件单独核对。
+						82 container 学院进度表，可横向滚动
+							83 table
+								84 row
+									85 cell
+										86 text 责任学院
+									87 cell
+										88 text 学期准备
+									89 cell
+										90 text 学籍与注册
+									91 cell
+										92 text 培养方案与课程
+									93 cell
+										94 text 教学任务落实
+									95 cell
+										96 text 排课与课表
+									97 cell
+										98 text 选课
+									99 cell
+										100 text 日常教学
+									101 cell
+										102 text 考务
+									103 cell
+										104 text 成绩
+									105 cell
+										106 text 毕业审核
+									107 cell
+										108 text 教学质量
+									109 cell
+										110 text 学期归档
+									111 cell
+										112 text 当前阻断与责任
+								113 row
+									114 cell
+										115 text 联通试用学院
+										116 text 联通学院审核
+									117 cell
+										118 text 已完成
+									119 cell
+										120 text 尚未开始
+									121 cell
+										122 text 已完成
+									123 cell
+										124 text 存在阻断
+									125 cell
+										126 text 已就绪
+									127 cell
+										128 text 已完成
+									129 cell
+										130 text 待办理
+									131 cell
+										132 text 已完成
+									133 cell
+										134 text 待办理
+									135 cell
+										136 text 待办理
+									137 cell
+										138 text 不适用
+									139 cell
+										140 text 存在阻断
+									141 cell
+										142 text 尚未开始
+								143 row
+									144 cell
+										145 text 智能排课验收学院
+										146 text 具体责任人待配置
+									147 cell
+										148 text 已完成
+									149 cell
+										150 text 尚未开始
+									151 cell
+										152 text 存在阻断
+									153 cell
+										154 text 存在阻断
+									155 cell
+										156 text 已完成
+									157 cell
+										158 text 尚未开始
+									159 cell
+										160 text 尚未开始
+									161 cell
+										162 text 尚未开始
+									163 cell
+										164 text 存在阻断
+									165 cell
+										166 text 尚未开始
+									167 cell
+										168 text 不适用
+									169 cell
+										170 text 存在阻断
+									171 cell
+										172 text 尚未开始
+								173 row
+									174 cell
+										175 text 信息工程学院
+										176 text 马泽宇
+									177 cell
+										178 text 已完成
+									179 cell
+										180 text 待办理
+									181 cell
+										182 text 存在阻断
+									183 cell
+										184 text 已就绪
+									185 cell
+										186 text 已完成
+									187 cell
+										188 text 待办理
+									189 cell
+										190 text 尚未开始
+									191 cell
+										192 text 尚未开始
+									193 cell
+										194 text 尚未开始
+									195 cell
+										196 text 尚未开始
+									197 cell
+										198 text 不适用
+									199 cell
+										200 text 存在阻断
+									201 cell
+										202 text 待办理
+								203 row
+									204 cell
+										205 text 智能制造学院
+										206 text 宋泽宇
+									207 cell
+										208 text 已完成
+									209 cell
+										210 text 待办理
+									211 cell
+										212 text 已完成
+									213 cell
+										214 text 已就绪
+									215 cell
+										216 text 已完成
+									217 cell
+										218 text 尚未开始
+									219 cell
+										220 text 尚未开始
+									221 cell
+										222 text 尚未开始
+									223 cell
+										224 text 尚未开始
+									225 cell
+										226 text 尚未开始
+									227 cell
+										228 text 不适用
+									229 cell
+										230 text 存在阻断
+									231 cell
+										232 text 待办理
+								233 row
+									234 cell
+										235 text 汽车工程学院
+										236 text 韩泽宇
+									237 cell
+										238 text 已完成
+									239 cell
+										240 text 待办理
+									241 cell
+										242 text 已完成
+									243 cell
+										244 text 已就绪
+									245 cell
+										246 text 已完成
+									247 cell
+										248 text 尚未开始
+									249 cell
+										250 text 尚未开始
+									251 cell
+										252 text 尚未开始
+									253 cell
+										254 text 尚未开始
+									255 cell
+										256 text 尚未开始
+									257 cell
+										258 text 不适用
+									259 cell
+										260 text 存在阻断
+									261 cell
+										262 text 待办理
+								263 row
+									264 cell
+										265 text 经济管理学院
+										266 text 于泽宇
+									267 cell
+										268 text 已完成
+									269 cell
+										270 text 待办理
+									271 cell
+										272 text 已完成
+									273 cell
+										274 text 已就绪
+									275 cell
+										276 text 已完成
+									277 cell
+										278 text 尚未开始
+									279 cell
+										280 text 尚未开始
+									281 cell
+										282 text 尚未开始
+									283 cell
+										284 text 尚未开始
+									285 cell
+										286 text 尚未开始
+									287 cell
+										288 text 不适用
+									289 cell
+										290 text 存在阻断
+									291 cell
+										292 text 待办理
+								293 row
+									294 cell
+										295 text 文化旅游学院
+										296 text 王佳宁
+									297 cell
+										298 text 已完成
+									299 cell
+										300 text 待办理
+									301 cell
+										302 text 已完成
+									303 cell
+										304 text 已就绪
+									305 cell
+										306 text 已完成
+									307 cell
+										308 text 尚未开始
+									309 cell
+										310 text 尚未开始
+									311 cell
+										312 text 尚未开始
+									313 cell
+										314 text 尚未开始
+									315 cell
+										316 text 尚未开始
+									317 cell
+										318 text 不适用
+									319 cell
+										320 text 存在阻断
+									321 cell
+										322 text 待办理
+								323 row
+									324 cell
+										325 text 建筑工程学院
+										326 text 刘佳宁
+									327 cell
+										328 text 已完成
+									329 cell
+										330 text 待办理
+									331 cell
+										332 text 已完成
+									333 cell
+										334 text 已就绪
+									335 cell
+										336 text 已完成
+									337 cell
+										338 text 尚未开始
+									339 cell
+										340 text 尚未开始
+									341 cell
+										342 text 尚未开始
+									343 cell
+										344 text 尚未开始
+									345 cell
+										346 text 尚未开始
+									347 cell
+										348 text 不适用
+									349 cell
+										350 text 存在阻断
+									351 cell
+										352 text 待办理
+								353 row
+									354 cell
+										355 text 医药健康学院
+										356 text 黄佳宁
+									357 cell
+										358 text 已完成
+									359 cell
+										360 text 待办理
+									361 cell
+										362 text 已完成
+									363 cell
+										364 text 已就绪
+									365 cell
+										366 text 已完成
+									367 cell
+										368 text 尚未开始
+									369 cell
+										370 text 尚未开始
+									371 cell
+										372 text 尚未开始
+									373 cell
+										374 text 尚未开始
+									375 cell
+										376 text 尚未开始
+									377 cell
+										378 text 不适用
+									379 cell
+										380 text 存在阻断
+									381 cell
+										382 text 待办理
+								383 row
+									384 cell
+										385 text 艺术设计学院
+										386 text 吴佳宁
+									387 cell
+										388 text 已完成
+									389 cell
+										390 text 待办理
+									391 cell
+										392 text 已完成
+									393 cell
+										394 text 已就绪
+									395 cell
+										396 text 已完成
+									397 cell
+										398 text 待办理
+									399 cell
+										400 text 尚未开始
+									401 cell
+										402 text 尚未开始
+									403 cell
+										404 text 尚未开始
+									405 cell
+										406 text 尚未开始
+									407 cell
+										408 text 不适用
+									409 cell
+										410 text 存在阻断
+									411 cell
+										412 text 待办理
+					413 container 我的责任事项
+						414 heading 我的校级责任, Value: 3
+							415 text 我的校级责任
+						416 container
+							417 text 培养方案与课程
+							418 text 存在阻断 校教务处 · 胡管理
+							419 content list
+								420 container
+									421 AXListMarker • 
+									422 text 智能排课验收学院：培养方案与课程仍有阻断
+								423 container
+									424 AXListMarker • 
+									425 text 信息工程学院：培养方案与课程仍有阻断
+							426 button 查看培养方案与课程
+						427 container
+							428 text 教学任务落实
+							429 text 已就绪 校教务处 · 胡管理
+							430 button 查看教学任务落实
+						431 container
+							432 text 排课与课表
+							433 text 已就绪 校教务处 · 胡管理
+							434 button 查看排课与课表
+						435 container
+							436 text 选课与名单
+							437 text 待办理 校教务处 · 胡管理 仅统计本院学生选课记录，学院协同核对本院异常；批次开放、关闭和名单锁定由校教务办理
+							438 button 查看选课与名单
+						439 container
+							440 text 考务组织
+							441 text 尚未开始 校教务处 · 胡管理
+							442 button 查看考务组织
+						443 container
+							444 text 成绩闭环
+							445 text 尚未开始 校教务处 · 胡管理
+							446 button 查看成绩闭环
+						447 container
+							448 text 学业与毕业
+							449 text 尚未开始 校教务处 · 胡管理
+							450 button 查看学业与毕业
+						451 container
+							452 text 学期归档
+							453 text 存在阻断 校教务处 · 胡管理 前置阶段尚未就绪，本次未执行完整归档领域核查
+							454 content list
+								455 container
+									456 AXListMarker • 
+									457 text 注册学籍尚未就绪，请先完成该阶段
+								458 container
+									459 AXListMarker • 
+									460 text 培养方案与课程尚未就绪，请先完成该阶段
+								461 container
+									462 AXListMarker • 
+									463 text 教学任务落实尚未就绪，请先完成该阶段
+								464 container
+									465 AXListMarker • 
+									466 text 排课与课表尚未就绪，请先完成该阶段
+								467 container
+									468 AXListMarker • 
+									469 text 选课与名单尚未就绪，请先完成该阶段
+								470 container
+									471 AXListMarker • 
+									472 text 日常教学运行尚未就绪，请先完成该阶段
+								473 container
+									474 AXListMarker • 
+									475 text 考务组织尚未就绪，请先完成该阶段
+								476 container
+									477 AXListMarker • 
+									478 text 成绩闭环尚未就绪，请先完成该阶段
+								479 container
+									480 AXListMarker • 
+									481 text 学业与毕业尚未就绪，请先完成该阶段
+							482 button 查看学期归档
+					483 container 学校统一办理条件
+						484 heading 学校统一办理条件, Value: 3
+							485 text 学校统一办理条件
+						486 container
+							487 heading 教学任务落实学校门禁, Value: 3
+								488 text 教学任务落实学校门禁
+							489 text 条件未满足 责任单位就绪 8 / 10 · 阻断单位 2
+							490 content list
+								491 container
+									492 AXListMarker • 
+									493 text 存在无法归属开课单位的班级、方案或课程基础问题，须由学校核验
+								494 container
+									495 AXListMarker • 
+									496 text 教学单位已就绪 8/10，请先处理未完成单位
+							497 text 统一办理条件尚未通过，请先由相关责任方完成前置事项。
+						498 container
+							499 heading 排课与课表学校门禁, Value: 3
+								500 text 排课与课表学校门禁
+							501 text 条件未满足 责任单位就绪 10 / 10 · 阻断单位 0
+							502 content list
+								503 container
+									504 AXListMarker • 
+									505 text 存在无法归属开课单位的班级、方案或课程基础问题，须由学校核验
+								506 container
+									507 AXListMarker • 
+									508 text 课表完整性、资源或硬冲突检查尚未通过
+								509 container
+									510 AXListMarker • 
+									511 text 课表仍有漏排、资源或硬冲突问题，请进入排课工作区处理
+							512 text 统一办理条件尚未通过，请先由相关责任方完成前置事项。
+						513 container
+							514 heading 学期归档学校门禁, Value: 3
+								515 text 学期归档学校门禁
+							516 text 条件未满足 责任单位就绪 0 / 10 · 阻断单位 10
+							517 content list
+								518 container
+									519 AXListMarker • 
+									520 text 注册学籍尚未就绪，请先完成该阶段
+								521 container
+									522 AXListMarker • 
+									523 text 培养方案与课程尚未就绪，请先完成该阶段
+								524 container
+									525 AXListMarker • 
+									526 text 教学任务落实尚未就绪，请先完成该阶段
+								527 container
+									528 AXListMarker • 
+									529 text 排课与课表尚未就绪，请先完成该阶段
+								530 container
+									531 AXListMarker • 
+									532 text 选课与名单尚未就绪，请先完成该阶段
+								533 container
+									534 AXListMarker • 
+									535 text 日常教学运行尚未就绪，请先完成该阶段
+								536 container
+									537 AXListMarker • 
+									538 text 考务组织尚未就绪，请先完成该阶段
+								539 container
+									540 AXListMarker • 
+									541 text 成绩闭环尚未就绪，请先完成该阶段
+								542 container
+									543 AXListMarker • 
+									544 text 学业与毕业尚未就绪，请先完成该阶段
+								545 container
+									546 AXListMarker • 
+									547 text 教学单位已就绪 0/10，请先处理未完成单位
+							548 text 统一办理条件尚未通过，请先由相关责任方完成前置事项。
+				549 text 待我办理
+				550 text 1
+				551 text 本人指派及授权责任池
+				552 text 我的已办
+				553 text 7
+				554 text 本人完成的正式待办
+				555 text 即将到期
+				556 text 0
+				557 text 未来24小时内到期的待办
+				558 container 责任队列
+					559 checkbox 待我办理, Value: 1
+					560 checkbox 我的已办, Value: 0
+				561 container
+					562 heading 待我办理, Value: 2
+						563 text 待我办理
+					564 text 10/26 08:08更新
+				565 container
+					566 text field (settable) 搜索教务事项
+					567 button 查询
+					568 button 清空
+					569 text 共 1 条 · 按当前身份查询
+				570 table
+					571 row
+						572 cell
+							573 text 事项
+						574 cell
+							575 text 业务对象
+						576 cell
+							577 text 当前责任
+						578 cell
+							579 text 截止时间
+						580 cell
+							581 text 阻断原因
+						582 cell
+							583 text 办理入口
+					584 row
+						585 cell
+							586 text 调停课待审批：软件测试技术
+							587 text 待办 43678 · 待办理
+						588 cell
+							589 text 调停课申请
+							590 text 9
+						591 cell
+							592 text 明确指派给本人
+						593 cell
+							594 text 未设置截止时间
+						595 cell
+							596 text 进入原业务核对
+						597 cell
+							598 button 继续办理
+				599 text 共 1 条
+				600 button (disabled) 上一页
+				601 button 1
+				602 button (disabled) 下一页
+				603 container
+					604 heading 本学期业务接力, Value: 2
+						605 text 本学期业务接力
+					606 content list
+						607 container
+							608 heading 开学条件, Value: 3
+								609 text 开学条件
+							610 text 校历、组织与注册
+							611 button 进入责任工作区
+						612 container
+							613 heading 开课与课表, Value: 3
+								614 text 开课与课表
+							615 text 任务、名单与正式课位
+							616 button 进入责任工作区
+						617 container
+							618 heading 考试与成绩, Value: 3
+								619 text 考试与成绩
+							620 text 岗位审核与实际回执
+							621 button 进入责任工作区
+						622 container
+							623 heading 毕业与归档, Value: 3
+								624 text 毕业与归档
+							625 text 证据核验与受控封存
+							626 button 进入责任工作区
+				627 text 按当前身份呈现责任
+				628 text 待办来自正式指派和授权责任池。学院、教师与校级身份不共用一组全校统计。
+				629 container
+					630 heading 学期运行检查, Value: 2
+						631 text 学期运行检查
+					632 text 按所选学期核对运行前置条件，检查结果不代替业务审批。
+					633 combo box (collapsed) Value: 当前学期, Secondary Actions: Expand
+						634 text 当前学期
+					635 button 更新检查
+				636 text 教学运行 · 存在阻断
+				637 text 本学期当前阶段不可继续，请先处理阻断项
+				638 text 阻断 252 项 · 风险 2 项
+				639 button (collapsed) 查看 3 条规则明细及责任, Secondary Actions: Expand
+					640 text 查看 3 条规则明细及责任
+				641 container
+					642 text field (settable) 运行检查导出用途
+					643 button (disabled) 导出运行检查
+			644 container 快捷操作
+				645 text 我的
+				646 text 常用
+				647 button 教务运行大屏, Help: 教务大屏 / 教务运行大屏
+					648 image
+					649 text 教务运行大屏
+				650 button 运行总览, Help: 教务总览 / 运行总览
+					651 image
+					652 text 运行总览
+				653 button 学业过程, Help: 教务总览 / 学业过程
+					654 image
+					655 text 学业过程
+				656 button 成绩提交进度, Help: 教务总览 / 成绩提交进度
+					657 image
+					658 text 成绩提交进度
+				659 button 编辑快捷栏
+				660 button 收起快捷栏
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/academic-affairs

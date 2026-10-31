@@ -1,0 +1,294 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/graduation/mentors?panel=list&batchId=51".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/graduation/mentors?panel=list&batchId=51
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:18, Secondary Actions: Expand
+				11 image
+				258 text 10/25周日 12:18
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:11:53, Secondary Actions: Expand
+				32 image
+				305 text 本次工作 00:11:53
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 总览
+				38 button ① 准备
+				39 button ② 选题
+				40 button ③ 过程与中期
+				41 button ④ 论文与评阅
+				42 button ⑤ 答辩
+				43 button ⑥ 成绩与归档
+				44 button 更多
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		46 container 三级菜单
+			47 button 展开三级菜单
+			48 container 三级菜单
+				225 button 批次与时间节点
+				226 button 学生与进度
+				227 button 导师与分配
+				228 button 材料规则
+				229 button 分配冲突检测
+			52 checkbox Description: 取消固定三级菜单, Value: 1
+		53 container
+			54 tab group 已打开页面
+				55 container
+					56 tab (selectable, settable, boolean) 毕设总览, Help: 总览 / 毕设总览, Value: 0
+毕设总览
+					57 button 关闭毕设总览
+						58 image
+				230 container
+					231 tab (selectable, settable, boolean) 批次与时间节点, Help: ① 准备 / 批次与时间节点, Value: 0
+批次与时间节点
+					232 button 关闭批次与时间节点
+						233 image
+				260 container
+					261 tab (selected, settable, boolean) 导师与分配, Help: ① 准备 / 导师与分配, Value: 1
+导师与分配
+					262 button 关闭导师与分配
+						263 image
+			59 button (disabled) 恢复最近关闭的页签
+				60 image
+			61 checkbox Description: 收藏当前页面, Value: 0
+				62 image
+			63 checkbox Description: 专注模式, Value: 0
+				64 image
+			264 container
+				265 heading 导师管理, Value: 1
+					266 text 导师管理
+				267 text 当前批次
+				268 pop up button (collapsed, settable) Description: 选择毕设批次, Value: 2027届毕业设计（论文）（进行中） · 2027届, Secondary Actions: Expand
+					269 menu
+						270 2026 届毕业设计历史归档批次 · 2026届
+						271 (selected) 2027届毕业设计（论文）（进行中） · 2027届
+				272 text 进行中
+				273 button ＋ 申报导师
+				274 button 分配冲突检测
+				275 button 批量归档
+				276 button 导入 Excel
+				277 button 导出台账
+				278 button 导师名单
+				279 button 导师分配
+				280 text 关键词
+				281 text field (settable) 关键词
+				282 text 资格状态
+				283 pop up button (collapsed, settable) 资格状态, Value: 全部, Secondary Actions: Expand
+					284 menu
+						285 (selected) 全部
+						286 待审核
+						287 已认证
+						288 已驳回
+						289 已停用
+						290 已归档
+				291 text 导师类型
+				292 pop up button (collapsed, settable) 导师类型, Value: 全部, Secondary Actions: Expand
+					293 menu
+						294 (selected) 全部
+						295 校内导师
+						296 企业导师
+						297 双导师
+				298 button 查询
+				299 button 重置
+				306 table
+					307 row
+						308 cell
+							309 text 导师 / 工号
+						310 cell
+							311 text 学院 / 专业
+						312 cell
+							313 text 工作量
+						314 cell
+							315 text 资格状态
+						316 cell
+							317 text 操作
+					318 row
+						319 cell
+							320 text 王老师
+							321 text teacher2 · 校内导师 · —
+						322 cell
+							323 text — / —
+						324 cell
+							325 text 2/8
+						326 cell
+							327 text 已认证
+						328 cell
+							329 button 详情
+							330 button 评价
+							331 button 编辑
+							332 button 停用
+					333 row
+						334 cell
+							335 text 郭睿哲
+							336 text sbx_t0288 · 校内导师 · 副教授
+						337 cell
+							338 text 艺术设计学院 / 视觉传达设计
+						339 cell
+							340 text 15/20
+						341 cell
+							342 text 已认证
+						343 cell
+							344 button 详情
+							345 button 评价
+							346 button 编辑
+							347 button 停用
+					348 row
+						349 cell
+							350 text 何睿哲
+							351 text sbx_t0287 · 校内导师 · 讲师
+						352 cell
+							353 text 艺术设计学院 / 视觉传达设计
+						354 cell
+							355 text 17/20
+						356 cell
+							357 text 已认证
+						358 cell
+							359 button 详情
+							360 button 评价
+							361 button 编辑
+							362 button 停用
+					363 row
+						364 cell
+							365 text 林睿哲
+							366 text sbx_t0286 · 校内导师 · 讲师
+						367 cell
+							368 text 艺术设计学院 / 视觉传达设计
+						369 cell
+							370 text 17/20
+						371 cell
+							372 text 已认证
+						373 cell
+							374 button 详情
+							375 button 评价
+							376 button 编辑
+							377 button 停用
+					378 row
+						379 cell
+							380 text 高睿哲
+							381 text sbx_t0285 · 校内导师 · 讲师
+						382 cell
+							383 text 艺术设计学院 / 视觉传达设计
+						384 cell
+							385 text 17/20
+						386 cell
+							387 text 已认证
+						388 cell
+							389 button 详情
+							390 button 评价
+							391 button 编辑
+							392 button 停用
+					393 row
+						394 cell
+							395 text 朱睿哲
+							396 text sbx_t0284 · 校内导师 · 副教授
+						397 cell
+							398 text 艺术设计学院 / 视觉传达设计
+						399 cell
+							400 text 17/20
+						401 cell
+							402 text 已认证
+						403 cell
+							404 button 详情
+							405 button 评价
+							406 button 编辑
+							407 button 停用
+					408 row
+						409 cell
+							410 text 胡睿哲
+							411 text sbx_t0283 · 校内导师 · 讲师
+						412 cell
+							413 text 艺术设计学院 / 视觉传达设计
+						414 cell
+							415 text 17/20
+						416 cell
+							417 text 已认证
+						418 cell
+							419 button 详情
+							420 button 评价
+							421 button 编辑
+							422 button 停用
+					423 row
+						424 cell
+							425 text 孙睿哲
+							426 text sbx_t0282 · 校内导师 · 讲师
+						427 cell
+							428 text 艺术设计学院 / 动漫设计
+						429 cell
+							430 text 14/20
+						431 cell
+							432 text 已认证
+						433 cell
+							434 button 详情
+							435 button 评价
+							436 button 编辑
+							437 button 停用
+					438 row
+						439 cell
+							440 text 徐睿哲
+							441 text sbx_t0281 · 校内导师 · 讲师
+						442 cell
+							443 text 艺术设计学院 / 动漫设计
+						444 cell
+							445 text 17/20
+						446 cell
+							447 text 已认证
+						448 cell
+							449 button 详情
+							450 button 评价
+							451 button 编辑
+							452 button 停用
+					453 row
+						454 cell
+							455 text 吴睿哲
+							456 text sbx_t0280 · 校内导师 · 副教授
+						457 cell
+							458 text 艺术设计学院 / 动漫设计
+						459 cell
+							460 text 17/20
+						461 cell
+							462 text 已认证
+						463 cell
+							464 button 详情
+							465 button 评价
+							466 button 编辑
+							467 button 停用
+				468 text 共 385 条
+				469 button (disabled) 上一页
+				470 button 1
+				471 button 2
+				472 button (disabled) …
+				473 button 39
+				474 button 下一页
+				301 container 页面操作引导
+					475 text 1 / 4
+					302 heading 谁能带毕设，各带几个人, Value: 3
+						476 text 谁能带毕设，各带几个人
+					477 text 这里管两件事：导师名单（谁有资格带）和学生分配（谁带谁）。两件事都做完，学生才算真正有人管。
+					303 button 跳过引导
+					304 button 下一步
+			223 button 我的常用
+
+The focused UI element is 227 button 导师与分配

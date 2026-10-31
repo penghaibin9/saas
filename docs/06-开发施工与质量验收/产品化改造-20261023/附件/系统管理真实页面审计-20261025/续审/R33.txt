@@ -1,0 +1,288 @@
+http://127.0.0.1:5173/admin/system/access-governance
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:38":
+    - generic: 10/25周日 14:38
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:18:03":
+  - generic: 本次工作 02:18:03
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 角色与权限
+  - navigation "三级菜单":
+    - button "身份权限总览":
+      - generic: 身份权限总览
+    - button "预设角色模板":
+      - generic: 预设角色模板
+    - button "学校角色与成员":
+      - generic: 学校角色与成员
+    - button "角色成员与业务身份":
+      - generic: 角色成员与业务身份
+    - button "菜单与操作权限":
+      - generic: 菜单与操作权限
+    - button "数据范围规则":
+      - generic: 数据范围规则
+    - button "临时授权与工作移交":
+      - generic: 临时授权与工作移交
+    - button "安全变更":
+      - generic: 安全变更
+    - button "访问治理" [active]:
+      - generic: 访问治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "账号异常排查":
+    - generic: 账号异常排查
+  - button "关闭账号异常排查":
+  - tab "登录与安全策略":
+    - generic: 登录与安全策略
+  - button "关闭登录与安全策略":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "学院与部门":
+    - generic: 学院与部门
+  - button "关闭学院与部门":
+  - tab "专业管理":
+    - generic: 专业管理
+  - button "关闭专业管理":
+  - tab "年级与班级":
+    - generic: 年级与班级
+  - button "关闭年级与班级":
+  - tab "岗位管理":
+    - generic: 岗位管理
+  - button "关闭岗位管理":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心":
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+  - tab "变更版本":
+    - generic: 变更版本
+  - button "关闭变更版本":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理" [selected]:
+    - generic: 访问治理
+  - button "关闭访问治理":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:37
+  - heading "访问治理" [level=1]
+  - button "访问解释"
+  - button "职责分离"
+  - button "紧急访问"
+  - button "权限复核"
+  - generic: 解释一次访问
+  - generic: 结论来自真实鉴权核心，页面不自行推断
+  - generic: 业务动作*
+  - combobox:
+    - option "请选择要解释的功能动作" [selected]
+    - option "审批与流程 / 我的待办"
+    - option "工作台 / 我的工作台"
+    - option "工作台 / 消息中心"
+    - option "系统管理 / 上线检查与验收"
+    - option "系统管理 / 专业管理"
+    - option "系统管理 / 临时授权与工作移交"
+    - option "系统管理 / 变更与升级"
+    - option "系统管理 / 同步任务与失败中心"
+    - option "系统管理 / 学年学期与业务日历"
+    - option "系统管理 / 学年学期与业务日历 / systemAdmin.academicCalendar.manage"
+    - option "系统管理 / 学校信息与品牌"
+    - option "系统管理 / 学校信息与品牌 / systemAdmin.config.brand.manage"
+    - option "系统管理 / 学校信息与品牌 / systemAdmin.config.manage"
+    - option "系统管理 / 安全变更"
+    - option "系统管理 / 完整性异常中心"
+    - option "系统管理 / 实施总览"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.accept"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.apply"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.create"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.mapping.apply"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.preview"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.relation.apply"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.relation.manage"
+    - option "系统管理 / 实施总览 / systemAdmin.implementation.relation.rollback"
+    - option "系统管理 / 已安装配置"
+    - option "系统管理 / 年级与班级"
+    - option "系统管理 / 批处理与后台任务"
+    - option "系统管理 / 批处理与后台任务 / systemAdmin.job.manage"
+    - option "系统管理 / 接口、凭证与 Webhook"
+    - option "系统管理 / 操作与权限审计"
+    - option "系统管理 / 操作与权限审计 / systemAdmin.audit.login.view"
+    - option "系统管理 / 操作与权限审计 / systemAdmin.audit.operation.view"
+    - option "系统管理 / 敏感与导入导出审计"
+    - option "系统管理 / 教职工任职归属查询"
+    - option "系统管理 / 教职工导入"
+    - option "系统管理 / 教职工账号"
+    - option "系统管理 / 教职工账号 / systemAdmin.user.assign"
+    - option "系统管理 / 教职工账号 / systemAdmin.user.assign-role"
+    - option "系统管理 / 教职工账号 / systemAdmin.user.bind"
+    - option "系统管理 / 教职工账号 / systemAdmin.user.export"
+    - option "系统管理 / 教职工账号 / systemAdmin.user.manage"
+    - option "系统管理 / 教职工账号 / systemAdmin.user.sensitive.view"
+    - option "系统管理 / 数据交换任务中心"
+    - option "系统管理 / 数据交换任务中心 / systemAdmin.dataExchange.viewTenant"
+    - option "系统管理 / 数据导入与智能匹配"
+    - option "系统管理 / 数据范围规则"
+    - option "系统管理 / 数据范围规则 / systemAdmin.scope.manage"
+    - option "系统管理 / 树形定位工作台"
+    - option "系统管理 / 树形定位工作台 / systemAdmin.org.activate"
+    - option "系统管理 / 树形定位工作台 / systemAdmin.org.create"
+    - option "系统管理 / 树形定位工作台 / systemAdmin.org.manage"
+    - option "系统管理 / 树形定位工作台 / systemAdmin.org.update"
+    - option "系统管理 / 模块授权与业务开关"
+    - option "系统管理 / 流程安全与运行治理"
+    - option "系统管理 / 流程安全与运行治理 / systemAdmin.workflow.manage"
+    - option "系统管理 / 登录与安全策略"
+    - option "系统管理 / 登录与安全策略 / systemAdmin.security.manage"
+    - option "系统管理 / 系统总览"
+    - option "系统管理 / 统一消息、待办与通知治理"
+    - option "系统管理 / 统一消息、待办与通知治理 / systemAdmin.communication.manage"
+    - option "系统管理 / 老系统数据迁移"
+    - option "系统管理 / 老系统数据迁移 / systemAdmin.migration.import"
+    - option "系统管理 / 访问治理"
+    - option "系统管理 / 账号异常排查"
+    - option "系统管理 / 身份权限总览"
+    - option "系统管理 / 身份权限总览 / systemAdmin.role.config"
+    - option "系统管理 / 身份权限总览 / systemAdmin.role.create"
+    - option "系统管理 / 身份权限总览 / systemAdmin.role.permission.manage"
+    - option "系统管理 / 身份权限总览 / systemAdmin.role.template.view"
+    - option "系统管理 / 预设方案"
+    - option "系统管理 / 首次开局向导"
+    - option "系统管理 / systemAdmin.file.manage"
+    - option "系统管理 / 发送本人验证站内提醒"
+    - option "系统管理 / 导出脱敏号码台账"
+    - option "系统管理 / 撤销手机号凭据"
+    - option "系统管理 / 查看手机号安全策略"
+    - option "系统管理 / 查看脱敏号码治理"
+    - option "系统管理 / 独立审批账号恢复"
+    - option "系统管理 / 申请账号恢复核验"
+    - option "系统管理 / 登记或清除待验证号码"
+    - option "系统管理 / 管理手机号安全策略"
+    - option "系统管理 / 精确核对手机号"
+  - generic: 业务范围（可选）
+  - combobox:
+    - option "学院" [disabled] [selected]
+    - option "智能排课验收学院"
+    - option "联通试用学院"
+    - option "信息工程学院"
+    - option "智能制造学院"
+    - option "汽车工程学院"
+    - option "经济管理学院"
+    - option "文化旅游学院"
+    - option "建筑工程学院"
+    - option "医药健康学院"
+    - option "艺术设计学院"
+  - generic: ▾
+  - combobox [disabled]:
+    - option "专业" [disabled] [selected]
+  - generic: ▾
+  - combobox [disabled]:
+    - option "班级" [disabled] [selected]
+  - generic: ▾
+  - button "解释"
+  - generic: 最近的拒绝
+  - table:
+    - rowgroup:
+      - row "动作 原因 角色 时间":
+        - columnheader "动作"
+        - columnheader "原因"
+        - columnheader "角色"
+        - columnheader "时间"
+    - rowgroup:
+      - row "业务功能动作 数据范围拒绝 学校管理员 2026-09-13 03:24":
+        - cell "业务功能动作"
+        - cell "数据范围拒绝"
+        - cell "学校管理员"
+        - cell "2026-09-13 03:24"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

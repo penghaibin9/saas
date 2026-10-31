@@ -1,0 +1,71 @@
+[
+  {
+    "buttonRight": 353.1661148071289,
+    "documentWidth": 375,
+    "pageWidth": 343.1743469238281,
+    "route": "/admin/academic-affairs/archive",
+    "width": 375
+  },
+  {
+    "buttonRight": 368.07840728759766,
+    "documentWidth": 390,
+    "pageWidth": 358.08660888671875,
+    "route": "/admin/academic-affairs/archive",
+    "width": 390
+  },
+  {
+    "buttonRight": 408.4292678833008,
+    "documentWidth": 431,
+    "pageWidth": 398.4375,
+    "route": "/admin/academic-affairs/archive",
+    "width": 431
+  },
+  {
+    "buttonRight": 353.16612243652344,
+    "documentWidth": 375,
+    "pageWidth": 343.1743469238281,
+    "route": "/admin/academic-affairs/archive/precheck",
+    "width": 375
+  },
+  {
+    "buttonRight": 368.0783996582031,
+    "documentWidth": 390,
+    "pageWidth": 358.08660888671875,
+    "route": "/admin/academic-affairs/archive/precheck",
+    "width": 390
+  },
+  {
+    "buttonRight": 408.4292755126953,
+    "documentWidth": 431,
+    "pageWidth": 398.4375,
+    "route": "/admin/academic-affairs/archive/precheck",
+    "width": 431
+  },
+  {
+    "documentWidth": 375,
+    "formRight": 353.16612339019775,
+    "pageWidth": 343.1743469238281,
+    "route": "/admin/academic-affairs/archive/export",
+    "tableClient": 316,
+    "tableScroll": 500,
+    "width": 375
+  },
+  {
+    "documentWidth": 390,
+    "formRight": 368.0783853530884,
+    "pageWidth": 358.08660888671875,
+    "route": "/admin/academic-affairs/archive/export",
+    "tableClient": 331,
+    "tableScroll": 500,
+    "width": 390
+  },
+  {
+    "documentWidth": 431,
+    "formRight": 408.4292764663696,
+    "pageWidth": 398.4375,
+    "route": "/admin/academic-affairs/archive/export",
+    "tableClient": 371,
+    "tableScroll": 500,
+    "width": 431
+  }
+]

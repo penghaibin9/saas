@@ -1,0 +1,326 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/module-entitlements".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/module-entitlements
+	2 container app
+		3 container
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button 帮助与引导
+			8 button 消息中心
+				9 image
+			10 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				11 text 胡
+				12 text 胡管理
+				13 text 学校管理员
+		14 container
+			15 container 一级菜单
+				16 button 学工中心
+				17 button 教务中心
+				18 button 毕业设计中心
+				19 button 岗位实习中心
+				20 button 系统管理
+			21 button (collapsed) 当前范围, Secondary Actions: Expand
+				22 image
+				23 text 当前范围
+				24 image
+		25 container
+			26 button 目录
+			27 tab group 已打开页面
+				28 container
+					29 tab (selected, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 1
+模块授权与业务开关
+					30 button 关闭模块授权与业务开关
+						31 image
+			32 button (disabled) 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			38 container
+				39 heading 模块与业务开关, Value: 1
+					40 text 模块与业务开关
+				41 button 刷新状态
+				42 heading 教务中心, Value: 2
+					43 text 教务中心
+				44 text 当前可用
+				45 text academicAffairs · 版本 0
+				46 definition list
+					47 container 平台授权
+						48 text 平台授权
+					49 text 是
+					50 container 学校开关
+						51 text 学校开关
+					52 text 已启用
+					53 container 准备就绪
+						54 text 准备就绪
+					55 text 是
+					56 container 当前可用
+						57 text 当前可用
+					58 text 是
+				59 text 各项状态正常
+				60 text 学校开关
+				61 switch Description: 教务中心学校开关, Value: 1
+				62 heading 教务旧入口, Value: 2
+					63 text 教务旧入口
+				64 text 当前可用
+				65 text academicLegacy · 版本 0
+				66 definition list
+					67 container 平台授权
+						68 text 平台授权
+					69 text 是
+					70 container 学校开关
+						71 text 学校开关
+					72 text 已启用
+					73 container 准备就绪
+						74 text 准备就绪
+					75 text 是
+					76 container 当前可用
+						77 text 当前可用
+					78 text 是
+				79 text 各项状态正常
+				80 text 学校开关
+				81 switch Description: 教务旧入口学校开关, Value: 1
+				82 heading 毕业设计中心, Value: 2
+					83 text 毕业设计中心
+				84 text 当前可用
+				85 text graduationDesign · 版本 0
+				86 definition list
+					87 container 平台授权
+						88 text 平台授权
+					89 text 是
+					90 container 学校开关
+						91 text 学校开关
+					92 text 已启用
+					93 container 准备就绪
+						94 text 准备就绪
+					95 text 是
+					96 container 当前可用
+						97 text 当前可用
+					98 text 是
+				99 text 各项状态正常
+				100 text 学校开关
+				101 switch Description: 毕业设计中心学校开关, Value: 1
+				102 heading 就业服务, Value: 2
+					103 text 就业服务
+				104 text 当前可用
+				105 text employment · 版本 0
+				106 definition list
+					107 container 平台授权
+						108 text 平台授权
+					109 text 是
+					110 container 学校开关
+						111 text 学校开关
+					112 text 已启用
+					113 container 准备就绪
+						114 text 准备就绪
+					115 text 是
+					116 container 当前可用
+						117 text 当前可用
+					118 text 是
+				119 text 各项状态正常
+				120 text 学校开关
+				121 switch Description: 就业服务学校开关, Value: 1
+				122 heading 岗位实习中心, Value: 2
+					123 text 岗位实习中心
+				124 text 当前可用
+				125 text internship · 版本 0
+				126 definition list
+					127 container 平台授权
+						128 text 平台授权
+					129 text 是
+					130 container 学校开关
+						131 text 学校开关
+					132 text 已启用
+					133 container 准备就绪
+						134 text 准备就绪
+					135 text 是
+					136 container 当前可用
+						137 text 当前可用
+					138 text 是
+				139 text 各项状态正常
+				140 text 学校开关
+				141 switch Description: 岗位实习中心学校开关, Value: 1
+				142 heading 在校服务, Value: 2
+					143 text 在校服务
+				144 text 当前可用
+				145 text campusService · 版本 0
+				146 definition list
+					147 container 平台授权
+						148 text 平台授权
+					149 text 是
+					150 container 学校开关
+						151 text 学校开关
+					152 text 已启用
+					153 container 准备就绪
+						154 text 准备就绪
+					155 text 是
+					156 container 当前可用
+						157 text 当前可用
+					158 text 是
+				159 text 各项状态正常
+				160 text 学校开关
+				161 switch Description: 在校服务学校开关, Value: 1
+				162 heading 数字迎新, Value: 2
+					163 text 数字迎新
+				164 text 当前可用
+				165 text orientation · 版本 0
+				166 definition list
+					167 container 平台授权
+						168 text 平台授权
+					169 text 是
+					170 container 学校开关
+						171 text 学校开关
+					172 text 已启用
+					173 container 准备就绪
+						174 text 准备就绪
+					175 text 是
+					176 container 当前可用
+						177 text 当前可用
+					178 text 是
+				179 text 各项状态正常
+				180 text 学校开关
+				181 switch Description: 数字迎新学校开关, Value: 1
+				182 heading 学工中心, Value: 2
+					183 text 学工中心
+				184 text 当前可用
+				185 text studentAffairs · 版本 0
+				186 definition list
+					187 container 平台授权
+						188 text 平台授权
+					189 text 是
+					190 container 学校开关
+						191 text 学校开关
+					192 text 已启用
+					193 container 准备就绪
+						194 text 准备就绪
+					195 text 是
+					196 container 当前可用
+						197 text 当前可用
+					198 text 是
+				199 text 各项状态正常
+				200 text 学校开关
+				201 switch Description: 学工中心学校开关, Value: 1
+				202 heading 学生档案, Value: 2
+					203 text 学生档案
+				204 text 当前可用
+				205 text studentProfile · 版本 0
+				206 definition list
+					207 container 平台授权
+						208 text 平台授权
+					209 text 是
+					210 container 学校开关
+						211 text 学校开关
+					212 text 已启用
+					213 container 准备就绪
+						214 text 准备就绪
+					215 text 是
+					216 container 当前可用
+						217 text 当前可用
+					218 text 是
+				219 text 各项状态正常
+				220 text 学校开关
+				221 switch Description: 学生档案学校开关, Value: 1
+				222 heading 系统管理, Value: 2
+					223 text 系统管理
+				224 text 当前可用
+				225 text systemAdmin · 版本 0
+				226 definition list
+					227 container 平台授权
+						228 text 平台授权
+					229 text 是
+					230 container 学校开关
+						231 text 学校开关
+					232 text 已启用
+					233 container 准备就绪
+						234 text 准备就绪
+					235 text 是
+					236 container 当前可用
+						237 text 当前可用
+					238 text 是
+				239 text 各项状态正常
+				240 text 学校开关
+				241 switch Description: 系统管理学校开关, Value: 1
+				242 heading 审批中心, Value: 2
+					243 text 审批中心
+				244 text 当前可用
+				245 text approval · 版本 0
+				246 definition list
+					247 container 平台授权
+						248 text 平台授权
+					249 text 是
+					250 container 学校开关
+						251 text 学校开关
+					252 text 已启用
+					253 container 准备就绪
+						254 text 准备就绪
+					255 text 是
+					256 container 当前可用
+						257 text 当前可用
+					258 text 是
+				259 text 各项状态正常
+				260 text 学校开关
+				261 switch Description: 审批中心学校开关, Value: 1
+				262 heading 数据中心, Value: 2
+					263 text 数据中心
+				264 text 当前可用
+				265 text dataCenter · 版本 0
+				266 definition list
+					267 container 平台授权
+						268 text 平台授权
+					269 text 是
+					270 container 学校开关
+						271 text 学校开关
+					272 text 已启用
+					273 container 准备就绪
+						274 text 准备就绪
+					275 text 是
+					276 container 当前可用
+						277 text 当前可用
+					278 text 是
+				279 text 各项状态正常
+				280 text 学校开关
+				281 switch Description: 数据中心学校开关, Value: 1
+				282 heading 消息中心, Value: 2
+					283 text 消息中心
+				284 text 当前可用
+				285 text messages · 版本 0
+				286 definition list
+					287 container 平台授权
+						288 text 平台授权
+					289 text 是
+					290 container 学校开关
+						291 text 学校开关
+					292 text 已启用
+					293 container 准备就绪
+						294 text 准备就绪
+					295 text 是
+					296 container 当前可用
+						297 text 当前可用
+					298 text 是
+				299 text 各项状态正常
+				300 text 学校开关
+				301 switch Description: 消息中心学校开关, Value: 1
+				302 heading 工作台, Value: 2
+					303 text 工作台
+				304 text 当前可用
+				305 text workbench · 版本 0
+				306 definition list
+					307 container 平台授权
+						308 text 平台授权
+					309 text 是
+					310 container 学校开关
+						311 text 学校开关
+					312 text 已启用
+					313 container 准备就绪
+						314 text 准备就绪
+					315 text 是
+					316 container 当前可用
+						317 text 当前可用
+					318 text 是
+				319 text 各项状态正常
+				320 text 学校开关
+				321 switch Description: 工作台学校开关, Value: 1
+			322 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/module-entitlements

@@ -1,0 +1,316 @@
+http://127.0.0.1:5173/admin/internship/students?panel=mentor&batchId=47
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:50":
+    - generic: 10/25周日 14:50
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:44:29":
+  - generic: 本次工作 02:44:29
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日
+    - button "实习中心大屏":
+      - generic: 实习
+    - button "批次与学生":
+      - generic: 批次
+    - button "企业与岗位":
+      - generic: 企业
+    - button "申请与落岗":
+      - generic: 申请
+    - button "实习过程":
+      - generic: 实习
+    - button "风险与变更":
+      - generic: 风险
+    - button "评价与成绩":
+      - generic: 评价
+    - button "归档与分析":
+      - generic: 归档
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "岗位确认":
+      - generic: 岗位
+    - button "申请审核":
+      - generic: 申请
+    - button "岗位匹配":
+      - generic: 岗位
+    - button "导师分配":
+      - generic: 导师
+    - button "三方协议":
+      - generic: 三方
+    - button "保险核验":
+      - generic: 保险
+    - button "上岗核验":
+      - generic: 上岗
+    - button "分配记录":
+      - generic: 分配
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "导师分配" [selected]:
+    - generic: 导师分配
+  - button "关闭导师分配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - heading "导师分配" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "2025 年暑期行业见习（历史归档样本） · INT-2025-SUMMER-HIST"
+    - option "2024级岗位实习（进行中） · INT-2024-2026FALL" [selected]
+  - generic: 进行中
+  - generic: 2026-07-20 ~ 2027-01-15
+  - button "导出名单"
+  - button "管理学生名单"
+  - navigation "实习学生视图":
+    - generic: 6402 名学生
+    - button "全部学生"
+    - button "待资格认定"
+    - button "待分配岗位"
+    - button "在岗学生"
+    - button "去向待落实"
+    - button "导师分配" [pressed]
+  - text: 学生姓名 / 学号
+  - searchbox "学生姓名 / 学号"
+  - text: 实习状态
+  - combobox "实习状态":
+    - option "全部" [selected]
+    - option "准备中"
+    - option "待上岗"
+    - option "在岗中"
+    - option "考核中"
+    - option "已归档"
+  - text: 实习资格
+  - combobox "实习资格":
+    - option "全部" [selected]
+    - option "待认定"
+    - option "资格合格"
+    - option "资格不合格"
+  - button "查询"
+  - button "重置"
+  - generic "更多筛选"
+  - option "全部" [selected]
+  - option "未落实"
+  - option "已分配岗位"
+  - option "自主实习"
+  - option "免实习"
+  - option "全部" [selected]
+  - option "已分配"
+  - option "未分配"
+  - table:
+    - rowgroup:
+      - row "学生 实习资格 岗位与去向 实习状态 指导教师 操作":
+        - columnheader "学生"
+        - columnheader "实习资格"
+        - columnheader "岗位与去向"
+        - columnheader "实习状态"
+        - columnheader "指导教师"
+        - columnheader "操作"
+    - rowgroup:
+      - row "联通学生乙 P****2 · 联通试用2601班 资格合格 未落实 待上岗 王可欣 调整导师 档案":
+        - cell "联通学生乙 P****2 · 联通试用2601班":
+          - link "联通学生乙":
+            - /url: /admin/internship/students/64063?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: P****2
+          - text: · 联通试用2601班
+        - cell "资格合格":
+          - generic: 资格合格
+        - cell "未落实"
+        - cell "待上岗":
+          - generic: 待上岗
+        - cell "王可欣"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "联通学生甲 P****1 · 联通试用2601班 资格合格 未落实 待上岗 王可欣 调整导师 档案":
+        - cell "联通学生甲 P****1 · 联通试用2601班":
+          - link "联通学生甲":
+            - /url: /admin/internship/students/64062?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: P****1
+          - text: · 联通试用2601班
+        - cell "资格合格":
+          - generic: 资格合格
+        - cell "未落实"
+        - cell "待上岗":
+          - generic: 待上岗
+        - cell "王可欣"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "谢致远 2****4 · 广告艺术设计2403班 资格合格 未落实 准备中 谢泽宇 调整导师 档案":
+        - cell "谢致远 2****4 · 广告艺术设计2403班":
+          - link "谢致远":
+            - /url: /admin/internship/students/63762?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****4
+          - text: · 广告艺术设计2403班
+        - cell "资格合格":
+          - generic: 资格合格
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "谢泽宇"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "郑致远 2****3 · 广告艺术设计2403班 资格合格 未落实 准备中 郑泽宇 调整导师 档案":
+        - cell "郑致远 2****3 · 广告艺术设计2403班":
+          - link "郑致远":
+            - /url: /admin/internship/students/63761?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****3
+          - text: · 广告艺术设计2403班
+        - cell "资格合格":
+          - generic: 资格合格
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "郑泽宇"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "宋致远 2****2 · 广告艺术设计2403班 资格合格 未落实 准备中 于泽宇 调整导师 档案":
+        - cell "宋致远 2****2 · 广告艺术设计2403班":
+          - link "宋致远":
+            - /url: /admin/internship/students/63760?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****2
+          - text: · 广告艺术设计2403班
+        - cell "资格合格":
+          - generic: 资格合格
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "于泽宇"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "梁致远 2****1 · 广告艺术设计2403班 资格合格 未落实 准备中 冯泽宇 调整导师 档案":
+        - cell "梁致远 2****1 · 广告艺术设计2403班":
+          - link "梁致远":
+            - /url: /admin/internship/students/63759?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****1
+          - text: · 广告艺术设计2403班
+        - cell "资格合格":
+          - generic: 资格合格
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "冯泽宇"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "罗诗涵 2****0 · 视觉传达设计2402班 待认定 未落实 准备中 赵佳宁 调整导师 档案":
+        - cell "罗诗涵 2****0 · 视觉传达设计2402班":
+          - link "罗诗涵":
+            - /url: /admin/internship/students/64058?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****0
+          - text: · 视觉传达设计2402班
+        - cell "待认定":
+          - generic: 待认定
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "赵佳宁"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "马诗涵 2****9 · 视觉传达设计2402班 待认定 未落实 准备中 黄佳宁 调整导师 档案":
+        - cell "马诗涵 2****9 · 视觉传达设计2402班":
+          - link "马诗涵":
+            - /url: /admin/internship/students/64057?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****9
+          - text: · 视觉传达设计2402班
+        - cell "待认定":
+          - generic: 待认定
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "黄佳宁"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "郭诗涵 2****8 · 视觉传达设计2402班 待认定 未落实 准备中 杨佳宁 调整导师 档案":
+        - cell "郭诗涵 2****8 · 视觉传达设计2402班":
+          - link "郭诗涵":
+            - /url: /admin/internship/students/64056?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****8
+          - text: · 视觉传达设计2402班
+        - cell "待认定":
+          - generic: 待认定
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "杨佳宁"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "何诗涵 2****7 · 视觉传达设计2402班 待认定 未落实 准备中 陈佳宁 调整导师 档案":
+        - cell "何诗涵 2****7 · 视觉传达设计2402班":
+          - link "何诗涵":
+            - /url: /admin/internship/students/64055?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+          - generic: 2****7
+          - text: · 视觉传达设计2402班
+        - cell "待认定":
+          - generic: 待认定
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "陈佳宁"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+  - generic: 共 6402 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "641"
+  - button "下一页": ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

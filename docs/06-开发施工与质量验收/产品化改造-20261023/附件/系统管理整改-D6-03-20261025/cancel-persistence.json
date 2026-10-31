@@ -1,0 +1,13 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "jobId": "EXPORT:1",
+  "state": "CANCELLED",
+  "version": 1,
+  "retryHttpStatus": 422,
+  "cancelHttpStatus": 409,
+  "unchangedAfterRejectedActions": true,
+  "initiator": "1",
+  "sourceModule": "systemAdmin",
+  "createdAt": "2026-10-25T10:54:24Z",
+  "scope": "真实页面登记与取消的新测试任务；正常登录接口负向校验；不代表整张D6-03完成"
+}

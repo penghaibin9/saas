@@ -1,0 +1,751 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:21":
+    - generic: 10/27周二 09:21
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:18:06":
+  - generic: 本次工作 00:18:06
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 实施与交付
+  - navigation "三级菜单":
+    - button "实施总览":
+      - generic: 实施总览
+    - button "首次开局向导":
+      - generic: 首次开局向导
+    - button "预设方案":
+      - generic: 预设方案
+    - button "职业教育国家标准库":
+      - generic: 职业教育国家标准库
+    - button "数据导入与智能匹配":
+      - generic: 数据导入与智能匹配
+    - button "已安装配置":
+      - generic: 已安装配置
+    - button "变更与升级":
+      - generic: 变更与升级
+    - button "上线检查与验收":
+      - generic: 上线检查与验收
+    - button "老系统数据迁移":
+      - generic: 老系统数据迁移
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导" [selected]:
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "取消收藏" [pressed]:
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:21
+  - heading "首次开局向导" [level=1]
+  - generic: D607独立实施验收项目
+  - generic: IMP-20261025180727540150 · 高职标准版
+  - generic: 校验中
+  - generic: 状态
+  - generic: 100%
+  - generic: 配置覆盖
+  - generic: "3"
+  - generic: 项目版本
+  - region "实施项目统一摘要":
+    - paragraph: 项目：D607独立实施验收项目 · IMP-20261025180727540150
+    - paragraph: 项目版本：3 · 配置覆盖：100%
+    - paragraph: 配置覆盖仅表示配置段已加载，不代表安装、检查或验收完成。
+    - paragraph: 验收尚未封板，仍需按真实检查结果推进。
+  - generic: 12类引导式问答
+  - generic: 推荐值已经填好，学校只需确认或选择；保存后仍可修改
+  - text: 学校开通
+  - generic: 实施配置项
+  - text: 学校层次
+  - emphasis: "*"
+  - combobox "学校层次*":
+    - option "高职" [selected]
+    - option "中职"
+    - option "开户后确认"
+  - text: 实施节奏
+  - emphasis: "*"
+  - combobox "实施节奏*":
+    - option "标准一周" [selected]
+    - option "两天试点"
+    - option "演示"
+    - option "私有化"
+  - text: 计划交付天数
+  - emphasis: "*"
+  - spinbutton "计划交付天数*": "7"
+  - button "保存"
+  - text: 角色与权限
+  - generic: 实施配置项
+  - text: 角色模板策略
+  - emphasis: "*"
+  - combobox "角色模板策略*":
+    - option "安装推荐角色" [selected]
+    - option "最小角色集"
+  - text: 管理员与审计员职责分离
+  - emphasis: "*"
+  - combobox "管理员与审计员职责分离*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 组织结构
+  - generic: 实施配置项
+  - text: 教学组织模型
+  - emphasis: "*"
+  - combobox "教学组织模型*":
+    - option "学校—学院—专业—班级" [selected]
+    - option "学校—部门—班级"
+  - text: 从师生文件推导组织候选
+  - emphasis: "*"
+  - combobox "从师生文件推导组织候选*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 师生导入
+  - generic: 实施配置项
+  - text: 重复账号处理
+  - emphasis: "*"
+  - combobox "重复账号处理*":
+    - option "阻断并回执" [selected]
+    - option "跳过既有账号"
+  - text: 初始密码策略
+  - emphasis: "*"
+  - combobox "初始密码策略*":
+    - option "随机一次性密码" [selected]
+    - option "激活链接"
+  - button "保存"
+  - text: 业务关系
+  - generic: 实施配置项
+  - text: 业务关系来源
+  - emphasis: "*"
+  - combobox "业务关系来源*":
+    - option "导入后人工确认" [selected]
+    - option "教务系统同步"
+  - text: 禁止用角色名虚构业务关系
+  - emphasis: "*"
+  - combobox "禁止用角色名虚构业务关系*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 流程
+  - generic: 实施配置项
+  - text: 流程开局策略
+  - emphasis: "*"
+  - combobox "流程开局策略*":
+    - option "安装推荐模板、确认后启用" [selected]
+    - option "学校自行配置"
+  - text: 学校政策确认后才能启用
+  - emphasis: "*"
+  - combobox "学校政策确认后才能启用*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 字典与编号
+  - generic: 实施配置项
+  - text: 优先使用国家/行业标准代码
+  - emphasis: "*"
+  - combobox "优先使用国家/行业标准代码*":
+    - option "是" [selected]
+    - option "否"
+  - text: 校内编号规则责任部门
+  - emphasis: "*"
+  - combobox "校内编号规则责任部门*":
+    - option "信息中心" [selected]
+    - option "教务处"
+    - option "学校办公室"
+  - button "保存"
+  - text: 安全与审计
+  - generic: 实施配置项
+  - text: 首次登录必须改密
+  - emphasis: "*"
+  - combobox "首次登录必须改密*":
+    - option "是" [selected]
+    - option "否"
+  - text: 敏感导出添加水印
+  - emphasis: "*"
+  - combobox "敏感导出添加水印*":
+    - option "是" [selected]
+    - option "否"
+  - text: 会话有效分钟数
+  - emphasis: "*"
+  - spinbutton "会话有效分钟数*": "120"
+  - button "保存"
+  - text: 菜单与工作台
+  - generic: 实施配置项
+  - text: 角色切换时同步菜单和工作台
+  - emphasis: "*"
+  - combobox "角色切换时同步菜单和工作台*":
+    - option "是" [selected]
+    - option "否"
+  - text: 首页策略
+  - emphasis: "*"
+  - combobox "首页策略*":
+    - option "按角色推荐" [selected]
+    - option "学校后期自定义"
+  - button "保存"
+  - text: 消息与通知
+  - generic: 实施配置项
+  - text: 默认通知渠道
+  - emphasis: "*"
+  - combobox "默认通知渠道*":
+    - option "站内消息" [selected]
+    - option "短信（需配置）"
+    - option "微信（需配置）"
+  - text: 启用超时催办
+  - emphasis: "*"
+  - combobox "启用超时催办*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 上线检查
+  - generic: 实施配置项
+  - text: 阻断项全部通过才能验收
+  - emphasis: "*"
+  - combobox "阻断项全部通过才能验收*":
+    - option "是" [selected]
+    - option "否"
+  - text: 最终验收角色
+  - emphasis: "*"
+  - combobox "最终验收角色*":
+    - option "学校管理员" [selected]
+    - option "校领导"
+  - button "保存"
+  - text: 模块业务
+  - generic: 实施配置项
+  - text: 首期开通模块
+  - emphasis: "*"
+  - checkbox "首期开通模块* 迎新 学工 教务 实习 毕设 就业" [checked]
+  - text: 迎新
+  - checkbox "学工" [checked]
+  - text: 学工
+  - checkbox "教务" [checked]
+  - text: 教务
+  - checkbox "实习" [checked]
+  - text: 实习
+  - checkbox "毕设" [checked]
+  - text: 毕设
+  - checkbox "就业" [checked]
+  - text: 就业
+  - text: 启用专业目录与专业教学标准入口
+  - emphasis: "*"
+  - combobox "启用专业目录与专业教学标准入口*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - button "生成安装预览"
+  - generic: 运行预设主表
+  - generic: 流程默认待确认；工作台与站内通知模板已安装
+  - generic: 流程 25
+  - generic: 工作台 12
+  - generic: 通知模板 16
+  - checkbox [checked]
+  - text: 短期请假审批
+  - generic: 流程编号 AFFAIRS_LEAVE · 24小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "24"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 中长期请假审批
+  - generic: 流程编号 AFFAIRS_LEAVE_LONG · 48小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "48"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 重大长期请假审批
+  - generic: 流程编号 AFFAIRS_LEAVE_MAJOR · 48小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "48"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 家庭经济困难认定
+  - generic: 流程编号 AFFAIRS_AID_IDENTIFY · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 助学金申请审批
+  - generic: 流程编号 AFFAIRS_GRANT · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 奖学金申请审批
+  - generic: 流程编号 AFFAIRS_SCHOLARSHIP · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 违纪处分审批
+  - generic: 流程编号 AFFAIRS_DISCIPLINE · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 处分解除审批
+  - generic: 流程编号 AFFAIRS_DISCIPLINE_REMOVE · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 成绩审核发布
+  - generic: 流程编号 AC_GRADE_REVIEW · 48小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "48"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 成绩更正审批
+  - generic: 流程编号 AC_GRADE_CHANGE · 48小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "48"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 调停课审批
+  - generic: 流程编号 ACAD_SCHEDULE_CHANGE · 24小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "24"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 休学审批
+  - generic: 流程编号 ACAD_STATUS_SUSPEND · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 退学审批
+  - generic: 流程编号 ACAD_STATUS_WITHDRAW · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 复学审批
+  - generic: 流程编号 ACAD_STATUS_RESUME · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 保留学籍审批
+  - generic: 流程编号 ACAD_STATUS_PRESERVE · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 留级审批
+  - generic: 流程编号 ACAD_STATUS_RETAIN · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 转专业审批
+  - generic: 流程编号 ACAD_STATUS_TRANSFER_MAJOR · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 转班审批
+  - generic: 流程编号 ACAD_STATUS_TRANSFER_CLASS · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 培养方案审核发布
+  - generic: 流程编号 ACAD_PROGRAM_APPROVAL · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 实习申请审批
+  - generic: 流程编号 INTERNSHIP_APPLICATION · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 实习单位/岗位变更
+  - generic: 流程编号 INTERNSHIP_CHANGE · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 毕设题目审核
+  - generic: 流程编号 GD_TOPIC_APPROVAL · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 毕设开题审核
+  - generic: 流程编号 GD_PROPOSAL_APPROVAL · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 毕设成果与答辩资格审核
+  - generic: 流程编号 GD_FINAL_APPROVAL · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - checkbox [checked]
+  - text: 就业去向登记审核
+  - generic: 流程编号 EMPLOYMENT_DESTINATION_REVIEW · 72小时 · 状态待确认
+  - spinbutton "流程时限（小时）": "72"
+  - button "保存时限"
+  - textbox "学校流程政策确认说明"
+  - textbox "输入：确认启用学校流程政策"
+  - button "确认并启用选中流程"
+  - heading "角色工作台（可后续修改）" [level=4]
+  - text: 学校管理员
+  - generic: 学校管理工作台
+  - textbox "工作台标题": 学校管理工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 系统管理员
+  - generic: 系统管理工作台
+  - textbox "工作台标题": 系统管理工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 安全审计员
+  - generic: 安全审计工作台
+  - textbox "工作台标题": 安全审计工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 校领导
+  - generic: 领导驾驶舱
+  - textbox "工作台标题": 领导驾驶舱
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 学院管理员
+  - generic: 学院管理工作台
+  - textbox "工作台标题": 学院管理工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 教务管理员
+  - generic: 教务管理工作台
+  - textbox "工作台标题": 教务管理工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 学工管理员
+  - generic: 学工管理工作台
+  - textbox "工作台标题": 学工管理工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 辅导员
+  - generic: 辅导员工作台
+  - textbox "工作台标题": 辅导员工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 任课教师
+  - generic: 任课教师工作台
+  - textbox "工作台标题": 任课教师工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 毕设指导教师
+  - generic: 毕设导师工作台
+  - textbox "工作台标题": 毕设导师工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 实习指导教师
+  - generic: 实习指导教师工作台
+  - textbox "工作台标题": 实习指导教师工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - text: 宿管老师
+  - generic: 宿管工作台
+  - textbox "工作台标题": 宿管工作台
+  - textbox "工作台副标题": 按当前激活角色与数据范围实时聚合
+  - combobox "工作台状态":
+    - option "启用" [selected]
+    - option "停用"
+  - button "保存"
+  - heading "消息与通知（学校可修改显示文案）" [level=4]
+  - text: 账号已创建
+  - generic: 站内消息 · 可用变量 1 个
+  - textbox "通知标题": 账号已创建
+  - textbox "通知正文": "账号 {accountNo} 已创建，请在首次登录后修改初始密码。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /login
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 导入预检完成
+  - generic: 站内消息 · 可用变量 3 个
+  - textbox "通知标题": 导入预检完成
+  - textbox "通知正文": "导入批次 {batchNo} 预检完成：有效 {validCount} 条，错误 {invalidCount} 条。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/system/implementation/mapping
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 导入完成
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 导入完成
+  - textbox "通知正文": "导入批次 {batchNo} 已完成，共处理 {totalCount} 条。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/system/implementation/mapping
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 您有新的待办
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 您有新的待办
+  - textbox "通知正文": "{bizName} 已提交，请于 {deadline} 前处理。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/approval
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 待办即将超时
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 待办即将超时
+  - textbox "通知正文": "待办 {bizName} 将于 {deadline} 到期，请及时处理。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/approval
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 待办已经超时
+  - generic: 站内消息 · 可用变量 1 个
+  - textbox "通知标题": 待办已经超时
+  - textbox "通知正文": "待办 {bizName} 已超时，请立即处理。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/approval
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 申请已通过
+  - generic: 站内消息 · 可用变量 1 个
+  - textbox "通知标题": 申请已通过
+  - textbox "通知正文": "您提交的 {bizName} 已审核通过。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/approval
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 申请已退回
+  - generic: 站内消息 · 可用变量 1 个
+  - textbox "通知标题": 申请已退回
+  - textbox "通知正文": "您提交的 {bizName} 已退回，请登录系统查看意见并修改。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/approval
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 申请未通过
+  - generic: 站内消息 · 可用变量 1 个
+  - textbox "通知标题": 申请未通过
+  - textbox "通知正文": "您提交的 {bizName} 未通过，请登录系统查看审核意见。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/approval
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 教务信息已发布
+  - generic: 站内消息 · 可用变量 1 个
+  - textbox "通知标题": 教务信息已发布
+  - textbox "通知正文": "{bizName} 已发布，请登录系统查看。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/academic-affairs
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 学生预警提醒
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 学生预警提醒
+  - textbox "通知正文": "学生 {studentName} 出现 {warningType}，请按职责范围跟进。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/student-affairs/risks
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 实习异常提醒
+  - generic: 站内消息 · 可用变量 1 个
+  - textbox "通知标题": 实习异常提醒
+  - textbox "通知正文": "学生 {studentName} 出现实习异常，请及时核实处理。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/internship
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 实习周报逾期
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 实习周报逾期
+  - textbox "通知正文": "学生 {studentName} 的第 {weekNo} 周周报尚未提交。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/internship
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 毕设任务逾期
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 毕设任务逾期
+  - textbox "通知正文": "学生 {studentName} 的 {stageName} 材料已逾期。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/graduation
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 安全告警
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 安全告警
+  - textbox "通知正文": "检测到账号 {accountNo} 的 {alertType}，请及时核查。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/system/logs
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+  - text: 服务即将到期
+  - generic: 站内消息 · 可用变量 2 个
+  - textbox "通知标题": 服务即将到期
+  - textbox "通知正文": "服务 {serviceName} 将于 {expireDate} 到期，请提前处理。"
+  - textbox "通知跳转地址":
+    - /placeholder: 跳转地址（可选）
+    - text: /admin/system
+  - checkbox "启用" [checked]
+  - text: 启用
+  - button "保存"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,555 @@
+http://127.0.0.1:5173/admin/student/list
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:47":
+    - generic: 10/25周日 14:47
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:41:04":
+  - generic: 本次工作 02:41:04
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "学工工作台":
+      - generic: 工作
+    - button "学生主档":
+      - generic: 学生
+    - button "班级与辅导员":
+      - generic: 班级
+    - button "数字迎新":
+      - generic: 迎新
+    - button "请假销假":
+      - generic: 请假
+    - button "宿舍与公寓":
+      - generic: 住宿
+    - button "风险预警与处置":
+      - generic: 风险
+    - button "困难认定":
+      - generic: 认定
+    - button "奖助勤贷补":
+      - generic: 奖助
+    - button "违纪处分":
+      - generic: 处分
+    - button "谈心家校":
+      - generic: 家校
+    - button "心理关注":
+      - generic: 心理
+    - button "活动二课与社团":
+      - generic: 活动
+    - button "统计与档案":
+      - generic: 统计
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "学生列表":
+      - generic: 学生
+    - button "学籍异动台账":
+      - generic: 学籍
+    - button "风险标签":
+      - generic: 风险
+    - button "信息更正审核":
+      - generic: 信息
+    - button "身份核验":
+      - generic: 身份
+    - button "导入学生":
+      - generic: 导入
+    - button "数据导出":
+      - generic: 数据
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学生列表" [selected]:
+    - generic: 学生列表
+  - button "关闭学生列表":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46 · 学生主档列表
+  - heading "学生主档" [level=1]
+  - button "新增学生"
+  - button "批量导出"
+  - button "列设置"
+  - paragraph:
+    - text: 查询结果
+    - strong: "20005"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 学号 / 手机号
+  - generic: 学院
+  - combobox "学院":
+    - option "全部" [selected]
+  - generic: 班级
+  - combobox "班级":
+    - option "全部" [selected]
+    - option "软件技术2401班"
+    - option "软件技术2402班"
+    - option "软件技术2403班"
+    - option "软件技术2404班"
+    - option "软件技术2405班"
+    - option "软件技术2406班"
+    - option "大数据技术2401班"
+    - option "大数据技术2402班"
+    - option "大数据技术2403班"
+    - option "大数据技术2404班"
+    - option "大数据技术2405班"
+    - option "计算机网络技术2401班"
+    - option "计算机网络技术2402班"
+    - option "计算机网络技术2403班"
+    - option "计算机网络技术2404班"
+    - option "人工智能技术应用2401班"
+    - option "人工智能技术应用2402班"
+    - option "人工智能技术应用2403班"
+    - option "人工智能技术应用2404班"
+    - option "机电一体化技术2401班"
+    - option "机电一体化技术2402班"
+    - option "机电一体化技术2403班"
+    - option "机电一体化技术2404班"
+    - option "机电一体化技术2405班"
+    - option "工业机器人技术2401班"
+    - option "工业机器人技术2402班"
+    - option "工业机器人技术2403班"
+    - option "工业机器人技术2404班"
+    - option "数控技术2401班"
+    - option "数控技术2402班"
+    - option "数控技术2403班"
+    - option "数控技术2404班"
+    - option "电气自动化技术2401班"
+    - option "电气自动化技术2402班"
+    - option "电气自动化技术2403班"
+    - option "电气自动化技术2404班"
+    - option "新能源汽车技术2401班"
+    - option "新能源汽车技术2402班"
+    - option "新能源汽车技术2403班"
+    - option "新能源汽车技术2404班"
+    - option "新能源汽车技术2405班"
+    - option "汽车检测与维修技术2401班"
+    - option "汽车检测与维修技术2402班"
+    - option "汽车检测与维修技术2403班"
+    - option "汽车检测与维修技术2404班"
+    - option "智能网联汽车技术2401班"
+    - option "智能网联汽车技术2402班"
+    - option "智能网联汽车技术2403班"
+    - option "智能网联汽车技术2404班"
+    - option "汽车制造与试验技术2401班"
+    - option "汽车制造与试验技术2402班"
+    - option "汽车制造与试验技术2403班"
+    - option "电子商务2401班"
+    - option "电子商务2402班"
+    - option "电子商务2403班"
+    - option "电子商务2404班"
+    - option "电子商务2405班"
+    - option "大数据与会计2401班"
+    - option "大数据与会计2402班"
+    - option "大数据与会计2403班"
+    - option "大数据与会计2404班"
+    - option "大数据与会计2405班"
+    - option "市场营销2401班"
+    - option "市场营销2402班"
+    - option "市场营销2403班"
+    - option "市场营销2404班"
+    - option "现代物流管理2401班"
+    - option "现代物流管理2402班"
+    - option "现代物流管理2403班"
+    - option "现代物流管理2404班"
+    - option "旅游管理2401班"
+    - option "旅游管理2402班"
+    - option "旅游管理2403班"
+    - option "酒店管理与数字化运营2401班"
+    - option "酒店管理与数字化运营2402班"
+    - option "酒店管理与数字化运营2403班"
+    - option "烹饪工艺与营养2401班"
+    - option "烹饪工艺与营养2402班"
+    - option "烹饪工艺与营养2403班"
+    - option "烹饪工艺与营养2404班"
+    - option "空中乘务2401班"
+    - option "空中乘务2402班"
+    - option "空中乘务2403班"
+    - option "建筑工程技术2401班"
+    - option "建筑工程技术2402班"
+    - option "建筑工程技术2403班"
+    - option "建筑工程技术2404班"
+    - option "工程造价2401班"
+    - option "工程造价2402班"
+    - option "工程造价2403班"
+    - option "工程造价2404班"
+    - option "建筑室内设计2401班"
+    - option "建筑室内设计2402班"
+    - option "建筑室内设计2403班"
+    - option "建筑室内设计2404班"
+    - option "建设工程管理2401班"
+    - option "建设工程管理2402班"
+    - option "建设工程管理2403班"
+    - option "护理2401班"
+    - option "护理2402班"
+    - option "护理2403班"
+    - option "护理2404班"
+    - option "护理2405班"
+    - option "护理2406班"
+    - option "护理2407班"
+    - option "护理2408班"
+    - option "康复治疗技术2401班"
+    - option "康复治疗技术2402班"
+    - option "康复治疗技术2403班"
+    - option "康复治疗技术2404班"
+    - option "婴幼儿托育服务与管理2401班"
+    - option "婴幼儿托育服务与管理2402班"
+    - option "婴幼儿托育服务与管理2403班"
+    - option "健康管理2401班"
+    - option "健康管理2402班"
+    - option "健康管理2403班"
+    - option "数字媒体艺术设计2401班"
+    - option "数字媒体艺术设计2402班"
+    - option "数字媒体艺术设计2403班"
+    - option "数字媒体艺术设计2404班"
+    - option "广告艺术设计2401班"
+    - option "广告艺术设计2402班"
+    - option "广告艺术设计2403班"
+    - option "动漫设计2401班"
+    - option "动漫设计2402班"
+    - option "动漫设计2403班"
+    - option "视觉传达设计2401班"
+    - option "视觉传达设计2402班"
+    - option "软件技术2501班"
+    - option "软件技术2502班"
+    - option "软件技术2503班"
+    - option "软件技术2504班"
+    - option "软件技术2505班"
+    - option "软件技术2506班"
+    - option "大数据技术2501班"
+    - option "大数据技术2502班"
+    - option "大数据技术2503班"
+    - option "大数据技术2504班"
+    - option "大数据技术2505班"
+    - option "计算机网络技术2501班"
+    - option "计算机网络技术2502班"
+    - option "计算机网络技术2503班"
+    - option "计算机网络技术2504班"
+    - option "人工智能技术应用2501班"
+    - option "人工智能技术应用2502班"
+    - option "人工智能技术应用2503班"
+    - option "人工智能技术应用2504班"
+    - option "机电一体化技术2501班"
+    - option "机电一体化技术2502班"
+    - option "机电一体化技术2503班"
+    - option "机电一体化技术2504班"
+    - option "机电一体化技术2505班"
+    - option "工业机器人技术2501班"
+    - option "工业机器人技术2502班"
+    - option "工业机器人技术2503班"
+    - option "工业机器人技术2504班"
+    - option "数控技术2501班"
+    - option "数控技术2502班"
+    - option "数控技术2503班"
+    - option "数控技术2504班"
+    - option "电气自动化技术2501班"
+    - option "电气自动化技术2502班"
+    - option "电气自动化技术2503班"
+    - option "电气自动化技术2504班"
+    - option "新能源汽车技术2501班"
+    - option "新能源汽车技术2502班"
+    - option "新能源汽车技术2503班"
+    - option "新能源汽车技术2504班"
+    - option "新能源汽车技术2505班"
+    - option "汽车检测与维修技术2501班"
+    - option "汽车检测与维修技术2502班"
+    - option "汽车检测与维修技术2503班"
+    - option "汽车检测与维修技术2504班"
+    - option "智能网联汽车技术2501班"
+    - option "智能网联汽车技术2502班"
+    - option "智能网联汽车技术2503班"
+    - option "智能网联汽车技术2504班"
+    - option "汽车制造与试验技术2501班"
+    - option "汽车制造与试验技术2502班"
+    - option "汽车制造与试验技术2503班"
+    - option "电子商务2501班"
+    - option "电子商务2502班"
+    - option "电子商务2503班"
+    - option "电子商务2504班"
+    - option "电子商务2505班"
+    - option "大数据与会计2501班"
+    - option "大数据与会计2502班"
+    - option "大数据与会计2503班"
+    - option "大数据与会计2504班"
+    - option "大数据与会计2505班"
+    - option "市场营销2501班"
+    - option "市场营销2502班"
+    - option "市场营销2503班"
+    - option "市场营销2504班"
+    - option "现代物流管理2501班"
+    - option "现代物流管理2502班"
+    - option "现代物流管理2503班"
+    - option "现代物流管理2504班"
+    - option "旅游管理2501班"
+    - option "旅游管理2502班"
+  - button "更多筛选"
+  - button "查询"
+  - button "重置"
+  - checkbox "显示已作废"
+  - text: 显示已作废
+  - table:
+    - rowgroup:
+      - row "学生 班级 / 学院 / 专业 手机号 学籍状态 身份核验 风险 主档完整度 操作":
+        - columnheader:
+          - checkbox
+        - columnheader "学生"
+        - columnheader "班级 / 学院 / 专业"
+        - columnheader "手机号"
+        - columnheader "学籍状态"
+        - columnheader "身份核验"
+        - columnheader "风险"
+        - columnheader "主档完整度"
+        - columnheader "操作"
+    - rowgroup:
+      - row "周启航 2024S0001 · 男 软件技术2401班 信息工程学院 / 软件技术 166****0001 已毕业 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "周启航 2024S0001 · 男":
+          - generic: 周启航
+          - generic: 2024S0001 · 男
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0001"
+        - cell "已毕业":
+          - generic: 已毕业
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "孙宇轩 2024S0002 · 女 软件技术2401班 信息工程学院 / 软件技术 166****0002 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "孙宇轩 2024S0002 · 女":
+          - generic: 孙宇轩
+          - generic: 2024S0002 · 女
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0002"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "胡宇轩 2024S0003 · 男 软件技术2401班 信息工程学院 / 软件技术 166****0003 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "胡宇轩 2024S0003 · 男":
+          - generic: 胡宇轩
+          - generic: 2024S0003 · 男
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0003"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "朱宇轩 2024S0004 · 女 软件技术2401班 信息工程学院 / 软件技术 166****0004 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "朱宇轩 2024S0004 · 女":
+          - generic: 朱宇轩
+          - generic: 2024S0004 · 女
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0004"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "高宇轩 2024S0005 · 男 软件技术2401班 信息工程学院 / 软件技术 166****0005 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "高宇轩 2024S0005 · 男":
+          - generic: 高宇轩
+          - generic: 2024S0005 · 男
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0005"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "林宇轩 2024S0006 · 女 软件技术2401班 信息工程学院 / 软件技术 166****0006 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "林宇轩 2024S0006 · 女":
+          - generic: 林宇轩
+          - generic: 2024S0006 · 女
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0006"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "何宇轩 2024S0007 · 男 软件技术2401班 信息工程学院 / 软件技术 166****0007 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "何宇轩 2024S0007 · 男":
+          - generic: 何宇轩
+          - generic: 2024S0007 · 男
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0007"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "郭宇轩 2024S0008 · 女 软件技术2401班 信息工程学院 / 软件技术 166****0008 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "郭宇轩 2024S0008 · 女":
+          - generic: 郭宇轩
+          - generic: 2024S0008 · 女
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0008"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "马宇轩 2024S0009 · 男 软件技术2401班 信息工程学院 / 软件技术 166****0009 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "马宇轩 2024S0009 · 男":
+          - generic: 马宇轩
+          - generic: 2024S0009 · 男
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0009"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+      - row "罗宇轩 2024S0010 · 女 软件技术2401班 信息工程学院 / 软件技术 166****0010 在读 核验服务未配置 无 89% 学生360 编辑 作废":
+        - cell:
+          - checkbox
+        - cell "罗宇轩 2024S0010 · 女":
+          - generic: 罗宇轩
+          - generic: 2024S0010 · 女
+        - cell "软件技术2401班 信息工程学院 / 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 / 软件技术
+        - cell "166****0010"
+        - cell "在读":
+          - generic: 在读
+        - cell "核验服务未配置":
+          - generic: 核验服务未配置
+        - cell "无"
+        - cell "89%"
+        - cell "学生360 编辑 作废":
+          - button "学生360"
+          - button "编辑"
+          - button "作废"
+  - generic: 共 20005 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "2001"
+  - button "下一页": ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

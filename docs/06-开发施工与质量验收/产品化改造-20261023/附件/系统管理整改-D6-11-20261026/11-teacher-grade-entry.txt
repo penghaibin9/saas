@@ -1,0 +1,215 @@
+Browser tab: 2, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/admin/academic-affairs/grade-entry?filter=pending&recordId=2".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/academic-affairs/grade-entry?filter=pending&recordId=2
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索功能与帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 12° 晴, Secondary Actions: Expand
+				9 image
+				10 text 北京 12° 晴
+			11 button (collapsed) 10/26周一 18:59, Secondary Actions: Expand
+				12 image
+				13 text 10/26周一 18:59
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 整 整改验收经办人 任课教师, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 整
+				19 text 整改验收经办人
+				20 text 任课教师
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+			25 button (collapsed) 当前范围, Secondary Actions: Expand
+				26 image
+				27 text 当前范围
+				28 image
+			29 button (collapsed) 本次工作 00:04:37, Secondary Actions: Expand
+				30 image
+				31 text 本次工作 00:04:37
+		32 container 二级菜单
+			33 button 展开二级菜单
+			34 container 二级菜单
+				35 button 我的教学
+				36 button 我的课表
+				37 button 课表查询
+				38 button 成绩与考勤
+				39 button 教材与资源
+				40 button 教学资料
+			41 checkbox Description: 取消固定二级菜单, Value: 1
+		42 container 三级菜单
+			43 button 展开三级菜单
+			44 container 三级菜单
+				45 button 成绩录入与提交
+				46 button 成绩更正申请
+				47 button 课堂考勤
+			48 checkbox Description: 取消固定三级菜单, Value: 1
+		49 container
+			50 tab group 已打开页面
+				51 container
+					52 tab (selected, settable, boolean) 成绩录入与提交, Help: 成绩与考勤 / 成绩录入与提交, Value: 1
+成绩录入与提交
+					53 button 关闭成绩录入与提交
+						54 image
+			55 button (disabled) 恢复最近关闭的页签
+				56 image
+			57 checkbox Description: 收藏当前页面, Value: 0
+				58 image
+			59 checkbox Description: 专注模式, Value: 0
+				60 image
+			61 container
+				62 heading 成绩录入, Value: 1
+					63 text 成绩录入
+				64 button 返回成绩队列
+				65 button 我的录入任务
+				66 button 提交学院审核
+				67 container 当前成绩任务
+					68 text 当前成绩任务
+					69 heading D611虚构待录成绩, Value: 2
+						70 text D611虚构待录成绩
+					71 text 学期待核对
+					72 text 录入中
+					73 text 当前办理
+					74 text 任课教师或授权成绩管理员
+					75 text 下一步
+					76 text 学院成绩审核岗
+				77 content list 成绩业务阶段
+					78 container
+						79 text ✓
+						80 text 教学任务
+						81 text 已完成
+					82 container
+						83 text ✓
+						84 text 建立成绩任务
+						85 text 已完成
+					86 container
+						87 text 3
+						88 text 录入提交
+						89 text 当前环节
+					90 container
+						91 text 4
+						92 text 学院审核
+						93 text 等待前序完成
+					94 container
+						95 text 5
+						96 text 教务发布
+						97 text 等待前序完成
+				98 container 成绩任务关键信息
+					99 container
+						100 text 学生名单 待核对 当前录入表 3 人，含待保存行
+					101 container
+						102 text 成绩项 2 项
+					103 container
+						104 text 录入模式 固定两段
+					105 container
+						106 text 质量核验 逐行核对 提交前检查成绩是否完整
+				107 text ℹ
+				108 text 逐行保存成绩后，还需提交学院审核。
+				109 container
+					110 heading 录入设置, Value: 3
+						111 text 录入设置
+					112 button 返回
+				113 text 及格线 60 未设置提交截止时间
+				114 container
+					115 button 固定两段
+					116 button 动态成绩项
+				117 heading 教学名单, Value: 3
+					118 text 教学名单
+				119 text 仅可为教学班名单内的学生录入成绩。
+				120 button 刷新教学名单
+				121 button 导入成绩（Excel）
+				122 heading 固定两段成绩录入表, Value: 3
+					123 text 固定两段成绩录入表
+				124 text 未录分数保持空白，缺考、缓考等请选异常标记。
+				125 container
+					126 text 平时 30%  · 期末 70%
+				127 container 数据表格，可横向滚动
+					128 table
+						129 row
+							130 cell
+								131 text 学生
+							132 cell
+								133 text 学号
+							134 cell
+								135 text 平时 30%
+							136 cell
+								137 text 期末 70%
+							138 cell
+								139 text 已存总评
+							140 cell
+								141 text 异常标记
+							142 cell
+								143 text 结果 / 保存
+						144 row
+							145 cell
+								146 text 四域虚构学生甲
+							147 cell
+								148 text D606-S001
+							149 cell
+								150 stepper (settable)
+							151 cell
+								152 stepper (settable)
+							153 cell
+								154 text —
+							155 cell
+								156 pop up button (collapsed, settable) Value: 正常, Secondary Actions: Expand
+									157 menu
+										158 (selected) 正常
+										159 缺考
+										160 缓考
+										161 免修
+										162 作弊
+							163 cell
+								164 button 保存
+						165 row
+							166 cell
+								167 text 四域虚构学生乙
+							168 cell
+								169 text D606-S002
+							170 cell
+								171 stepper (settable)
+							172 cell
+								173 stepper (settable)
+							174 cell
+								175 text —
+							176 cell
+								177 pop up button (collapsed, settable) Value: 正常, Secondary Actions: Expand
+									178 menu
+										179 (selected) 正常
+										180 缺考
+										181 缓考
+										182 免修
+										183 作弊
+							184 cell
+								185 button 保存
+						186 row
+							187 cell
+								188 text 第十卡虚构验收学生
+							189 cell
+								190 text D610-UI-ONLY
+							191 cell
+								192 stepper (settable)
+							193 cell
+								194 stepper (settable)
+							195 cell
+								196 text —
+							197 cell
+								198 pop up button (collapsed, settable) Value: 正常, Secondary Actions: Expand
+									199 menu
+										200 (selected) 正常
+										201 缺考
+										202 缓考
+										203 免修
+										204 作弊
+							205 cell
+								206 button 保存
+				207 heading 提交审核, Value: 3
+					208 text 提交审核
+				209 button 提交进入学院审核
+				210 text 提交后锁定学生名单，名单变更需退回重建。
+			211 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/academic-affairs/grade-entry?filter=pending&recordId=2

@@ -1,0 +1,31 @@
+{
+  "task": {
+    "id": "4",
+    "jobType": "EXPORT",
+    "timeZone": "Asia/Shanghai",
+    "moduleCode": "SYSTEM",
+    "exportType": "D603_EXPIRY_CHECK",
+    "purpose": "隔离环境自然过期验收",
+    "adapterType": null,
+    "adapterRef": null,
+    "status": "SUCCEEDED",
+    "progress": 100,
+    "rowCount": 1,
+    "fileObjectId": "3",
+    "expiresAt": "2026-10-25T14:14:17Z",
+    "downloadedCount": 0,
+    "revokedAt": null,
+    "revokeReason": "",
+    "errorMessage": "",
+    "version": 0,
+    "createdAt": "2026-10-25T14:14:07Z",
+    "updatedAt": "2026-10-25T14:14:07Z",
+    "downloadable": true,
+    "strongSensitive": false,
+    "oneTimeTicket": true,
+    "validityHours": null
+  },
+  "fixtureMethod": "production file generation and export registration",
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "historicalExpiryModified": false
+}

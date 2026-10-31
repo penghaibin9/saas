@@ -1,0 +1,242 @@
+http://127.0.0.1:5173/admin/system/master-data
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:38":
+    - generic: 10/25周日 14:38
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:18:49":
+  - generic: 本次工作 02:18:49
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 学校配置
+  - navigation "三级菜单":
+    - button "学校信息与品牌":
+      - generic: 学校信息与品牌
+    - button "数据字典":
+      - generic: 数据字典
+    - button "模块授权与业务开关":
+      - generic: 模块授权与业务开关
+    - button "主数据责任与数据质量" [active]:
+      - generic: 主数据责任与数据质量
+    - button "合规与业务表单":
+      - generic: 合规与业务表单
+    - button "学年学期与业务日历":
+      - generic: 学年学期与业务日历
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学院与部门":
+    - generic: 学院与部门
+  - button "关闭学院与部门":
+  - tab "专业管理":
+    - generic: 专业管理
+  - button "关闭专业管理":
+  - tab "年级与班级":
+    - generic: 年级与班级
+  - button "关闭年级与班级":
+  - tab "岗位管理":
+    - generic: 岗位管理
+  - button "关闭岗位管理":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心":
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+  - tab "变更版本":
+    - generic: 变更版本
+  - button "关闭变更版本":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "数据字典":
+    - generic: 数据字典
+  - button "关闭数据字典":
+  - tab "模块授权与业务开关":
+    - generic: 模块授权与业务开关
+  - button "关闭模块授权与业务开关":
+  - tab "主数据责任与数据质量" [selected]:
+    - generic: 主数据责任与数据质量
+  - button "关闭主数据责任与数据质量":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - heading "主数据责任与数据质量" [level=1]
+  - button "执行质量扫描"
+  - button "刷新"
+  - generic: 首屏结论
+  - generic: "100"
+  - generic: 最低质量分
+  - generic: "0"
+  - generic: 最高优先级待处理
+  - generic: "0"
+  - generic: 已逾期
+  - generic: "0"
+  - generic: 例外中
+  - generic: "0"
+  - generic: 无责任人数据域
+  - generic: 数据域与责任人
+  - table:
+    - rowgroup:
+      - row "数据域 权威数据位置 责任人 质量分 操作":
+        - columnheader "数据域"
+        - columnheader "权威数据位置"
+        - columnheader "责任人"
+        - columnheader "质量分"
+        - columnheader "操作"
+    - rowgroup:
+      - row "课程主数据 归属 教务管理 业务主数据来源 责任人信息待同步 100 未闭环 0 · 逾期 0 指定责任人":
+        - cell "课程主数据 归属 教务管理":
+          - generic: 课程主数据
+          - generic: 归属 教务管理
+        - cell "业务主数据来源"
+        - cell "责任人信息待同步":
+          - generic: 责任人信息待同步
+        - cell "100 未闭环 0 · 逾期 0":
+          - generic: "100"
+          - generic: 未闭环 0 · 逾期 0
+        - cell "指定责任人":
+          - button "指定责任人"
+      - row "组织主数据 归属 系统管理 业务主数据来源 责任人信息待同步 100 未闭环 0 · 逾期 0 指定责任人":
+        - cell "组织主数据 归属 系统管理":
+          - generic: 组织主数据
+          - generic: 归属 系统管理
+        - cell "业务主数据来源"
+        - cell "责任人信息待同步":
+          - generic: 责任人信息待同步
+        - cell "100 未闭环 0 · 逾期 0":
+          - generic: "100"
+          - generic: 未闭环 0 · 逾期 0
+        - cell "指定责任人":
+          - button "指定责任人"
+      - row "学生主数据 归属 学生工作 学生主档 责任人信息待同步 100 未闭环 0 · 逾期 0 指定责任人":
+        - cell "学生主数据 归属 学生工作":
+          - generic: 学生主数据
+          - generic: 归属 学生工作
+        - cell "学生主档"
+        - cell "责任人信息待同步":
+          - generic: 责任人信息待同步
+        - cell "100 未闭环 0 · 逾期 0":
+          - generic: "100"
+          - generic: 未闭环 0 · 逾期 0
+        - cell "指定责任人":
+          - button "指定责任人"
+  - generic: 问题队列
+  - generic: 修复后必须复扫验证，问题还在会自动打回
+  - table:
+    - rowgroup:
+      - row "问题 严重度 状态 处理时限 操作":
+        - columnheader "问题"
+        - columnheader "严重度"
+        - columnheader "状态"
+        - columnheader "处理时限"
+        - columnheader "操作"
+    - rowgroup:
+      - row "待处理的数据质量问题 学生主数据 · 数据质量检查 一般 已闭环 复扫 问题已消除 无 SLA 指派 登记处理 复扫验证 例外":
+        - cell "待处理的数据质量问题 学生主数据 · 数据质量检查":
+          - generic: 待处理的数据质量问题
+          - generic: 学生主数据 · 数据质量检查
+        - cell "一般":
+          - generic: 一般
+        - cell "已闭环 复扫 问题已消除":
+          - generic: 已闭环
+          - generic: 复扫 问题已消除
+        - cell "无 SLA":
+          - generic: 无 SLA
+        - cell "指派 登记处理 复扫验证 例外":
+          - button "指派"
+          - button "登记处理"
+          - button "复扫验证"
+          - button "例外"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

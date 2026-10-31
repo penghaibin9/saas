@@ -1,0 +1,237 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:13":
+    - generic: 10/27周二 09:13
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:10:38":
+  - generic: 本次工作 00:10:38
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - button "全部业务与设置"
+  - navigation "三级菜单":
+    - button "日志中心":
+      - generic: 日志中心
+    - button "登录与安全策略":
+      - generic: 登录与安全策略
+    - button "敏感与导入导出审计":
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性":
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "登录与安全策略" [selected]:
+    - generic: 登录与安全策略
+  - button "关闭登录与安全策略":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - strong: 配置继承与恢复
+  - paragraph: 撤销学校层当前和计划中的覆盖后，恢复继承上级设置，不需要手填“默认值”。
+  - button "刷新"
+  - generic: 当前安全配置域没有可撤销的学校层覆盖，全部继承平台、套餐或历史配置。
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:13
+  - heading "登录与安全策略" [level=1]
+  - generic: 安全策略
+  - generic: 变更需填写原因并写入审计；越过平台底线会被拒绝
+  - table:
+    - rowgroup:
+      - row "配置项 当前值 生效来源 平台允许范围 真实读取方 操作":
+        - columnheader "配置项"
+        - columnheader "当前值"
+        - columnheader "生效来源"
+        - columnheader "平台允许范围"
+        - columnheader "真实读取方"
+        - columnheader "操作"
+    - rowgroup:
+      - row "登录失败锁定阈值（次） 5 套餐默认 3 ~ 10 登录失败计数与锁定 编辑 历史":
+        - cell "登录失败锁定阈值（次）":
+          - text: 登录失败锁定阈值（次）
+          - generic "实施人员使用"
+        - cell "5"
+        - cell "套餐默认":
+          - generic: 套餐默认
+        - cell "3 ~ 10"
+        - cell "登录失败计数与锁定"
+        - cell "编辑 历史":
+          - button "编辑"
+          - button "历史"
+      - row "登录锁定时长（分钟） 15 套餐默认 5 ~ 120 登录锁定时长校验 编辑 历史":
+        - cell "登录锁定时长（分钟）":
+          - text: 登录锁定时长（分钟）
+          - generic "实施人员使用"
+        - cell "15"
+        - cell "套餐默认":
+          - generic: 套餐默认
+        - cell "5 ~ 120"
+        - cell "登录锁定时长校验"
+        - cell "编辑 历史":
+          - button "编辑"
+          - button "历史"
+      - row "密码最小长度 8 套餐默认 6 ~ 32 修改密码校验 编辑 历史":
+        - cell "密码最小长度":
+          - text: 密码最小长度
+          - generic "实施人员使用"
+        - cell "8"
+        - cell "套餐默认":
+          - generic: 套餐默认
+        - cell "6 ~ 32"
+        - cell "修改密码校验"
+        - cell "编辑 历史":
+          - button "编辑"
+          - button "历史"
+      - row "已验证手机号加密码登录（原账号始终保留） 已关闭 套餐默认 关闭 / 启用 手机号密码登录 编辑 历史":
+        - cell "已验证手机号加密码登录（原账号始终保留）":
+          - text: 已验证手机号加密码登录（原账号始终保留）
+          - generic "实施人员使用"
+        - cell "已关闭"
+        - cell "套餐默认":
+          - generic: 套餐默认
+        - cell "关闭 / 启用"
+        - cell "手机号密码登录"
+        - cell "编辑 历史":
+          - button "编辑"
+          - button "历史"
+      - row "普通账号已验证手机号找回密码（高权限独立核验） 已关闭 套餐默认 关闭 / 启用 手机号找回密码 编辑 历史":
+        - cell "普通账号已验证手机号找回密码（高权限独立核验）":
+          - text: 普通账号已验证手机号找回密码（高权限独立核验）
+          - generic "实施人员使用"
+        - cell "已关闭"
+        - cell "套餐默认":
+          - generic: 套餐默认
+        - cell "关闭 / 启用"
+        - cell "手机号找回密码"
+        - cell "编辑 历史":
+          - button "编辑"
+          - button "历史"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,198 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:15":
+    - generic: 10/27周二 09:15
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:12:24":
+  - generic: 本次工作 00:12:24
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 学校设置
+  - navigation "三级菜单":
+    - button "学校信息与品牌":
+      - generic: 学校信息与品牌
+    - button "数据字典":
+      - generic: 数据字典
+    - button "模块授权与业务开关":
+      - generic: 模块授权与业务开关
+    - button "学年学期与业务日历":
+      - generic: 学年学期与业务日历
+    - button "统一消息、待办与通知治理":
+      - generic: 统一消息、待办与通知治理
+    - button "文件存储治理":
+      - generic: 文件存储治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌" [selected]:
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - heading "系统与品牌配置" [level=1]
+  - button "⇩ 导出配置快照"
+  - button "品牌配置"
+  - button "系统参数"
+  - generic: 学校品牌项
+  - text: 学校名称
+  - generic: （平台核定，学校侧不可修改）
+  - textbox "请输入" [disabled]: 系统管理整改独立验收学校
+  - text: 平台显示名
+  - generic: （平台核定，学校侧不可修改）
+  - textbox "请输入" [disabled]: 高校学生全生命周期管理平台
+  - text: 学校简称
+  - generic: "*"
+  - textbox "请输入": 整改验收
+  - generic: 租户主色
+  - textbox: "#2563eb"
+  - generic: "#2563EB"
+  - generic: 登录页口号
+  - textbox "请输入"
+  - generic: 水印文案
+  - textbox "请输入": 系统管理整改独立验收学校 · Playwright E2E
+  - generic: 实际水印 = 水印文案 · 当前用户 · 时间，淡色克制平铺
+  - generic: 水印密度
+  - textbox "请输入": 适中
+  - generic: 页脚说明
+  - textbox "请输入"
+  - button "保存品牌配置"
+  - button "恢复默认"
+  - generic: 效果预览
+  - generic: 保存前实时预览
+  - generic: 整改
+  - text: 系统管理整改独立验收学校
+  - generic: 高校学生全生命周期管理平台
+  - generic: 整改验收经办人
+  - generic: 系统管理整改独立验收学校 · 管理端
+  - generic: 水印预览：系统管理整改独立验收学校 · Playwright E2E · 整改验收经办人 · 2026/10/27 09:15:30
+  - button "主色按钮"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,26 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "objects": {
+    "teacherId": 2,
+    "otherTeacherId": 3,
+    "classId": 1,
+    "missingClassId": 2,
+    "majorId": 1,
+    "studentA": 1,
+    "studentB": 2,
+    "teachingClassId": 1,
+    "taskId": 1,
+    "academicBatchId": 1,
+    "gdStudentId": 1,
+    "gdBatchId": 1,
+    "internshipA": 1,
+    "internshipB": 2,
+    "internBatchId": 1
+  },
+  "catalogCreated": {
+    "domains": 3,
+    "rules": 5
+  },
+  "businessBatches": "DRAFT",
+  "purpose": "read-only cross-domain UI verification; not a completed business workflow"
+}

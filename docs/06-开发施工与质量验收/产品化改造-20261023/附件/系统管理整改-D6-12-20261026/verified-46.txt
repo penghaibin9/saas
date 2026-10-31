@@ -1,0 +1,354 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:16":
+    - generic: 10/27周二 09:16
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:13:23":
+  - generic: 本次工作 00:13:23
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - button "全部业务与设置"
+  - navigation "三级菜单":
+    - button "日志中心":
+      - generic: 日志中心
+    - button "登录与安全策略":
+      - generic: 登录与安全策略
+    - button "敏感与导入导出审计":
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性":
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "安全审计证据与完整性" [selected]:
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - heading "安全审计证据与完整性" [level=1]
+  - button "刷新"
+  - generic: 最近记录概况
+  - paragraph: 以下统计基于最近 214 条记录；当前共有 214 条。完整性判断仅覆盖这些记录，不代表全量历史已验收。
+  - generic: "1"
+  - generic: 登录风险
+  - generic: "17"
+  - generic: 高危变更
+  - generic: "0"
+  - generic: 敏感下载
+  - generic: "0"
+  - generic: 权限激活
+  - generic: "0"
+  - generic: 紧急访问
+  - generic: "5"
+  - generic: 审计缺口
+  - paragraph: 导出 · 缺失字段：操作原因
+  - paragraph: 未识别的历史操作 · 缺失字段：操作原因
+  - paragraph: 复制本校角色 · 缺失字段：请求编号、操作原因
+  - paragraph: 未识别的历史操作 · 缺失字段：操作人、请求编号
+  - paragraph: 未识别的历史操作 · 缺失字段：操作人、请求编号
+  - generic: 证据查询
+  - generic: 高危动作自动做完整性判定
+  - textbox "按动作名称或编码查询"
+  - button "查询"
+  - button "登记证据包导出"
+  - table:
+    - rowgroup:
+      - row "动作 操作人 结果 时间":
+        - columnheader "动作"
+        - columnheader "操作人"
+        - columnheader "结果"
+        - columnheader "时间"
+    - rowgroup:
+      - row "会话刷新 登录账号 · 请求编号 req-a4193d83e03a482a 整改验收经办人 成功 2026-10-27 09:16":
+        - cell "会话刷新 登录账号 · 请求编号 req-a4193d83e03a482a":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-a4193d83e03a482a
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:16"
+      - row "会话刷新 登录账号 · 请求编号 req-c34e8550890748fe 整改验收经办人 成功 2026-10-27 09:16":
+        - cell "会话刷新 登录账号 · 请求编号 req-c34e8550890748fe":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-c34e8550890748fe
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:16"
+      - row "会话刷新 登录账号 · 请求编号 req-42de26beca3c4b1d 整改验收经办人 成功 2026-10-27 09:16":
+        - cell "会话刷新 登录账号 · 请求编号 req-42de26beca3c4b1d":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-42de26beca3c4b1d
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:16"
+      - row "会话刷新 登录账号 · 请求编号 req-a592052861874c0e 整改验收经办人 成功 2026-10-27 09:16":
+        - cell "会话刷新 登录账号 · 请求编号 req-a592052861874c0e":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-a592052861874c0e
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:16"
+      - row "会话刷新 登录账号 · 请求编号 req-ac7668ed25374373 整改验收经办人 成功 2026-10-27 09:16":
+        - cell "会话刷新 登录账号 · 请求编号 req-ac7668ed25374373":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-ac7668ed25374373
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:16"
+      - row "会话刷新 登录账号 · 请求编号 req-f9429d42050f48e4 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-f9429d42050f48e4":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-f9429d42050f48e4
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-fe6494daea8d4c7e 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-fe6494daea8d4c7e":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-fe6494daea8d4c7e
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-13e7eb738dee423c 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-13e7eb738dee423c":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-13e7eb738dee423c
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-9a022aacfc174f0b 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-9a022aacfc174f0b":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-9a022aacfc174f0b
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-8e13f4d4f64e4ce7 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-8e13f4d4f64e4ce7":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-8e13f4d4f64e4ce7
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-d5711abb8849429d 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-d5711abb8849429d":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-d5711abb8849429d
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-81fb90e1889c4089 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-81fb90e1889c4089":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-81fb90e1889c4089
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-b80681e2340a4a6a 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-b80681e2340a4a6a":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-b80681e2340a4a6a
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-30ab182953f64dca 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-30ab182953f64dca":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-30ab182953f64dca
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-0db001dce7ae4725 整改验收经办人 成功 2026-10-27 09:15":
+        - cell "会话刷新 登录账号 · 请求编号 req-0db001dce7ae4725":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-0db001dce7ae4725
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:15"
+      - row "会话刷新 登录账号 · 请求编号 req-bf25fe5265444e67 整改验收经办人 成功 2026-10-27 09:14":
+        - cell "会话刷新 登录账号 · 请求编号 req-bf25fe5265444e67":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-bf25fe5265444e67
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:14"
+      - row "会话刷新 登录账号 · 请求编号 req-42bc18edf6874fb7 整改验收经办人 成功 2026-10-27 09:14":
+        - cell "会话刷新 登录账号 · 请求编号 req-42bc18edf6874fb7":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-42bc18edf6874fb7
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:14"
+      - row "会话刷新 登录账号 · 请求编号 req-c45ebee259c14313 整改验收经办人 成功 2026-10-27 09:14":
+        - cell "会话刷新 登录账号 · 请求编号 req-c45ebee259c14313":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-c45ebee259c14313
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:14"
+      - row "会话刷新 登录账号 · 请求编号 req-9a5217a01b2b400e 整改验收经办人 成功 2026-10-27 09:14":
+        - cell "会话刷新 登录账号 · 请求编号 req-9a5217a01b2b400e":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-9a5217a01b2b400e
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:14"
+      - row "会话刷新 登录账号 · 请求编号 req-1c78727ef3824155 整改验收经办人 成功 2026-10-27 09:14":
+        - cell "会话刷新 登录账号 · 请求编号 req-1c78727ef3824155":
+          - generic: 会话刷新
+          - generic: 登录账号 · 请求编号 req-1c78727ef3824155
+        - cell "整改验收经办人"
+        - cell "成功":
+          - generic: 成功
+        - cell "2026-10-27 09:14"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,10 @@
+{
+  "reviewGradeStatus": "SUBMITTED",
+  "entryGradeStatus": "INPUTTING",
+  "approvalTaskStatus": "PENDING",
+  "approvalTaskVersion": 0,
+  "teacherTodoStatus": "PENDING",
+  "savedGradeRows": 0,
+  "internshipLeaveStillPending": true,
+  "scope": "角色切换与读取后的持久化回查；未进行成绩录入、审批或发布"
+}

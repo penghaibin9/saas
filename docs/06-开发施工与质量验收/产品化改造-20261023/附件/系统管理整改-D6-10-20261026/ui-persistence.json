@@ -1,0 +1,14 @@
+{
+  "completedSourceStatus": "APPROVED",
+  "completedSourceUnchanged": true,
+  "pendingSourceStatus": "PENDING",
+  "rejectedTodoStatus": "PENDING",
+  "closedTodoStatus": "DONE",
+  "closedTodoVersion": 1,
+  "outboxStatus": "PENDING",
+  "outboxVersion": 1,
+  "closeAuditCount": 1,
+  "retryAuditCount": 1,
+  "noBusinessWritesInReadback": true,
+  "externalDeliveryNotRun": true
+}

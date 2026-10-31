@@ -1,0 +1,15 @@
+{
+  "origin": "http://127.0.0.1:5196",
+  "source": "actual-browser-download",
+  "filterAction": "JOB_CANCEL",
+  "selectedHeaders": [
+    "时间",
+    "动作",
+    "结果"
+  ],
+  "exportedRows": 2,
+  "pageTotal": 2,
+  "watermarkPresent": true,
+  "sha256": "2831a9882fd64679f9b924740c9a0d2af13c770da182e0e81a9df9b0f3dfa750",
+  "credentialsDownloaded": false
+}

@@ -1,0 +1,220 @@
+http://127.0.0.1:5173/admin/graduation/mentors?panel=assign&batchId=51
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:50":
+    - generic: 10/25周日 14:50
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:43:53":
+  - generic: 本次工作 02:43:53
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ①
+    - button "② 选题":
+      - generic: ②
+    - button "③ 过程与中期":
+      - generic: ③
+    - button "④ 论文与评阅":
+      - generic: ④
+    - button "⑤ 答辩":
+      - generic: ⑤
+    - button "⑥ 成绩与归档":
+      - generic: ⑥
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "毕设总览":
+      - generic: 毕设
+    - button "开工检查":
+      - generic: 开工
+    - button "我的毕设工作":
+      - generic: 我的
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "导师与分配":
+    - generic: 导师与分配
+  - button "关闭导师与分配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面" [disabled]:
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - heading "导师管理" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "2026 届毕业设计历史归档批次 · 2026届"
+    - option "2027届毕业设计（论文）（进行中） · 2027届" [selected]
+  - generic: 进行中
+  - button "一键批量分配"
+  - button "导师名单"
+  - button "导师分配" [active]
+  - text: 未分配导师学生共
+  - generic: "0"
+  - text: 人；分配须导师「已认证」且未满员，调导师原因≥5字。
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 学号
+  - button "查询"
+  - button "重置"
+  - status:
+    - generic: ▢
+    - generic: 暂无未分配导师学生
+    - generic: 当前条件下没有可展示的内容，可尝试调整筛选或创建新数据
+    - button "返回"
+  - generic: 分配记录
+  - table:
+    - rowgroup:
+      - row "学生 ← 导师 状态 操作":
+        - columnheader "学生 ← 导师"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "联通学生甲 ← 王老师 教师发起任务书—学生确认跨端联调使用专用虚构学生 生效中 调导师 取消":
+        - cell "联通学生甲 ← 王老师 教师发起任务书—学生确认跨端联调使用专用虚构学生":
+          - generic: 联通学生甲 ← 王老师
+          - generic: 教师发起任务书—学生确认跨端联调使用专用虚构学生
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "李体验 ← 王老师 沙箱同一学生在 PC 与移动端连续办理毕设 生效中 调导师 取消":
+        - cell "李体验 ← 王老师 沙箱同一学生在 PC 与移动端连续办理毕设":
+          - generic: 李体验 ← 王老师
+          - generic: 沙箱同一学生在 PC 与移动端连续办理毕设
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "胡宇轩 ← 王可欣 按专业方向和导师容量自动分配 生效中 调导师 取消":
+        - cell "胡宇轩 ← 王可欣 按专业方向和导师容量自动分配":
+          - generic: 胡宇轩 ← 王可欣
+          - generic: 按专业方向和导师容量自动分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "孙宇轩 ← 高睿哲 按专业方向和导师容量自动分配 生效中 调导师 取消":
+        - cell "孙宇轩 ← 高睿哲 按专业方向和导师容量自动分配":
+          - generic: 孙宇轩 ← 高睿哲
+          - generic: 按专业方向和导师容量自动分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "周启航 ← 高睿哲 按专业方向和导师容量自动分配 生效中 调导师 取消":
+        - cell "周启航 ← 高睿哲 按专业方向和导师容量自动分配":
+          - generic: 周启航 ← 高睿哲
+          - generic: 按专业方向和导师容量自动分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "罗诗涵 ← 郭睿哲 2027届毕业设计按专业与导师容量统一分配 生效中 调导师 取消":
+        - cell "罗诗涵 ← 郭睿哲 2027届毕业设计按专业与导师容量统一分配":
+          - generic: 罗诗涵 ← 郭睿哲
+          - generic: 2027届毕业设计按专业与导师容量统一分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "马诗涵 ← 何睿哲 2027届毕业设计按专业与导师容量统一分配 生效中 调导师 取消":
+        - cell "马诗涵 ← 何睿哲 2027届毕业设计按专业与导师容量统一分配":
+          - generic: 马诗涵 ← 何睿哲
+          - generic: 2027届毕业设计按专业与导师容量统一分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "郭诗涵 ← 林睿哲 2027届毕业设计按专业与导师容量统一分配 生效中 调导师 取消":
+        - cell "郭诗涵 ← 林睿哲 2027届毕业设计按专业与导师容量统一分配":
+          - generic: 郭诗涵 ← 林睿哲
+          - generic: 2027届毕业设计按专业与导师容量统一分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "何诗涵 ← 高睿哲 2027届毕业设计按专业与导师容量统一分配 生效中 调导师 取消":
+        - cell "何诗涵 ← 高睿哲 2027届毕业设计按专业与导师容量统一分配":
+          - generic: 何诗涵 ← 高睿哲
+          - generic: 2027届毕业设计按专业与导师容量统一分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+      - row "林诗涵 ← 朱睿哲 2027届毕业设计按专业与导师容量统一分配 生效中 调导师 取消":
+        - cell "林诗涵 ← 朱睿哲 2027届毕业设计按专业与导师容量统一分配":
+          - generic: 林诗涵 ← 朱睿哲
+          - generic: 2027届毕业设计按专业与导师容量统一分配
+        - cell "生效中":
+          - generic: 生效中
+        - cell "调导师 取消":
+          - button "调导师"
+          - button "取消"
+  - generic: 共 6405 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "641"
+  - button "下一页": ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

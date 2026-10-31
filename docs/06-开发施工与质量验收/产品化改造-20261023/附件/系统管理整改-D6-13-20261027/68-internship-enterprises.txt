@@ -1,0 +1,146 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:53":
+    - generic: 10/27周二 09:53
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:50:36":
+  - generic: 本次工作 00:50:36
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 岗位实习中心
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日工作
+    - button "实习中心大屏":
+      - generic: 实习中心大屏
+    - button "批次与学生":
+      - generic: 批次与学生
+    - button "企业与岗位":
+      - generic: 企业与岗位
+    - button "申请与落岗":
+      - generic: 申请与落岗
+    - button "实习过程":
+      - generic: 实习过程
+    - button "风险与变更":
+      - generic: 风险与变更
+    - button "评价与成绩":
+      - generic: 评价与成绩
+    - button "归档与分析":
+      - generic: 归档与分析
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 企业与岗位
+  - navigation "三级菜单":
+    - button "企业库":
+      - generic: 企业库
+    - button "岗位库":
+      - generic: 岗位库
+    - button "招聘与邀请":
+      - generic: 招聘与邀请
+    - button "企业准入":
+      - generic: 企业准入
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "企业库" [selected]:
+    - generic: 企业库
+  - button "关闭企业库":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - heading "企业库" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "D611跨批次跳转验证 · D611-OTHER-UI"
+    - option "D606实习批次 · D606-INTERN" [selected]
+  - generic: 草稿
+  - button "导出企业台账"
+  - button "新增企业"
+  - button "导入企业"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 企业名称 / 信用代码 / 联系人
+  - generic: 合作状态
+  - combobox "合作状态":
+    - option "全部" [selected]
+    - option "待审核"
+    - option "合作中"
+    - option "已驳回"
+    - option "已暂停"
+    - option "黑名单"
+    - option "已归档"
+  - generic: 行业
+  - combobox "行业":
+    - option "全部" [selected]
+    - option "软件"
+    - option "智能制造"
+    - option "电子商务"
+    - option "现代物流"
+  - generic: 地区
+  - textbox "地区":
+    - /placeholder: 省/市
+  - generic: 黑名单
+  - combobox "黑名单":
+    - option "全部" [selected]
+    - option "仅黑名单"
+    - option "排除黑名单"
+  - button "查询"
+  - button "重置"
+  - generic: 筛选结果 0 家
+  - button "刷新列表"
+  - status:
+    - generic: ▢
+    - generic: 当前筛选下没有企业
+    - generic: 可调整筛选；有维护权限时，也可新增或导入企业。
+    - button "返回"
+  - generic "本校企业概况 全校企业库，非当前批次或筛选结果":
+    - text: 本校企业概况
+    - generic: 全校企业库，非当前批次或筛选结果
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

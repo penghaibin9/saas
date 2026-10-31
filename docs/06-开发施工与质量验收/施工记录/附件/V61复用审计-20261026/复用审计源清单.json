@@ -1,0 +1,60 @@
+{
+  "auditDate": "2026-10-26",
+  "scope": "three reuse packages; no integration performed",
+  "sources": {
+    "current": {
+      "root": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统",
+      "head": "fa493c73c4373de00897e4658b51a2b079d57be2",
+      "files": {
+        "frontend/src/router/dirtyFormGuard.js": "f6d3788eedff77acf9c47ef125f71be97692d0c63c8a3ceab13afebc3bc18f83",
+        "frontend/src/router/index.js": "dd5872cd45b10befa945afdcb9042f0e864df8b54d6c08cd74e7715210d6251b",
+        "frontend/src/router/ownedAcademicNavigation.js": null,
+        "frontend/src/components/workspace/TeacherWorkspaceFrame.vue": "05f31a78f638a416a8aad3770b7763f5b12ab36a76428a3f4527724691d7f7ca",
+        "frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue": "f94022a4d6684413fcea2e9ccdfe8a02142e93073185219479354e6168d02e67",
+        "frontend/src/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue": "cabd2fdd545cd0e95da1ee0a4886fd073400c66cc77f238131d8c2e5f4104a3b",
+        "frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue": "7bda34668cfa0ed66ccc53f5d2f0594c01af32f991b79b4a397bb0e04b13901d",
+        "frontend/src/modules/academicAffairs/views/AaTermFormView.vue": "0eeb794400dedf83aee1d44f76e7a3b379fa8da3b0a0cad86808ce336929a9c5",
+        "frontend/src/modules/academicAffairs/views/AaTermDetailView.vue": "2864c54307c072eeb96ab77d1e337c591d3bf8c491dfd44098dcc6d59d5327df",
+        "frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue": "d4b6a6b6386862aa33624527dfac3416d8cba4797f34ade6dca9b184f7732b19",
+        "frontend/src/modules/academicAffairs/views/AaCalendarView.vue": "ca82393219e12084fe03df774f98faec8abfaa6eeac4b187efc8e166ea897fd8",
+        "frontend/src/modules/academicAffairs/views/AaTimeSlotView.vue": "bb7adf47f0eec1ff67376ffb3b20c07877b10d31e8424e17d96c70fcaa4ed445",
+        "frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js": "54f912d611eea44c2a3ac2554a66c42459e28a46a2335fb18843741b5c6e23af",
+        "backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py": "543fead6eec2c20c8051110d3f9fc3691417beda60ca47682d4790d994fb843e",
+        "backend/app/modules/academic_affairs/services/academic_file_exchange_service.py": "973ba92d1ef1333d9531720b3b639a3c68e021faff44bc24c426c12acb768217",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_domain_policy.py": "875d8b0c094cedbd166331bddc24bae4624fd6c0f5056fc8d53d9314fe3f3ae9",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py": "e9a3fbcf52fd80bc49cf2df830977c8effda000dc2d76b3c161c361351d2cd4a",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_operational_policy.py": "c009d3a1a8c463dadf4ec3ce2b53b592abdc1dd26a97f145ab9d5817d6ace6aa",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py": "9dae0d80a6f01977c1418da92146c602fbf33b3bc13c37da3affc24385c78ad4",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py": "1b2c6612cfdf5bea8b22a45868ec33e397d5720fd80d27ae2ae717def1e71c1f",
+        "backend/app/models/data_exchange.py": "568e07d1795482169032817c39ff045956fa609ca68c0ee0d66a3610008b9659"
+      }
+    },
+    "candidate": {
+      "root": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统-V6.1施工",
+      "head": "0bc859d924c043388558b172df380fa39a9f8487",
+      "files": {
+        "frontend/src/router/dirtyFormGuard.js": "d4fc56e57ace31774e22522e83f29a44bfbef4b40b91869678b1621a02f87160",
+        "frontend/src/router/index.js": "6bfcfc621bc833f8a1f67f3b0eddb88660d761ab3e07091828968194615c3501",
+        "frontend/src/router/ownedAcademicNavigation.js": "e496a0ecb186525f2b4e1b54f84c2eed05b5080b77b63aa401cd57dba8d674bf",
+        "frontend/src/components/workspace/TeacherWorkspaceFrame.vue": "1c6a9fc287f5e63c3ebd9d70bd69b6158007571147df18e214d665b619dc5c35",
+        "frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue": "db4615f3952f20053acb697a4422fb4639fb97fd66e20bde456e9cefe0475177",
+        "frontend/src/modules/academicAffairs/components/AaAuthoritativeImportDrawer.vue": "20c7b7aaddd7146cdbbfe5c816769093bd5e9d9b01af8d1e184ca789c4b2c2ea",
+        "frontend/src/modules/academicAffairs/views/AaRosterImportExportView.vue": "205de18b3661b9fe690c9a6e6eae2cdc30aaab103ae54c5788ec9b2a36f3d5d6",
+        "frontend/src/modules/academicAffairs/views/AaTermFormView.vue": "951ed5b41960dc200be4c2f586167172d2a7fc86e84fa8eac4cf267fbbaf773c",
+        "frontend/src/modules/academicAffairs/views/AaTermDetailView.vue": "dba43e5c3aaf81e618eb509cf1443aec0d3850f7b8d0b897481a03a48304d9a3",
+        "frontend/src/modules/academicAffairs/views/AaTeachingWeekConfigView.vue": "903f06b1fa70bcd8e56c0b5965d28769bf370e69f723c12a9fa90d6e375a7060",
+        "frontend/src/modules/academicAffairs/views/AaCalendarView.vue": "e64231e4614bf551785373b5ebeebc30ea55e1f5847f27ba05423ff651cb1908",
+        "frontend/src/modules/academicAffairs/views/AaTimeSlotView.vue": "00c82830733af0fb882f0dfa8168b96c7318f4da398312c4c4fe10c6f8c2e4ba",
+        "frontend/src/modules/academicAffairs/api/academic-file-exchange.api.js": "d3276fe30ad089370d33d5978ec45d14fde05304237c27e4e6de6a0f053f176f",
+        "backend/app/modules/academic_affairs/routers/academic_file_exchange_router.py": "7b8305f6b6b6011238a54d2bdba86d93c6acc50cddfa9b66570ef0569dfeec5b",
+        "backend/app/modules/academic_affairs/services/academic_file_exchange_service.py": "fb784b500b21d742036d45efbcf22b09c1bd4347fb3decc4fa11cc6c2e74605f",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_domain_policy.py": "7b833221621ba849f13c92a07ea664c23fe00e64240953875e7ec775af2ab9f9",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_service.py": "7072de24d80d9689e00fc62b3c933c128dd7efc748ae181ba4ed7d8ba047a2f8",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_operational_policy.py": "d23fb4e04df146089378402cfe3fafdb2cdf0fd93df5329fcfca62f662fa5b8d",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_rule_evaluator.py": "c70b25866437a96ec2e314369468ad55f2f4060fa410f63f94ef215a7b8ee272",
+        "backend/app/modules/academic_affairs/services/academic_affairs_archive_core_service.py": "c982865dec6751a5d09062b71795ff266125a240b98f533b96ba8a3343a74f49",
+        "backend/app/models/data_exchange.py": "86b60a5b218f11cd79b44bd020dd183a38d24c598df932934e6bf7a2875ae80f"
+      }
+    }
+  }
+}

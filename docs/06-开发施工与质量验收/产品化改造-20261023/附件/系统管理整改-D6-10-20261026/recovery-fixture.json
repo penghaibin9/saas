@@ -1,0 +1,12 @@
+{
+  "tenantId": "1000000000000000007",
+  "completedLeaveId": "1",
+  "completedLeaveHash": "d46725b78888773fab8c3e4adbea48c3af0f8acd774ffd15eee3ea4b426d9834",
+  "staleTodoId": "1",
+  "pendingLeaveId": "2",
+  "activeTodoId": "2",
+  "outboxId": "1",
+  "sourceTerminalFrom": "此前真实浏览器审批",
+  "fixturePurpose": "仅新增模拟遗漏提醒及失败投递，不处理队列、不外发",
+  "schedulerMode": "external"
+}

@@ -1,0 +1,57 @@
+{
+  "card": "D6-05",
+  "files": [
+    {
+      "path": "frontend/src/modules/system/components/AccountCandidatePicker.vue",
+      "sha256": "0cb970eb0d7280384c7e09f283068428864cce0da78c720fbb03156f1d9e6971"
+    },
+    {
+      "path": "frontend/src/modules/system/components/SystemP1ClosurePanel.vue",
+      "sha256": "8cb1f42c7bc10b84687db1e0fe908323a2b356f3d872482d14f0b1df380fc895"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemDelegationView.vue",
+      "sha256": "90167afad05dc64d9d4376331aca5e5387ad2c0bea013e258e5d6366037fb0ae"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemRoleAssignmentView.vue",
+      "sha256": "87c6b1f273c368c6cbced94c2d98dfaeafbbb848c0a51a3c2982a9b4d68d35ae"
+    },
+    {
+      "path": "frontend/src/modules/system/api/system.api.js",
+      "sha256": "a5402a6589e032cf5d2836dde604df15e6a5a94af8f4b17f3ab6d5c989e056d8"
+    },
+    {
+      "path": "backend/app/modules/system_admin/routers/system_bundle.py",
+      "sha256": "6f10ba84e37b242296309b96f88ba2d79d3282722d7e10114f0b291fc2b9f416"
+    },
+    {
+      "path": "backend/app/services/role_assignment_service.py",
+      "sha256": "8456427c6f68192d28c71a8e2a5d5299ad5b359f256b0e3e7a68c8fe16187b5a"
+    },
+    {
+      "path": "backend/app/services/system_governance_service.py",
+      "sha256": "89b350aa8a0673639205bba67eb0a8209c2e753a36c50d9e67ea4b438483472e"
+    },
+    {
+      "path": "backend/app/services/system_governance_authority_service.py",
+      "sha256": "558bdfe11ea0db0c37c86f074b3de1dc9a90abbde405579937b842d1b5605e93"
+    },
+    {
+      "path": "backend/app/services/audit_log.py",
+      "sha256": "ff4ff5a788fc9b85041e595a71c6fae4702ab871abc72710a195c5a995cb3880"
+    },
+    {
+      "path": "frontend/tests/system-authority-picker.behavior.test.mjs",
+      "sha256": "99c09c434a336a83ef742a85afe790b98a2d54a19c7728c742c69b250c59a597"
+    },
+    {
+      "path": "frontend/tests/system-role-assignment-pagination.behavior.test.mjs",
+      "sha256": "ecd93a8850876bf70f32ad7aa47992f1fbb6860180ffa86c05bda7995469ac8f"
+    },
+    {
+      "path": "backend/tests/test_delegation_atomicity.py",
+      "sha256": "5b1685e651daaf7af0d54e7c9c9cd68b49f155ccf2a82b024acf377fc8b7db63"
+    }
+  ]
+}

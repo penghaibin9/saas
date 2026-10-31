@@ -1,0 +1,50 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/business-forms".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/business-forms
+	2 container app
+		3 container
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button 帮助与引导
+			8 button 消息中心
+				9 image
+			10 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				11 text 胡
+				12 text 胡管理
+				13 text 学校管理员
+		14 container
+			15 container 一级菜单
+				16 button 学工中心
+				17 button 教务中心
+				18 button 毕业设计中心
+				19 button 岗位实习中心
+				20 button 系统管理
+			21 button (collapsed) 当前范围, Secondary Actions: Expand
+				22 image
+				23 text 当前范围
+				24 image
+		25 container
+			26 button 目录
+			27 tab group 已打开页面
+				28 container
+					29 tab (selected, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 1
+合规与业务表单
+					30 button 关闭合规与业务表单
+						31 image
+			32 button (disabled) 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			47 container
+				48 heading 合规与业务表单, Value: 1
+					49 text 合规与业务表单
+				50 text 发布版本不可变；提交只调用原业务的正式提交。
+				51 button 刷新
+				52 heading 当前学校身份不能访问此管理入口, Value: 2
+					53 text 当前学校身份不能访问此管理入口
+				54 text 表单定义尚未读取，不能据此判断没有定义。请由平台管理人员核验维护入口；实际业务仍从学工、教务、毕业设计、岗位实习各自入口办理。
+			46 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/business-forms

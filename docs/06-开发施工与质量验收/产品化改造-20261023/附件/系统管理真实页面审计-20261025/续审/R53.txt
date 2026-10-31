@@ -1,0 +1,260 @@
+http://127.0.0.1:5173/admin/campus-service/classes
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:46":
+    - generic: 10/25周日 14:46
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:40:32":
+  - generic: 本次工作 02:40:32
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "学工工作台":
+      - generic: 工作
+    - button "学生主档":
+      - generic: 学生
+    - button "班级与辅导员":
+      - generic: 班级
+    - button "数字迎新":
+      - generic: 迎新
+    - button "请假销假":
+      - generic: 请假
+    - button "宿舍与公寓":
+      - generic: 住宿
+    - button "风险预警与处置":
+      - generic: 风险
+    - button "困难认定":
+      - generic: 认定
+    - button "奖助勤贷补":
+      - generic: 奖助
+    - button "违纪处分":
+      - generic: 处分
+    - button "谈心家校":
+      - generic: 家校
+    - button "心理关注":
+      - generic: 心理
+    - button "活动二课与社团":
+      - generic: 活动
+    - button "统计与档案":
+      - generic: 统计
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "班级管理":
+      - generic: 班级
+    - button "辅导员责任台账":
+      - generic: 辅导
+    - button "辅导员考评":
+      - generic: 辅导
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "班级管理" [selected]:
+    - generic: 班级管理
+  - button "关闭班级管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:46
+  - heading "班级管理" [level=1]
+  - generic: 🔍
+  - searchbox "按班级名称搜索"
+  - textbox "年级，如 2024"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "班级 年级 辅导员 / 班主任 人数 当前请假 在办风险 操作":
+        - columnheader "班级"
+        - columnheader "年级"
+        - columnheader "辅导员 / 班主任"
+        - columnheader "人数"
+        - columnheader "当前请假"
+        - columnheader "在办风险"
+        - columnheader "操作"
+    - rowgroup:
+      - row "软件技术2401班 信息工程学院 · 软件技术 2024 胡可欣 班主任：王可欣 50 2 7 班级画像":
+        - cell "软件技术2401班 信息工程学院 · 软件技术":
+          - generic: 软件技术2401班
+          - generic: 信息工程学院 · 软件技术
+        - cell "2024"
+        - cell "胡可欣 班主任：王可欣":
+          - generic: 胡可欣
+          - generic: 班主任：王可欣
+        - cell "50"
+        - cell "2"
+        - cell "7"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "软件技术2402班 信息工程学院 · 软件技术 2024 胡可欣 班主任：李可欣 50 0 7 班级画像":
+        - cell "软件技术2402班 信息工程学院 · 软件技术":
+          - generic: 软件技术2402班
+          - generic: 信息工程学院 · 软件技术
+        - cell "2024"
+        - cell "胡可欣 班主任：李可欣":
+          - generic: 胡可欣
+          - generic: 班主任：李可欣
+        - cell "50"
+        - cell "0"
+        - cell "7"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "软件技术2403班 信息工程学院 · 软件技术 2024 胡可欣 班主任：张可欣 50 0 7 班级画像":
+        - cell "软件技术2403班 信息工程学院 · 软件技术":
+          - generic: 软件技术2403班
+          - generic: 信息工程学院 · 软件技术
+        - cell "2024"
+        - cell "胡可欣 班主任：张可欣":
+          - generic: 胡可欣
+          - generic: 班主任：张可欣
+        - cell "50"
+        - cell "0"
+        - cell "7"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "软件技术2404班 信息工程学院 · 软件技术 2024 胡可欣 班主任：刘可欣 50 0 8 班级画像":
+        - cell "软件技术2404班 信息工程学院 · 软件技术":
+          - generic: 软件技术2404班
+          - generic: 信息工程学院 · 软件技术
+        - cell "2024"
+        - cell "胡可欣 班主任：刘可欣":
+          - generic: 胡可欣
+          - generic: 班主任：刘可欣
+        - cell "50"
+        - cell "0"
+        - cell "8"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "软件技术2405班 信息工程学院 · 软件技术 2024 朱可欣 班主任：陈可欣 50 0 7 班级画像":
+        - cell "软件技术2405班 信息工程学院 · 软件技术":
+          - generic: 软件技术2405班
+          - generic: 信息工程学院 · 软件技术
+        - cell "2024"
+        - cell "朱可欣 班主任：陈可欣":
+          - generic: 朱可欣
+          - generic: 班主任：陈可欣
+        - cell "50"
+        - cell "0"
+        - cell "7"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "软件技术2406班 信息工程学院 · 软件技术 2024 朱可欣 班主任：杨可欣 50 0 6 班级画像":
+        - cell "软件技术2406班 信息工程学院 · 软件技术":
+          - generic: 软件技术2406班
+          - generic: 信息工程学院 · 软件技术
+        - cell "2024"
+        - cell "朱可欣 班主任：杨可欣":
+          - generic: 朱可欣
+          - generic: 班主任：杨可欣
+        - cell "50"
+        - cell "0"
+        - cell "6"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "大数据技术2401班 信息工程学院 · 大数据技术 2024 朱可欣 班主任：黄可欣 50 0 7 班级画像":
+        - cell "大数据技术2401班 信息工程学院 · 大数据技术":
+          - generic: 大数据技术2401班
+          - generic: 信息工程学院 · 大数据技术
+        - cell "2024"
+        - cell "朱可欣 班主任：黄可欣":
+          - generic: 朱可欣
+          - generic: 班主任：黄可欣
+        - cell "50"
+        - cell "0"
+        - cell "7"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "大数据技术2402班 信息工程学院 · 大数据技术 2024 朱可欣 班主任：赵可欣 50 0 7 班级画像":
+        - cell "大数据技术2402班 信息工程学院 · 大数据技术":
+          - generic: 大数据技术2402班
+          - generic: 信息工程学院 · 大数据技术
+        - cell "2024"
+        - cell "朱可欣 班主任：赵可欣":
+          - generic: 朱可欣
+          - generic: 班主任：赵可欣
+        - cell "50"
+        - cell "0"
+        - cell "7"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "大数据技术2403班 信息工程学院 · 大数据技术 2024 高可欣 班主任：周可欣 50 0 7 班级画像":
+        - cell "大数据技术2403班 信息工程学院 · 大数据技术":
+          - generic: 大数据技术2403班
+          - generic: 信息工程学院 · 大数据技术
+        - cell "2024"
+        - cell "高可欣 班主任：周可欣":
+          - generic: 高可欣
+          - generic: 班主任：周可欣
+        - cell "50"
+        - cell "0"
+        - cell "7"
+        - cell "班级画像":
+          - button "班级画像"
+      - row "大数据技术2404班 信息工程学院 · 大数据技术 2024 高可欣 班主任：吴可欣 50 0 8 班级画像":
+        - cell "大数据技术2404班 信息工程学院 · 大数据技术":
+          - generic: 大数据技术2404班
+          - generic: 信息工程学院 · 大数据技术
+        - cell "2024"
+        - cell "高可欣 班主任：吴可欣":
+          - generic: 高可欣
+          - generic: 班主任：吴可欣
+        - cell "50"
+        - cell "0"
+        - cell "8"
+        - cell "班级画像":
+          - button "班级画像"
+  - generic: 共 387 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "39"
+  - button "下一页": ›
+  - paragraph: 班级是全学工数据范围载体：辅导员看本人绑定班级、学院看本院、学工处看全校。点击「班级画像」查看学生名单、材料与班干部。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

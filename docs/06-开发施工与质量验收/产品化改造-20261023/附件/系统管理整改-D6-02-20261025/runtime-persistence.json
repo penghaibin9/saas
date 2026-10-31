@@ -1,0 +1,18 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "operatorId": "1",
+  "lastLoginUtc": "2026-10-25T09:56:10Z",
+  "loginAuditId": "43",
+  "refreshAuditId": "44",
+  "denialAuditId": "47",
+  "loginHasVerifiedIdentity": true,
+  "refreshHasVerifiedIdentity": true,
+  "refreshDidNotChangeLastLogin": true,
+  "denialHttpStatus": 403,
+  "denialStoredResult": "DENIED",
+  "traceIdsPresent": true,
+  "unchangedPriorAuditRows": 15,
+  "priorRowsSha256": "e0f00b9508880d5fe91eefa31f4be3f0ad182b98030e30e9bf3190f0c017ee62",
+  "accountLoginHistoryCount": 2,
+  "dailyDatabaseTouched": false
+}

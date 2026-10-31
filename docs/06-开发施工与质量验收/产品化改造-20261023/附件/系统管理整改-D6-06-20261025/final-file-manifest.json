@@ -1,0 +1,106 @@
+{
+  "card": "D6-06",
+  "note": "共享文件包含既有差异，清单不是提交授权；仅按本卡局部差异恢复。",
+  "files": [
+    {
+      "path": "backend/app/services/business_identity_service.py",
+      "sha256": "7b6c50bb29d7f42689657c86d2b3c2c33810b2676e396d92869cb2979bd785b2"
+    },
+    {
+      "path": "backend/app/services/business_identity_objects.py",
+      "sha256": "49d0eaa52fa21ff67c89c9117666a7c5aab2d1ea03069aa3c25b6e5ef299c2e3"
+    },
+    {
+      "path": "backend/app/services/business_relation_registry.py",
+      "sha256": "9b37c71f9c9ef2789516aaa25b9e133290eef089d413a14eac64f94f524fad41"
+    },
+    {
+      "path": "backend/app/services/master_data_governance_service.py",
+      "sha256": "3bad3bfeabf50a8bc4b88516b6b8ca8f5c20514a6f70848dca80fc6be7811e5c"
+    },
+    {
+      "path": "backend/app/modules/system_admin/routers/system_bundle.py",
+      "sha256": "1fde1386d83cc971395a84ff0ebe6da096ae0a39a446cbe4a13e6ef4043dbc9c"
+    },
+    {
+      "path": "docs/architecture/business-relation-registry.yaml",
+      "sha256": "08bda1f7f7bf2fc14a6d90f6c0cfd31738f13d5c9eb757be5cf96b11809b73fb"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemBusinessRelationView.vue",
+      "sha256": "127d718f3906b8afd781b35e341a4d6a29f6d10e31ed24ed51f333b443e3fbdd"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemMasterDataView.vue",
+      "sha256": "0332e04e564e96b1093a9a53d4101d8999ffa38ebdec4659e1dadaab07a12a49"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemRoleAssignmentView.vue",
+      "sha256": "a6a73a43e629ff4a0202930138f3ab276fecbb5e2bf9659f3ac7955f0d6662ce"
+    },
+    {
+      "path": "frontend/src/modules/system/components/AccountCandidatePicker.vue",
+      "sha256": "1e83f96949217a1327b20a40c09a420c7c8b7032b10ec2f0e3efd6ce21dd48ea"
+    },
+    {
+      "path": "frontend/src/modules/system/components/SystemP1ClosurePanel.vue",
+      "sha256": "5c452e2be43560b91703e6b937fdd1e3849b3389937b0282ef83413b524ea4e5"
+    },
+    {
+      "path": "frontend/src/modules/system/api/system.api.js",
+      "sha256": "86f4a357217c73ef0d7186ce57601c25e354ecd051599571ca5aa48d26a0cbb4"
+    },
+    {
+      "path": "frontend/src/utils/systemRelationshipNavigation.js",
+      "sha256": "30717506924a0a210fa9dcfa981570700a9fbebd6a304b707b4a27f4af80e650"
+    },
+    {
+      "path": "frontend/src/modules/studentAffairs/views/class/ClassProfileView.vue",
+      "sha256": "7fd18966623199d7d5ba42d81e932dc1a6746d0be66126768b5df30402b8a3b1"
+    },
+    {
+      "path": "frontend/src/modules/academicAffairs/views/AaTaskDetailView.vue",
+      "sha256": "bf024851268e647ff6877de49077340852074a05b37d6641f58c6696d6966374"
+    },
+    {
+      "path": "frontend/src/modules/academicAffairs/views/AaRosterDetailView.vue",
+      "sha256": "ac5cfaa8b1e2eb43293967a4646323db5198f264a7d3e754d80ec97968178f8b"
+    },
+    {
+      "path": "frontend/src/modules/graduation/views/GraduationStudentDetailView.vue",
+      "sha256": "24d2846a157fea773ae9dadc12d7b859d1d8a25f96af3a72cb2fe4826b2fe85d"
+    },
+    {
+      "path": "frontend/src/modules/internship/views/InternshipStudentDetailView.vue",
+      "sha256": "a21c9067860f206e765b0b7813839037120a8d2c37b99d23847270a55ef45971"
+    },
+    {
+      "path": "backend/tests/test_business_identity_navigation.py",
+      "sha256": "d9dcc5295fb46c9a466fd48d6a4786453e4c6e7fe8cbb6d781a2c2af4f9faeda"
+    },
+    {
+      "path": "backend/tests/test_business_relation_registry.py",
+      "sha256": "9a0e6c74036c1b9bc6c60c9c9f401c055ba6f0e77a258ec357b2b187a1bae99f"
+    },
+    {
+      "path": "backend/tests/test_quality_scan_evidence.py",
+      "sha256": "b3050913c1e98d79d055b8f6a60ab0c6395751190f7c8a3f807f203b86251485"
+    },
+    {
+      "path": "backend/tests/test_master_data_governance.py",
+      "sha256": "5ca978285e1d0e9e1dbd28bf3e642499a0049536eff262514ef4e727388ebd0e"
+    },
+    {
+      "path": "backend/tests/system_admin_test_auth.py",
+      "sha256": "3eb12561f13e346933bd42732c9de5869f4c9426e13657262fad9bea3829d057"
+    },
+    {
+      "path": "frontend/tests/system-relationship-navigation.behavior.test.mjs",
+      "sha256": "9c88f91bc0a381caebce9a96920020772057b81a1f3d11a4edd270cc82fc80c4"
+    },
+    {
+      "path": "frontend/tests/system-role-assignment-pagination.behavior.test.mjs",
+      "sha256": "cea0e0e11c9bd9ab9da054331ca15fa87b85afdc8a7bcb8e83abb4e2b5e86f3a"
+    }
+  ]
+}

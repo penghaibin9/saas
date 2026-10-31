@@ -1,0 +1,22 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/workflow-governance".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/workflow-governance
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 天气, Secondary Actions: Expand
+				8 image
+				9 text 北京 天气
+			10 button (collapsed) 10/25周日 12:13, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:13
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		17 container 工作区加载状态
+			18 text 正在加载系统管理中心…
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/workflow-governance

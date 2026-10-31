@@ -1,0 +1,22 @@
+{
+  "t_gd_batch": {
+    "count": 1,
+    "sha256": "0ce66930589f2ccbae8694944f5435bc678e22e581dc1f4f6c8ab01546da9dcc"
+  },
+  "t_internship_batch": {
+    "count": 1,
+    "sha256": "5b1ec68e75d532cfbb90a869143b9533a24959b192feff67dee7fff1d29c8cfc"
+  },
+  "t_gd_student": {
+    "count": 1,
+    "sha256": "dd460a3c44983c8c8ac0b114d27babc327766c6d1764384c69d32fbabdbadc1c"
+  },
+  "t_internship_record": {
+    "count": 2,
+    "sha256": "1a66d61bfb0588a5ca48171682b3652cff656130cd9bd4ca729406d92fe5d6fb"
+  },
+  "t_aa_teaching_task": {
+    "count": 1,
+    "sha256": "4a6c1674cb572e3f8e106d91edf3385c5983707b2e000f66fdf7eef274e5b6cc"
+  }
+}

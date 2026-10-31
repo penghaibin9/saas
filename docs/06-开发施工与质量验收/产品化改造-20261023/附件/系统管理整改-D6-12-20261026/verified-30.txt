@@ -1,0 +1,222 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:14":
+    - generic: 10/27周二 09:14
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:11:50":
+  - generic: 本次工作 00:11:50
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 角色与权限
+  - button "全部业务与设置"
+  - navigation "三级菜单":
+    - button "本校角色":
+      - generic: 本校角色
+    - button "角色成员与业务身份":
+      - generic: 角色成员与业务身份
+    - button "数据范围规则":
+      - generic: 数据范围规则
+    - button "临时授权与工作移交":
+      - generic: 临时授权与工作移交
+    - button "安全变更":
+      - generic: 安全变更
+    - button "访问治理":
+      - generic: 访问治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则" [selected]:
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - heading "数据范围规则" [level=1]
+  - button "＋ 新增规则"
+  - button "⇩ 导出规则清单"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 规则名称
+  - generic: 状态
+  - combobox "状态":
+    - option "全部" [selected]
+    - option "启用中"
+    - option "已作废"
+  - button "查询"
+  - button "重置"
+  - region "当前筛选结果摘要":
+    - generic: 当前筛选规则
+    - strong: "1"
+    - generic: 仅统计本次返回的结果
+    - generic: 启用中
+    - strong: "1"
+    - generic: 当前筛选结果口径
+    - generic: 当前规则引用角色
+    - strong: "1"
+    - generic: 角色引用关系，不等于实际访问人数
+    - generic: 历史匹配人数
+    - strong: 0 人*
+    - generic: 未取得时明确显示，不补 0
+  - complementary "数据范围规则列表":
+    - text: 范围规则
+    - paragraph: 选择一条规则继续核对
+    - generic: 1 条
+    - button "ACADEMIC_TEACHER_CUSTOM_1-scope 启用中 本人 · 1 个角色引用":
+      - generic: ACADEMIC_TEACHER_CUSTOM_1-scope
+      - generic: 启用中
+      - generic: 本人 · 1 个角色引用
+  - text: 当前规则
+  - heading "ACADEMIC_TEACHER_CUSTOM_1-scope" [level=2]
+  - paragraph: 结构化范围类型 本人 · SELF · 最近更新 2026-10-25 08:50:16
+  - button "编辑规则"
+  - button "作废规则"
+  - text: 角色权限通过，不代表可以读取任意业务对象。
+  - paragraph: 明确禁止、敏感专项、业务关系和具体对象范围仍由系统最终判定；本页只显示规则与引用情况。
+  - generic: 范围类型
+  - strong: 本人
+  - generic: 引用角色
+  - strong: "1"
+  - generic: 历史匹配人数
+  - strong: 0 人*
+  - generic: 当前状态
+  - strong: 启用中
+  - heading "引用该规则的角色" [level=3]
+  - paragraph: 这里只说明角色默认范围引用，不自动替成员创建任职或指导关系。
+  - generic: 学生
+  - heading "受影响成员 · 受限预览" [level=3]
+  - paragraph: 最多返回 200 条用户与角色关联记录；同一成员可能因多个角色重复出现，因此不能把列表长度当作完整人数。
+  - button "查看受影响成员"
+  - paragraph: 尚未读取影响预览；未读取不等于 0 人。
+  - heading "显式禁止与特殊限制" [level=3]
+  - paragraph: “禁止”优先于“允许”。规则列表没有禁止记录，不代表某个具体业务对象一定允许访问。
+  - button "展开策略"
+  - paragraph: 规则说明：structured-scope
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

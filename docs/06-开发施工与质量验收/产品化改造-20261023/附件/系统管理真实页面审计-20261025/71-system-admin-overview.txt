@@ -1,0 +1,189 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/overview".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/overview
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				9 image
+				18 text 北京 13° 阴
+			11 button (collapsed) 10/25周日 12:20, Secondary Actions: Expand
+				12 image
+				13 text 10/25周日 12:20
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			14 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				15 text 胡
+				16 text 胡管理
+				17 text 系统管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 系统管理
+			26 button (collapsed) 当前范围, Secondary Actions: Expand
+				27 image
+				28 text 当前范围
+				29 image
+			30 button (collapsed) 本次工作 00:00:53, Secondary Actions: Expand
+				31 image
+				32 text 本次工作 00:00:53
+		33 container 二级菜单
+			34 button 展开二级菜单
+			35 container 二级菜单
+				36 button 系统概览
+				37 button 身份与账号
+				38 button 组织主数据
+				39 button 角色与权限
+				40 button 学校配置
+				41 button 流程配置
+				42 button 安全与审计
+				43 button 接口与同步
+			44 checkbox Description: 取消固定二级菜单, Value: 1
+		45 container 三级菜单
+			46 button 展开三级菜单
+			47 container 三级菜单
+				48 button 系统总览
+				49 button 实施总览
+				50 button 首次开局向导
+				51 button 预设方案
+				52 button 职业教育国家标准库
+				53 button 数据导入与智能匹配
+				54 button 已安装配置
+				55 button 变更与升级
+				56 button 上线检查与验收
+			57 checkbox Description: 取消固定三级菜单, Value: 1
+		58 container
+			59 tab group 已打开页面
+				60 container
+					61 tab (selected, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 1
+系统总览
+					62 button 关闭系统总览
+						63 image
+			64 button (disabled) 恢复最近关闭的页签
+				65 image
+			66 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				67 image
+			68 checkbox Description: 专注模式, Value: 0
+				69 image
+			70 container
+				71 heading 系统管理, Value: 1
+					72 text 系统管理
+				73 container 系统运行摘要
+					74 text 6/6
+					75 text 可用业务模块
+					76 text 0
+					77 text 上线阻断
+					78 text 0
+					79 text 同步失败
+				80 button 学生导入与账号开通
+				81 button ≡ 操作日志
+				82 button 账号 教职工账号, Help: 核对身份、账号状态与角色来源
+					83 text 账号
+					84 text 教职工账号
+				85 button 权限 学校角色与权限, Help: 按角色连续核对权限、成员与数据范围
+					86 text 权限
+					87 text 学校角色与权限
+				88 button 范围 数据范围, Help: 先选规则，再核对角色引用与显式禁止
+					89 text 范围
+					90 text 数据范围
+				91 button 组织 组织与班级, Help: 维护当前组织，未来版本与任职关系分开处理
+					92 text 组织
+					93 text 组织与班级
+				94 button 配置 模块与业务开关, Help: 区分平台授权、学校开关与运行就绪
+					95 text 配置
+					96 text 模块与业务开关
+				97 button 审计 操作审计, Help: 按对象和结果定位一次真实操作及证据
+					98 text 审计
+					99 text 操作审计
+				100 container
+					101 text 现在需要处理
+					102 button 实施与验收 →
+				103 button 1 项 学校基本信息 在学校信息与品牌中补全 去处理 →
+					104 text 1 项
+					105 text 学校基本信息
+					106 text 在学校信息与品牌中补全
+					107 text 去处理 →
+				108 button 1 项 接口 按需登记接口凭证 去处理 →
+					109 text 1 项
+					110 text 接口
+					111 text 按需登记接口凭证
+					112 text 去处理 →
+				113 container
+					114 text 安全提醒
+					115 button 登录日志 →
+				116 content list
+					117 container
+						118 text 1 条高危操作审计证据不完整  中风险 1 条高危操作审计证据不完整 实时检查
+				119 container
+					120 text 最近系统操作
+					121 button 查看全部 →
+				122 table
+					123 row
+						124 cell
+							125 text 操作人
+						126 cell
+							127 text 动作
+						128 cell
+							129 text 时间
+					130 row
+						131 cell
+							132 text 胡管理
+						133 cell
+							134 text 业务操作
+						135 cell
+							136 text 2026-10-25 04:20
+					137 row
+						138 cell
+							139 text 胡管理
+						140 cell
+							141 text 业务操作
+						142 cell
+							143 text 2026-10-25 04:19
+					144 row
+						145 cell
+							146 text 胡管理
+						147 cell
+							148 text 业务操作
+						149 cell
+							150 text 2026-10-25 04:13
+					151 row
+						152 cell
+							153 text Local operator - user authorized
+						154 cell
+							155 text 业务操作
+						156 cell
+							157 text 2026-10-25 04:05
+					158 row
+						159 cell
+							160 text 王老师
+						161 cell
+							162 text 业务操作
+						163 cell
+							164 text 2026-10-24 05:52
+					165 row
+						166 cell
+							167 text 王老师
+						168 cell
+							169 text 业务操作
+						170 cell
+							171 text 2026-10-24 05:20
+					172 row
+						173 cell
+							174 text 王老师
+						175 cell
+							176 text 业务操作
+						177 cell
+							178 text 2026-10-24 05:06
+					179 row
+						180 cell
+							181 text 王老师
+						182 cell
+							183 text 业务操作
+						184 cell
+							185 text 2026-10-24 04:59
+			186 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/overview

@@ -1,0 +1,403 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/migration".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/migration
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				17 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:15, Secondary Actions: Expand
+				11 image
+				270 text 10/25周日 12:15
+			18 button 帮助与引导
+			19 button 消息中心
+				20 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:08:50, Secondary Actions: Expand
+				33 image
+				271 text 本次工作 00:08:50
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				225 button 接口、凭证与 Webhook
+				226 button 同步任务与失败中心
+				227 button 老系统数据迁移
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				97 container
+					98 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					99 button 关闭安全变更
+						100 image
+				101 container
+					102 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					103 button 关闭访问治理
+						104 image
+				105 container
+					106 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					107 button 关闭学校信息与品牌
+						108 image
+				109 container
+					110 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					111 button 关闭数据字典
+						112 image
+				113 container
+					114 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					115 button 关闭模块授权与业务开关
+						116 image
+				117 container
+					118 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					119 button 关闭主数据责任与数据质量
+						120 image
+				121 container
+					122 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					123 button 关闭合规与业务表单
+						124 image
+				125 container
+					126 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					127 button 关闭学年学期与业务日历
+						128 image
+				129 container
+					130 tab (selectable, settable, boolean) 流程安全与运行治理, Help: 流程配置 / 流程安全与运行治理, Value: 0
+流程安全与运行治理
+					131 button 关闭流程安全与运行治理
+						132 image
+				133 container
+					134 tab (selectable, settable, boolean) 统一消息、待办与通知治理, Help: 流程配置 / 统一消息、待办与通知治理, Value: 0
+统一消息、待办与通知治理
+					135 button 关闭统一消息、待办与通知治理
+						136 image
+				150 container
+					151 tab (selectable, settable, boolean) 批处理与后台任务, Help: 流程配置 / 批处理与后台任务, Value: 0
+批处理与后台任务
+					152 button 关闭批处理与后台任务
+						153 image
+				161 container
+					162 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					163 button 关闭操作与权限审计
+						164 image
+				200 container
+					201 tab (selectable, settable, boolean) 登录与安全审计, Help: 安全与审计 / 登录与安全审计, Value: 0
+登录与安全审计
+					202 button 关闭登录与安全审计
+						203 image
+				205 container
+					206 tab (selectable, settable, boolean) 敏感与导入导出审计, Help: 安全与审计 / 敏感与导入导出审计, Value: 0
+敏感与导入导出审计
+					207 button 关闭敏感与导入导出审计
+						208 image
+				210 container
+					211 tab (selectable, settable, boolean) 安全审计证据与完整性, Help: 安全与审计 / 安全审计证据与完整性, Value: 0
+安全审计证据与完整性
+					212 button 关闭安全审计证据与完整性
+						213 image
+				215 container
+					216 tab (selectable, settable, boolean) 完整性异常中心, Help: 安全与审计 / 完整性异常中心, Value: 0
+完整性异常中心
+					217 button 关闭完整性异常中心
+						218 image
+				220 container
+					221 tab (selectable, settable, boolean) 文件存储治理, Help: 安全与审计 / 文件存储治理, Value: 0
+文件存储治理
+					222 button 关闭文件存储治理
+						223 image
+				228 container
+					229 tab (selectable, settable, boolean) 接口、凭证与 Webhook, Help: 接口与同步 / 接口、凭证与 Webhook, Value: 0
+接口、凭证与 Webhook
+					230 button 关闭接口、凭证与 Webhook
+						231 image
+				233 container
+					234 tab (selectable, settable, boolean) 同步任务与失败中心, Help: 接口与同步 / 同步任务与失败中心, Value: 0
+同步任务与失败中心
+					235 button 关闭同步任务与失败中心
+						236 image
+				238 container
+					239 tab (selected, settable, boolean) 老系统数据迁移, Help: 接口与同步 / 老系统数据迁移, Value: 1
+老系统数据迁移
+					240 button 关闭老系统数据迁移
+						241 image
+			137 button (disabled) 恢复最近关闭的页签
+				138 image
+			139 checkbox Description: 收藏当前页面, Value: 0
+				140 image
+			141 checkbox Description: 专注模式, Value: 0
+				142 image
+			242 container
+				243 heading 老系统数据迁移, Value: 1
+					244 text 老系统数据迁移
+				245 container
+					246 text 迁移地图（21 域 · 学工 + 教务全量历史） 老系统只要能导出 Excel 即可迁移；原始 XLSX、预检和确认结果统一进入数据交换任务中心。
+				247 container
+					272 text 20005 学生主档 18/21 已有数据域 0 迁移批次
+				249 container
+					250 text 迁移域（按依赖顺序执行） 灰色域表示前置依赖未完成；确认只提交统一的任务编号与任务版本
+				273 text 1 学年学期 教务 重复覆盖
+				274 container
+					275 text 导入对象： 学年学期
+				276 text 唯一键：学年+学期号
+				277 container
+					278 text 前置依赖：  无
+				279 container
+					280 text 库内数据： 5  条
+				281 button 下载模板
+				282 button 上传导入
+				283 text 2 校历事件 教务 重复覆盖
+				284 container
+					285 text 导入对象： 校历事件
+				286 text 唯一键：学期+事件类型+开始日期
+				287 container
+					288 text 前置依赖：  学年学期（已满足）
+				289 container
+					290 text 库内数据： 4  条
+				291 button 下载模板
+				292 button 上传导入
+				293 text 3 作息节次 教务 重复覆盖
+				294 container
+					295 text 导入对象： 作息节次
+				296 text 唯一键：节次号+校区编码
+				297 container
+					298 text 前置依赖：  无
+				299 container
+					300 text 库内数据： 10  条
+				301 button 下载模板
+				302 button 上传导入
+				303 text 4 学籍名册（状态初始化） 教务 重复即报错
+				304 container
+					305 text 导入对象： 学籍名册（状态初始化）
+				306 text 唯一键：学号（每生一行）
+				307 container
+					308 text 前置依赖：  学生主档（已满足）
+				309 container
+					310 text 库内数据： 7  条
+				311 button 下载模板
+				312 button 上传导入
+				313 text 5 学籍异动历史 教务 重复跳过
+				314 container
+					315 text 导入对象： 学籍异动历史
+				316 text 唯一键：学号+异动类型+生效日期
+				317 container
+					318 text 前置依赖：  学籍名册（状态初始化）（已满足）
+				319 container
+					320 text 库内数据： 7  条
+				321 button 下载模板
+				322 button 上传导入
+				323 text 6 历史成绩 教务 重复即报错
+				324 container
+					325 text 导入对象： 历史成绩
+				326 text 唯一键：学号+课程名称+学期
+				327 container
+					328 text 前置依赖：  学生主档（已满足）
+				329 container
+					330 text 库内数据： 0  条
+				331 button 下载模板
+				332 button 上传导入
+				333 text 7 家庭联系人 学工 重复覆盖
+				334 container
+					335 text 导入对象： 家庭联系人
+				336 text 唯一键：学号+联系人类型
+				337 container
+					338 text 前置依赖：  学生主档（已满足）
+				339 container
+					340 text 库内数据： 1  条
+				341 button 下载模板
+				342 button 上传导入
+				343 text 8 班干部任免 学工 重复跳过
+				344 container
+					345 text 导入对象： 班干部任免
+				346 text 唯一键：班级+学号+职务+学期
+				347 container
+					348 text 前置依赖：  学生主档（已满足）
+				349 container
+					350 text 库内数据： 768  条
+				351 button 下载模板
+				352 button 上传导入
+				353 text 9 宿舍房源（楼/房/床） 学工 重复覆盖
+				354 container
+					355 text 导入对象： 宿舍房源（楼/房/床）
+				356 text 唯一键：楼栋编码+房号
+				357 container
+					358 text 前置依赖：  无
+				359 container
+					360 text 库内数据： 2016  条
+				361 button 下载模板
+				362 button 上传导入
+				363 text 10 住宿分配 学工 重复即报错
+				364 container
+					365 text 导入对象： 住宿分配
+				366 text 唯一键：学号（一生一床）
+				367 container
+					368 text 前置依赖：  学生主档、宿舍房源（楼/房/床）（已满足）
+				369 container
+					370 text 库内数据： 11051  条
+				371 button 下载模板
+				372 button 上传导入
+				373 text 11 请假历史 学工 重复即报错
+				374 container
+					375 text 导入对象： 请假历史
+				376 text 唯一键：学号+开始时间+请假类型
+				377 container
+					378 text 前置依赖：  学生主档（已满足）
+				379 container
+					380 text 库内数据： 1630  条
+				381 button 下载模板
+				382 button 上传导入
+				383 text 12 困难认定历史 学工 重复即报错
+				384 container
+					385 text 导入对象： 困难认定历史
+				386 text 唯一键：学号+学年
+				387 container
+					388 text 前置依赖：  学生主档（已满足）
+				389 container
+					390 text 库内数据： 1560  条
+				391 button 下载模板
+				392 button 上传导入
+				393 text 13 奖助获得记录 学工 重复即报错
+				394 container
+					395 text 导入对象： 奖助获得记录
+				396 text 唯一键：学号+项目名称+学年
+				397 container
+					398 text 前置依赖：  学生主档（已满足）
+				399 container
+					400 text 库内数据： 1300  条
+				401 button 下载模板
+				402 button 上传导入
+				403 text 14 处分历史 学工 重复即报错
+				404 container
+					405 text 导入对象： 处分历史
+				406 text 唯一键：学号+文号
+				407 container
+					408 text 前置依赖：  学生主档（已满足）
+				409 container
+					410 text 库内数据： 80  条
+				411 button 下载模板
+				412 button 上传导入
+				413 text 15 谈心谈话历史 学工 重复跳过
+				414 container
+					415 text 导入对象： 谈心谈话历史
+				416 text 唯一键：学号+谈话时间+主题类型
+				417 container
+					418 text 前置依赖：  学生主档（已满足）
+				419 container
+					420 text 库内数据： 652  条
+				421 button 下载模板
+				422 button 上传导入
+				423 text 16 风险学生名单 学工 重复跳过
+				424 container
+					425 text 导入对象： 风险学生名单
+				426 text 唯一键：学号+风险描述
+				427 container
+					428 text 前置依赖：  学生主档（已满足）
+				429 container
+					430 text 库内数据： 0  条
+				431 button 下载模板
+				432 button 上传导入
+				433 text 17 课程库 教务 重复覆盖
+				434 container
+					435 text 导入对象： 课程库
+				436 text 唯一键：课程编码+版本
+				437 container
+					438 text 前置依赖：  无
+				439 container
+					440 text 库内数据： 756  条
+				441 button 下载模板
+				442 button 上传导入
+				443 text 18 培养方案 教务 重复即报错
+				444 container
+					445 text 导入对象： 培养方案
+				446 text 唯一键：专业+年级+版本
+				447 container
+					448 text 前置依赖：  课程库（已满足）
+				449 container
+					450 text 库内数据： 103  条
+				451 button 下载模板
+				452 button 上传导入
+				453 text 19 教学任务 教务 重复即报错
+				454 container
+					455 text 导入对象： 教学任务
+				456 text 唯一键：学期+课程+班级
+				457 container
+					458 text 前置依赖：  学年学期、课程库（已满足）
+				459 container
+					460 text 库内数据： 1799  条
+				461 button 下载模板
+				462 button 上传导入
+				463 text 20 课表 教务 重复即报错
+				464 container
+					465 text 导入对象： 课表
+				466 text 唯一键：班级+星期+节次+周次
+				467 container
+					468 text 前置依赖：  作息节次、教学任务（已满足）
+				469 container
+					470 text 库内数据： 0  条
+				471 button 下载模板
+				472 button 上传导入
+				473 text 21 历届毕业结论 教务 重复即报错
+				474 container
+					475 text 导入对象： 历届毕业结论
+				476 text 唯一键：毕业年份+学号
+				477 container
+					478 text 前置依赖：  学生主档（已满足）
+				479 container
+					480 text 库内数据： 4  条
+				481 button 下载模板
+				482 button 上传导入
+				251 container
+					252 text 迁移批次记录
+					253 button 任务中心
+					254 button 刷新
+				255 text 暂无迁移批次；先在上方选择迁移域并上传老系统导出的 XLSX 文件。
+				256 text 实施口径（对学校可承诺的验收方式）
+				257 content list
+					258 container
+						259 AXListMarker • 
+						260 text 老系统原始 XLSX、预检错误、确认结果和任务版本全部可追溯，刷新页面任务不丢。
+					261 container
+						262 AXListMarker • 
+						263 text 预校验存在任何错误行时禁止确认；确认阶段整批一个事务，任一行失败全部回滚。
+					264 container
+						265 AXListMarker • 
+						266 text 历史数据只进终态：不产生待办、不触发工作流；导入行为全部写入安全审计。
+					267 container
+						268 AXListMarker • 
+						269 text 导入完成后按域对账：库内数量与老系统报表逐项核对一致方可签认。
+			148 button 我的常用
+
+The focused UI element is 227 button 老系统数据迁移

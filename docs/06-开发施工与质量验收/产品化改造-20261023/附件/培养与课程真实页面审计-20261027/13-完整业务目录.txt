@@ -1,0 +1,124 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 晴":
+    - generic: 北京 13° 晴
+  - button "10/27周二 13:11":
+    - generic: 10/27周二 13:11
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:58:15":
+  - generic: 本次工作 00:58:15
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 教务中心
+  - navigation "二级菜单":
+    - button "教务大屏":
+      - generic: 教务大屏
+    - button "教务总览":
+      - generic: 教务总览
+    - button "教务基础":
+      - generic: 教务基础
+    - button "学籍管理":
+      - generic: 学籍管理
+    - button "培养与课程":
+      - generic: 培养与课程
+    - button "开课管理":
+      - generic: 开课管理
+    - button "排课与课表":
+      - generic: 排课与课表
+    - button "选课管理":
+      - generic: 选课管理
+    - button "日常教学":
+      - generic: 日常教学
+    - button "考务管理":
+      - generic: 考务管理
+    - button "成绩管理":
+      - generic: 成绩管理
+    - button "毕业管理":
+      - generic: 毕业管理
+    - button "教材管理":
+      - generic: 教材管理
+    - button "教学资源":
+      - generic: 教学资源
+    - button "教学质量":
+      - generic: 教学质量
+    - button "教务统计":
+      - generic: 教务统计
+    - button "教务归档":
+      - generic: 教务归档
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 培养与课程
+  - button "收起完整目录" [expanded] [active]
+  - searchbox "搜索本模块业务"
+  - navigation "三级菜单":
+    - paragraph: 培养方案
+    - button "方案列表":
+      - generic: 方案列表
+    - button "方案制定":
+      - generic: 方案制定
+    - button "方案版本":
+      - generic: 方案版本
+    - button "课程模块":
+      - generic: 课程模块
+    - button "学分要求":
+      - generic: 学分要求
+    - button "实践环节":
+      - generic: 实践环节
+    - button "毕业要求":
+      - generic: 毕业要求
+    - button "方案审核":
+      - generic: 方案审核
+    - button "方案发布":
+      - generic: 方案发布
+    - button "方案变更":
+      - generic: 方案变更
+    - button "方案归档":
+      - generic: 方案归档
+    - paragraph: 课程库
+    - button "课程列表":
+      - generic: 课程列表
+    - button "新增课程":
+      - generic: 新增课程
+    - button "课程分类":
+      - generic: 课程分类
+    - button "课程性质":
+      - generic: 课程性质
+    - button "学分学时":
+      - generic: 学分学时
+    - button "课程大纲":
+      - generic: 课程大纲
+    - button "考核方式":
+      - generic: 考核方式
+    - button "课程负责人":
+      - generic: 课程负责人
+    - button "课程材料":
+      - generic: 课程材料
+    - button "课程停用":
+      - generic: 课程停用
+    - button "历史课程（已停用/旧版本）":
+      - generic: 历史课程（已停用/旧版本）
+    - paragraph: 教学计划
+    - button "实践教学计划":
+      - generic: 实践教学计划
+    - button "计划变更":
+      - generic: 计划变更
+  - button "取消固定三级菜单" [pressed]: 已固定

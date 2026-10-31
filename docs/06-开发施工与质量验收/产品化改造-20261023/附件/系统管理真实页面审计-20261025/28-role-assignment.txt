@@ -1,0 +1,1028 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/role-assignments".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/role-assignments
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:11, Secondary Actions: Expand
+				11 image
+				681 text 10/25周日 12:11
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:05:35, Secondary Actions: Expand
+				32 image
+				751 text 本次工作 00:05:35
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		714 container 三级菜单
+			715 button 展开三级菜单
+			716 container 三级菜单
+				717 button 身份权限总览
+				718 button 预设角色模板
+				719 button 学校角色与成员
+				720 button 角色成员与业务身份
+				721 button 菜单与操作权限
+				722 button 数据范围规则
+				723 button 临时授权与工作移交
+				724 button 安全变更
+				725 button 访问治理
+			726 checkbox Description: 取消固定三级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				243 container
+					244 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					245 button 关闭数据导入与智能匹配
+						246 image
+				252 container
+					253 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					254 button 关闭已安装配置
+						255 image
+				258 container
+					259 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					260 button 关闭变更与升级
+						261 image
+				265 container
+					266 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					267 button 关闭上线检查与验收
+						268 image
+				330 container
+					331 tab (selectable, settable, boolean) 学生账号, Help: 身份与账号 / 学生账号, Value: 0
+学生账号
+					332 button 关闭学生账号
+						333 image
+				335 container
+					336 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					337 button 关闭学生导入与账号开通
+						338 image
+				340 container
+					341 tab (selectable, settable, boolean) 账号异常排查, Help: 身份与账号 / 账号异常排查, Value: 0
+账号异常排查
+					342 button 关闭账号异常排查
+						343 image
+				396 container
+					397 tab (selectable, settable, boolean) 登录与安全策略, Help: 身份与账号 / 登录与安全策略, Value: 0
+登录与安全策略
+					398 button 关闭登录与安全策略
+						399 image
+				401 container
+					402 tab (selectable, settable, boolean) 树形定位工作台, Help: 组织主数据 / 树形定位工作台, Value: 0
+树形定位工作台
+					403 button 关闭树形定位工作台
+						404 image
+				642 container
+					643 tab (selectable, settable, boolean) 学院与部门, Help: 组织主数据 / 学院与部门, Value: 0
+学院与部门
+					644 button 关闭学院与部门
+						645 image
+				647 container
+					648 tab (selectable, settable, boolean) 专业管理, Help: 组织主数据 / 专业管理, Value: 0
+专业管理
+					649 button 关闭专业管理
+						650 image
+				652 container
+					653 tab (selectable, settable, boolean) 年级与班级, Help: 组织主数据 / 年级与班级, Value: 0
+年级与班级
+					654 button 关闭年级与班级
+						655 image
+				657 container
+					658 tab (selectable, settable, boolean) 岗位管理, Help: 组织主数据 / 岗位管理, Value: 0
+岗位管理
+					659 button 关闭岗位管理
+						660 image
+				662 container
+					663 tab (selectable, settable, boolean) 教职工任职归属查询, Help: 组织主数据 / 教职工任职归属查询, Value: 0
+教职工任职归属查询
+					664 button 关闭教职工任职归属查询
+						665 image
+				667 container
+					668 tab (selectable, settable, boolean) 业务关系中心, Help: 组织主数据 / 业务关系中心, Value: 0
+业务关系中心
+					669 button 关闭业务关系中心
+						670 image
+				672 container
+					673 tab (selectable, settable, boolean) 变更版本, Help: 组织主数据 / 变更版本, Value: 0
+变更版本
+					674 button 关闭变更版本
+						675 image
+				728 container
+					729 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					730 button 关闭身份权限总览
+						731 image
+				733 container
+					734 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					735 button 关闭预设角色模板
+						736 image
+				747 container
+					748 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					749 button 关闭学校角色与成员
+						750 image
+				752 container
+					753 tab (selected, settable, boolean) 角色成员与业务身份, Help: 角色与权限 / 角色成员与业务身份, Value: 1
+角色成员与业务身份
+					754 button 关闭角色成员与业务身份
+						755 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 收藏当前页面, Value: 0
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			756 container
+				757 text 正式角色授权闭环
+				758 text 在既有角色治理页创建带来源、到期时间和审计原因的正式授权；高危边界由系统强制。
+				759 button 刷新
+				760 text 用户编号
+				761 text field (settable) 用户编号
+				762 text 角色
+				763 pop up button (collapsed, settable) 角色, Value: 请选择角色, Secondary Actions: Expand
+					764 menu
+						765 (selected) 请选择角色
+						789 任课教师
+						790 沙箱联调角色0913
+						791 沙箱联调角色0913（自定义）
+						792 普通教职工
+						793 教务处管理员
+						794 学院管理员
+						795 辅导员
+						796 宿管老师
+						797 就业老师
+						798 资助老师
+						799 学院毕设管理员
+						800 答辩专家
+						801 答辩秘书
+						802 毕设成绩管理员
+						803 专业毕设负责人
+						804 毕设指导教师
+						805 毕设评阅教师
+						806 毕设管理员
+						807 实习指导教师
+						808 校院领导
+						809 组织人事
+						810 心理老师
+						811 学校管理员
+						812 安全审计员
+						813 学生
+						814 学工老师
+						815 学工处管理员
+						816 系统管理员
+						817 团委老师
+				766 text 生效方式
+				767 text field (disabled) 生效方式, Value: 立即生效（未来排期暂不开放）
+				768 text 到期时间
+				769 date field (settable) 到期时间
+					770 container
+						771 stepper
+						772 stepper
+						773 stepper
+						774 stepper
+						775 stepper
+					776 pop up button 显示当地日期和时间选择器 显示当地日期和时间选择器
+				777 text 授权原因
+				778 text field (settable) 授权原因
+				779 button 新增正式角色授权
+				780 text 系统会拒绝停用的角色、学生与教职工角色串用、重复覆盖授权和未来时间提前生效；新增记录继续在下方台账复核、转交、回收。
+			781 container
+				782 heading 角色成员与业务身份, Value: 1
+					783 text 角色成员与业务身份
+				784 button 立即回收到期授权
+				785 button 刷新
+				786 tab group
+					787 button 固定角色成员
+					788 button 自动业务身份
+				818 text 首屏结论
+				819 button 0 即将到期
+					820 text 0
+					821 text 即将到期
+				822 button 0 过期未回收
+					823 text 0
+					824 text 过期未回收
+				825 button 22255 跨学期未复核
+					826 text 22255
+					827 text 跨学期未复核
+				828 button 22254 来源不明
+					829 text 22254
+					830 text 来源不明
+				831 button 2 多人持有高权角色
+					832 text 2
+					833 text 多人持有高权角色
+				834 table
+					835 row
+						836 cell
+							837 text 成员与角色
+						838 cell
+							839 text 有效期
+						840 cell
+							841 text 来源与原因
+						842 cell
+							843 text 状态
+						844 cell
+							845 text 操作
+					846 row
+						847 cell
+							848 text E2E教务测试任课教师A
+							849 text e2e_aa_teacher_a · 沙箱联调角色0913（自定义）
+						850 cell
+							851 text 生效 2026-09-13 12:23:35
+							852 text 到期 长期有效
+						853 cell
+							854 text 人工分配
+							855 text 111111111
+						856 cell
+							857 text 生效中
+							858 text 未复核
+						859 cell
+							860 button 复核
+							861 button 转交
+							862 button 回收
+					863 row
+						864 cell
+							865 text 董晨曦
+							866 text sbx_t0269 · 毕设指导教师
+						867 cell
+							868 text 生效 2026-08-31 00:28:31
+							869 text 到期 长期有效
+						870 cell
+							871 text 来源待确认
+							872 text 沙箱联调：补登记既有毕设指导角色，保留原权限与长期有效状态
+						873 cell
+							874 text 生效中
+							875 text 未复核
+						876 cell
+							877 button 复核
+							878 button 转交
+							879 button 回收
+					880 row
+						881 cell
+							882 text 王可欣
+							883 text sbx_t0001 · 普通教职工
+						884 cell
+							885 text 生效 2026-09-13 11:35:52
+							886 text 到期 长期有效
+						887 cell
+							888 text 人工分配
+							889 text 沙箱联调：验证角色授权接收与旧会话撤权，完成后回收
+						890 cell
+							891 text 已撤销
+							892 text 未复核
+						893 cell
+							894 button 复核
+							895 button 转交
+							896 button 回收
+					897 row
+						898 cell
+							899 text 王老师
+							900 text teacher2 · 辅导员
+						901 cell
+							902 text 生效 2026-03-01 10:30:00
+							903 text 到期 长期有效
+						904 cell
+							905 text 来源待确认
+							906 text 007 实施验收时复核的辅导员角色授权。
+						907 cell
+							908 text 生效中
+							909 text 复核 2026-2027学年第一学期
+						910 cell
+							911 button 复核
+							912 button 转交
+							913 button 回收
+					914 row
+						915 cell
+							916 text 教务联调学院120责任人
+							917 text v5_aa120_close01 · 学院管理员
+						918 cell
+							919 text 生效 2026-10-04 03:37:58
+							920 text 到期 长期有效
+						921 cell
+							922 text 来源待确认
+							923 text —
+						924 cell
+							925 text 生效中
+							926 text 未复核
+						927 cell
+							928 button 补登记
+					929 row
+						930 cell
+							931 text 教务只读验收员（虚构）
+							932 text v5_daily_leader_20261002 · 校院领导
+						933 cell
+							934 text 生效 2026-10-02 07:20:03
+							935 text 到期 长期有效
+						936 cell
+							937 text 来源待确认
+							938 text —
+						939 cell
+							940 text 生效中
+							941 text 未复核
+						942 cell
+							943 button 补登记
+					944 row
+						945 cell
+							946 text 迎新联调同学甲
+							947 text YX2026092201 · 学生
+						948 cell
+							949 text 生效 2026-09-22 14:28:44
+							950 text 到期 长期有效
+						951 cell
+							952 text 来源待确认
+							953 text —
+						954 cell
+							955 text 生效中
+							956 text 未复核
+						957 cell
+							958 button 补登记
+					959 row
+						960 cell
+							961 text 胡管理
+							962 text admin2 · 学院毕设管理员
+						963 cell
+							964 text 生效 2026-09-15 10:10:20
+							965 text 到期 长期有效
+						966 cell
+							967 text 来源待确认
+							968 text —
+						969 cell
+							970 text 生效中
+							971 text 未复核
+						972 cell
+							973 button 补登记
+					974 row
+						975 cell
+							976 text 胡管理
+							977 text admin2 · 实习指导教师
+						978 cell
+							979 text 生效 2026-09-15 10:10:20
+							980 text 到期 长期有效
+						981 cell
+							982 text 来源待确认
+							983 text —
+						984 cell
+							985 text 生效中
+							986 text 未复核
+						987 cell
+							988 button 补登记
+					989 row
+						990 cell
+							991 text 胡管理
+							992 text admin2 · 学工处管理员
+						993 cell
+							994 text 生效 2026-09-15 10:10:20
+							995 text 到期 长期有效
+						996 cell
+							997 text 来源待确认
+							998 text —
+						999 cell
+							1000 text 生效中
+							1001 text 未复核
+						1002 cell
+							1003 button 补登记
+					1004 row
+						1005 cell
+							1006 text 胡管理
+							1007 text admin2 · 任课教师
+						1008 cell
+							1009 text 生效 2026-09-15 10:10:20
+							1010 text 到期 长期有效
+						1011 cell
+							1012 text 来源待确认
+							1013 text —
+						1014 cell
+							1015 text 生效中
+							1016 text 未复核
+						1017 cell
+							1018 button 补登记
+					1019 row
+						1020 cell
+							1021 text 胡管理
+							1022 text admin2 · 系统管理员
+						1023 cell
+							1024 text 生效 2026-09-15 10:10:20
+							1025 text 到期 长期有效
+						1026 cell
+							1027 text 来源待确认
+							1028 text —
+						1029 cell
+							1030 text 生效中
+							1031 text 未复核
+						1032 cell
+							1033 button 补登记
+					1034 row
+						1035 cell
+							1036 text 胡管理
+							1037 text admin2 · 学工老师
+						1038 cell
+							1039 text 生效 2026-09-15 10:10:20
+							1040 text 到期 长期有效
+						1041 cell
+							1042 text 来源待确认
+							1043 text —
+						1044 cell
+							1045 text 生效中
+							1046 text 未复核
+						1047 cell
+							1048 button 补登记
+					1049 row
+						1050 cell
+							1051 text 胡管理
+							1052 text admin2 · 专业毕设负责人
+						1053 cell
+							1054 text 生效 2026-09-15 10:10:20
+							1055 text 到期 长期有效
+						1056 cell
+							1057 text 来源待确认
+							1058 text —
+						1059 cell
+							1060 text 生效中
+							1061 text 未复核
+						1062 cell
+							1063 button 补登记
+					1064 row
+						1065 cell
+							1066 text 智能排课验收学生
+							1067 text OPT2026091401 · 学生
+						1068 cell
+							1069 text 生效 2026-09-14 07:03:45
+							1070 text 到期 长期有效
+						1071 cell
+							1072 text 来源待确认
+							1073 text —
+						1074 cell
+							1075 text 生效中
+							1076 text 未复核
+						1077 cell
+							1078 button 补登记
+					1079 row
+						1080 cell
+							1081 text 智能排课验收教师
+							1082 text opt_daily_teacher · 任课教师
+						1083 cell
+							1084 text 生效 2026-09-14 07:03:45
+							1085 text 到期 长期有效
+						1086 cell
+							1087 text 来源待确认
+							1088 text —
+						1089 cell
+							1090 text 生效中
+							1091 text 未复核
+						1092 cell
+							1093 button 补登记
+					1094 row
+						1095 cell
+							1096 text 智能排课验收教务员
+							1097 text opt_daily_admin · 教务处管理员
+						1098 cell
+							1099 text 生效 2026-09-14 07:03:45
+							1100 text 到期 长期有效
+						1101 cell
+							1102 text 来源待确认
+							1103 text —
+						1104 cell
+							1105 text 生效中
+							1106 text 未复核
+						1107 cell
+							1108 button 补登记
+					1109 row
+						1110 cell
+							1111 text 联通学院审核
+							1112 text pcflow_college · 普通教职工
+						1113 cell
+							1114 text 生效 2026-09-13 05:00:05
+							1115 text 到期 长期有效
+						1116 cell
+							1117 text 来源待确认
+							1118 text —
+						1119 cell
+							1120 text 生效中
+							1121 text 未复核
+						1122 cell
+							1123 button 补登记
+					1124 row
+						1125 cell
+							1126 text 联通学院审核
+							1127 text pcflow_college · 任课教师
+						1128 cell
+							1129 text 生效 2026-09-13 05:00:05
+							1130 text 到期 长期有效
+						1131 cell
+							1132 text 来源待确认
+							1133 text —
+						1134 cell
+							1135 text 生效中
+							1136 text 未复核
+						1137 cell
+							1138 button 补登记
+					1139 row
+						1140 cell
+							1141 text 联通学生乙
+							1142 text PC2026091202 · 学生
+						1143 cell
+							1144 text 生效 2026-09-12 11:02:30
+							1145 text 到期 长期有效
+						1146 cell
+							1147 text 来源待确认
+							1148 text —
+						1149 cell
+							1150 text 生效中
+							1151 text 未复核
+						1152 cell
+							1153 button 补登记
+					1154 row
+						1155 cell
+							1156 text 联通学生甲
+							1157 text PC2026091201 · 学生
+						1158 cell
+							1159 text 生效 2026-09-12 11:02:30
+							1160 text 到期 长期有效
+						1161 cell
+							1162 text 来源待确认
+							1163 text —
+						1164 cell
+							1165 text 生效中
+							1166 text 未复核
+						1167 cell
+							1168 button 补登记
+					1169 row
+						1170 cell
+							1171 text 联通学院审核
+							1172 text pcflow_college · 学院管理员
+						1173 cell
+							1174 text 生效 2026-09-12 11:02:28
+							1175 text 到期 长期有效
+						1176 cell
+							1177 text 来源待确认
+							1178 text —
+						1179 cell
+							1180 text 生效中
+							1181 text 未复核
+						1182 cell
+							1183 button 补登记
+					1184 row
+						1185 cell
+							1186 text 联通任课教师
+							1187 text pcflow_teacher · 辅导员
+						1188 cell
+							1189 text 生效 2026-09-12 11:02:28
+							1190 text 到期 长期有效
+						1191 cell
+							1192 text 来源待确认
+							1193 text —
+						1194 cell
+							1195 text 生效中
+							1196 text 未复核
+						1197 cell
+							1198 button 补登记
+					1199 row
+						1200 cell
+							1201 text 联通任课教师
+							1202 text pcflow_teacher · 任课教师
+						1203 cell
+							1204 text 生效 2026-09-12 11:02:28
+							1205 text 到期 长期有效
+						1206 cell
+							1207 text 来源待确认
+							1208 text —
+						1209 cell
+							1210 text 生效中
+							1211 text 未复核
+						1212 cell
+							1213 button 补登记
+					1214 row
+						1215 cell
+							1216 text 王老师
+							1217 text teacher2 · 安全审计员
+						1218 cell
+							1219 text 生效 2026-09-11 13:41:41
+							1220 text 到期 长期有效
+						1221 cell
+							1222 text 来源待确认
+							1223 text —
+						1224 cell
+							1225 text 生效中
+							1226 text 未复核
+						1227 cell
+							1228 button 补登记
+					1229 row
+						1230 cell
+							1231 text 王老师
+							1232 text teacher2 · 系统管理员
+						1233 cell
+							1234 text 生效 2026-09-11 13:41:41
+							1235 text 到期 长期有效
+						1236 cell
+							1237 text 来源待确认
+							1238 text —
+						1239 cell
+							1240 text 生效中
+							1241 text 未复核
+						1242 cell
+							1243 button 补登记
+					1244 row
+						1245 cell
+							1246 text 王老师
+							1247 text teacher2 · 团委老师
+						1248 cell
+							1249 text 生效 2026-09-11 13:41:41
+							1250 text 到期 长期有效
+						1251 cell
+							1252 text 来源待确认
+							1253 text —
+						1254 cell
+							1255 text 生效中
+							1256 text 未复核
+						1257 cell
+							1258 button 补登记
+					1259 row
+						1260 cell
+							1261 text 王老师
+							1262 text teacher2 · 学工老师
+						1263 cell
+							1264 text 生效 2026-09-11 13:41:41
+							1265 text 到期 长期有效
+						1266 cell
+							1267 text 来源待确认
+							1268 text —
+						1269 cell
+							1270 text 生效中
+							1271 text 未复核
+						1272 cell
+							1273 button 补登记
+					1274 row
+						1275 cell
+							1276 text 王老师
+							1277 text teacher2 · 心理老师
+						1278 cell
+							1279 text 生效 2026-09-11 13:41:41
+							1280 text 到期 长期有效
+						1281 cell
+							1282 text 来源待确认
+							1283 text —
+						1284 cell
+							1285 text 生效中
+							1286 text 未复核
+						1287 cell
+							1288 button 补登记
+					1289 row
+						1290 cell
+							1291 text 王老师
+							1292 text teacher2 · 组织人事
+						1293 cell
+							1294 text 生效 2026-09-11 13:41:41
+							1295 text 到期 长期有效
+						1296 cell
+							1297 text 来源待确认
+							1298 text —
+						1299 cell
+							1300 text 生效中
+							1301 text 未复核
+						1302 cell
+							1303 button 补登记
+					1304 row
+						1305 cell
+							1306 text 王老师
+							1307 text teacher2 · 校院领导
+						1308 cell
+							1309 text 生效 2026-09-11 13:41:41
+							1310 text 到期 长期有效
+						1311 cell
+							1312 text 来源待确认
+							1313 text —
+						1314 cell
+							1315 text 生效中
+							1316 text 未复核
+						1317 cell
+							1318 button 补登记
+					1319 row
+						1320 cell
+							1321 text 王老师
+							1322 text teacher2 · 毕设管理员
+						1323 cell
+							1324 text 生效 2026-09-11 13:41:41
+							1325 text 到期 长期有效
+						1326 cell
+							1327 text 来源待确认
+							1328 text —
+						1329 cell
+							1330 text 生效中
+							1331 text 未复核
+						1332 cell
+							1333 button 补登记
+					1334 row
+						1335 cell
+							1336 text 王老师
+							1337 text teacher2 · 毕设评阅教师
+						1338 cell
+							1339 text 生效 2026-09-11 13:41:41
+							1340 text 到期 长期有效
+						1341 cell
+							1342 text 来源待确认
+							1343 text —
+						1344 cell
+							1345 text 生效中
+							1346 text 未复核
+						1347 cell
+							1348 button 补登记
+					1349 row
+						1350 cell
+							1351 text 王老师
+							1352 text teacher2 · 专业毕设负责人
+						1353 cell
+							1354 text 生效 2026-09-11 13:41:41
+							1355 text 到期 长期有效
+						1356 cell
+							1357 text 来源待确认
+							1358 text —
+						1359 cell
+							1360 text 生效中
+							1361 text 未复核
+						1362 cell
+							1363 button 补登记
+					1364 row
+						1365 cell
+							1366 text 王老师
+							1367 text teacher2 · 毕设成绩管理员
+						1368 cell
+							1369 text 生效 2026-09-11 13:41:41
+							1370 text 到期 长期有效
+						1371 cell
+							1372 text 来源待确认
+							1373 text —
+						1374 cell
+							1375 text 生效中
+							1376 text 未复核
+						1377 cell
+							1378 button 补登记
+					1379 row
+						1380 cell
+							1381 text 王老师
+							1382 text teacher2 · 答辩秘书
+						1383 cell
+							1384 text 生效 2026-09-11 13:41:41
+							1385 text 到期 长期有效
+						1386 cell
+							1387 text 来源待确认
+							1388 text —
+						1389 cell
+							1390 text 生效中
+							1391 text 未复核
+						1392 cell
+							1393 button 补登记
+					1394 row
+						1395 cell
+							1396 text 王老师
+							1397 text teacher2 · 答辩专家
+						1398 cell
+							1399 text 生效 2026-09-11 13:41:41
+							1400 text 到期 长期有效
+						1401 cell
+							1402 text 来源待确认
+							1403 text —
+						1404 cell
+							1405 text 生效中
+							1406 text 未复核
+						1407 cell
+							1408 button 补登记
+					1409 row
+						1410 cell
+							1411 text 王老师
+							1412 text teacher2 · 学院毕设管理员
+						1413 cell
+							1414 text 生效 2026-09-11 13:41:41
+							1415 text 到期 长期有效
+						1416 cell
+							1417 text 来源待确认
+							1418 text —
+						1419 cell
+							1420 text 生效中
+							1421 text 未复核
+						1422 cell
+							1423 button 补登记
+					1424 row
+						1425 cell
+							1426 text 王老师
+							1427 text teacher2 · 就业老师
+						1428 cell
+							1429 text 生效 2026-09-11 13:41:41
+							1430 text 到期 长期有效
+						1431 cell
+							1432 text 来源待确认
+							1433 text —
+						1434 cell
+							1435 text 生效中
+							1436 text 未复核
+						1437 cell
+							1438 button 补登记
+					1439 row
+						1440 cell
+							1441 text 王老师
+							1442 text teacher2 · 宿管老师
+						1443 cell
+							1444 text 生效 2026-09-11 13:41:41
+							1445 text 到期 长期有效
+						1446 cell
+							1447 text 来源待确认
+							1448 text —
+						1449 cell
+							1450 text 生效中
+							1451 text 未复核
+						1452 cell
+							1453 button 补登记
+					1454 row
+						1455 cell
+							1456 text 王老师
+							1457 text teacher2 · 学院管理员
+						1458 cell
+							1459 text 生效 2026-09-11 13:41:41
+							1460 text 到期 长期有效
+						1461 cell
+							1462 text 来源待确认
+							1463 text —
+						1464 cell
+							1465 text 生效中
+							1466 text 未复核
+						1467 cell
+							1468 button 补登记
+					1469 row
+						1470 cell
+							1471 text 王老师
+							1472 text teacher2 · 毕设指导教师
+						1473 cell
+							1474 text 生效 2026-09-11 13:41:41
+							1475 text 到期 长期有效
+						1476 cell
+							1477 text 来源待确认
+							1478 text —
+						1479 cell
+							1480 text 生效中
+							1481 text 未复核
+						1482 cell
+							1483 button 补登记
+					1484 row
+						1485 cell
+							1486 text 王老师
+							1487 text teacher2 · 实习指导教师
+						1488 cell
+							1489 text 生效 2026-09-11 13:41:41
+							1490 text 到期 长期有效
+						1491 cell
+							1492 text 来源待确认
+							1493 text —
+						1494 cell
+							1495 text 生效中
+							1496 text 未复核
+						1497 cell
+							1498 button 补登记
+					1499 row
+						1500 cell
+							1501 text 王老师
+							1502 text teacher2 · 学工处管理员
+						1503 cell
+							1504 text 生效 2026-09-11 13:41:41
+							1505 text 到期 长期有效
+						1506 cell
+							1507 text 来源待确认
+							1508 text —
+						1509 cell
+							1510 text 生效中
+							1511 text 未复核
+						1512 cell
+							1513 button 补登记
+					1514 row
+						1515 cell
+							1516 text 王老师
+							1517 text teacher2 · 教务处管理员
+						1518 cell
+							1519 text 生效 2026-09-11 13:41:41
+							1520 text 到期 长期有效
+						1521 cell
+							1522 text 来源待确认
+							1523 text —
+						1524 cell
+							1525 text 生效中
+							1526 text 未复核
+						1527 cell
+							1528 button 补登记
+					1529 row
+						1530 cell
+							1531 text 王老师
+							1532 text teacher2 · 任课教师
+						1533 cell
+							1534 text 生效 2026-09-11 13:41:41
+							1535 text 到期 长期有效
+						1536 cell
+							1537 text 来源待确认
+							1538 text —
+						1539 cell
+							1540 text 生效中
+							1541 text 未复核
+						1542 cell
+							1543 button 补登记
+					1544 row
+						1545 cell
+							1546 text 王老师
+							1547 text teacher2 · 学校管理员
+						1548 cell
+							1549 text 生效 2026-09-11 13:41:41
+							1550 text 到期 长期有效
+						1551 cell
+							1552 text 来源待确认
+							1553 text —
+						1554 cell
+							1555 text 生效中
+							1556 text 未复核
+						1557 cell
+							1558 button 补登记
+					1559 row
+						1560 cell
+							1561 text 郭睿哲
+							1562 text sbx_t0288 · 毕设指导教师
+						1563 cell
+							1564 text 生效 2026-08-31 00:28:31
+							1565 text 到期 长期有效
+						1566 cell
+							1567 text 来源待确认
+							1568 text —
+						1569 cell
+							1570 text 生效中
+							1571 text 未复核
+						1572 cell
+							1573 button 补登记
+					1574 row
+						1575 cell
+							1576 text 何睿哲
+							1577 text sbx_t0287 · 毕设指导教师
+						1578 cell
+							1579 text 生效 2026-08-31 00:28:31
+							1580 text 到期 长期有效
+						1581 cell
+							1582 text 来源待确认
+							1583 text —
+						1584 cell
+							1585 text 生效中
+							1586 text 未复核
+						1587 cell
+							1588 button 补登记
+					1589 row
+						1590 cell
+							1591 text 林睿哲
+							1592 text sbx_t0286 · 毕设指导教师
+						1593 cell
+							1594 text 生效 2026-08-31 00:28:31
+							1595 text 到期 长期有效
+						1596 cell
+							1597 text 来源待确认
+							1598 text —
+						1599 cell
+							1600 text 生效中
+							1601 text 未复核
+						1602 cell
+							1603 button 补登记
+				1604 container 角色授权分页
+					1605 text 共 22257 条 · 每页 50 条 · 第 1 / 446 页
+					1606 button (disabled) 上一页
+					1607 button 下一页
+					1608 container
+						1609 text 跳至 
+						1610 stepper (settable, integer) Description: 授权清单页码, Value: 1
+						1611 text  页
+					1612 button 跳转
+			199 button 我的常用
+
+The focused UI element is 720 button 角色成员与业务身份

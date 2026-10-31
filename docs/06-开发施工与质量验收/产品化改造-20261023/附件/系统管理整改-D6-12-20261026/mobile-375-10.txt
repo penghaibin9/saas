@@ -1,0 +1,195 @@
+- banner:
+  - textbox "搜索功能与帮助":
+    - /placeholder: 搜索功能或帮助
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 系统管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "目录"
+- tablist "已打开页面":
+  - tab "本校角色":
+    - generic: 本校角色
+  - button "关闭本校角色":
+  - tab "日志中心":
+    - generic: 日志中心
+  - button "关闭日志中心":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工账号" [selected]:
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:34
+  - heading "教职工账号" [level=1]
+  - button "⇪ 教职工导入"
+  - button "⇩ 批量导出"
+  - button "手机号治理"
+  - generic: 操作均写入审计日志
+  - button "▥ 列设置"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 工号
+  - generic: 角色
+  - combobox "角色":
+    - option "全部" [selected]
+    - option "整改验收教师"
+    - option "专业毕设负责人"
+    - option "任课教师"
+    - option "团委老师"
+    - option "学工处管理员"
+    - option "学工老师"
+    - option "学校管理员"
+    - option "学院毕设管理员"
+    - option "学院管理员"
+    - option "安全审计员"
+    - option "实习指导教师"
+    - option "宿管老师"
+    - option "就业老师"
+    - option "心理老师"
+    - option "教务处管理员"
+    - option "普通教职工"
+    - option "校领导"
+    - option "毕设成绩管理员"
+    - option "毕设指导教师"
+    - option "毕设管理员"
+    - option "毕设评阅教师"
+    - option "答辩专家"
+    - option "答辩秘书"
+    - option "系统管理员"
+    - option "组织人事"
+    - option "资助老师"
+    - option "辅导员"
+  - generic: 账号状态
+  - combobox "账号状态":
+    - option "全部" [selected]
+    - option "启用中"
+    - option "已停用"
+    - option "已锁定"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "教职工 业务归属 角色 手机号（脱敏） 状态 最近登录 操作":
+        - columnheader:
+          - checkbox
+        - columnheader "教职工"
+        - columnheader "业务归属"
+        - columnheader "角色"
+        - columnheader "手机号（脱敏）"
+        - columnheader "状态"
+        - columnheader "最近登录"
+        - columnheader "操作"
+    - rowgroup:
+      - row "四域验收教师乙 D606****02 未设置 未分配 未登记 启用中 未记录登录时间 查看 编辑 重置密码 停用":
+        - cell:
+          - checkbox
+        - cell "四域验收教师乙 D606****02":
+          - generic: 四域验收教师乙
+          - generic: D606****02
+        - cell "未设置"
+        - cell "未分配"
+        - cell "未登记"
+        - cell "启用中":
+          - generic: 启用中
+        - cell "未记录登录时间"
+        - cell "查看 编辑 重置密码 停用":
+          - button "查看"
+          - button "编辑"
+          - button "重置密码"
+          - button "停用"
+      - row "整改验收教师甲 D603****01 班级：D606待补辅导员班 任课教师 未登记 启用中 未记录登录时间 查看 编辑 重置密码 停用":
+        - cell:
+          - checkbox
+        - cell "整改验收教师甲 D603****01":
+          - generic: 整改验收教师甲
+          - generic: D603****01
+        - cell "班级：D606待补辅导员班"
+        - cell "任课教师":
+          - generic: 任课教师
+        - cell "未登记"
+        - cell "启用中":
+          - generic: 启用中
+        - cell "未记录登录时间"
+        - cell "查看 编辑 重置密码 停用":
+          - button "查看"
+          - button "编辑"
+          - button "重置密码"
+          - button "停用"
+      - row "整改验收经办人 d6_a****or 未设置 学校管理员 系统管理员 任课教师 未登记 启用中 2026-10-27 09:06 查看 编辑 重置密码 停用":
+        - cell:
+          - checkbox
+        - cell "整改验收经办人 d6_a****or":
+          - generic: 整改验收经办人
+          - generic: d6_a****or
+        - cell "未设置"
+        - cell "学校管理员 系统管理员 任课教师":
+          - generic: 学校管理员
+          - generic: 系统管理员
+          - generic: 任课教师
+        - cell "未登记"
+        - cell "启用中":
+          - generic: 启用中
+        - cell "2026-10-27 09:06"
+        - cell "查看 编辑 重置密码 停用":
+          - button "查看"
+          - button "编辑"
+          - button "重置密码"
+          - button "停用"
+  - generic: 共 3 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

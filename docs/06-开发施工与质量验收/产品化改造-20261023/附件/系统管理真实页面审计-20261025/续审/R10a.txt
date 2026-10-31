@@ -1,0 +1,485 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/accounts/staff".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/accounts/staff
+	1 container app
+		2 container
+			244 text 高校学生全生命周期管理平台
+			3 image
+			4 text field (settable) 搜索学生、功能或帮助
+			5 text Ctrl K
+			245 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				246 image
+				247 text 北京 13° 阴
+			248 button (collapsed) 10/25周日 14:32, Secondary Actions: Expand
+				249 image
+				578 text 10/25周日 14:32
+			6 button 帮助与引导
+			7 button 消息中心
+				8 image
+			9 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				10 text 胡
+				11 text 胡管理
+				12 text 系统管理员
+		13 container
+			14 container 一级菜单
+				15 button 学工中心
+				16 button 系统管理
+			17 button (collapsed) 当前范围, Secondary Actions: Expand
+				18 image
+				19 text 当前范围
+				20 image
+			251 button (collapsed) 本次工作 02:12:50, Secondary Actions: Expand
+				252 image
+				757 text 本次工作 02:12:50
+		254 container 二级菜单
+			255 button 收窄二级菜单
+				256 text 系统管理
+			257 container 二级菜单
+				258 button 系统概览
+				259 button 身份与账号
+				260 button 组织主数据
+				261 button 角色与权限
+				262 button 学校配置
+				263 button 流程配置
+				264 button 安全与审计
+				265 button 接口与同步
+			266 checkbox Description: 取消固定二级菜单, Value: 1
+		267 container 三级菜单
+			268 button 收窄三级菜单
+				621 text 身份与账号
+			270 container 三级菜单
+				622 button 教职工账号
+				623 button 学生账号
+				624 button 教职工导入
+				625 button 学生导入与账号开通
+				626 button 数据交换任务中心
+				627 button 账号异常排查
+				628 button 登录与安全策略
+			280 checkbox Description: 取消固定三级菜单, Value: 1
+		21 container
+			23 tab group 已打开页面
+				24 container
+					25 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					26 button 关闭学生导入与账号开通
+						27 image
+				28 container
+					29 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					30 button 关闭系统总览
+						31 image
+				155 container
+					156 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					157 button 关闭实施总览
+						158 image
+				282 container
+					283 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					284 button 关闭首次开局向导
+						285 image
+				527 container
+					528 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					529 button 关闭预设方案
+						530 image
+				549 container
+					550 tab (selectable, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 0
+职业教育国家标准库
+					551 button 关闭职业教育国家标准库
+						552 image
+				554 container
+					555 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					556 button 关闭数据导入与智能匹配
+						557 image
+				579 container
+					580 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					581 button 关闭已安装配置
+						582 image
+				594 container
+					595 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					596 button 关闭变更与升级
+						597 image
+				599 container
+					600 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					601 button 关闭上线检查与验收
+						602 image
+				629 container
+					630 tab (selected, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 1
+教职工账号
+					631 button 关闭教职工账号
+						632 image
+			32 button 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			633 container
+				634 heading 教职工账号, Value: 1
+					635 text 教职工账号
+				636 button ⇪ 教职工导入
+				637 button ⇩ 批量导出
+				638 button 手机号治理
+				639 text 操作均写入审计日志
+				640 button ▥ 列设置
+				641 text 关键词
+				642 text field (settable) 关键词, Value: admin2
+				643 text 角色
+				644 pop up button (collapsed, settable) 角色, Value: 全部, Secondary Actions: Expand
+					645 menu
+						646 (selected) 全部
+						647 任课教师
+						648 普通教职工
+						649 沙箱联调角色0913
+						650 沙箱联调角色0913（自定义）
+						651 专业毕设负责人
+						652 团委老师
+						653 学工处管理员
+						654 学工老师
+						655 学校管理员
+						656 学院毕设管理员
+						657 学院管理员
+						658 安全审计员
+						659 实习指导教师
+						660 宿管老师
+						661 就业老师
+						662 心理老师
+						663 教务处管理员
+						664 校院领导
+						665 毕设成绩管理员
+						666 毕设指导教师
+						667 毕设管理员
+						668 毕设评阅教师
+						669 答辩专家
+						670 答辩秘书
+						671 系统管理员
+						672 组织人事
+						673 资助老师
+						674 辅导员
+				675 text 账号状态
+				676 pop up button (collapsed, settable) 账号状态, Value: 全部, Secondary Actions: Expand
+					677 menu
+						678 (selected) 全部
+						679 启用中
+						680 已停用
+						681 已锁定
+				682 button 查询
+				683 button 重置
+				685 table
+					686 row
+						687 cell
+							688 checkbox (settable, integer) 0
+						689 cell
+							690 text 教职工
+						691 cell
+							692 text 业务归属
+						693 cell
+							694 text 角色
+						695 cell
+							696 text 手机号（脱敏）
+						697 cell
+							698 text 状态
+						699 cell
+							700 text 最近登录
+						701 cell
+							702 text 操作
+					703 row
+						704 cell
+							705 checkbox (settable, integer) 0
+						706 cell
+							707 text 胡管理
+							708 text admi****n2
+						709 cell
+							710 text 未设置
+						711 cell
+							712 text 学校管理员
+							713 text 任课教师
+							714 text 学工处管理员
+							715 text 实习指导教师
+							716 text 学院毕设管理员
+							717 text 专业毕设负责人
+							718 text 学工老师
+							719 text 系统管理员
+						720 cell
+							721 text 未登记
+						722 cell
+							723 text 启用中
+						724 cell
+							725 text 从未登录
+						726 cell
+							727 button 查看
+							728 button 编辑
+							729 button 重置密码
+							730 button 停用
+				731 text 共 1 条
+				732 button (disabled) 上一页
+				733 button 1
+				734 button (disabled) 下一页
+			154 button 我的常用
+	736 container 账号详情 · 胡管理
+		737 container
+			738 heading 账号详情 · 胡管理, Value: 3
+				741 text 账号详情 · 胡管理
+			740 button 关闭
+		742 container
+			743 text 工号 / 账号 admi****n2 业务归属 未设置 手机号 未登记  （完整号码需审计授权）
+			744 container 手机号治理
+				745 heading 手机号登录凭据, Value: 3
+					758 text 手机号登录凭据
+				759 text 联系方式不等于登录凭据。本人短信验证前仅为待核验；原学号 / 工号和密码始终保留。
+				746 container
+					760 text 号码状态
+					747 pop up button (collapsed, settable) 号码状态, Value: 全部, Secondary Actions: Expand
+						748 menu
+							761 (disabled) 全部
+							762 (disabled) 未绑定
+							763 (disabled) 待本人验证
+							764 (disabled) 已验证
+							765 (disabled) 号码冲突
+							766 (disabled) 已撤销
+					767 text 精确手机号
+					768 text field (settable) 精确手机号
+					769 button 查询 / 重新读取
+				770 container
+					771 text 提醒 / 导出用途
+					772 text field (settable) 提醒 / 导出用途
+				773 button 预览待验证本人提醒
+				774 button 预览筛选范围脱敏台账
+				775 table
+					776 row
+						777 cell
+							778 text 原账号 / 姓名
+						779 cell
+							780 text 登录号码
+						781 cell
+							782 text 待核验号码
+						783 cell
+							784 text 来源 / 版本
+						785 cell
+							786 text 办理
+					787 row
+						788 cell
+							789 text admin2
+							790 text 胡管理
+						791 cell
+							792 text 未绑定
+							793 text 未绑定
+						794 cell
+							795 text 未登记
+							796 text 无候选
+						797 cell
+							798 text 无候选来源
+							799 text 凭据 0 / 候选 0
+						800 cell
+							801 text 当前不可办理
+				802 text 共 1 个账号 · 第 1 页
+				803 button (disabled) 上一页
+				804 button (disabled) 下一页
+			749 text 邮箱 未登记 状态 启用中 账号来源 系统创建
+			750 heading 角色与数据范围, Value: 4
+				805 text 角色与数据范围
+			751 text 学校管理员 SCHOOL 任课教师 ASSIGNED 学工处管理员 SCHOOL 实习指导教师 INTERN_STUDENTS 学院毕设管理员 COLLEGE 专业毕设负责人 MAJOR 学工老师 COLLEGE 系统管理员 SCHOOL
+			752 button 调整角色分配
+			753 heading 最近登录, Value: 4
+				806 text 最近登录
+			754 container
+				807 text ▢ 暂无登录记录 该账号尚未登录过系统
+				755 button 返回
+			756 heading 操作留痕, Value: 4
+				808 text 操作留痕
+			809 table
+				810 row
+					811 cell
+						812 text 操作人
+					813 cell
+						814 text 动作
+					815 cell
+						816 text 影响
+					817 cell
+						818 text 时间
+				819 row
+					820 cell
+						821 text 系统
+					822 cell
+						823 text 业务操作
+					824 cell
+						825 text admin2
+					826 cell
+						827 text 2026-10-25 04:14:37
+				828 row
+					829 cell
+						830 text 系统
+					831 cell
+						832 text 业务操作
+					833 cell
+						834 text admin2
+					835 cell
+						836 text 2026-10-25 04:04:03
+				837 row
+					838 cell
+						839 text 系统
+					840 cell
+						841 text 业务操作
+					842 cell
+						843 text admin2
+					844 cell
+						845 text 2026-10-25 04:03:11
+				846 row
+					847 cell
+						848 text 系统
+					849 cell
+						850 text 业务操作
+					851 cell
+						852 text admin2
+					853 cell
+						854 text 2026-10-25 04:02:28
+				855 row
+					856 cell
+						857 text 系统
+					858 cell
+						859 text 业务操作
+					860 cell
+						861 text admin2
+					862 cell
+						863 text 2026-10-23 16:17:31
+				864 row
+					865 cell
+						866 text 系统
+					867 cell
+						868 text 业务操作
+					869 cell
+						870 text admin2
+					871 cell
+						872 text 2026-10-23 16:17:25
+				873 row
+					874 cell
+						875 text 系统
+					876 cell
+						877 text 业务操作
+					878 cell
+						879 text admin2
+					880 cell
+						881 text 2026-10-23 16:17:12
+				882 row
+					883 cell
+						884 text 系统
+					885 cell
+						886 text 业务操作
+					887 cell
+						888 text admin2
+					889 cell
+						890 text 2026-10-23 16:10:26
+				891 row
+					892 cell
+						893 text 系统
+					894 cell
+						895 text 业务操作
+					896 cell
+						897 text admin2
+					898 cell
+						899 text 2026-10-23 16:10:15
+				900 row
+					901 cell
+						902 text 系统
+					903 cell
+						904 text 业务操作
+					905 cell
+						906 text admin2
+					907 cell
+						908 text 2026-10-23 16:10:06
+				909 row
+					910 cell
+						911 text 系统
+					912 cell
+						913 text 业务操作
+					914 cell
+						915 text admin2
+					916 cell
+						917 text 2026-10-06 06:06:14
+				918 row
+					919 cell
+						920 text 系统
+					921 cell
+						922 text 业务操作
+					923 cell
+						924 text admin2
+					925 cell
+						926 text 2026-10-06 06:02:57
+				927 row
+					928 cell
+						929 text 系统
+					930 cell
+						931 text 业务操作
+					932 cell
+						933 text admin2
+					934 cell
+						935 text 2026-10-06 06:02:31
+				936 row
+					937 cell
+						938 text 系统
+					939 cell
+						940 text 业务操作
+					941 cell
+						942 text admin2
+					943 cell
+						944 text 2026-10-06 06:02:22
+				945 row
+					946 cell
+						947 text 系统
+					948 cell
+						949 text 业务操作
+					950 cell
+						951 text admin2
+					952 cell
+						953 text 2026-10-06 03:41:52
+				954 row
+					955 cell
+						956 text 系统
+					957 cell
+						958 text 业务操作
+					959 cell
+						960 text admin2
+					961 cell
+						962 text 2026-10-03 09:12:26
+				963 row
+					964 cell
+						965 text 系统
+					966 cell
+						967 text 业务操作
+					968 cell
+						969 text admin2
+					970 cell
+						971 text 2026-10-02 13:50:14
+				972 row
+					973 cell
+						974 text 系统
+					975 cell
+						976 text 业务操作
+					977 cell
+						978 text admin2
+					979 cell
+						980 text 2026-10-02 13:45:50
+				981 row
+					982 cell
+						983 text 系统
+					984 cell
+						985 text 业务操作
+					986 cell
+						987 text admin2
+					988 cell
+						989 text 2026-09-28 14:30:23
+				990 row
+					991 cell
+						992 text 系统
+					993 cell
+						994 text 业务操作
+					995 cell
+						996 text admin2
+					997 cell
+						998 text 2026-09-28 14:30:16
+
+The focused UI element is 727 button 查看

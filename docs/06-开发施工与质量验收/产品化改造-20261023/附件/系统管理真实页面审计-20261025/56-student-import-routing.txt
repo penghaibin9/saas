@@ -1,0 +1,125 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/student/import".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/student/import
+	1 container app
+		2 container
+			17 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				18 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:16, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:16
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 教务中心
+				26 button 毕业设计中心
+				27 button 岗位实习中心
+				28 button 系统管理
+			29 button (collapsed) 当前范围, Secondary Actions: Expand
+				30 image
+				31 text 当前范围
+				32 image
+			33 button (collapsed) 本次工作 00:10:24, Secondary Actions: Expand
+				34 image
+				600 text 本次工作 00:10:24
+		36 container 二级菜单
+			37 button 展开二级菜单
+			38 container 二级菜单
+				39 button 学工工作台
+				40 button 学生主档
+				41 button 班级与辅导员
+				42 button 数字迎新
+				43 button 请假销假
+				44 button 宿舍与公寓
+				45 button 风险预警与处置
+				46 button 困难认定
+				47 button 奖助勤贷补
+				48 button 违纪处分
+				49 button 谈心家校
+				50 button 心理关注
+				51 button 活动二课与社团
+				52 button 统计与档案
+			53 checkbox Description: 取消固定二级菜单, Value: 1
+		54 container 三级菜单
+			55 button 展开三级菜单
+			56 container 三级菜单
+				57 button 学生列表
+				58 button 学籍异动台账
+				59 button 风险标签
+				60 button 信息更正审核
+				61 button 身份核验
+				62 button 导入学生
+				63 button 数据导出
+			64 checkbox Description: 取消固定三级菜单, Value: 1
+		65 container
+			66 tab group 已打开页面
+				67 container
+					68 tab (selectable, settable, boolean) 班级管理, Help: 班级与辅导员 / 班级管理, Value: 0
+班级管理
+					69 button 关闭班级管理
+						70 image
+				71 container
+					72 tab (selectable, settable, boolean) 辅导员责任台账, Help: 班级与辅导员 / 辅导员责任台账, Value: 0
+辅导员责任台账
+					73 button 关闭辅导员责任台账
+						74 image
+				75 container
+					76 tab (selectable, settable, boolean) 学生列表, Help: 学生主档 / 学生列表, Value: 0
+学生列表
+					77 button 关闭学生列表
+						78 image
+				566 container
+					567 tab (selected, settable, boolean) 导入学生, Help: 学生主档 / 导入学生, Value: 1
+导入学生
+					568 button 关闭导入学生
+						569 image
+			79 button (disabled) 恢复最近关闭的页签
+				80 image
+			81 checkbox Description: 收藏当前页面, Value: 0
+				82 image
+			83 checkbox Description: 专注模式, Value: 0
+				84 image
+			570 container
+				571 heading 导入学生, Value: 1
+					572 text 导入学生
+				573 text 学生主档由教务学籍导入或系统管理学生导入统一维护。本入口将根据学校已开通模块和您的权限， 引导至正确入口，避免重复建档。 前往教务学籍导入 推荐
+				574 text 适用于教务处建立正式学生主档、学院专业班级和学籍信息，不会创建登录账号。
+				575 content list
+					576 container
+						577 AXListMarker • 
+						578 text 建立学籍：学院、专业、班级、年级、入学与学籍状态
+					579 container
+						580 AXListMarker • 
+						581 text 已存在的学生自动复用并补齐空缺，不重复建档
+					582 container
+						583 AXListMarker • 
+						584 text 不创建登录账号；学生登录需另行开通
+				585 button 前往教务学籍导入
+				586 text 前往学生导入与账号开通
+				587 text 适用于未使用教务系统的学校。导入时将创建或复用学生主档，并开通登录账号。
+				588 content list
+					589 container
+						590 AXListMarker • 
+						591 text 主档不存在：创建主档后开通账号并绑定 STUDENT 角色
+					592 container
+						593 AXListMarker • 
+						594 text 主档已存在：复用原档案后开通账号，不重复建档
+					595 container
+						596 AXListMarker • 
+						597 text 生成一次性初始密码回执，请及时下载
+				598 button 前往学生导入与账号开通
+				599 text 两个入口都可用时，建议优先由教务处走「教务学籍导入」建立正式学籍； 若确需同时开通登录账号，可使用「学生导入与账号开通」——统一的查重规则会阻止重复建档。 无论从哪个入口导入，学生都写入同一份学生主档：已存在的学生只会被复用并补齐空缺信息， 不会重复建档；调整院系班请走「教务中心 › 学籍异动」。
+			564 button 我的常用
+
+The focused UI element is 62 button 导入学生

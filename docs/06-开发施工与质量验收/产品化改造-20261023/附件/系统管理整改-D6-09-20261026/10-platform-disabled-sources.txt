@@ -1,0 +1,150 @@
+Browser tab: 1, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/admin/platform/business-forms".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/platform/business-forms
+	1 container app
+		2 container
+			49 text 平台运营中心
+			3 image
+			4 text field (settable) 搜索平台功能与帮助
+			5 text Ctrl K
+			50 button (collapsed) 北京 17° 晴间多云, Secondary Actions: Expand
+				51 image
+				52 text 北京 17° 晴间多云
+			53 button (collapsed) 10/26周一 14:54, Secondary Actions: Expand
+				54 image
+				55 text 10/26周一 14:54
+			6 button 帮助与引导
+			7 button (collapsed) 独 独立表单验收员 其他业务角色, Help: 查看账号与切换身份, Secondary Actions: Expand
+				8 text 独
+				9 text 独立表单验收员
+				10 text 其他业务角色
+		11 container
+			12 container 一级菜单
+				13 button 平台运营
+			14 button (collapsed) 当前范围, Secondary Actions: Expand
+				15 image
+				16 text 当前范围
+				17 image
+			56 button (collapsed) 本次工作 00:00:28, Secondary Actions: Expand
+				57 image
+				150 text 本次工作 00:00:28
+		59 container 二级菜单
+			60 button 收窄二级菜单
+				61 text 平台运营
+			62 container 二级菜单
+				63 button 全局标准与发布
+			64 checkbox Description: 取消固定二级菜单, Value: 1
+		65 container 三级菜单
+			66 button 收窄三级菜单
+				67 text 全局标准与发布
+			68 container 三级菜单
+				69 button 学校表单配置与版本
+			70 checkbox Description: 取消固定三级菜单, Value: 1
+		18 container
+			20 tab group 已打开页面
+				21 container
+					22 tab (selected, settable, boolean) 学校表单配置与版本, Help: 全局标准与发布 / 学校表单配置与版本, Value: 1
+学校表单配置与版本
+					23 button 关闭学校表单配置与版本
+						24 image
+			25 button (disabled) 恢复最近关闭的页签
+				26 image
+			27 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				28 image
+			29 checkbox Description: 专注模式, Value: 0
+				30 image
+			31 container
+				32 heading 学校表单配置与版本, Value: 1
+					33 text 学校表单配置与版本
+				34 text 明确选择目标学校后维护配置；此处不代办学生业务，也不读取业务表单提交内容。 已授权表单维护 数据范围：当前所选学校的表单配置
+				35 container
+					36 text 搜索学校
+					37 text field (settable) 搜索学校
+				38 button 查询学校
+				39 container
+					40 text 目标学校
+					41 pop up button (collapsed, settable) 目标学校, Value: 系统管理整改独立验收学校 · sandbox-school, Secondary Actions: Expand
+						42 menu
+							43 请选择学校
+							44 (selected) 系统管理整改独立验收学校 · sandbox-school
+				71 text 当前学校：系统管理整改独立验收学校。发布或停用前需要核对版本、影响和原因。
+				72 heading 来源合规能力目录, Value: 2
+					73 text 来源合规能力目录
+				74 text 这里核对平台已登记的来源能力，不读取学生业务事实，也不生成当前学校“合规通过”的结论。具体评估仍由所属业务模块按原权限执行。
+				75 table
+					76 row
+						77 cell
+							78 text 业务域
+						79 cell
+							80 text 已登记能力
+						81 cell
+							82 text 技术来源
+					83 row
+						84 cell
+							85 text 岗位实习
+						86 cell
+							87 text 来源域原生规则引擎
+						88 cell
+							89 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								90 text 实施人员使用
+					91 row
+						92 cell
+							93 text 毕业设计
+						94 cell
+							95 text 来源域材料规则
+						96 cell
+							97 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								98 text 实施人员使用
+					99 row
+						100 cell
+							101 text 学工
+						102 cell
+							103 text 仅有证据能力，不能判定合规通过
+						104 cell
+							105 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								106 text 实施人员使用
+					107 row
+						108 cell
+							109 text 教务
+						110 cell
+							111 text 仅有证据能力，不能判定合规通过
+						112 cell
+							113 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								114 text 实施人员使用
+				115 heading 表单定义, Value: 2
+					116 text 表单定义
+				117 button 独立验收表单（不接入既有业务）
+				118 container
+					119 heading 表单定义与版本, Value: 3
+						120 text 表单定义与版本
+					121 text D609_AUDIT_ONLY
+				122 table
+					123 row
+						124 cell
+							125 text 版本
+						126 cell
+							127 text 结构摘要
+						128 cell
+							129 text 支持端
+						130 cell
+							131 text 状态
+						132 cell
+							133 text 操作
+					134 row
+						135 cell
+							136 text 第 1 版
+						137 cell
+							138 text 3b23985e148d63d9a3222f7bbf5d54c4df13789e517e1227fb571318ec544d0e
+						139 cell
+							140 text 教职工电脑端
+						141 cell
+							142 text 已停用
+						143 cell
+							144 button 预览
+							145 button 校验
+							146 button 影响分析
+				147 text 共 1 个历史版本 · 第 1 页
+				148 button (disabled) 上一页
+				149 button (disabled) 下一页
+			48 button 我的常用
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/platform/business-forms

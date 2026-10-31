@@ -1,0 +1,360 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/data-exchange".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/data-exchange
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				9 image
+				10 text 北京 13° 阴
+			11 button (collapsed) 10/25周日 12:22, Secondary Actions: Expand
+				12 image
+				13 text 10/25周日 12:22
+			14 button 帮助与引导
+			15 button 消息中心
+				16 image
+			17 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				18 text 胡
+				19 text 胡管理
+				20 text 系统管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 系统管理
+			25 button (collapsed) 当前范围, Secondary Actions: Expand
+				26 image
+				27 text 当前范围
+				28 image
+			29 button (collapsed) 本次工作 00:02:33, Secondary Actions: Expand
+				30 image
+				421 text 本次工作 00:02:33
+		32 container 二级菜单
+			33 button 展开二级菜单
+			34 container 二级菜单
+				35 button 系统概览
+				36 button 身份与账号
+				37 button 组织主数据
+				38 button 角色与权限
+				39 button 学校配置
+				40 button 流程配置
+				41 button 安全与审计
+				42 button 接口与同步
+			43 checkbox Description: 取消固定二级菜单, Value: 1
+		44 container 三级菜单
+			45 button 展开三级菜单
+			46 container 三级菜单
+				47 button 教职工账号
+				48 button 学生账号
+				49 button 教职工导入
+				50 button 学生导入与账号开通
+				51 button 数据交换任务中心
+				52 button 账号异常排查
+				53 button 登录与安全策略
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				57 container
+					58 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					59 button 关闭系统总览
+						60 image
+				61 container
+					62 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					63 button 关闭教职工账号
+						64 image
+				370 container
+					371 tab (selected, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 1
+数据交换任务中心
+					372 button 关闭数据交换任务中心
+						373 image
+			65 button (disabled) 恢复最近关闭的页签
+				66 image
+			67 checkbox Description: 收藏当前页面, Value: 0
+				68 image
+			69 checkbox Description: 专注模式, Value: 0
+				70 image
+			374 container
+				375 heading 数据交换任务, Value: 1
+					376 text 数据交换任务
+				377 button 刷新状态
+				378 button 老系统迁移
+				379 button 导入学生
+				380 button 导入教职工
+				381 container 任务可见范围
+					382 text 任务视图
+					383 checkbox 本人任务, Value: 1
+					422 checkbox 模块任务, Value: 0
+					423 checkbox 全校任务, Value: 0
+					384 text 只读取本人创建的任务。查看、确认与下载分别鉴权。
+				385 container 独立任务汇总
+					386 container
+						387 text 全部任务 15 导入 6 · 导出 9
+					388 container
+						389 text 待处理 0 待确认或生成中
+					390 container
+						391 text 异常任务 0 预检或执行失败
+					392 container
+						393 text 有效导出文件 1 不代表当前身份有下载权限
+				424 text 汇总统计当前授权视图，不随下方关键词和状态筛选变化；不同状态统计不应直接相加。扫描解析中 0 项 · 已过期 8 项。
+				395 container
+					396 text field (settable) 查找数据交换任务
+					397 pop up button (collapsed, settable) Description: 任务类型, Value: 全部类型, Secondary Actions: Expand
+						398 menu
+							399 (selected) 全部类型
+							400 导入任务
+							401 导出与回执
+					402 pop up button (collapsed, settable) Description: 任务状态, Value: 全部状态, Secondary Actions: Expand
+						403 menu
+							404 (selected) 全部状态
+							405 安全扫描中
+							406 后台已领取
+							407 预检查中
+							408 预检通过 · 待确认
+							409 预检未通过
+							410 正在确认
+							411 等待生成
+							412 正在生成
+							413 已完成
+							414 处理失败
+							415 已取消
+							416 已过期
+							417 已撤销
+					418 button 查询
+					419 button 重置
+				425 container 数据交换任务清单
+					426 table
+						427 row
+							428 cell
+								429 text 任务与来源
+							430 cell
+								431 text 当前状态
+							432 cell
+								433 text 数据量
+							434 cell
+								435 text 创建时间 / 有效期
+							436 cell
+								437 text 下一步
+						438 row
+							439 cell
+								440 text 初始账号凭据回执
+								441 text 系统管理 · 导出 #18
+								442 text 强敏感回执 · 下载独立授权
+							443 cell
+								444 text 已过期
+							445 cell
+								446 text 1 行
+								447 text 已下载 2 次
+							448 cell
+								449 text 2026-10-04 03:37:58
+								450 text 有效至 2026-10-05 03:37:58
+							451 cell
+								452 button 核对回执 →
+						453 row
+							454 cell
+								455 text 教职工导入
+								456 text 系统管理 · 导入 #13
+							457 cell
+								458 text 已完成
+							459 cell
+								460 text 总行数 1
+								461 text 有效 1 · 错误 0
+							462 cell
+								463 text 2026-10-04 03:26:48
+								464 text 有效至 2026-10-05 03:26:48
+							465 cell
+								466 button 继续办理 →
+						467 row
+							468 cell
+								469 text 初始账号凭据回执
+								470 text 系统管理 · 导出 #17
+								471 text 强敏感回执 · 下载独立授权
+							472 cell
+								473 text 已过期
+							474 cell
+								475 text 1 行
+								476 text 已下载 1 次
+							477 cell
+								478 text 2026-10-02 07:20:03
+								479 text 有效至 2026-10-03 07:20:03
+							480 cell
+								481 button 核对回执 →
+						482 row
+							483 cell
+								484 text 教职工导入
+								485 text 系统管理 · 导入 #12
+							486 cell
+								487 text 已完成
+							488 cell
+								489 text 总行数 1
+								490 text 有效 1 · 错误 0
+							491 cell
+								492 text 2026-10-02 07:20:01
+								493 text 有效至 2026-10-03 07:20:01
+							494 cell
+								495 button 继续办理 →
+						496 row
+							497 cell
+								498 text 初始账号凭据回执
+								499 text 系统管理 · 导出 #13
+								500 text 强敏感回执 · 下载独立授权
+							501 cell
+								502 text 已过期
+							503 cell
+								504 text 2 行
+								505 text 已下载 1 次
+							506 cell
+								507 text 2026-09-12 11:02:30
+								508 text 有效至 2026-09-13 11:02:30
+							509 cell
+								510 button 核对回执 →
+						511 row
+							512 cell
+								513 text 初始账号凭据回执
+								514 text 系统管理 · 导出 #12
+								515 text 强敏感回执 · 下载独立授权
+							516 cell
+								517 text 已过期
+							518 cell
+								519 text 2 行
+								520 text 已下载 0 次
+							521 cell
+								522 text 2026-09-12 11:02:29
+								523 text 有效至 2026-09-13 11:02:29
+							524 cell
+								525 button 核对回执 →
+						526 row
+							527 cell
+								528 text 学生导入与账号开通
+								529 text 系统管理 · 导入 #8
+							530 cell
+								531 text 已完成
+							532 cell
+								533 text 总行数 2
+								534 text 有效 2 · 错误 0
+							535 cell
+								536 text 2026-09-12 11:02:29
+								537 text 有效至 2026-09-13 11:02:29
+							538 cell
+								539 button 继续办理 →
+						540 row
+							541 cell
+								542 text 教职工导入
+								543 text 系统管理 · 导入 #7
+							544 cell
+								545 text 已完成
+							546 cell
+								547 text 总行数 2
+								548 text 有效 2 · 错误 0
+							549 cell
+								550 text 2026-09-12 11:02:27
+								551 text 有效至 2026-09-13 11:02:27
+							552 cell
+								553 button 继续办理 →
+						554 row
+							555 cell
+								556 text 导出任务
+								557 text 教务中心 · 导出 #11
+							558 cell
+								559 text 已过期
+							560 cell
+								561 text 9 行
+								562 text 已下载 1 次
+							563 cell
+								564 text 2026-09-09 11:34:49
+								565 text 有效至 2026-09-10 11:34:49
+							566 cell
+								567 button 核对回执 →
+						568 row
+							569 cell
+								570 text 导出任务
+								571 text 教务中心 · 导出 #10
+							572 cell
+								573 text 已过期
+							574 cell
+								575 text 16 行
+								576 text 已下载 1 次
+							577 cell
+								578 text 2026-09-09 11:15:57
+								579 text 有效至 2026-09-10 11:15:57
+							580 cell
+								581 button 核对回执 →
+						582 row
+							583 cell
+								584 text 导出任务
+								585 text 教务中心 · 导出 #9
+							586 cell
+								587 text 已过期
+							588 cell
+								589 text 1 行
+								590 text 已下载 1 次
+							591 cell
+								592 text 2026-09-09 07:44:37
+								593 text 有效至 2026-09-10 07:44:37
+							594 cell
+								595 button 核对回执 →
+						596 row
+							597 cell
+								598 text 导出任务
+								599 text 教务中心 · 导出 #8
+							600 cell
+								601 text 已完成
+							602 cell
+								603 text 1 行
+								604 text 已下载 0 次
+							605 cell
+								606 text 2026-08-31 00:29:46
+								607 text 未设置单独有效期
+							608 cell
+								609 button 核对回执 →
+						610 row
+							611 cell
+								612 text 导入任务
+								613 text 教务中心 · 导入 #6
+							614 cell
+								615 text 已完成
+							616 cell
+								617 text 总行数 2
+								618 text 有效 1 · 错误 1
+							619 cell
+								620 text 2026-08-31 00:29:46
+								621 text 未设置单独有效期
+							622 cell
+								623 button 继续办理 →
+						624 row
+							625 cell
+								626 text 导出任务
+								627 text 其他授权模块 · 导出 #7
+							628 cell
+								629 text 已过期
+							630 cell
+								631 text 20000 行
+								632 text 已下载 1 次
+							633 cell
+								634 text 2026-08-31 00:29:44
+								635 text 有效至 2026-09-27 10:30:00
+							636 cell
+								637 button 核对回执 →
+						638 row
+							639 cell
+								640 text 学生导入与账号开通
+								641 text 系统管理 · 导入 #5
+							642 cell
+								643 text 已完成
+							644 cell
+								645 text 总行数 2
+								646 text 有效 1 · 错误 1
+							647 cell
+								648 text 2026-08-31 00:29:44
+								649 text 有效至 2027-08-28 10:30:00
+							650 cell
+								651 button 继续办理 →
+				652 container
+					653 text 共 15 个任务 · 每页 20 项 · 第 1 页
+					654 button (disabled) 上一页
+					655 button (disabled) 下一页
+			368 button 我的常用
+
+The focused UI element is 51 button 数据交换任务中心

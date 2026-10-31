@@ -1,0 +1,11 @@
+{
+  "version": 2,
+  "restoredRiskLabel": "高风险",
+  "consumerValues": [
+    "NONE",
+    "LOW",
+    "MEDIUM",
+    "HIGH"
+  ],
+  "scope": "仅独立虚构环境，页面保存及恢复后的只读回查"
+}

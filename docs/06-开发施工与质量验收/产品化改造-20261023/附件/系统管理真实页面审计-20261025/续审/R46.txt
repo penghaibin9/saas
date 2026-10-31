@@ -1,0 +1,273 @@
+http://127.0.0.1:5173/admin/system/sensitive-audit
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:40":
+    - generic: 10/25周日 14:40
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:20:26":
+  - generic: 本次工作 02:20:26
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - navigation "三级菜单":
+    - button "操作与权限审计":
+      - generic: 操作与权限审计
+    - button "登录与安全审计":
+      - generic: 登录与安全审计
+    - button "敏感与导入导出审计" [active]:
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性":
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+    - button "文件存储治理":
+      - generic: 文件存储治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "数据字典":
+    - generic: 数据字典
+  - button "关闭数据字典":
+  - tab "模块授权与业务开关":
+    - generic: 模块授权与业务开关
+  - button "关闭模块授权与业务开关":
+  - tab "主数据责任与数据质量":
+    - generic: 主数据责任与数据质量
+  - button "关闭主数据责任与数据质量":
+  - tab "合规与业务表单":
+    - generic: 合规与业务表单
+  - button "关闭合规与业务表单":
+  - tab "学年学期与业务日历":
+    - generic: 学年学期与业务日历
+  - button "关闭学年学期与业务日历":
+  - tab "流程安全与运行治理":
+    - generic: 流程安全与运行治理
+  - button "关闭流程安全与运行治理":
+  - tab "统一消息、待办与通知治理":
+    - generic: 统一消息、待办与通知治理
+  - button "关闭统一消息、待办与通知治理":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "登录与安全审计":
+    - generic: 登录与安全审计
+  - button "关闭登录与安全审计":
+  - tab "敏感与导入导出审计" [selected]:
+    - generic: 敏感与导入导出审计
+  - button "关闭敏感与导入导出审计":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - heading "敏感与导入导出审计" [level=1]
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 操作人 / 对象
+  - generic: 开始日期
+  - combobox "全部时间"
+  - generic: 结束日期
+  - combobox "全部时间"
+  - generic: 结果
+  - combobox "结果":
+    - option "全部" [selected]
+    - option "成功"
+    - option "拒绝"
+    - option "失败"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "时间 操作人 动作 对象 结果 模块":
+        - columnheader "时间"
+        - columnheader "操作人"
+        - columnheader "动作"
+        - columnheader "对象"
+        - columnheader "结果"
+        - columnheader "模块"
+    - rowgroup:
+      - row "2026-09-22 17:50 黄明轩 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-22 17:50"
+        - cell "黄明轩"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-22 17:50 黄明轩 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-22 17:50"
+        - cell "黄明轩"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-22 17:47 黄明轩 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-22 17:47"
+        - cell "黄明轩"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-22 17:47 黄明轩 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-22 17:47"
+        - cell "黄明轩"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-22 17:41 黄明轩 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-22 17:41"
+        - cell "黄明轩"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-22 17:41 黄明轩 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-22 17:41"
+        - cell "黄明轩"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-15 03:50 胡管理 导入 相关业务对象 成功 系统管理":
+        - cell "2026-09-15 03:50"
+        - cell "胡管理"
+        - cell "导入"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-15 03:50 胡管理 导入 相关业务对象 成功 系统管理":
+        - cell "2026-09-15 03:50"
+        - cell "胡管理"
+        - cell "导入"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-15 02:10 胡管理 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-15 02:10"
+        - cell "胡管理"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-15 02:10 胡管理 导出 相关业务对象 成功 系统管理":
+        - cell "2026-09-15 02:10"
+        - cell "胡管理"
+        - cell "导出"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+      - row "2026-09-12 12:24 胡管理 敏感查看 相关业务对象 成功 系统管理":
+        - cell "2026-09-12 12:24"
+        - cell "胡管理"
+        - cell "敏感查看"
+        - cell "相关业务对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "系统管理"
+  - generic: 共 11 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

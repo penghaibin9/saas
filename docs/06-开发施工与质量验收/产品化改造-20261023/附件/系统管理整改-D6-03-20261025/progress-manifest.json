@@ -1,0 +1,37 @@
+{
+  "card": "D6-03",
+  "status": "进行中",
+  "completedCards": 2,
+  "routeBaseline": "由本卡唯一新增actor透传逆向恢复副本，并与D6-02结卡校验值一致；未还原工作区文件",
+  "files": [
+    {
+      "path": "backend/app/services/job_registry.py",
+      "sha256": "063cbb1c76bb0433a709927ad52f675e6415e8ba94f87382e9747a7bea19285a"
+    },
+    {
+      "path": "backend/app/modules/system_admin/routers/system_bundle.py",
+      "sha256": "bb7f97fc93c86915d5ac143745d89c8dfd6c8724fd34d555153a9eba5e3acba1"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemJobCenterView.vue",
+      "sha256": "fe847fa0b8b13830b455f9d5aaa40ac06b467e3ddeded36e0c9063e6c93e92f9"
+    },
+    {
+      "path": "backend/tests/test_job_action_availability.py",
+      "sha256": "47fdffc4806e7a36308749c2fc538726538b8e73e03619244cdff49e668acf61"
+    },
+    {
+      "path": "frontend/tests/system-job-actions.behavior.test.mjs",
+      "sha256": "552fec609b96bb06821f5e6fe368f19d7d22e5eabc716c4f402804f33e9f8997"
+    }
+  ],
+  "task": "独立学校正常页面登记的EXPORT:1，已通过页面取消；没有下载回执",
+  "pending": [
+    "实际导入扫描与预检/确认/回执",
+    "完成/过期状态的真实流程覆盖",
+    "写入版本核对与真实原因输入",
+    "任务变更与审计同事务",
+    "任务分页统计边界",
+    "审计导出筛选及数量验证"
+  ]
+}

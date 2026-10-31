@@ -1,0 +1,115 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/implementation/standards".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/implementation/standards
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:08, Secondary Actions: Expand
+				11 image
+				206 text 10/25周日 12:08
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:02:15, Secondary Actions: Expand
+				32 image
+				237 text 本次工作 00:02:15
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		46 container 三级菜单
+			47 button 展开三级菜单
+			48 container 三级菜单
+				49 button 系统总览
+				50 button 实施总览
+				51 button 首次开局向导
+				52 button 预设方案
+				53 button 职业教育国家标准库
+				54 button 数据导入与智能匹配
+				55 button 已安装配置
+				56 button 变更与升级
+				57 button 上线检查与验收
+			58 checkbox Description: 取消固定三级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				61 container
+					62 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					63 button 关闭系统总览
+						64 image
+				65 container
+					66 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					67 button 关闭教职工账号
+						68 image
+				69 container
+					70 tab (selectable, settable, boolean) 教职工导入, Help: 身份与账号 / 教职工导入, Value: 0
+教职工导入
+					71 button 关闭教职工导入
+						72 image
+				73 container
+					74 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					75 button 关闭数据交换任务中心
+						76 image
+				202 container
+					203 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					204 button 关闭实施总览
+						205 image
+				208 container
+					209 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					210 button 关闭首次开局向导
+						211 image
+				215 container
+					216 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					217 button 关闭预设方案
+						218 image
+				238 container
+					239 tab (selected, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 1
+职业教育国家标准库
+					240 button 关闭职业教育国家标准库
+						241 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 收藏当前页面, Value: 0
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			242 container
+				243 heading 职业教育国家标准库, Value: 1
+					244 text 职业教育国家标准库
+				245 text 正在加载数据…
+			199 button 我的常用
+
+The focused UI element is 53 button 职业教育国家标准库

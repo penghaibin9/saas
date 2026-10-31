@@ -1,0 +1,38 @@
+{
+  "card": "D6-07",
+  "note": "当前工作区文件校验；共享文件包含既有差异，不构成提交授权或全部差异归属声明",
+  "files": [
+    {
+      "path": "backend/app/services/system_implementation_service.py",
+      "sha256": "502cf3bc64d09ebf158754dc784dd825a10cde7deab9b297493667e33a1129be"
+    },
+    {
+      "path": "backend/app/services/business_relation_install_service.py",
+      "sha256": "b692c4b92444ee0b598f20e7aac0edce2dcd5db93b8e851a891238561ee4ef03"
+    },
+    {
+      "path": "backend/app/services/runtime_preset_install_service.py",
+      "sha256": "49a04bca1af344ce4a87f94054586e84ceede37203785daab4bc8f12188772a6"
+    },
+    {
+      "path": "backend/tests/test_system_implementation.py",
+      "sha256": "3d0a161d0ca6fc1c90159068ac7c05f1b9455ed0823c4e64a21a86727a15c2c8"
+    },
+    {
+      "path": "frontend/src/modules/system/components/ImplementationProjectSummary.vue",
+      "sha256": "2e0263d951dd8a89efd6a236aacedfa19f72a2422f308208d1172b37dc393d8c"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemImplementationView.vue",
+      "sha256": "a5e3ebda0b3e94a8b26207a06f7a590e95d04ec7a74ffc31e239762bb189ba3a"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemImplementationWorkspaceView.vue",
+      "sha256": "f994b1bf666c940244af37ec24d3e099a9986ba6f157c480e7eab461fa2d6225"
+    },
+    {
+      "path": "frontend/tests/system-implementation-state.behavior.test.mjs",
+      "sha256": "69fc1c4736a61ece74f2b48f80ce3e7fa32c42565d07848270ca92c60dba93d6"
+    }
+  ]
+}

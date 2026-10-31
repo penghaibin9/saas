@@ -1,0 +1,208 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:53":
+    - generic: 10/27周二 09:53
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:50:32":
+  - generic: 本次工作 00:50:32
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 岗位实习中心
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日工作
+    - button "实习中心大屏":
+      - generic: 实习中心大屏
+    - button "批次与学生":
+      - generic: 批次与学生
+    - button "企业与岗位":
+      - generic: 企业与岗位
+    - button "申请与落岗":
+      - generic: 申请与落岗
+    - button "实习过程":
+      - generic: 实习过程
+    - button "风险与变更":
+      - generic: 风险与变更
+    - button "评价与成绩":
+      - generic: 评价与成绩
+    - button "归档与分析":
+      - generic: 归档与分析
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 申请与落岗
+  - navigation "三级菜单":
+    - button "岗位确认":
+      - generic: 岗位确认
+    - button "申请审核":
+      - generic: 申请审核
+    - button "岗位匹配":
+      - generic: 岗位匹配
+    - button "导师分配":
+      - generic: 导师分配
+    - button "三方协议":
+      - generic: 三方协议
+    - button "保险核验":
+      - generic: 保险核验
+    - button "上岗核验":
+      - generic: 上岗核验
+    - button "分配记录":
+      - generic: 分配记录
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "导师分配" [selected]:
+    - generic: 导师分配
+  - button "关闭导师分配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - heading "导师分配" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "D611跨批次跳转验证 · D611-OTHER-UI"
+    - option "D606实习批次 · D606-INTERN" [selected]
+  - generic: 草稿
+  - button "导出名单"
+  - button "管理学生名单"
+  - navigation "实习学生视图":
+    - generic: 3 名学生
+    - button "全部学生"
+    - button "待资格认定"
+    - button "待分配岗位"
+    - button "在岗学生"
+    - button "去向待落实"
+    - button "导师分配" [pressed]
+  - text: 学生姓名 / 学号
+  - searchbox "学生姓名 / 学号"
+  - text: 实习状态
+  - combobox "实习状态":
+    - option "全部" [selected]
+    - option "准备中"
+    - option "待上岗"
+    - option "在岗中"
+    - option "考核中"
+    - option "已归档"
+  - text: 实习资格
+  - combobox "实习资格":
+    - option "全部" [selected]
+    - option "待认定"
+    - option "资格合格"
+    - option "资格不合格"
+  - button "查询"
+  - button "重置"
+  - generic "更多筛选"
+  - option "全部" [selected]
+  - option "未落实"
+  - option "已分配岗位"
+  - option "自主实习"
+  - option "免实习"
+  - option "全部" [selected]
+  - option "已分配"
+  - option "未分配"
+  - table:
+    - rowgroup:
+      - row "学生 实习资格 岗位与去向 实习状态 指导教师 操作":
+        - columnheader "学生"
+        - columnheader "实习资格"
+        - columnheader "岗位与去向"
+        - columnheader "实习状态"
+        - columnheader "指导教师"
+        - columnheader "操作"
+    - rowgroup:
+      - row "第十卡虚构验收学生 D****Y · D606关系验收班 待认定 未落实 准备中 整改验收经办人 调整导师 档案":
+        - cell "第十卡虚构验收学生 D****Y · D606关系验收班":
+          - link "第十卡虚构验收学生":
+            - /url: /admin/internship/students/3?batchId=1&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=1
+          - generic: D****Y
+          - text: · D606关系验收班
+        - cell "待认定":
+          - generic: 待认定
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "整改验收经办人"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "四域虚构学生乙 D****2 · D606关系验收班 待认定 未落实 准备中 整改验收教师甲 调整导师 档案":
+        - cell "四域虚构学生乙 D****2 · D606关系验收班":
+          - link "四域虚构学生乙":
+            - /url: /admin/internship/students/2?batchId=1&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=1
+          - generic: D****2
+          - text: · D606关系验收班
+        - cell "待认定":
+          - generic: 待认定
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "整改验收教师甲"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+      - row "四域虚构学生甲 D****1 · D606关系验收班 待认定 未落实 准备中 四域验收教师乙 调整导师 档案":
+        - cell "四域虚构学生甲 D****1 · D606关系验收班":
+          - link "四域虚构学生甲":
+            - /url: /admin/internship/students/1?batchId=1&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=1
+          - generic: D****1
+          - text: · D606关系验收班
+        - cell "待认定":
+          - generic: 待认定
+        - cell "未落实"
+        - cell "准备中":
+          - generic: 准备中
+        - cell "四域验收教师乙"
+        - cell "调整导师 档案":
+          - button "调整导师"
+          - button "档案"
+  - generic: 共 3 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,165 @@
+{
+  "card": "D6-01",
+  "baseline": "ff7786877ff27cf983aa3e0e2f80334026444025",
+  "finalProductFiles": [
+    {
+      "path": "frontend/src/modules/system/components/workspace/RolePermissionPanel.vue",
+      "sha256": "c112779d73c00764e1d7177a77658d2717f25c546328090767cd4cc2ef244a6c"
+    },
+    {
+      "path": "frontend/src/modules/system/utils/workspaceContract.js",
+      "sha256": "30dbff49c3955f6e76e5a5169b7eecdac8a67c7021c93090e8fffa75e4893724"
+    },
+    {
+      "path": "frontend/tests/system-role-permission-preview.behavior.test.mjs",
+      "sha256": "0d701c54193f1ed151e14e32e59ea0cc9fcfcc35d5c0898b24ce3f9fee44d5fb"
+    }
+  ],
+  "evidence": [
+    {
+      "file": "01-before-school-admin.jpg",
+      "sha256": "fd77c4177ec0801117d405e73b4fd68e86681fe7b38b7942fcd9d0dcd7510310"
+    },
+    {
+      "file": "01-before-school-admin.txt",
+      "sha256": "40d807644dbd04452f82c188bf485141246c793f65bd49a92578748b6c50d531"
+    },
+    {
+      "file": "02-before-system-admin.jpg",
+      "sha256": "93269bc6d00f2d14528acfc27d3f33c794120256443803b2f3e390927a277292"
+    },
+    {
+      "file": "02-before-system-admin.txt",
+      "sha256": "63c0b8683b63dc1b65d4a65c7db5516afbe11f959fbdc1174de611f29f212826"
+    },
+    {
+      "file": "03-after-school-admin.jpg",
+      "sha256": "0a705315a3afcdf4e9a29f55f666e1bb23c19bc183352fe7191cd092bba3edd3"
+    },
+    {
+      "file": "03-after-school-admin.txt",
+      "sha256": "96d61ec6aa563e6e0908d4ac6a2df5c2cb23d67524bfb407918ede0189b81cd1"
+    },
+    {
+      "file": "04-after-system-admin.jpg",
+      "sha256": "20407db262942d68ed269eec03ed7b41d75fbaf858eaa5d9cae1c53c3d99b5ea"
+    },
+    {
+      "file": "04-after-system-admin.txt",
+      "sha256": "037ae457c153f03bc52782453d02638deff8302531f1093a47f9769831c9f377"
+    },
+    {
+      "file": "05-editable-preview.jpg",
+      "sha256": "4f61c0baa85cae79c8b24e18d7c132be7ec0e521cd6f7d8e3541c115c08a3824"
+    },
+    {
+      "file": "05-editable-preview.txt",
+      "sha256": "5c495b4fe4e4c5cf91eb5f9b182cb4f2277bcfd717257e0bf6f57c3320681228"
+    },
+    {
+      "file": "06-confirm-preserved-permissions.jpg",
+      "sha256": "a296fd7d3e56590e56745c510272f16212d60fd02563e2c68349a3f8ec8896e4"
+    },
+    {
+      "file": "06-confirm-preserved-permissions.txt",
+      "sha256": "1e1811eea8d034da04a5b0a25e6457c29d43245a348d22fb6ad7aa22510664f0"
+    },
+    {
+      "file": "07-after-save-refresh.jpg",
+      "sha256": "d9aca9ea6a9ec74375a774e5350fe3bd02e713d7636e83a98345fc830a719edd"
+    },
+    {
+      "file": "07-after-save-refresh.txt",
+      "sha256": "8cfe50ecabb5411a4746d387039d269dff21c3631844d3db9c248c424bdb1302"
+    },
+    {
+      "file": "08-mobile-375.jpg",
+      "sha256": "f403c3224f0f5715b7241f6707f4fd03384f9cb71a7e7e1ec98d39637d737bc6"
+    },
+    {
+      "file": "08-mobile-375.txt",
+      "sha256": "8a7afe51ddd7d5b1adde5005b5b924c802c4810b060687c1dcbc62f28ec8d854"
+    },
+    {
+      "file": "08a-mobile-375-summary.jpg",
+      "sha256": "a284228339a2f4120743c37009e8e7025da0b96c528ce2e40e8a590d1a3481ca"
+    },
+    {
+      "file": "08a-mobile-375-summary.txt",
+      "sha256": "8a7afe51ddd7d5b1adde5005b5b924c802c4810b060687c1dcbc62f28ec8d854"
+    },
+    {
+      "file": "08b-mobile-375-counts.jpg",
+      "sha256": "20be05487f3af1ae8b9bf56ec94845174a62f83079c1a2770cc0fc4b83f0dcef"
+    },
+    {
+      "file": "08b-mobile-375-counts.txt",
+      "sha256": "2891cd049369968e1ad7dccdf1838f2df13cc101f515bfeaf278c41cac8a9120"
+    },
+    {
+      "file": "09-mobile-390-counts.jpg",
+      "sha256": "30637f4dd32e4a9240fecfadf78e2c90b91b52d1df0263c6ff127934a86b6c3a"
+    },
+    {
+      "file": "09-mobile-390-counts.txt",
+      "sha256": "2891cd049369968e1ad7dccdf1838f2df13cc101f515bfeaf278c41cac8a9120"
+    },
+    {
+      "file": "10-mobile-430-counts.jpg",
+      "sha256": "39c65f6ccb7000e1edb994fdc2b57790dd35ca94e8eb50dcfd2aa33f507bb860"
+    },
+    {
+      "file": "10-mobile-430-counts.txt",
+      "sha256": "2891cd049369968e1ad7dccdf1838f2df13cc101f515bfeaf278c41cac8a9120"
+    },
+    {
+      "file": "10a-mobile-429-counts.jpg",
+      "sha256": "56ec0a1dc0535274d9258facf08266f86f61e437988203e5ee7d219f08713333"
+    },
+    {
+      "file": "10a-mobile-429-counts.txt",
+      "sha256": "2891cd049369968e1ad7dccdf1838f2df13cc101f515bfeaf278c41cac8a9120"
+    },
+    {
+      "file": "11-readonly-template-preview.jpg",
+      "sha256": "5d4d181c995ff7b5ae2edf5d5637187f446e824393a5facd13a248ae50c4ca18"
+    },
+    {
+      "file": "11-readonly-template-preview.txt",
+      "sha256": "e8f20b8bb02980e0a6897cd95b7a3d1b30a78688dc4f66e27d7b14d6df69cce2"
+    },
+    {
+      "file": "12-daily-after-system-admin-readonly.jpg",
+      "sha256": "414f603ffbe007315fce0cdf3931becaa8bf54318af8d0fdea43c0fc5497ebae"
+    },
+    {
+      "file": "12-daily-after-system-admin-readonly.txt",
+      "sha256": "9db52869c47f7fa84d916b5fd61625e5c5cf88d58ff3ee5c29e957e99b39534c"
+    },
+    {
+      "file": "persistence-and-denial.json",
+      "sha256": "1ed17829e0103fc7aeac71aeae6984adf95b244be8841b95408c2290ef19efdb"
+    },
+    {
+      "file": "snapshot-after.json",
+      "sha256": "13bd42bdb6cb1d3ff6639e0eb367f4047d1960c7547600db328326a71e8baa7f"
+    },
+    {
+      "file": "snapshot-before.json",
+      "sha256": "cc5cfa55d273e9d8b3b98898534acbc3771d63ce15fbd584f44189ec06ecde18"
+    }
+  ],
+  "frontendChecks": 62,
+  "backendChecks": 11,
+  "frontendBuild": "通过",
+  "dailyDataWrites": false,
+  "uiDatabase": "student_lifecycle_d6_ui_test_20261025",
+  "unitDatabase": "student_lifecycle_d6_unit_test_20261025",
+  "viewportMeasuredCssWidths": [
+    375,
+    390,
+    429,
+    431
+  ],
+  "viewportNote": "430目标受窗口整数与缩放影响，实际测429和431，未声称精确430"
+}

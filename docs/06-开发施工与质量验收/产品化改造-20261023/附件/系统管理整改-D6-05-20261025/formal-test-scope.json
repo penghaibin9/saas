@@ -1,0 +1,8 @@
+{
+  "roleId": "4",
+  "name": "整改验收教师",
+  "permissionCount": 33,
+  "existingTeacherPermissionCount": 34,
+  "isSubset": true,
+  "scope": "SELF"
+}

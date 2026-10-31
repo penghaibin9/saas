@@ -1,0 +1,162 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:53":
+    - generic: 10/27周二 09:53
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:50:25":
+  - generic: 本次工作 00:50:25
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 岗位实习中心
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日工作
+    - button "实习中心大屏":
+      - generic: 实习中心大屏
+    - button "批次与学生":
+      - generic: 批次与学生
+    - button "企业与岗位":
+      - generic: 企业与岗位
+    - button "申请与落岗":
+      - generic: 申请与落岗
+    - button "实习过程":
+      - generic: 实习过程
+    - button "风险与变更":
+      - generic: 风险与变更
+    - button "评价与成绩":
+      - generic: 评价与成绩
+    - button "归档与分析":
+      - generic: 归档与分析
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 批次与学生
+  - navigation "三级菜单":
+    - button "批次管理":
+      - generic: 批次管理
+    - button "学生名单":
+      - generic: 学生名单
+    - button "资格认定":
+      - generic: 资格认定
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "批次管理" [selected]:
+    - generic: 批次管理
+  - button "关闭批次管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53 · 实习批次管理
+  - heading "批次管理" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "D611跨批次跳转验证 · D611-OTHER-UI"
+    - option "D606实习批次 · D606-INTERN" [selected]
+  - generic: 草稿
+  - button "导出台账"
+  - button "新建批次"
+  - region "实习批次列表":
+    - generic: 授权范围内的实习批次
+    - generic: 共 2 个批次
+    - generic: 搜索批次
+    - textbox "搜索批次":
+      - /placeholder: 批次名称或编号
+    - generic: 批次状态
+    - combobox "批次状态":
+      - option "全部" [selected]
+      - option "草稿"
+      - option "进行中"
+      - option "已结束"
+      - option "已归档"
+      - option "已作废"
+    - button "查询"
+    - button "重置"
+    - table:
+      - rowgroup:
+        - row "实习批次 实习周期 实际 / 计划人数 状态 操作":
+          - columnheader "实习批次"
+          - columnheader "实习周期"
+          - columnheader "实际 / 计划人数"
+          - columnheader "状态"
+          - columnheader "操作"
+      - rowgroup:
+        - row "D611跨批次跳转验证 D611-OTHER-UI — 至 — 0 / 0 草稿 查看详情 配置名单":
+          - cell "D611跨批次跳转验证 D611-OTHER-UI":
+            - link "D611跨批次跳转验证":
+              - /url: /admin/internship/batches/2?batchId=2&returnTo=/admin/internship/batches?panel=list%26batchId=1
+            - generic: D611-OTHER-UI
+          - cell "— 至 —"
+          - cell "0 / 0":
+            - strong: "0"
+            - text: / 0
+          - cell "草稿":
+            - generic: 草稿
+          - cell "查看详情 配置名单":
+            - button "查看详情"
+            - button "配置名单"
+        - row "D606实习批次 D606-INTERN — 至 — 3 / 0 草稿 查看详情 配置名单":
+          - cell "D606实习批次 D606-INTERN":
+            - link "D606实习批次":
+              - /url: /admin/internship/batches/1?batchId=1&returnTo=/admin/internship/batches?panel=list%26batchId=1
+            - generic: D606-INTERN
+          - cell "— 至 —"
+          - cell "3 / 0":
+            - strong: "3"
+            - text: / 0
+          - cell "草稿":
+            - generic: 草稿
+          - cell "查看详情 配置名单":
+            - button "查看详情"
+            - button "配置名单"
+    - generic: 共 2 条
+    - button "上一页" [disabled]: ‹
+    - button "1"
+    - button "下一页" [disabled]: ›
+  - paragraph: 草稿批次可配置范围与规则；预览并冻结参与名单后启用。批次启用不代表学生已具备上岗条件。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

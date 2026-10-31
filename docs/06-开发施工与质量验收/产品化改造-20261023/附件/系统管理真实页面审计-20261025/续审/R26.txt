@@ -1,0 +1,442 @@
+http://127.0.0.1:5173/admin/system/iam?surface=templates
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:36":
+    - generic: 10/25周日 14:36
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:16:46":
+  - generic: 本次工作 02:16:46
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 角色与权限
+  - navigation "三级菜单":
+    - button "身份权限总览":
+      - generic: 身份权限总览
+    - button "预设角色模板" [active]:
+      - generic: 预设角色模板
+    - button "学校角色与成员":
+      - generic: 学校角色与成员
+    - button "角色成员与业务身份":
+      - generic: 角色成员与业务身份
+    - button "菜单与操作权限":
+      - generic: 菜单与操作权限
+    - button "数据范围规则":
+      - generic: 数据范围规则
+    - button "临时授权与工作移交":
+      - generic: 临时授权与工作移交
+    - button "安全变更":
+      - generic: 安全变更
+    - button "访问治理":
+      - generic: 访问治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "学生账号":
+    - generic: 学生账号
+  - button "关闭学生账号":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "账号异常排查":
+    - generic: 账号异常排查
+  - button "关闭账号异常排查":
+  - tab "登录与安全策略":
+    - generic: 登录与安全策略
+  - button "关闭登录与安全策略":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "学院与部门":
+    - generic: 学院与部门
+  - button "关闭学院与部门":
+  - tab "专业管理":
+    - generic: 专业管理
+  - button "关闭专业管理":
+  - tab "年级与班级":
+    - generic: 年级与班级
+  - button "关闭年级与班级":
+  - tab "岗位管理":
+    - generic: 岗位管理
+  - button "关闭岗位管理":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心":
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+  - tab "变更版本":
+    - generic: 变更版本
+  - button "关闭变更版本":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板" [selected]:
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - heading "学校角色与模板" [level=1]
+  - button "治理概览"
+  - button "刷新目录"
+  - button "新增角色":
+    - text: 新增角色
+  - tablist "角色目录类型":
+    - tab "学校角色"
+    - tab "已发布模板" [selected]
+  - paragraph: 已发布模板只读；学校角色固定来源版本，不自动跟随模板升级。
+  - button "刷新模板"
+  - article:
+    - heading "教务管理员" [level=3]
+    - generic: 第 3 版
+    - paragraph: ACADEMIC_ADMIN
+    - strong: "180"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "任课教师" [level=3]
+    - generic: 第 3 版
+    - paragraph: ACADEMIC_TEACHER
+    - strong: "34"
+    - generic: 模板权限
+    - strong: "3"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "学院管理员" [level=3]
+    - generic: 第 6 版
+    - paragraph: COLLEGE_ADMIN
+    - strong: "431"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "辅导员" [level=3]
+    - generic: 第 4 版
+    - paragraph: COUNSELOR
+    - strong: "59"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "宿管老师" [level=3]
+    - generic: 第 3 版
+    - paragraph: DORM_MANAGER
+    - strong: "13"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "就业老师" [level=3]
+    - generic: 第 4 版
+    - paragraph: EMPLOYMENT_TEACHER
+    - strong: "29"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "资助老师" [level=3]
+    - generic: 第 3 版
+    - paragraph: FUNDING_TEACHER
+    - strong: "20"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "学院毕设管理员" [level=3]
+    - generic: 第 3 版
+    - paragraph: GD_COLLEGE_ADMIN
+    - strong: "84"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "答辩专家" [level=3]
+    - generic: 第 4 版
+    - paragraph: GD_DEFENSE_EXPERT
+    - strong: "8"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "答辩秘书" [level=3]
+    - generic: 第 4 版
+    - paragraph: GD_DEFENSE_SECRETARY
+    - strong: "10"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "毕设成绩管理员" [level=3]
+    - generic: 第 4 版
+    - paragraph: GD_GRADE_ADMIN
+    - strong: "12"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "专业毕设管理员" [level=3]
+    - generic: 第 3 版
+    - paragraph: GD_MAJOR_ADMIN
+    - strong: "41"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "毕设指导教师" [level=3]
+    - generic: 第 3 版
+    - paragraph: GD_MENTOR
+    - strong: "25"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "毕设评阅教师" [level=3]
+    - generic: 第 4 版
+    - paragraph: GD_REVIEWER
+    - strong: "9"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "毕业设计管理员" [level=3]
+    - generic: 第 3 版
+    - paragraph: GRADUATION_ADMIN
+    - strong: "84"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "实习指导教师" [level=3]
+    - generic: 第 3 版
+    - paragraph: INTERN_MENTOR
+    - strong: "71"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "校领导" [level=3]
+    - generic: 第 4 版
+    - paragraph: LEADER
+    - strong: "209"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "组织人事人员" [level=3]
+    - generic: 第 3 版
+    - paragraph: ORG_PERSONNEL
+    - strong: "7"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "心理老师" [level=3]
+    - generic: 第 3 版
+    - paragraph: PSYCHOLOGY_TEACHER
+    - strong: "17"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "学校管理员" [level=3]
+    - generic: 第 5 版
+    - paragraph: SCHOOL_ADMIN
+    - strong: "656"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "安全审计员" [level=3]
+    - generic: 第 3 版
+    - paragraph: SECURITY_AUDITOR
+    - strong: "28"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "教职工" [level=3]
+    - generic: 第 1 版
+    - paragraph: STAFF
+    - strong: "0"
+    - generic: 模板权限
+    - strong: "1"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "学生" [level=3]
+    - generic: 第 1 版
+    - paragraph: STUDENT
+    - strong: "0"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "学工老师" [level=3]
+    - generic: 第 4 版
+    - paragraph: STUDENT_AFFAIRS
+    - strong: "109"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "学工管理员" [level=3]
+    - generic: 第 4 版
+    - paragraph: STUDENT_AFFAIRS_ADMIN
+    - strong: "113"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "系统管理员" [level=3]
+    - generic: 第 4 版
+    - paragraph: SYS_ADMIN
+    - strong: "82"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - article:
+    - heading "团委老师" [level=3]
+    - generic: 第 3 版
+    - paragraph: YOUTH_LEAGUE
+    - strong: "16"
+    - generic: 模板权限
+    - strong: "0"
+    - generic: 本校绑定角色
+    - button "核对本校影响"
+    - button "以此为来源创建"
+  - generic "通配权限治理与来源核对"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

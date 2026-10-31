@@ -1,0 +1,114 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/implementation/presets".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/implementation/presets
+	1 container app
+		2 container
+			244 text 高校学生全生命周期管理平台
+			3 image
+			4 text field (settable) 搜索学生、功能或帮助
+			5 text Ctrl K
+			245 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				246 image
+				247 text 北京 13° 阴
+			248 button (collapsed) 10/25周日 14:31, Secondary Actions: Expand
+				249 image
+				250 text 10/25周日 14:31
+			6 button 帮助与引导
+			7 button 消息中心
+				8 image
+			9 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				10 text 胡
+				11 text 胡管理
+				12 text 系统管理员
+		13 container
+			14 container 一级菜单
+				15 button 学工中心
+				16 button 系统管理
+			17 button (collapsed) 当前范围, Secondary Actions: Expand
+				18 image
+				19 text 当前范围
+				20 image
+			251 button (collapsed) 本次工作 02:11:50, Secondary Actions: Expand
+				252 image
+				548 text 本次工作 02:11:50
+		254 container 二级菜单
+			255 button 收窄二级菜单
+				256 text 系统管理
+			257 container 二级菜单
+				258 button 系统概览
+				259 button 身份与账号
+				260 button 组织主数据
+				261 button 角色与权限
+				262 button 学校配置
+				263 button 流程配置
+				264 button 安全与审计
+				265 button 接口与同步
+			266 checkbox Description: 取消固定二级菜单, Value: 1
+		267 container 三级菜单
+			268 button 收窄三级菜单
+				269 text 系统概览
+			270 container 三级菜单
+				271 button 系统总览
+				272 button 实施总览
+				273 button 首次开局向导
+				274 button 预设方案
+				275 button 职业教育国家标准库
+				276 button 数据导入与智能匹配
+				277 button 已安装配置
+				278 button 变更与升级
+				279 button 上线检查与验收
+			280 checkbox Description: 取消固定三级菜单, Value: 1
+		21 container
+			23 tab group 已打开页面
+				24 container
+					25 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					26 button 关闭学生导入与账号开通
+						27 image
+				28 container
+					29 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					30 button 关闭系统总览
+						31 image
+				155 container
+					156 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					157 button 关闭实施总览
+						158 image
+				282 container
+					283 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					284 button 关闭首次开局向导
+						285 image
+				527 container
+					528 tab (selected, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 1
+预设方案
+					529 button 关闭预设方案
+						530 image
+			32 button 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			286 container
+				287 heading 预设方案, Value: 1
+					531 text 预设方案
+				532 container
+					533 text 跃科职业技术学院 007 正式演示实施验收 007-GOV-2026 · 高职标准版
+				534 container
+					535 text 已验收 状态 42% 完成度 0 安装版本
+				536 container
+					537 text 版本化学校开局包 均包含专业目录与专业教学标准入口
+				538 container
+					539 text 高职标准版 第 2026.1 版 · 建议 7 天 完整覆盖迎新、学工、教务、实习、毕设和就业，专业教学标准入口默认开启。
+				540 container
+					541 text 中职标准版 第 2026.1 版 · 建议 7 天 按中等职业学校组织与育人场景开局，毕设模块默认不启用。
+				542 container
+					543 text 试点快速版 第 2026.1 版 · 建议 2 天 先开学工、教务和实习核心闭环，验收后再按版本扩容。
+				544 container
+					545 text 演示版 第 2026.1 版 · 建议 1 天 全模块展示但限制容量，不把演示内容伪装成学校正式数据。
+				546 container
+					547 text 私有化版 第 2026.1 版 · 建议 7 天 增加部署、域名、备份、监控、接口和等保责任确认。
+			154 button 我的常用
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/implementation/presets

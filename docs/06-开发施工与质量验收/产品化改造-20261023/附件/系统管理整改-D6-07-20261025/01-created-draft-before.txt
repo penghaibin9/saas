@@ -1,0 +1,345 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 系统概览
+  - navigation "三级菜单":
+    - button "系统总览":
+      - generic: 系统总览
+    - button "实施总览":
+      - generic: 实施总览
+    - button "首次开局向导":
+      - generic: 首次开局向导
+    - button "预设方案":
+      - generic: 预设方案
+    - button "职业教育国家标准库":
+      - generic: 职业教育国家标准库
+    - button "数据导入与智能匹配":
+      - generic: 数据导入与智能匹配
+    - button "已安装配置":
+      - generic: 已安装配置
+    - button "变更与升级":
+      - generic: 变更与升级
+    - button "上线检查与验收":
+      - generic: 上线检查与验收
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导" [selected]:
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+- button "恢复最近关闭的页签" [disabled]:
+- button "取消收藏" [pressed]:
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 02:06
+  - heading "首次开局向导" [level=1]
+  - generic: D607独立实施验收项目
+  - generic: IMP-20261025180727540150 · 高职标准版
+  - generic: 配置中
+  - generic: 状态
+  - generic: 100%
+  - generic: 完成度
+  - generic: "0"
+  - generic: 安装版本
+  - generic: 12类引导式问答
+  - generic: 推荐值已经填好，学校只需确认或选择；保存后仍可修改
+  - text: 学校开通
+  - generic: 实施配置项
+  - text: 学校层次
+  - emphasis: "*"
+  - combobox "学校层次*":
+    - option "高职" [selected]
+    - option "中职"
+    - option "开户后确认"
+  - text: 实施节奏
+  - emphasis: "*"
+  - combobox "实施节奏*":
+    - option "标准一周" [selected]
+    - option "两天试点"
+    - option "演示"
+    - option "私有化"
+  - text: 计划交付天数
+  - emphasis: "*"
+  - spinbutton "计划交付天数*": "7"
+  - button "保存"
+  - text: 角色与权限
+  - generic: 实施配置项
+  - text: 角色模板策略
+  - emphasis: "*"
+  - combobox "角色模板策略*":
+    - option "安装推荐角色" [selected]
+    - option "最小角色集"
+  - text: 管理员与审计员职责分离
+  - emphasis: "*"
+  - combobox "管理员与审计员职责分离*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 组织结构
+  - generic: 实施配置项
+  - text: 教学组织模型
+  - emphasis: "*"
+  - combobox "教学组织模型*":
+    - option "学校—学院—专业—班级" [selected]
+    - option "学校—部门—班级"
+  - text: 从师生文件推导组织候选
+  - emphasis: "*"
+  - combobox "从师生文件推导组织候选*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 师生导入
+  - generic: 实施配置项
+  - text: 重复账号处理
+  - emphasis: "*"
+  - combobox "重复账号处理*":
+    - option "阻断并回执" [selected]
+    - option "跳过既有账号"
+  - text: 初始密码策略
+  - emphasis: "*"
+  - combobox "初始密码策略*":
+    - option "随机一次性密码" [selected]
+    - option "激活链接"
+  - button "保存"
+  - text: 业务关系
+  - generic: 实施配置项
+  - text: 业务关系来源
+  - emphasis: "*"
+  - combobox "业务关系来源*":
+    - option "导入后人工确认" [selected]
+    - option "教务系统同步"
+  - text: 禁止用角色名虚构业务关系
+  - emphasis: "*"
+  - combobox "禁止用角色名虚构业务关系*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 流程
+  - generic: 实施配置项
+  - text: 流程开局策略
+  - emphasis: "*"
+  - combobox "流程开局策略*":
+    - option "安装推荐模板、确认后启用" [selected]
+    - option "学校自行配置"
+  - text: 学校政策确认后才能启用
+  - emphasis: "*"
+  - combobox "学校政策确认后才能启用*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 字典与编号
+  - generic: 实施配置项
+  - text: 优先使用国家/行业标准代码
+  - emphasis: "*"
+  - combobox "优先使用国家/行业标准代码*":
+    - option "是" [selected]
+    - option "否"
+  - text: 校内编号规则责任部门
+  - emphasis: "*"
+  - combobox "校内编号规则责任部门*":
+    - option "信息中心" [selected]
+    - option "教务处"
+    - option "学校办公室"
+  - button "保存"
+  - text: 安全与审计
+  - generic: 实施配置项
+  - text: 首次登录必须改密
+  - emphasis: "*"
+  - combobox "首次登录必须改密*":
+    - option "是" [selected]
+    - option "否"
+  - text: 敏感导出添加水印
+  - emphasis: "*"
+  - combobox "敏感导出添加水印*":
+    - option "是" [selected]
+    - option "否"
+  - text: 会话有效分钟数
+  - emphasis: "*"
+  - spinbutton "会话有效分钟数*": "120"
+  - button "保存"
+  - text: 菜单与工作台
+  - generic: 实施配置项
+  - text: 角色切换时同步菜单和工作台
+  - emphasis: "*"
+  - combobox "角色切换时同步菜单和工作台*":
+    - option "是" [selected]
+    - option "否"
+  - text: 首页策略
+  - emphasis: "*"
+  - combobox "首页策略*":
+    - option "按角色推荐" [selected]
+    - option "学校后期自定义"
+  - button "保存"
+  - text: 消息与通知
+  - generic: 实施配置项
+  - text: 默认通知渠道
+  - emphasis: "*"
+  - combobox "默认通知渠道*":
+    - option "站内消息" [selected]
+    - option "短信（需配置）"
+    - option "微信（需配置）"
+  - text: 启用超时催办
+  - emphasis: "*"
+  - combobox "启用超时催办*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - text: 上线检查
+  - generic: 实施配置项
+  - text: 阻断项全部通过才能验收
+  - emphasis: "*"
+  - combobox "阻断项全部通过才能验收*":
+    - option "是" [selected]
+    - option "否"
+  - text: 最终验收角色
+  - emphasis: "*"
+  - combobox "最终验收角色*":
+    - option "学校管理员" [selected]
+    - option "校领导"
+  - button "保存"
+  - text: 模块业务
+  - generic: 实施配置项
+  - text: 首期开通模块
+  - emphasis: "*"
+  - checkbox "首期开通模块* 迎新 学工 教务 实习 毕设 就业" [checked]
+  - text: 迎新
+  - checkbox "学工" [checked]
+  - text: 学工
+  - checkbox "教务" [checked]
+  - text: 教务
+  - checkbox "实习" [checked]
+  - text: 实习
+  - checkbox "毕设" [checked]
+  - text: 毕设
+  - checkbox "就业" [checked]
+  - text: 就业
+  - text: 启用专业目录与专业教学标准入口
+  - emphasis: "*"
+  - combobox "启用专业目录与专业教学标准入口*":
+    - option "是" [selected]
+    - option "否"
+  - button "保存"
+  - button "生成安装预览"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

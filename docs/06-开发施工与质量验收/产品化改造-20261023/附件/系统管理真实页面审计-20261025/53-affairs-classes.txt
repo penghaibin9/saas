@@ -1,0 +1,277 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/campus-service/classes".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/campus-service/classes
+	1 container app
+		2 container
+			17 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				18 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:15, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:15
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 教务中心
+				26 button 毕业设计中心
+				27 button 岗位实习中心
+				28 button 系统管理
+			29 button (collapsed) 当前范围, Secondary Actions: Expand
+				30 image
+				31 text 当前范围
+				32 image
+			33 button (collapsed) 本次工作 00:09:28, Secondary Actions: Expand
+				34 image
+				35 text 本次工作 00:09:28
+		36 container 二级菜单
+			37 button 展开二级菜单
+			38 container 二级菜单
+				39 button 学工工作台
+				40 button 学生主档
+				41 button 班级与辅导员
+				42 button 数字迎新
+				43 button 请假销假
+				44 button 宿舍与公寓
+				45 button 风险预警与处置
+				46 button 困难认定
+				47 button 奖助勤贷补
+				48 button 违纪处分
+				49 button 谈心家校
+				50 button 心理关注
+				51 button 活动二课与社团
+				52 button 统计与档案
+			53 checkbox Description: 取消固定二级菜单, Value: 1
+		54 container 三级菜单
+			55 button 展开三级菜单
+			56 container 三级菜单
+				57 button 班级管理
+				58 button 辅导员责任台账
+				59 button 辅导员考评
+			60 checkbox Description: 取消固定三级菜单, Value: 1
+		61 container
+			62 tab group 已打开页面
+				63 container
+					64 tab (selected, settable, boolean) 班级管理, Help: 班级与辅导员 / 班级管理, Value: 1
+班级管理
+					65 button 关闭班级管理
+						66 image
+			67 button (disabled) 恢复最近关闭的页签
+				68 image
+			69 checkbox Description: 收藏当前页面, Value: 0
+				70 image
+			71 checkbox Description: 专注模式, Value: 0
+				72 image
+			73 container
+				74 heading 班级管理, Value: 1
+					75 text 班级管理
+				76 search text field (settable)
+				77 text field (settable)
+				78 button 查询
+				79 button 重置
+				80 table
+					81 row
+						82 cell
+							83 text 班级
+						84 cell
+							85 text 年级
+						86 cell
+							87 text 辅导员 / 班主任
+						88 cell
+							89 text 人数
+						90 cell
+							91 text 当前请假
+						92 cell
+							93 text 在办风险
+						94 cell
+							95 text 操作
+					96 row
+						97 cell
+							98 text 软件技术2401班
+							99 text 信息工程学院 · 软件技术
+						100 cell
+							101 text 2024
+						102 cell
+							103 text 胡可欣
+							104 text 班主任：王可欣
+						105 cell
+							106 text 50
+						107 cell
+							108 text 2
+						109 cell
+							110 text 7
+						111 cell
+							112 button 班级画像
+					113 row
+						114 cell
+							115 text 软件技术2402班
+							116 text 信息工程学院 · 软件技术
+						117 cell
+							118 text 2024
+						119 cell
+							120 text 胡可欣
+							121 text 班主任：李可欣
+						122 cell
+							123 text 50
+						124 cell
+							125 text 0
+						126 cell
+							127 text 7
+						128 cell
+							129 button 班级画像
+					130 row
+						131 cell
+							132 text 软件技术2403班
+							133 text 信息工程学院 · 软件技术
+						134 cell
+							135 text 2024
+						136 cell
+							137 text 胡可欣
+							138 text 班主任：张可欣
+						139 cell
+							140 text 50
+						141 cell
+							142 text 0
+						143 cell
+							144 text 7
+						145 cell
+							146 button 班级画像
+					147 row
+						148 cell
+							149 text 软件技术2404班
+							150 text 信息工程学院 · 软件技术
+						151 cell
+							152 text 2024
+						153 cell
+							154 text 胡可欣
+							155 text 班主任：刘可欣
+						156 cell
+							157 text 50
+						158 cell
+							159 text 0
+						160 cell
+							161 text 8
+						162 cell
+							163 button 班级画像
+					164 row
+						165 cell
+							166 text 软件技术2405班
+							167 text 信息工程学院 · 软件技术
+						168 cell
+							169 text 2024
+						170 cell
+							171 text 朱可欣
+							172 text 班主任：陈可欣
+						173 cell
+							174 text 50
+						175 cell
+							176 text 0
+						177 cell
+							178 text 7
+						179 cell
+							180 button 班级画像
+					181 row
+						182 cell
+							183 text 软件技术2406班
+							184 text 信息工程学院 · 软件技术
+						185 cell
+							186 text 2024
+						187 cell
+							188 text 朱可欣
+							189 text 班主任：杨可欣
+						190 cell
+							191 text 50
+						192 cell
+							193 text 0
+						194 cell
+							195 text 6
+						196 cell
+							197 button 班级画像
+					198 row
+						199 cell
+							200 text 大数据技术2401班
+							201 text 信息工程学院 · 大数据技术
+						202 cell
+							203 text 2024
+						204 cell
+							205 text 朱可欣
+							206 text 班主任：黄可欣
+						207 cell
+							208 text 50
+						209 cell
+							210 text 0
+						211 cell
+							212 text 7
+						213 cell
+							214 button 班级画像
+					215 row
+						216 cell
+							217 text 大数据技术2402班
+							218 text 信息工程学院 · 大数据技术
+						219 cell
+							220 text 2024
+						221 cell
+							222 text 朱可欣
+							223 text 班主任：赵可欣
+						224 cell
+							225 text 50
+						226 cell
+							227 text 0
+						228 cell
+							229 text 7
+						230 cell
+							231 button 班级画像
+					232 row
+						233 cell
+							234 text 大数据技术2403班
+							235 text 信息工程学院 · 大数据技术
+						236 cell
+							237 text 2024
+						238 cell
+							239 text 高可欣
+							240 text 班主任：周可欣
+						241 cell
+							242 text 50
+						243 cell
+							244 text 0
+						245 cell
+							246 text 7
+						247 cell
+							248 button 班级画像
+					249 row
+						250 cell
+							251 text 大数据技术2404班
+							252 text 信息工程学院 · 大数据技术
+						253 cell
+							254 text 2024
+						255 cell
+							256 text 高可欣
+							257 text 班主任：吴可欣
+						258 cell
+							259 text 50
+						260 cell
+							261 text 0
+						262 cell
+							263 text 8
+						264 cell
+							265 button 班级画像
+				266 text 共 387 条
+				267 button (disabled) 上一页
+				268 button 1
+				269 button 2
+				270 button (disabled) …
+				271 button 39
+				272 button 下一页
+				273 text 班级是全学工数据范围载体：辅导员看本人绑定班级、学院看本院、学工处看全校。点击「班级画像」查看学生名单、材料与班干部。
+			274 button 我的常用
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/campus-service/classes

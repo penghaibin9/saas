@@ -1,0 +1,205 @@
+http://127.0.0.1:5196/admin/academic-affairs/teaching-tasks/1?teachingTaskId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "教务大屏":
+      - generic: 教务
+    - button "教务总览":
+      - generic: 教务
+    - button "教务基础":
+      - generic: 教务
+    - button "学籍管理":
+      - generic: 学籍
+    - button "培养与课程":
+      - generic: 培养
+    - button "开课管理":
+      - generic: 开课
+    - button "排课与课表":
+      - generic: 排课
+    - button "选课管理":
+      - generic: 选课
+    - button "日常教学":
+      - generic: 日常
+    - button "考务管理":
+      - generic: 考务
+    - button "成绩管理":
+      - generic: 成绩
+    - button "毕业管理":
+      - generic: 毕业
+    - button "教材管理":
+      - generic: 教材
+    - button "教学资源":
+      - generic: 教学
+    - button "教学质量":
+      - generic: 教学
+    - button "教务统计":
+      - generic: 教务
+    - button "教务归档":
+      - generic: 教务
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "教学任务批次":
+      - generic: 教学
+    - button "任课教师分配":
+      - generic: 任课
+    - button "合班拆班":
+      - generic: 合班
+    - button "教学任务确认":
+      - generic: 教学
+    - button "教师任务确认":
+      - generic: 教师
+    - button "教学任务调整":
+      - generic: 教学
+    - button "工作量申报审核":
+      - generic: 工作
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "教学任务批次" [selected]:
+    - generic: 教学任务批次
+  - button "关闭教学任务批次":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:36
+  - heading "D606教务批次" [level=1]
+  - button "返回来源"
+  - button "刷新"
+  - paragraph: 当前为学校统筹范围。教师分配、任务调整和合拆班由开课责任学院的当前有效办理人负责；学校在学院确认后终审。
+  - region "当前教学任务对象":
+    - strong: D606教务批次
+    - generic: 待生成/核对分配中
+    - emphasis: 当前责任
+    - text: 责任组织未配置 · 教学秘书、负责人 · 具体责任人待配置 · 责任组织不存在、已停用或不属于当前学校
+    - emphasis: 下一责任
+    - text: 校教务审核教学任务；校教务处 · 校教务处 · 整改验收经办人
+  - button "▸ 办理进度： 教师确认 （第 3 步 / 共 5 步）":
+    - generic: ▸
+    - text: 办理进度：
+    - generic: 教师确认
+    - text: （第 3 步 / 共 5 步）
+  - generic: 2026-2027 第1学期
+  - generic: 草稿
+  - strong: 仍有 1 条任务等待教师本人确认
+  - paragraph: 教师确认必须由任课教师本人完成；管理端只负责分配、催办、学院确认和教务终审。
+  - generic: 当前范围
+  - strong: 本校配置与授权范围
+  - article:
+    - generic: 任务总数
+    - strong: "1"
+    - generic: 不含已并入合班任务
+  - article:
+    - generic: 分配完成率
+    - strong: 100%
+    - generic: 未分配 0 条
+  - article:
+    - generic: 教师确认率
+    - strong: 0%
+    - generic: 待本人确认 1 条
+  - article:
+    - generic: 教师退回
+    - strong: "0"
+    - generic: 需学院重新分配
+  - article:
+    - generic: 可排课任务
+    - strong: "0"
+    - generic: 教务终审后进入就绪
+  - strong: 当前有 1 项阻断
+  - paragraph: 处理完以下问题后，批次才能进入下一审核节点。
+  - button "1 仍有 1 条任务等待教师本人确认 教师须在“教师任务确认”页面本人确认 处理 ›":
+    - generic: "1"
+    - strong: 仍有 1 条任务等待教师本人确认
+    - generic: 教师须在“教师任务确认”页面本人确认
+    - generic: 处理 ›
+  - generic: 正在查看指定任务
+  - button "查看整个批次"
+  - textbox "教学任务搜索":
+    - /placeholder: 搜索课程、教学班、教师或工号
+  - combobox "教学任务状态":
+    - option "全部状态" [selected]
+    - option "待分配"
+    - option "已分配（待教师确认）"
+    - option "教师已确认"
+    - option "教师退回"
+    - option "已就绪（可排课）"
+    - option "已并入合班"
+  - button "查询任务"
+  - generic: 当前查询共 1 条
+  - table:
+    - rowgroup:
+      - row "课程 教学班 任课教师 周次 / 人数 状态 管理动作":
+        - columnheader "课程"
+        - columnheader "教学班"
+        - columnheader "任课教师"
+        - columnheader "周次 / 人数"
+        - columnheader "状态"
+        - columnheader "管理动作"
+    - rowgroup:
+      - row "D606跨域验收课程 无课程代码 D606正式教学班 D606-TC 整改验收教师甲 — 学时/周 第 ——— 周 · — 人 待教师确认 等待教师本人确认":
+        - cell "D606跨域验收课程 无课程代码":
+          - generic: D606跨域验收课程
+          - generic: 无课程代码
+        - cell "D606正式教学班 D606-TC":
+          - generic: D606正式教学班
+          - generic: D606-TC
+        - cell "整改验收教师甲":
+          - generic: 整改验收教师甲
+        - cell "— 学时/周 第 ——— 周 · — 人":
+          - generic: — 学时/周
+          - generic: 第 ——— 周 · — 人
+        - cell "待教师确认":
+          - generic: 待教师确认
+        - cell "等待教师本人确认"
+  - generic: 共 1 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

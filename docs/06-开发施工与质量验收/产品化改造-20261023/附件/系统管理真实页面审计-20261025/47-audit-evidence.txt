@@ -1,0 +1,390 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/audit-evidence".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/audit-evidence
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				17 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:14, Secondary Actions: Expand
+				11 image
+				198 text 10/25周日 12:14
+			18 button 帮助与引导
+			19 button 消息中心
+				20 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:08:07, Secondary Actions: Expand
+				33 image
+				209 text 本次工作 00:08:07
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				155 button 操作与权限审计
+				156 button 登录与安全审计
+				157 button 敏感与导入导出审计
+				158 button 安全审计证据与完整性
+				159 button 完整性异常中心
+				160 button 文件存储治理
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				77 container
+					78 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					79 button 关闭学校角色与成员
+						80 image
+				81 container
+					82 tab (selectable, settable, boolean) 角色成员与业务身份, Help: 角色与权限 / 角色成员与业务身份, Value: 0
+角色成员与业务身份
+					83 button 关闭角色成员与业务身份
+						84 image
+				85 container
+					86 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					87 button 关闭菜单与操作权限
+						88 image
+				89 container
+					90 tab (selectable, settable, boolean) 数据范围规则, Help: 角色与权限 / 数据范围规则, Value: 0
+数据范围规则
+					91 button 关闭数据范围规则
+						92 image
+				93 container
+					94 tab (selectable, settable, boolean) 临时授权与工作移交, Help: 角色与权限 / 临时授权与工作移交, Value: 0
+临时授权与工作移交
+					95 button 关闭临时授权与工作移交
+						96 image
+				97 container
+					98 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					99 button 关闭安全变更
+						100 image
+				101 container
+					102 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					103 button 关闭访问治理
+						104 image
+				105 container
+					106 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					107 button 关闭学校信息与品牌
+						108 image
+				109 container
+					110 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					111 button 关闭数据字典
+						112 image
+				113 container
+					114 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					115 button 关闭模块授权与业务开关
+						116 image
+				117 container
+					118 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					119 button 关闭主数据责任与数据质量
+						120 image
+				121 container
+					122 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					123 button 关闭合规与业务表单
+						124 image
+				125 container
+					126 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					127 button 关闭学年学期与业务日历
+						128 image
+				129 container
+					130 tab (selectable, settable, boolean) 流程安全与运行治理, Help: 流程配置 / 流程安全与运行治理, Value: 0
+流程安全与运行治理
+					131 button 关闭流程安全与运行治理
+						132 image
+				133 container
+					134 tab (selectable, settable, boolean) 统一消息、待办与通知治理, Help: 流程配置 / 统一消息、待办与通知治理, Value: 0
+统一消息、待办与通知治理
+					135 button 关闭统一消息、待办与通知治理
+						136 image
+				150 container
+					151 tab (selectable, settable, boolean) 批处理与后台任务, Help: 流程配置 / 批处理与后台任务, Value: 0
+批处理与后台任务
+					152 button 关闭批处理与后台任务
+						153 image
+				161 container
+					162 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					163 button 关闭操作与权限审计
+						164 image
+				200 container
+					201 tab (selectable, settable, boolean) 登录与安全审计, Help: 安全与审计 / 登录与安全审计, Value: 0
+登录与安全审计
+					202 button 关闭登录与安全审计
+						203 image
+				205 container
+					206 tab (selectable, settable, boolean) 敏感与导入导出审计, Help: 安全与审计 / 敏感与导入导出审计, Value: 0
+敏感与导入导出审计
+					207 button 关闭敏感与导入导出审计
+						208 image
+				210 container
+					211 tab (selected, settable, boolean) 安全审计证据与完整性, Help: 安全与审计 / 安全审计证据与完整性, Value: 1
+安全审计证据与完整性
+					212 button 关闭安全审计证据与完整性
+						213 image
+			137 button (disabled) 恢复最近关闭的页签
+				138 image
+			139 checkbox Description: 收藏当前页面, Value: 0
+				140 image
+			141 checkbox Description: 专注模式, Value: 0
+				142 image
+			214 container
+				215 heading 安全审计证据与完整性, Value: 1
+					216 text 安全审计证据与完整性
+				217 button 刷新
+				218 text 首屏结论
+				219 text 3 登录风险 1 高危变更 0 敏感下载 0 权限激活 0 紧急访问 1 审计缺口
+				220 text 业务操作 · 缺失字段：必要信息
+				221 container
+					222 text 证据查询 高危动作自动做完整性判定
+				223 text field (settable)
+				224 button 查询
+				225 button 登记证据包导出
+				226 table
+					227 row
+						228 cell
+							229 text 动作
+						230 cell
+							231 text 操作人
+						232 cell
+							233 text 结果
+						234 cell
+							235 text 时间
+					236 row
+						237 cell
+							238 text 业务操作
+							239 text 相关业务对象 · 请求编号 req-8484c449b1be4853
+						240 cell
+							241 text 胡管理
+						242 cell
+							243 text 结果待确认
+						244 cell
+							245 text 2026-10-25T04:13:07Z
+					246 row
+						247 cell
+							248 text 业务操作
+							249 text 相关业务对象 · 请求编号 req-2e942684bc4e4211
+						250 cell
+							251 text —
+						252 cell
+							253 text 成功
+						254 cell
+							255 text 2026-10-25T04:06:15Z
+					256 row
+						257 cell
+							258 text 业务操作
+							259 text 相关业务对象 · 请求编号 -
+						260 cell
+							261 text Local operator - user authorized
+						262 cell
+							263 text 成功
+						264 cell
+							265 text 2026-10-25T04:05:30Z
+					266 row
+						267 cell
+							268 text 业务操作
+							269 text 相关业务对象 · 请求编号 req-5738dabb741e4f89
+						270 cell
+							271 text —
+						272 cell
+							273 text 结果待确认
+						274 cell
+							275 text 2026-10-25T04:04:03Z
+					276 row
+						277 cell
+							278 text 业务操作
+							279 text 相关业务对象 · 请求编号 req-aa30f676c24a40b6
+						280 cell
+							281 text —
+						282 cell
+							283 text 结果待确认
+						284 cell
+							285 text 2026-10-25T04:03:11Z
+					286 row
+						287 cell
+							288 text 业务操作
+							289 text 相关业务对象 · 请求编号 req-c1d73c22d7cd4f5a
+						290 cell
+							291 text —
+						292 cell
+							293 text 结果待确认
+						294 cell
+							295 text 2026-10-25T04:02:28Z
+					296 row
+						297 cell
+							298 text 业务操作
+							299 text 相关业务对象 · 请求编号 req-955f3e651fdb4653
+						300 cell
+							301 text —
+						302 cell
+							303 text 成功
+						304 cell
+							305 text 2026-10-24T06:06:28Z
+					306 row
+						307 cell
+							308 text 业务操作
+							309 text 相关业务对象 · 请求编号 req-763652c049d143ac
+						310 cell
+							311 text —
+						312 cell
+							313 text 成功
+						314 cell
+							315 text 2026-10-24T05:52:53Z
+					316 row
+						317 cell
+							318 text 业务操作
+							319 text 相关业务对象 · 请求编号 req-dabd0f46ef174599
+						320 cell
+							321 text —
+						322 cell
+							323 text 成功
+						324 cell
+							325 text 2026-10-24T05:52:42Z
+					326 row
+						327 cell
+							328 text 业务操作
+							329 text 相关业务对象 · 请求编号 req-bf51ae68fe404045
+						330 cell
+							331 text —
+						332 cell
+							333 text 成功
+						334 cell
+							335 text 2026-10-24T05:52:38Z
+					336 row
+						337 cell
+							338 text 业务操作
+							339 text 相关业务对象 · 请求编号 req-3ea508f65145450f
+						340 cell
+							341 text —
+						342 cell
+							343 text 成功
+						344 cell
+							345 text 2026-10-24T05:52:34Z
+					346 row
+						347 cell
+							348 text 业务操作
+							349 text 相关业务对象 · 请求编号 req-118aa367c837440f
+						350 cell
+							351 text —
+						352 cell
+							353 text 成功
+						354 cell
+							355 text 2026-10-24T05:52:31Z
+					356 row
+						357 cell
+							358 text 业务操作
+							359 text 相关业务对象 · 请求编号 req-387098e98d634ee5
+						360 cell
+							361 text —
+						362 cell
+							363 text 成功
+						364 cell
+							365 text 2026-10-24T05:52:26Z
+					366 row
+						367 cell
+							368 text 业务操作
+							369 text 相关业务对象 · 请求编号 req-f9e7ae5d01af4eab
+						370 cell
+							371 text 王老师
+						372 cell
+							373 text 成功
+						374 cell
+							375 text 2026-10-24T05:52:25Z
+					376 row
+						377 cell
+							378 text 业务操作
+							379 text 相关业务对象 · 请求编号 req-ed78004784834f69
+						380 cell
+							381 text —
+						382 cell
+							383 text 成功
+						384 cell
+							385 text 2026-10-24T05:52:23Z
+					386 row
+						387 cell
+							388 text 业务操作
+							389 text 相关业务对象 · 请求编号 req-8ecc06daee534393
+						390 cell
+							391 text —
+						392 cell
+							393 text 成功
+						394 cell
+							395 text 2026-10-24T05:20:50Z
+					396 row
+						397 cell
+							398 text 业务操作
+							399 text 相关业务对象 · 请求编号 req-227ac094e70b4e38
+						400 cell
+							401 text —
+						402 cell
+							403 text 成功
+						404 cell
+							405 text 2026-10-24T05:20:38Z
+					406 row
+						407 cell
+							408 text 业务操作
+							409 text 相关业务对象 · 请求编号 req-97d46c8ec820445f
+						410 cell
+							411 text —
+						412 cell
+							413 text 成功
+						414 cell
+							415 text 2026-10-24T05:20:33Z
+					416 row
+						417 cell
+							418 text 业务操作
+							419 text 相关业务对象 · 请求编号 req-24c973412d514e15
+						420 cell
+							421 text 王老师
+						422 cell
+							423 text 成功
+						424 cell
+							425 text 2026-10-24T05:20:31Z
+					426 row
+						427 cell
+							428 text 业务操作
+							429 text 相关业务对象 · 请求编号 req-8434f970ab074d19
+						430 cell
+							431 text —
+						432 cell
+							433 text 成功
+						434 cell
+							435 text 2026-10-24T05:20:30Z
+			148 button 我的常用
+
+The focused UI element is 158 button 安全审计证据与完整性

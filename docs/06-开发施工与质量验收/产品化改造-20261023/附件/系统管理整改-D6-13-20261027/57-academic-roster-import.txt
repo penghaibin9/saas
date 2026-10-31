@@ -1,0 +1,160 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 11° 晴":
+    - generic: 北京 11° 晴
+  - button "10/27周二 10:20":
+    - generic: 10/27周二 10:20
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 01:17:48":
+  - generic: 本次工作 01:17:48
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "教务大屏":
+      - generic: 教务
+    - button "教务总览":
+      - generic: 教务
+    - button "教务基础":
+      - generic: 教务
+    - button "学籍管理":
+      - generic: 学籍
+    - button "培养与课程":
+      - generic: 培养
+    - button "开课管理":
+      - generic: 开课
+    - button "排课与课表":
+      - generic: 排课
+    - button "选课管理":
+      - generic: 选课
+    - button "日常教学":
+      - generic: 日常
+    - button "考务管理":
+      - generic: 考务
+    - button "成绩管理":
+      - generic: 成绩
+    - button "毕业管理":
+      - generic: 毕业
+    - button "教材管理":
+      - generic: 教材
+    - button "教学资源":
+      - generic: 教学
+    - button "教学质量":
+      - generic: 教学
+    - button "教务统计":
+      - generic: 教务
+    - button "教务归档":
+      - generic: 教务
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "学籍名册":
+      - generic: 学籍
+    - button "学籍导入导出":
+      - generic: 学籍
+    - button "学籍信息更正":
+      - generic: 学籍
+    - button "注册批次":
+      - generic: 注册
+    - button "注册资格核验":
+      - generic: 注册
+    - button "分流批次":
+      - generic: 分流
+    - button "异动台账":
+      - generic: 异动
+    - button "异动审批":
+      - generic: 异动
+    - button "预警扫描与列表":
+      - generic: 预警
+    - button "预警跟进":
+      - generic: 预警
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学籍导入导出" [selected]:
+    - generic: 学籍导入导出
+  - button "关闭学籍导入导出":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 10:19
+  - heading "学籍导入导出" [level=1]
+  - heading "学籍导入" [level=3]
+  - paragraph: 原始表格先完成安全扫描，再由系统对同一份文件预检查
+  - paragraph: 学号、姓名、班级必填，班级须为已存在的行政班。页面只展示系统预检结果，不再把名单回传作为写入依据； 扫描或解析未完成时不能确认。
+  - button "打开批量导入"
+  - heading "学籍导出" [level=3]
+  - paragraph: 生成导出文件和导出任务，不再直接下载
+  - text: 关键字
+  - textbox "关键字":
+    - /placeholder: 姓名 / 学号（可选）
+  - text: 学籍状态
+  - combobox "学籍状态":
+    - option "全部" [disabled] [selected]
+    - option "正常"
+    - option "待注册"
+    - option "在籍注册"
+    - option "未注册"
+    - option "休学"
+    - option "留级"
+    - option "退学"
+    - option "转学"
+    - option "毕业"
+    - option "结业"
+    - option "肄业"
+  - generic: ▾
+  - button "创建导出任务"
+  - paragraph: 文件带水印并记录用途；下载使用短时一次性票据，任务过期或撤销后不可继续下载。
+  - heading "教务数据交换任务" [level=3]
+  - paragraph: 刷新页面任务不丢失；这里只展示当前操作者的教务任务
+  - generic: 共 0 个任务
+  - button "刷新"
+  - status:
+    - generic: ▢
+    - generic: 暂无导入导出任务。
+    - generic: 当前没有可展示的导入导出任务。
+    - button "返回"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,569 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/student/list".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/student/list
+	1 container app
+		2 container
+			17 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				18 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:16, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:16
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 教务中心
+				26 button 毕业设计中心
+				27 button 岗位实习中心
+				28 button 系统管理
+			29 button (collapsed) 当前范围, Secondary Actions: Expand
+				30 image
+				31 text 当前范围
+				32 image
+			33 button (collapsed) 本次工作 00:10:13, Secondary Actions: Expand
+				34 image
+				565 text 本次工作 00:10:13
+		36 container 二级菜单
+			37 button 展开二级菜单
+			38 container 二级菜单
+				39 button 学工工作台
+				40 button 学生主档
+				41 button 班级与辅导员
+				42 button 数字迎新
+				43 button 请假销假
+				44 button 宿舍与公寓
+				45 button 风险预警与处置
+				46 button 困难认定
+				47 button 奖助勤贷补
+				48 button 违纪处分
+				49 button 谈心家校
+				50 button 心理关注
+				51 button 活动二课与社团
+				52 button 统计与档案
+			53 checkbox Description: 取消固定二级菜单, Value: 1
+		54 container 三级菜单
+			55 button 展开三级菜单
+			56 container 三级菜单
+				57 button 学生列表
+				58 button 学籍异动台账
+				59 button 风险标签
+				60 button 信息更正审核
+				61 button 身份核验
+				62 button 导入学生
+				63 button 数据导出
+			64 checkbox Description: 取消固定三级菜单, Value: 1
+		65 container
+			66 tab group 已打开页面
+				67 container
+					68 tab (selectable, settable, boolean) 班级管理, Help: 班级与辅导员 / 班级管理, Value: 0
+班级管理
+					69 button 关闭班级管理
+						70 image
+				71 container
+					72 tab (selectable, settable, boolean) 辅导员责任台账, Help: 班级与辅导员 / 辅导员责任台账, Value: 0
+辅导员责任台账
+					73 button 关闭辅导员责任台账
+						74 image
+				75 container
+					76 tab (selected, settable, boolean) 学生列表, Help: 学生主档 / 学生列表, Value: 1
+学生列表
+					77 button 关闭学生列表
+						78 image
+			79 button (disabled) 恢复最近关闭的页签
+				80 image
+			81 checkbox Description: 收藏当前页面, Value: 0
+				82 image
+			83 checkbox Description: 专注模式, Value: 0
+				84 image
+			85 container
+				86 heading 学生主档, Value: 1
+					87 text 学生主档
+				88 button 新增学生
+				89 button 批量导出
+				90 button 列设置
+				91 text 查询结果 
+				92 text 20005
+				93 text 关键词
+				94 text field (settable) 关键词
+				95 text 学院
+				96 pop up button (collapsed, settable) 学院, Value: 全部, Secondary Actions: Expand
+					97 menu
+						98 (selected) 全部
+				99 text 班级
+				100 pop up button (collapsed, settable) 班级, Value: 全部, Secondary Actions: Expand
+					101 menu
+						102 (selected) 全部
+						103 软件技术2401班
+						104 软件技术2402班
+						105 软件技术2403班
+						106 软件技术2404班
+						107 软件技术2405班
+						108 软件技术2406班
+						109 大数据技术2401班
+						110 大数据技术2402班
+						111 大数据技术2403班
+						112 大数据技术2404班
+						113 大数据技术2405班
+						114 计算机网络技术2401班
+						115 计算机网络技术2402班
+						116 计算机网络技术2403班
+						117 计算机网络技术2404班
+						118 人工智能技术应用2401班
+						119 人工智能技术应用2402班
+						120 人工智能技术应用2403班
+						121 人工智能技术应用2404班
+						122 机电一体化技术2401班
+						123 机电一体化技术2402班
+						124 机电一体化技术2403班
+						125 机电一体化技术2404班
+						126 机电一体化技术2405班
+						127 工业机器人技术2401班
+						128 工业机器人技术2402班
+						129 工业机器人技术2403班
+						130 工业机器人技术2404班
+						131 数控技术2401班
+						132 数控技术2402班
+						133 数控技术2403班
+						134 数控技术2404班
+						135 电气自动化技术2401班
+						136 电气自动化技术2402班
+						137 电气自动化技术2403班
+						138 电气自动化技术2404班
+						139 新能源汽车技术2401班
+						140 新能源汽车技术2402班
+						141 新能源汽车技术2403班
+						142 新能源汽车技术2404班
+						143 新能源汽车技术2405班
+						144 汽车检测与维修技术2401班
+						145 汽车检测与维修技术2402班
+						146 汽车检测与维修技术2403班
+						147 汽车检测与维修技术2404班
+						148 智能网联汽车技术2401班
+						149 智能网联汽车技术2402班
+						150 智能网联汽车技术2403班
+						151 智能网联汽车技术2404班
+						152 汽车制造与试验技术2401班
+						153 汽车制造与试验技术2402班
+						154 汽车制造与试验技术2403班
+						155 电子商务2401班
+						156 电子商务2402班
+						157 电子商务2403班
+						158 电子商务2404班
+						159 电子商务2405班
+						160 大数据与会计2401班
+						161 大数据与会计2402班
+						162 大数据与会计2403班
+						163 大数据与会计2404班
+						164 大数据与会计2405班
+						165 市场营销2401班
+						166 市场营销2402班
+						167 市场营销2403班
+						168 市场营销2404班
+						169 现代物流管理2401班
+						170 现代物流管理2402班
+						171 现代物流管理2403班
+						172 现代物流管理2404班
+						173 旅游管理2401班
+						174 旅游管理2402班
+						175 旅游管理2403班
+						176 酒店管理与数字化运营2401班
+						177 酒店管理与数字化运营2402班
+						178 酒店管理与数字化运营2403班
+						179 烹饪工艺与营养2401班
+						180 烹饪工艺与营养2402班
+						181 烹饪工艺与营养2403班
+						182 烹饪工艺与营养2404班
+						183 空中乘务2401班
+						184 空中乘务2402班
+						185 空中乘务2403班
+						186 建筑工程技术2401班
+						187 建筑工程技术2402班
+						188 建筑工程技术2403班
+						189 建筑工程技术2404班
+						190 工程造价2401班
+						191 工程造价2402班
+						192 工程造价2403班
+						193 工程造价2404班
+						194 建筑室内设计2401班
+						195 建筑室内设计2402班
+						196 建筑室内设计2403班
+						197 建筑室内设计2404班
+						198 建设工程管理2401班
+						199 建设工程管理2402班
+						200 建设工程管理2403班
+						201 护理2401班
+						202 护理2402班
+						203 护理2403班
+						204 护理2404班
+						205 护理2405班
+						206 护理2406班
+						207 护理2407班
+						208 护理2408班
+						209 康复治疗技术2401班
+						210 康复治疗技术2402班
+						211 康复治疗技术2403班
+						212 康复治疗技术2404班
+						213 婴幼儿托育服务与管理2401班
+						214 婴幼儿托育服务与管理2402班
+						215 婴幼儿托育服务与管理2403班
+						216 健康管理2401班
+						217 健康管理2402班
+						218 健康管理2403班
+						219 数字媒体艺术设计2401班
+						220 数字媒体艺术设计2402班
+						221 数字媒体艺术设计2403班
+						222 数字媒体艺术设计2404班
+						223 广告艺术设计2401班
+						224 广告艺术设计2402班
+						225 广告艺术设计2403班
+						226 动漫设计2401班
+						227 动漫设计2402班
+						228 动漫设计2403班
+						229 视觉传达设计2401班
+						230 视觉传达设计2402班
+						231 软件技术2501班
+						232 软件技术2502班
+						233 软件技术2503班
+						234 软件技术2504班
+						235 软件技术2505班
+						236 软件技术2506班
+						237 大数据技术2501班
+						238 大数据技术2502班
+						239 大数据技术2503班
+						240 大数据技术2504班
+						241 大数据技术2505班
+						242 计算机网络技术2501班
+						243 计算机网络技术2502班
+						244 计算机网络技术2503班
+						245 计算机网络技术2504班
+						246 人工智能技术应用2501班
+						247 人工智能技术应用2502班
+						248 人工智能技术应用2503班
+						249 人工智能技术应用2504班
+						250 机电一体化技术2501班
+						251 机电一体化技术2502班
+						252 机电一体化技术2503班
+						253 机电一体化技术2504班
+						254 机电一体化技术2505班
+						255 工业机器人技术2501班
+						256 工业机器人技术2502班
+						257 工业机器人技术2503班
+						258 工业机器人技术2504班
+						259 数控技术2501班
+						260 数控技术2502班
+						261 数控技术2503班
+						262 数控技术2504班
+						263 电气自动化技术2501班
+						264 电气自动化技术2502班
+						265 电气自动化技术2503班
+						266 电气自动化技术2504班
+						267 新能源汽车技术2501班
+						268 新能源汽车技术2502班
+						269 新能源汽车技术2503班
+						270 新能源汽车技术2504班
+						271 新能源汽车技术2505班
+						272 汽车检测与维修技术2501班
+						273 汽车检测与维修技术2502班
+						274 汽车检测与维修技术2503班
+						275 汽车检测与维修技术2504班
+						276 智能网联汽车技术2501班
+						277 智能网联汽车技术2502班
+						278 智能网联汽车技术2503班
+						279 智能网联汽车技术2504班
+						280 汽车制造与试验技术2501班
+						281 汽车制造与试验技术2502班
+						282 汽车制造与试验技术2503班
+						283 电子商务2501班
+						284 电子商务2502班
+						285 电子商务2503班
+						286 电子商务2504班
+						287 电子商务2505班
+						288 大数据与会计2501班
+						289 大数据与会计2502班
+						290 大数据与会计2503班
+						291 大数据与会计2504班
+						292 大数据与会计2505班
+						293 市场营销2501班
+						294 市场营销2502班
+						295 市场营销2503班
+						296 市场营销2504班
+						297 现代物流管理2501班
+						298 现代物流管理2502班
+						299 现代物流管理2503班
+						300 现代物流管理2504班
+						301 旅游管理2501班
+						302 旅游管理2502班
+				303 button (collapsed) 更多筛选, Secondary Actions: Expand
+				304 button 查询
+				305 button 重置
+				306 checkbox (settable, integer) Description: 显示已作废, Value: 0
+				307 table
+					308 row
+						309 cell
+							310 checkbox (settable, integer) 0
+						311 cell
+							312 text 学生
+						313 cell
+							314 text 班级 / 学院 / 专业
+						315 cell
+							316 text 手机号
+						317 cell
+							318 text 学籍状态
+						319 cell
+							320 text 身份核验
+						321 cell
+							322 text 风险
+						323 cell
+							324 text 主档完整度
+						325 cell
+							326 text 操作
+					327 row
+						328 cell
+							329 checkbox (settable, integer) 0
+						330 cell
+							331 text 周启航
+							332 text 2024S0001 · 男
+						333 cell
+							334 text 软件技术2401班
+							335 text 信息工程学院 / 软件技术
+						336 cell
+							337 text 166****0001
+						338 cell
+							339 text 已毕业
+						340 cell
+							341 text 核验服务未配置
+						342 cell
+							343 text 无
+						344 cell
+							345 text 89%
+						346 cell
+							347 button 学生360
+							348 button 编辑
+							349 button 作废
+					350 row
+						351 cell
+							352 checkbox (settable, integer) 0
+						353 cell
+							354 text 孙宇轩
+							355 text 2024S0002 · 女
+						356 cell
+							357 text 软件技术2401班
+							358 text 信息工程学院 / 软件技术
+						359 cell
+							360 text 166****0002
+						361 cell
+							362 text 在读
+						363 cell
+							364 text 核验服务未配置
+						365 cell
+							366 text 无
+						367 cell
+							368 text 89%
+						369 cell
+							370 button 学生360
+							371 button 编辑
+							372 button 作废
+					373 row
+						374 cell
+							375 checkbox (settable, integer) 0
+						376 cell
+							377 text 胡宇轩
+							378 text 2024S0003 · 男
+						379 cell
+							380 text 软件技术2401班
+							381 text 信息工程学院 / 软件技术
+						382 cell
+							383 text 166****0003
+						384 cell
+							385 text 在读
+						386 cell
+							387 text 核验服务未配置
+						388 cell
+							389 text 无
+						390 cell
+							391 text 89%
+						392 cell
+							393 button 学生360
+							394 button 编辑
+							395 button 作废
+					396 row
+						397 cell
+							398 checkbox (settable, integer) 0
+						399 cell
+							400 text 朱宇轩
+							401 text 2024S0004 · 女
+						402 cell
+							403 text 软件技术2401班
+							404 text 信息工程学院 / 软件技术
+						405 cell
+							406 text 166****0004
+						407 cell
+							408 text 在读
+						409 cell
+							410 text 核验服务未配置
+						411 cell
+							412 text 无
+						413 cell
+							414 text 89%
+						415 cell
+							416 button 学生360
+							417 button 编辑
+							418 button 作废
+					419 row
+						420 cell
+							421 checkbox (settable, integer) 0
+						422 cell
+							423 text 高宇轩
+							424 text 2024S0005 · 男
+						425 cell
+							426 text 软件技术2401班
+							427 text 信息工程学院 / 软件技术
+						428 cell
+							429 text 166****0005
+						430 cell
+							431 text 在读
+						432 cell
+							433 text 核验服务未配置
+						434 cell
+							435 text 无
+						436 cell
+							437 text 89%
+						438 cell
+							439 button 学生360
+							440 button 编辑
+							441 button 作废
+					442 row
+						443 cell
+							444 checkbox (settable, integer) 0
+						445 cell
+							446 text 林宇轩
+							447 text 2024S0006 · 女
+						448 cell
+							449 text 软件技术2401班
+							450 text 信息工程学院 / 软件技术
+						451 cell
+							452 text 166****0006
+						453 cell
+							454 text 在读
+						455 cell
+							456 text 核验服务未配置
+						457 cell
+							458 text 无
+						459 cell
+							460 text 89%
+						461 cell
+							462 button 学生360
+							463 button 编辑
+							464 button 作废
+					465 row
+						466 cell
+							467 checkbox (settable, integer) 0
+						468 cell
+							469 text 何宇轩
+							470 text 2024S0007 · 男
+						471 cell
+							472 text 软件技术2401班
+							473 text 信息工程学院 / 软件技术
+						474 cell
+							475 text 166****0007
+						476 cell
+							477 text 在读
+						478 cell
+							479 text 核验服务未配置
+						480 cell
+							481 text 无
+						482 cell
+							483 text 89%
+						484 cell
+							485 button 学生360
+							486 button 编辑
+							487 button 作废
+					488 row
+						489 cell
+							490 checkbox (settable, integer) 0
+						491 cell
+							492 text 郭宇轩
+							493 text 2024S0008 · 女
+						494 cell
+							495 text 软件技术2401班
+							496 text 信息工程学院 / 软件技术
+						497 cell
+							498 text 166****0008
+						499 cell
+							500 text 在读
+						501 cell
+							502 text 核验服务未配置
+						503 cell
+							504 text 无
+						505 cell
+							506 text 89%
+						507 cell
+							508 button 学生360
+							509 button 编辑
+							510 button 作废
+					511 row
+						512 cell
+							513 checkbox (settable, integer) 0
+						514 cell
+							515 text 马宇轩
+							516 text 2024S0009 · 男
+						517 cell
+							518 text 软件技术2401班
+							519 text 信息工程学院 / 软件技术
+						520 cell
+							521 text 166****0009
+						522 cell
+							523 text 在读
+						524 cell
+							525 text 核验服务未配置
+						526 cell
+							527 text 无
+						528 cell
+							529 text 89%
+						530 cell
+							531 button 学生360
+							532 button 编辑
+							533 button 作废
+					534 row
+						535 cell
+							536 checkbox (settable, integer) 0
+						537 cell
+							538 text 罗宇轩
+							539 text 2024S0010 · 女
+						540 cell
+							541 text 软件技术2401班
+							542 text 信息工程学院 / 软件技术
+						543 cell
+							544 text 166****0010
+						545 cell
+							546 text 在读
+						547 cell
+							548 text 核验服务未配置
+						549 cell
+							550 text 无
+						551 cell
+							552 text 89%
+						553 cell
+							554 button 学生360
+							555 button 编辑
+							556 button 作废
+				557 text 共 20005 条
+				558 button (disabled) 上一页
+				559 button 1
+				560 button 2
+				561 button (disabled) …
+				562 button 2001
+				563 button 下一页
+			564 button 我的常用
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/student/list

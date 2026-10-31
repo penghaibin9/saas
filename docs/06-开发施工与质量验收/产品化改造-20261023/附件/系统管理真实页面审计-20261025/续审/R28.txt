@@ -1,0 +1,1005 @@
+http://127.0.0.1:5173/admin/system/role-assignments
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:36":
+    - generic: 10/25周日 14:36
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:16:55":
+  - generic: 本次工作 02:16:55
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 角色与权限
+  - navigation "三级菜单":
+    - button "身份权限总览":
+      - generic: 身份权限总览
+    - button "预设角色模板":
+      - generic: 预设角色模板
+    - button "学校角色与成员":
+      - generic: 学校角色与成员
+    - button "角色成员与业务身份" [active]:
+      - generic: 角色成员与业务身份
+    - button "菜单与操作权限":
+      - generic: 菜单与操作权限
+    - button "数据范围规则":
+      - generic: 数据范围规则
+    - button "临时授权与工作移交":
+      - generic: 临时授权与工作移交
+    - button "安全变更":
+      - generic: 安全变更
+    - button "访问治理":
+      - generic: 访问治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "学生账号":
+    - generic: 学生账号
+  - button "关闭学生账号":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "账号异常排查":
+    - generic: 账号异常排查
+  - button "关闭账号异常排查":
+  - tab "登录与安全策略":
+    - generic: 登录与安全策略
+  - button "关闭登录与安全策略":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "学院与部门":
+    - generic: 学院与部门
+  - button "关闭学院与部门":
+  - tab "专业管理":
+    - generic: 专业管理
+  - button "关闭专业管理":
+  - tab "年级与班级":
+    - generic: 年级与班级
+  - button "关闭年级与班级":
+  - tab "岗位管理":
+    - generic: 岗位管理
+  - button "关闭岗位管理":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心":
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+  - tab "变更版本":
+    - generic: 变更版本
+  - button "关闭变更版本":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份" [selected]:
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - strong: 正式角色授权闭环
+  - paragraph: 在既有角色治理页创建带来源、到期时间和审计原因的正式授权；高危边界由系统强制。
+  - button "刷新"
+  - generic: 用户编号
+  - textbox "用户编号":
+    - /placeholder: 数字编号
+  - generic: 角色
+  - combobox "角色":
+    - option "请选择角色" [selected]
+    - option "任课教师"
+    - option "沙箱联调角色0913"
+    - option "沙箱联调角色0913（自定义）"
+    - option "普通教职工"
+    - option "教务处管理员"
+    - option "学院管理员"
+    - option "辅导员"
+    - option "宿管老师"
+    - option "就业老师"
+    - option "资助老师"
+    - option "学院毕设管理员"
+    - option "答辩专家"
+    - option "答辩秘书"
+    - option "毕设成绩管理员"
+    - option "专业毕设负责人"
+    - option "毕设指导教师"
+    - option "毕设评阅教师"
+    - option "毕设管理员"
+    - option "实习指导教师"
+    - option "校院领导"
+    - option "组织人事"
+    - option "心理老师"
+    - option "学校管理员"
+    - option "安全审计员"
+    - option "学生"
+    - option "学工老师"
+    - option "学工处管理员"
+    - option "系统管理员"
+    - option "团委老师"
+  - generic: 生效方式
+  - textbox "生效方式" [disabled]: 立即生效（未来排期暂不开放）
+  - generic: 到期时间
+  - textbox "到期时间"
+  - generic: 授权原因
+  - textbox "授权原因":
+    - /placeholder: 至少 5 个字；写入授权来源与审计
+  - button "新增正式角色授权"
+  - paragraph: 系统会拒绝停用的角色、学生与教职工角色串用、重复覆盖授权和未来时间提前生效；新增记录继续在下方台账复核、转交、回收。
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:36
+  - heading "角色成员与业务身份" [level=1]
+  - button "立即回收到期授权"
+  - button "刷新"
+  - tablist:
+    - button "固定角色成员"
+    - button "自动业务身份"
+  - generic: 首屏结论
+  - button "0 即将到期":
+    - generic: "0"
+    - generic: 即将到期
+  - button "0 过期未回收":
+    - generic: "0"
+    - generic: 过期未回收
+  - button "22255 跨学期未复核":
+    - generic: "22255"
+    - generic: 跨学期未复核
+  - button "22254 来源不明":
+    - generic: "22254"
+    - generic: 来源不明
+  - button "2 多人持有高权角色":
+    - generic: "2"
+    - generic: 多人持有高权角色
+  - table:
+    - rowgroup:
+      - row "成员与角色 有效期 来源与原因 状态 操作":
+        - columnheader "成员与角色"
+        - columnheader "有效期"
+        - columnheader "来源与原因"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "E2E教务测试任课教师A e2e_aa_teacher_a · 沙箱联调角色0913（自定义） 生效 2026-09-13 12:23:35 到期 长期有效 人工分配 111111111 生效中 未复核 复核 转交 回收":
+        - cell "E2E教务测试任课教师A e2e_aa_teacher_a · 沙箱联调角色0913（自定义）":
+          - generic: E2E教务测试任课教师A
+          - generic: e2e_aa_teacher_a · 沙箱联调角色0913（自定义）
+        - cell "生效 2026-09-13 12:23:35 到期 长期有效":
+          - generic: 生效 2026-09-13 12:23:35
+          - generic: 到期 长期有效
+        - cell "人工分配 111111111":
+          - generic: 人工分配
+          - generic: "111111111"
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "复核 转交 回收":
+          - button "复核"
+          - button "转交"
+          - button "回收"
+      - row "董晨曦 sbx_t0269 · 毕设指导教师 生效 2026-08-31 00:28:31 到期 长期有效 来源待确认 沙箱联调：补登记既有毕设指导角色，保留原权限与长期有效状态 生效中 未复核 复核 转交 回收":
+        - cell "董晨曦 sbx_t0269 · 毕设指导教师":
+          - generic: 董晨曦
+          - generic: sbx_t0269 · 毕设指导教师
+        - cell "生效 2026-08-31 00:28:31 到期 长期有效":
+          - generic: 生效 2026-08-31 00:28:31
+          - generic: 到期 长期有效
+        - cell "来源待确认 沙箱联调：补登记既有毕设指导角色，保留原权限与长期有效状态":
+          - generic: 来源待确认
+          - generic: 沙箱联调：补登记既有毕设指导角色，保留原权限与长期有效状态
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "复核 转交 回收":
+          - button "复核"
+          - button "转交"
+          - button "回收"
+      - row "王可欣 sbx_t0001 · 普通教职工 生效 2026-09-13 11:35:52 到期 长期有效 人工分配 沙箱联调：验证角色授权接收与旧会话撤权，完成后回收 已撤销 未复核 复核 转交 回收":
+        - cell "王可欣 sbx_t0001 · 普通教职工":
+          - generic: 王可欣
+          - generic: sbx_t0001 · 普通教职工
+        - cell "生效 2026-09-13 11:35:52 到期 长期有效":
+          - generic: 生效 2026-09-13 11:35:52
+          - generic: 到期 长期有效
+        - cell "人工分配 沙箱联调：验证角色授权接收与旧会话撤权，完成后回收":
+          - generic: 人工分配
+          - generic: 沙箱联调：验证角色授权接收与旧会话撤权，完成后回收
+        - cell "已撤销 未复核":
+          - generic: 已撤销
+          - generic: 未复核
+        - cell "复核 转交 回收":
+          - button "复核"
+          - button "转交"
+          - button "回收"
+      - row "王老师 teacher2 · 辅导员 生效 2026-03-01 10:30:00 到期 长期有效 来源待确认 007 实施验收时复核的辅导员角色授权。 生效中 复核 2026-2027学年第一学期 复核 转交 回收":
+        - cell "王老师 teacher2 · 辅导员":
+          - generic: 王老师
+          - generic: teacher2 · 辅导员
+        - cell "生效 2026-03-01 10:30:00 到期 长期有效":
+          - generic: 生效 2026-03-01 10:30:00
+          - generic: 到期 长期有效
+        - cell "来源待确认 007 实施验收时复核的辅导员角色授权。":
+          - generic: 来源待确认
+          - generic: 007 实施验收时复核的辅导员角色授权。
+        - cell "生效中 复核 2026-2027学年第一学期":
+          - generic: 生效中
+          - generic: 复核 2026-2027学年第一学期
+        - cell "复核 转交 回收":
+          - button "复核"
+          - button "转交"
+          - button "回收"
+      - row "教务联调学院120责任人 v5_aa120_close01 · 学院管理员 生效 2026-10-04 03:37:58 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "教务联调学院120责任人 v5_aa120_close01 · 学院管理员":
+          - generic: 教务联调学院120责任人
+          - generic: v5_aa120_close01 · 学院管理员
+        - cell "生效 2026-10-04 03:37:58 到期 长期有效":
+          - generic: 生效 2026-10-04 03:37:58
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "教务只读验收员（虚构） v5_daily_leader_20261002 · 校院领导 生效 2026-10-02 07:20:03 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "教务只读验收员（虚构） v5_daily_leader_20261002 · 校院领导":
+          - generic: 教务只读验收员（虚构）
+          - generic: v5_daily_leader_20261002 · 校院领导
+        - cell "生效 2026-10-02 07:20:03 到期 长期有效":
+          - generic: 生效 2026-10-02 07:20:03
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "迎新联调同学甲 YX2026092201 · 学生 生效 2026-09-22 14:28:44 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "迎新联调同学甲 YX2026092201 · 学生":
+          - generic: 迎新联调同学甲
+          - generic: YX2026092201 · 学生
+        - cell "生效 2026-09-22 14:28:44 到期 长期有效":
+          - generic: 生效 2026-09-22 14:28:44
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "胡管理 admin2 · 学院毕设管理员 生效 2026-09-15 10:10:20 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "胡管理 admin2 · 学院毕设管理员":
+          - generic: 胡管理
+          - generic: admin2 · 学院毕设管理员
+        - cell "生效 2026-09-15 10:10:20 到期 长期有效":
+          - generic: 生效 2026-09-15 10:10:20
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "胡管理 admin2 · 实习指导教师 生效 2026-09-15 10:10:20 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "胡管理 admin2 · 实习指导教师":
+          - generic: 胡管理
+          - generic: admin2 · 实习指导教师
+        - cell "生效 2026-09-15 10:10:20 到期 长期有效":
+          - generic: 生效 2026-09-15 10:10:20
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "胡管理 admin2 · 学工处管理员 生效 2026-09-15 10:10:20 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "胡管理 admin2 · 学工处管理员":
+          - generic: 胡管理
+          - generic: admin2 · 学工处管理员
+        - cell "生效 2026-09-15 10:10:20 到期 长期有效":
+          - generic: 生效 2026-09-15 10:10:20
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "胡管理 admin2 · 任课教师 生效 2026-09-15 10:10:20 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "胡管理 admin2 · 任课教师":
+          - generic: 胡管理
+          - generic: admin2 · 任课教师
+        - cell "生效 2026-09-15 10:10:20 到期 长期有效":
+          - generic: 生效 2026-09-15 10:10:20
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "胡管理 admin2 · 系统管理员 生效 2026-09-15 10:10:20 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "胡管理 admin2 · 系统管理员":
+          - generic: 胡管理
+          - generic: admin2 · 系统管理员
+        - cell "生效 2026-09-15 10:10:20 到期 长期有效":
+          - generic: 生效 2026-09-15 10:10:20
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "胡管理 admin2 · 学工老师 生效 2026-09-15 10:10:20 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "胡管理 admin2 · 学工老师":
+          - generic: 胡管理
+          - generic: admin2 · 学工老师
+        - cell "生效 2026-09-15 10:10:20 到期 长期有效":
+          - generic: 生效 2026-09-15 10:10:20
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "胡管理 admin2 · 专业毕设负责人 生效 2026-09-15 10:10:20 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "胡管理 admin2 · 专业毕设负责人":
+          - generic: 胡管理
+          - generic: admin2 · 专业毕设负责人
+        - cell "生效 2026-09-15 10:10:20 到期 长期有效":
+          - generic: 生效 2026-09-15 10:10:20
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "智能排课验收学生 OPT2026091401 · 学生 生效 2026-09-14 07:03:45 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "智能排课验收学生 OPT2026091401 · 学生":
+          - generic: 智能排课验收学生
+          - generic: OPT2026091401 · 学生
+        - cell "生效 2026-09-14 07:03:45 到期 长期有效":
+          - generic: 生效 2026-09-14 07:03:45
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "智能排课验收教师 opt_daily_teacher · 任课教师 生效 2026-09-14 07:03:45 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "智能排课验收教师 opt_daily_teacher · 任课教师":
+          - generic: 智能排课验收教师
+          - generic: opt_daily_teacher · 任课教师
+        - cell "生效 2026-09-14 07:03:45 到期 长期有效":
+          - generic: 生效 2026-09-14 07:03:45
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "智能排课验收教务员 opt_daily_admin · 教务处管理员 生效 2026-09-14 07:03:45 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "智能排课验收教务员 opt_daily_admin · 教务处管理员":
+          - generic: 智能排课验收教务员
+          - generic: opt_daily_admin · 教务处管理员
+        - cell "生效 2026-09-14 07:03:45 到期 长期有效":
+          - generic: 生效 2026-09-14 07:03:45
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "联通学院审核 pcflow_college · 普通教职工 生效 2026-09-13 05:00:05 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "联通学院审核 pcflow_college · 普通教职工":
+          - generic: 联通学院审核
+          - generic: pcflow_college · 普通教职工
+        - cell "生效 2026-09-13 05:00:05 到期 长期有效":
+          - generic: 生效 2026-09-13 05:00:05
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "联通学院审核 pcflow_college · 任课教师 生效 2026-09-13 05:00:05 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "联通学院审核 pcflow_college · 任课教师":
+          - generic: 联通学院审核
+          - generic: pcflow_college · 任课教师
+        - cell "生效 2026-09-13 05:00:05 到期 长期有效":
+          - generic: 生效 2026-09-13 05:00:05
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "联通学生乙 PC2026091202 · 学生 生效 2026-09-12 11:02:30 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "联通学生乙 PC2026091202 · 学生":
+          - generic: 联通学生乙
+          - generic: PC2026091202 · 学生
+        - cell "生效 2026-09-12 11:02:30 到期 长期有效":
+          - generic: 生效 2026-09-12 11:02:30
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "联通学生甲 PC2026091201 · 学生 生效 2026-09-12 11:02:30 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "联通学生甲 PC2026091201 · 学生":
+          - generic: 联通学生甲
+          - generic: PC2026091201 · 学生
+        - cell "生效 2026-09-12 11:02:30 到期 长期有效":
+          - generic: 生效 2026-09-12 11:02:30
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "联通学院审核 pcflow_college · 学院管理员 生效 2026-09-12 11:02:28 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "联通学院审核 pcflow_college · 学院管理员":
+          - generic: 联通学院审核
+          - generic: pcflow_college · 学院管理员
+        - cell "生效 2026-09-12 11:02:28 到期 长期有效":
+          - generic: 生效 2026-09-12 11:02:28
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "联通任课教师 pcflow_teacher · 辅导员 生效 2026-09-12 11:02:28 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "联通任课教师 pcflow_teacher · 辅导员":
+          - generic: 联通任课教师
+          - generic: pcflow_teacher · 辅导员
+        - cell "生效 2026-09-12 11:02:28 到期 长期有效":
+          - generic: 生效 2026-09-12 11:02:28
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "联通任课教师 pcflow_teacher · 任课教师 生效 2026-09-12 11:02:28 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "联通任课教师 pcflow_teacher · 任课教师":
+          - generic: 联通任课教师
+          - generic: pcflow_teacher · 任课教师
+        - cell "生效 2026-09-12 11:02:28 到期 长期有效":
+          - generic: 生效 2026-09-12 11:02:28
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 安全审计员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 安全审计员":
+          - generic: 王老师
+          - generic: teacher2 · 安全审计员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 系统管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 系统管理员":
+          - generic: 王老师
+          - generic: teacher2 · 系统管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 团委老师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 团委老师":
+          - generic: 王老师
+          - generic: teacher2 · 团委老师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 学工老师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 学工老师":
+          - generic: 王老师
+          - generic: teacher2 · 学工老师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 心理老师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 心理老师":
+          - generic: 王老师
+          - generic: teacher2 · 心理老师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 组织人事 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 组织人事":
+          - generic: 王老师
+          - generic: teacher2 · 组织人事
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 校院领导 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 校院领导":
+          - generic: 王老师
+          - generic: teacher2 · 校院领导
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 毕设管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 毕设管理员":
+          - generic: 王老师
+          - generic: teacher2 · 毕设管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 毕设评阅教师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 毕设评阅教师":
+          - generic: 王老师
+          - generic: teacher2 · 毕设评阅教师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 专业毕设负责人 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 专业毕设负责人":
+          - generic: 王老师
+          - generic: teacher2 · 专业毕设负责人
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 毕设成绩管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 毕设成绩管理员":
+          - generic: 王老师
+          - generic: teacher2 · 毕设成绩管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 答辩秘书 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 答辩秘书":
+          - generic: 王老师
+          - generic: teacher2 · 答辩秘书
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 答辩专家 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 答辩专家":
+          - generic: 王老师
+          - generic: teacher2 · 答辩专家
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 学院毕设管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 学院毕设管理员":
+          - generic: 王老师
+          - generic: teacher2 · 学院毕设管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 就业老师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 就业老师":
+          - generic: 王老师
+          - generic: teacher2 · 就业老师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 宿管老师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 宿管老师":
+          - generic: 王老师
+          - generic: teacher2 · 宿管老师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 学院管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 学院管理员":
+          - generic: 王老师
+          - generic: teacher2 · 学院管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 毕设指导教师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 毕设指导教师":
+          - generic: 王老师
+          - generic: teacher2 · 毕设指导教师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 实习指导教师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 实习指导教师":
+          - generic: 王老师
+          - generic: teacher2 · 实习指导教师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 学工处管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 学工处管理员":
+          - generic: 王老师
+          - generic: teacher2 · 学工处管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 教务处管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 教务处管理员":
+          - generic: 王老师
+          - generic: teacher2 · 教务处管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 任课教师 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 任课教师":
+          - generic: 王老师
+          - generic: teacher2 · 任课教师
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "王老师 teacher2 · 学校管理员 生效 2026-09-11 13:41:41 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "王老师 teacher2 · 学校管理员":
+          - generic: 王老师
+          - generic: teacher2 · 学校管理员
+        - cell "生效 2026-09-11 13:41:41 到期 长期有效":
+          - generic: 生效 2026-09-11 13:41:41
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "郭睿哲 sbx_t0288 · 毕设指导教师 生效 2026-08-31 00:28:31 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "郭睿哲 sbx_t0288 · 毕设指导教师":
+          - generic: 郭睿哲
+          - generic: sbx_t0288 · 毕设指导教师
+        - cell "生效 2026-08-31 00:28:31 到期 长期有效":
+          - generic: 生效 2026-08-31 00:28:31
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "何睿哲 sbx_t0287 · 毕设指导教师 生效 2026-08-31 00:28:31 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "何睿哲 sbx_t0287 · 毕设指导教师":
+          - generic: 何睿哲
+          - generic: sbx_t0287 · 毕设指导教师
+        - cell "生效 2026-08-31 00:28:31 到期 长期有效":
+          - generic: 生效 2026-08-31 00:28:31
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+      - row "林睿哲 sbx_t0286 · 毕设指导教师 生效 2026-08-31 00:28:31 到期 长期有效 来源待确认 — 生效中 未复核 补登记":
+        - cell "林睿哲 sbx_t0286 · 毕设指导教师":
+          - generic: 林睿哲
+          - generic: sbx_t0286 · 毕设指导教师
+        - cell "生效 2026-08-31 00:28:31 到期 长期有效":
+          - generic: 生效 2026-08-31 00:28:31
+          - generic: 到期 长期有效
+        - cell "来源待确认 —":
+          - generic: 来源待确认
+          - generic: —
+        - cell "生效中 未复核":
+          - generic: 生效中
+          - generic: 未复核
+        - cell "补登记":
+          - button "补登记"
+  - navigation "角色授权分页":
+    - generic: 共 22257 条 · 每页 50 条 · 第 1 / 446 页
+    - button "上一页" [disabled]
+    - button "下一页"
+    - text: 跳至
+    - spinbutton "授权清单页码": "1"
+    - text: 页
+    - button "跳转"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

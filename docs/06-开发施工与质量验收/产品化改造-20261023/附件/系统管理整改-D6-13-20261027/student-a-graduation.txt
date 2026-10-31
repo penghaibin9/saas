@@ -1,0 +1,178 @@
+- link "跳到工作区":
+  - /url: "#student-workspace-main"
+- banner:
+  - link "高校学生全生命周期管理平台":
+    - /url: /portal/home
+    - strong: 高校学生全生命周期管理平台
+  - button "搜索我的事项或服务 Ctrl K":
+    - generic: 搜索我的事项或服务
+    - generic: Ctrl K
+  - time: 10/27周二 10:50
+  - button "消息通知":
+  - button "打开学生账户":
+    - generic: 四
+    - strong: 四域虚构学生甲
+    - generic: 在读学生
+    - generic: ⌄
+- navigation "一级菜单":
+  - button "在校服务"
+  - button "教务学业"
+  - button "毕业设计" [active]
+  - button "岗位实习"
+  - button "就业服务"
+- generic "所有业务仅限当前学生本人": 本人范围
+- button "本次使用 00:00:33":
+  - text: 本次使用
+  - time: 00:00:33
+- complementary "二级菜单":
+  - button "展开二级菜单":
+  - navigation "二级菜单":
+    - button "毕业设计":
+      - generic: 毕设
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+  - navigation "三级菜单":
+    - button "毕业设计工作台":
+      - generic: 总览
+    - button "毕业设计材料库":
+      - generic: 材料
+    - button "反馈与重提":
+      - generic: 反馈
+    - button "归档证据包":
+      - generic: 归档
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "我的工作台"
+  - tab "毕业设计工作台" [selected]
+  - button "关闭毕业设计工作台": ×
+- button "恢复关闭页签" [disabled]: 恢复
+- button "收藏"
+- button "专注"
+- main "毕业设计工作台":
+  - link "冻结证据包 查看归档时固定的材料与业务快照 →":
+    - /url: /portal/graduation/evidence-package
+    - generic: 冻结证据包
+    - strong: 查看归档时固定的材料与业务快照 →
+  - paragraph: 毕业论文（设计）工作台
+  - heading "按步骤完成我的毕业设计" [level=1]
+  - paragraph: 每一步对应实际提交、审核或整改结果；时间和要求以学校当前批次为准。
+  - button "刷新进度"
+  - generic: 我的课题
+  - strong: （未选题）
+  - generic: 指导教师
+  - strong: 整改验收教师甲
+  - generic: 当前环节
+  - strong: 选题
+  - generic: 所属批次
+  - strong: D606毕设批次
+  - region "当前要做":
+    - generic: 当前要做
+    - generic: 第 01 步 · 组织与选题
+    - strong: 等待学校开放选题
+    - paragraph: 学校开放选题轮次后，这里会提醒你去选题。
+    - generic: 当前无需你操作，学校或导师处理后这里会自动更新。
+  - paragraph: 导师审核、答辩安排和成绩发布由学校办理；需要你操作时，按钮会在对应步骤出现。
+  - list:
+    - generic: "01"
+    - article:
+      - heading "组织与选题" [level=2]
+      - paragraph: 在学校开放的轮次中提交志愿，等待导师或管理员确认。
+      - generic: 等待学校开放选题
+      - paragraph: 选题轮次已开放，请选择课题并提交志愿。
+      - button "选择并提交志愿"
+    - generic: "02"
+    - article:
+      - heading "任务书确认" [level=2]
+      - paragraph: 阅读导师下达的任务目标、研究内容、进度计划和成果要求。
+      - generic: 未开始
+      - paragraph: 导师尚未下达任务书
+    - generic: "03"
+    - article:
+      - heading "开题论证" [level=2]
+      - paragraph: 提交研究依据、技术路线、进度计划与预期成果，等待审核。
+      - generic: 未开始
+      - paragraph: 请先完成选题确认后再提交开题报告
+      - generic: 请先完成选题确认后再提交开题报告
+    - generic: "04"
+    - article:
+      - heading "过程指导" [level=2]
+      - paragraph: 导师指导记录会沉淀为可追溯的过程证据。
+      - generic: 未开始
+      - paragraph: 请根据任务书计划主动与指导教师沟通；最低指导次数由本校批次规则决定。
+    - generic: "05"
+    - article:
+      - heading "中期检查" [level=2]
+      - paragraph: 查看检查结论；被要求整改时提交整改说明，等待复核。
+      - generic: 未开始
+      - paragraph: 学校完成中期检查后会在此展示结论。
+    - generic: "06"
+    - article:
+      - heading "成果检查" [level=2]
+      - paragraph: 按初稿、定稿顺序提交论文材料，等待评阅和查重。
+      - generic: 未开始
+      - paragraph: 提交前请确认开题、中期等前置环节已按学校要求完成。
+    - generic: "07"
+    - article:
+      - heading "答辩与评分" [level=2]
+      - paragraph: 答辩安排发布后可查看时间、地点和答辩组信息。
+      - generic: 未开始
+      - paragraph: 答辩分组尚未安排
+    - generic: "08"
+    - article:
+      - heading "成绩归档与总结" [level=2]
+      - paragraph: 学校发布后可查看最终成绩并发起申诉；材料齐套后由学校归档。
+      - generic: 未发布
+      - paragraph: 成绩发布前不展示分数明细。
+      - list:
+        - listitem: ○ 任务书（已确认）
+        - listitem: ○ 开题报告（已通过）
+        - listitem: ○ 中期检查（已通过）
+        - listitem: ○ 成果定稿（已通过）
+        - listitem: ○ 教师评阅（已完成）
+        - listitem: ○ 答辩评分（已确认）
+        - listitem: ○ 成绩（已发布）
+  - paragraph: 评阅与整改
+  - heading "评阅反馈与整改重交" [level=2]
+  - paragraph: 这里集中显示老师退回的意见。按要求修改并重新提交后，旧版本仍可查阅。
+  - button "刷新反馈"
+  - generic: ⚠️
+  - generic: 学生材料规则不存在
+- navigation "快捷操作":
+  - text: 我的
+  - text: 常用
+  - button "我的工作台":
+    - generic: 我的工作台
+  - button "本人资料":
+    - generic: 本人资料
+  - button "请假与返校":
+    - generic: 请假与返校
+  - button "住宿与调宿":
+    - generic: 住宿与调宿
+  - button "我的课表":
+    - generic: 我的课表
+  - button "补交材料":
+    - generic: 补交材料
+  - button "编辑快捷栏": 编辑
+  - button "收起快捷栏": 收起
+- region "延期答辩与优秀成果":
+  - strong: 延期答辩与优秀成果
+  - paragraph: 先看当前状态和下一步；延期答辩与二次答辩分开处理，成绩优秀也不等于已认定优秀成果。
+  - button "刷新"
+  - generic: 当前批次
+  - strong: "1"
+  - generic: 延期状态
+  - strong: 未申请
+  - generic: 优秀成果
+  - strong: 暂无认定
+  - generic: 下一步
+  - strong: 继续完成当前毕设阶段
+  - article:
+    - strong: 延期答辩
+    - generic: 当前不可申请
+    - paragraph: 仅进入成果检查或答辩阶段、且成绩尚未发布时可申请。
+  - article:
+    - strong: 优秀成果认定
+    - generic: 导师提名 → 专业复核 → 学院终审
+    - generic: 暂无认定记录
+    - paragraph: 成绩等级为优秀只是候选条件，须由导师提名并通过专业、学院审核。

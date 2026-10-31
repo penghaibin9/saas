@@ -1,0 +1,188 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:22":
+    - generic: 10/27周二 09:22
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:19:08":
+  - generic: 本次工作 00:19:08
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 实施与交付
+  - navigation "三级菜单":
+    - button "实施总览":
+      - generic: 实施总览
+    - button "首次开局向导":
+      - generic: 首次开局向导
+    - button "预设方案":
+      - generic: 预设方案
+    - button "职业教育国家标准库":
+      - generic: 职业教育国家标准库
+    - button "数据导入与智能匹配":
+      - generic: 数据导入与智能匹配
+    - button "已安装配置":
+      - generic: 已安装配置
+    - button "变更与升级":
+      - generic: 变更与升级
+    - button "上线检查与验收":
+      - generic: 上线检查与验收
+    - button "老系统数据迁移":
+      - generic: 老系统数据迁移
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移" [selected]:
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:22
+  - heading "老系统数据迁移" [level=1]
+  - generic: 迁移地图（21 域 · 学工 + 教务全量历史）
+  - generic: 老系统只要能导出 Excel 即可迁移；原始 XLSX、预检和确认结果统一进入数据交换任务中心。
+  - generic: "0"
+  - generic: 学生主档
+  - generic: 0/21
+  - generic: 已有数据域
+  - generic: "0"
+  - generic: 迁移批次
+  - generic: 迁移域（按依赖顺序执行）
+  - generic: 灰色域表示前置依赖未完成；确认只提交统一的任务编号与任务版本
+  - generic: 迁移批次记录
+  - button "任务中心"
+  - button "刷新" [disabled]: 刷新
+  - generic: 暂无迁移批次；先在上方选择迁移域并上传老系统导出的 XLSX 文件。
+  - generic: 实施口径（对学校可承诺的验收方式）
+  - list:
+    - listitem: 老系统原始 XLSX、预检错误、确认结果和任务版本全部可追溯，刷新页面任务不丢。
+    - listitem: 预校验存在任何错误行时禁止确认；确认阶段整批一个事务，任一行失败全部回滚。
+    - listitem: 历史数据只进终态：不产生待办、不触发工作流；导入行为全部写入安全审计。
+    - listitem: 导入完成后按域对账：库内数量与老系统报表逐项核对一致方可签认。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

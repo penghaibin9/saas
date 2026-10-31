@@ -1,0 +1,131 @@
+Browser tab: 2, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/admin/system/identity-import/teachers".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/system/identity-import/teachers
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 12° 晴, Secondary Actions: Expand
+				8 image
+				9 text 北京 12° 晴
+			10 button (collapsed) 10/26周一 19:53, Secondary Actions: Expand
+				11 image
+				244 text 10/26周一 19:53
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 整 整改验收经办人 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 整
+				18 text 整改验收经办人
+				19 text 系统管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 系统管理
+			24 button (collapsed) 当前范围, Secondary Actions: Expand
+				25 image
+				26 text 当前范围
+				27 image
+			28 button (collapsed) 本次工作 02:38:48, Secondary Actions: Expand
+				29 image
+				245 text 本次工作 02:38:48
+		31 container 二级菜单
+			32 button 收窄二级菜单
+				189 text 系统管理
+			33 container 二级菜单
+				34 button 管理概览
+				35 button 账号管理
+				36 button 组织与任职
+				37 button 角色与权限
+				38 button 数据任务
+				39 button 学校设置
+				40 button 流程管理
+				41 button 安全与审计
+				42 button 第三方对接
+				43 button 实施与交付
+			44 checkbox Description: 取消固定二级菜单, Value: 1
+		45 container 三级菜单
+			46 button 收窄三级菜单
+				191 text 数据任务
+			47 container 三级菜单
+				192 button 教职工导入
+				193 button 学生导入与账号开通
+				194 button 数据交换任务中心
+				195 button 主数据责任与数据质量
+				196 button 批处理与后台任务
+			49 checkbox Description: 取消固定三级菜单, Value: 1
+		50 container
+			51 tab group 已打开页面
+				52 container
+					53 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					54 button 关闭学校角色与成员
+						55 image
+				56 container
+					57 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					58 button 关闭操作与权限审计
+						59 image
+				60 container
+					61 tab (selectable, settable, boolean) 系统总览, Help: 管理概览 / 系统总览, Value: 0
+系统总览
+					62 button 关闭系统总览
+						63 image
+				197 container
+					198 tab (selected, settable, boolean) 教职工导入, Help: 数据任务 / 教职工导入, Value: 1
+教职工导入
+					199 button 关闭教职工导入
+						200 image
+			64 button (disabled) 恢复最近关闭的页签
+				65 image
+			66 checkbox Description: 收藏当前页面, Value: 0
+				67 image
+			68 checkbox Description: 专注模式, Value: 0
+				69 image
+			201 container
+				202 heading 教职工导入, Value: 1
+					203 text 教职工导入
+				204 button 数据交换任务
+				205 button 下载标准 XLSX 模板
+				206 content list 身份导入步骤
+					207 container
+						208 text 1 准备文件
+					209 container
+						210 text 2 安全扫描
+					211 container
+						212 text 3 预检查
+					213 container
+						214 text 4 确认导入
+					215 container
+						216 text 5 结果回执
+				217 heading 准备教职工名单, Value: 2
+					218 text 准备教职工名单
+				219 text 师生名单分开上传，不在浏览器解析或改写表格内容。
+				220 text 教职工身份
+				221 heading 选择标准 Excel 名单, Value: 3
+					222 text 选择标准 Excel 名单
+				223 text 使用本页下载的模板。文件登记成功后，还需等待安全扫描和预检查。
+				224 text 选择 .xlsx 文件
+				225 button Description: 选择身份导入文件, ID: identity-workbook
+				226 button (disabled) 上传并开始预检
+				227 text 导入前确认
+				228 heading 先把问题留在预检阶段, Value: 2
+					229 text 先把问题留在预检阶段
+				230 text 1
+				231 heading 使用正确模板, Value: 3
+					232 text 使用正确模板
+				233 text 工号、姓名、部门、预设角色与数据范围按教职工模板填写，多个角色的分隔规则以模板为准。
+				234 text 2
+				235 heading 核对角色与岗位范围, Value: 3
+					236 text 核对角色与岗位范围
+				237 text 角色来源与学院、班级范围分别校验。不能凭页面成功提示推断所有业务关系已配置。
+				238 text 3
+				239 heading 凭据单独受控下载, Value: 3
+					240 text 凭据单独受控下载
+				241 text 原文件、错误与初始凭据回执保留在任务中心。任务可见不等于有权下载凭据。
+				242 text 任务可以继续办理
+				243 text 登记成功后本页链接会保留任务编号。刷新或重新打开链接，只读取该任务，不自动重新上传或确认。
+			186 button 我的常用
+
+The focused UI element is 38 button 数据任务

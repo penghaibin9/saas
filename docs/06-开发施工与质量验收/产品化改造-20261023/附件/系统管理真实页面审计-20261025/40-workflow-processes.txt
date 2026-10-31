@@ -1,0 +1,183 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/workflow/processes".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/workflow/processes
+	1 container app
+		2 container
+			17 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				18 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:13, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:13
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 教务中心
+				26 button 毕业设计中心
+				27 button 岗位实习中心
+				28 button 系统管理
+			29 button (collapsed) 当前范围, Secondary Actions: Expand
+				30 image
+				31 text 当前范围
+				32 image
+			33 button (collapsed) 本次工作 00:07:13, Secondary Actions: Expand
+				34 image
+				162 text 本次工作 00:07:13
+		36 container 二级菜单
+			37 button 展开二级菜单
+			38 container 二级菜单
+				39 button 系统概览
+				40 button 身份与账号
+				41 button 组织主数据
+				42 button 角色与权限
+				43 button 学校配置
+				44 button 流程配置
+				45 button 安全与审计
+				46 button 接口与同步
+			47 checkbox Description: 取消固定二级菜单, Value: 1
+		48 container 三级菜单
+			49 button 展开三级菜单
+			50 container 三级菜单
+				51 button 流程模板与运行
+				52 button 流程安全与运行治理
+				53 button 统一消息、待办与通知治理
+				54 button 批处理与后台任务
+			55 checkbox Description: 取消固定三级菜单, Value: 1
+		56 container
+			57 tab group 已打开页面
+				58 container
+					59 tab (selectable, settable, boolean) 岗位管理, Help: 组织主数据 / 岗位管理, Value: 0
+岗位管理
+					60 button 关闭岗位管理
+						61 image
+				62 container
+					63 tab (selectable, settable, boolean) 教职工任职归属查询, Help: 组织主数据 / 教职工任职归属查询, Value: 0
+教职工任职归属查询
+					64 button 关闭教职工任职归属查询
+						65 image
+				66 container
+					67 tab (selectable, settable, boolean) 业务关系中心, Help: 组织主数据 / 业务关系中心, Value: 0
+业务关系中心
+					68 button 关闭业务关系中心
+						69 image
+				70 container
+					71 tab (selectable, settable, boolean) 变更版本, Help: 组织主数据 / 变更版本, Value: 0
+变更版本
+					72 button 关闭变更版本
+						73 image
+				74 container
+					75 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					76 button 关闭身份权限总览
+						77 image
+				78 container
+					79 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					80 button 关闭预设角色模板
+						81 image
+				82 container
+					83 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					84 button 关闭学校角色与成员
+						85 image
+				86 container
+					87 tab (selectable, settable, boolean) 角色成员与业务身份, Help: 角色与权限 / 角色成员与业务身份, Value: 0
+角色成员与业务身份
+					88 button 关闭角色成员与业务身份
+						89 image
+				90 container
+					91 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					92 button 关闭菜单与操作权限
+						93 image
+				94 container
+					95 tab (selectable, settable, boolean) 数据范围规则, Help: 角色与权限 / 数据范围规则, Value: 0
+数据范围规则
+					96 button 关闭数据范围规则
+						97 image
+				98 container
+					99 tab (selectable, settable, boolean) 临时授权与工作移交, Help: 角色与权限 / 临时授权与工作移交, Value: 0
+临时授权与工作移交
+					100 button 关闭临时授权与工作移交
+						101 image
+				102 container
+					103 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					104 button 关闭安全变更
+						105 image
+				106 container
+					107 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					108 button 关闭访问治理
+						109 image
+				110 container
+					111 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					112 button 关闭学校信息与品牌
+						113 image
+				114 container
+					115 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					116 button 关闭数据字典
+						117 image
+				118 container
+					119 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					120 button 关闭模块授权与业务开关
+						121 image
+				122 container
+					123 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					124 button 关闭主数据责任与数据质量
+						125 image
+				126 container
+					127 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					128 button 关闭合规与业务表单
+						129 image
+				130 container
+					131 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					132 button 关闭学年学期与业务日历
+						133 image
+				134 container
+					135 tab (selected, settable, boolean) 流程模板与运行, Help: 流程配置 / 流程模板与运行, Value: 1
+流程模板与运行
+					136 button 关闭流程模板与运行
+						137 image
+			138 button (disabled) 恢复最近关闭的页签
+				139 image
+			140 checkbox Description: 收藏当前页面, Value: 0
+				141 image
+			142 checkbox Description: 专注模式, Value: 0
+				143 image
+			144 heading 流程模板管理, Value: 2
+				145 text 流程模板管理
+			146 text 学校管理员维护草稿；发布新版本只影响后续新提交的业务单据。
+			147 pop up button (collapsed, settable) Value: 全部状态, Secondary Actions: Expand
+				148 menu
+					149 (selected) 全部状态
+					150 已发布
+					151 草稿
+					152 已停用
+			153 text field (settable)
+			154 button 查询
+			155 button 新建流程模板
+			156 container
+				157 text 学生请假审批（007 标准） 第 2026.1 版 已启用 其他业务模块 节点 2 个 维护人：学校管理员 更新：2026-08-31T00:17:20 辅导员审核 → 学院复核
+				158 button 创建新版本
+				159 button 停用
+				160 button 详情
+			161 button 我的常用
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/workflow/processes

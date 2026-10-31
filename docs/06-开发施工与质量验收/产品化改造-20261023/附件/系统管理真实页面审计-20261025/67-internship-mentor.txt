@@ -1,0 +1,314 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/internship/students?panel=mentor&batchId=47".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/internship/students?panel=mentor&batchId=47
+	1 container app
+		2 container
+			17 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				18 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:19, Secondary Actions: Expand
+				11 image
+				221 text 10/25周日 12:19
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 教务中心
+				26 button 毕业设计中心
+				27 button 岗位实习中心
+				28 button 系统管理
+			29 button (collapsed) 当前范围, Secondary Actions: Expand
+				30 image
+				31 text 当前范围
+				32 image
+			33 button (collapsed) 本次工作 00:13:00, Secondary Actions: Expand
+				34 image
+				269 text 本次工作 00:13:00
+		36 container 二级菜单
+			37 button 展开二级菜单
+			38 container 二级菜单
+				39 button 今日工作
+				40 button 实习中心大屏
+				41 button 批次与学生
+				42 button 企业与岗位
+				43 button 申请与落岗
+				44 button 实习过程
+				45 button 风险与变更
+				46 button 评价与成绩
+				47 button 归档与分析
+			48 checkbox Description: 取消固定二级菜单, Value: 1
+		49 container 三级菜单
+			50 button 展开三级菜单
+			51 container 三级菜单
+				209 button 岗位确认
+				210 button 申请审核
+				211 button 岗位匹配
+				212 button 导师分配
+				213 button 三方协议
+				214 button 保险核验
+				215 button 上岗核验
+				216 button 分配记录
+			53 checkbox Description: 取消固定三级菜单, Value: 1
+		54 container
+			55 tab group 已打开页面
+				56 container
+					57 tab (selectable, settable, boolean) 待办与进度, Help: 今日工作 / 待办与进度, Value: 0
+待办与进度
+					58 button 关闭待办与进度
+						59 image
+				204 container
+					205 tab (selectable, settable, boolean) 批次管理, Help: 批次与学生 / 批次管理, Value: 0
+批次管理
+					206 button 关闭批次管理
+						207 image
+				217 container
+					218 tab (selectable, settable, boolean) 岗位确认, Help: 申请与落岗 / 岗位确认, Value: 0
+岗位确认
+					219 button 关闭岗位确认
+						220 image
+				223 container
+					224 tab (selected, settable, boolean) 导师分配, Help: 申请与落岗 / 导师分配, Value: 1
+导师分配
+					225 button 关闭导师分配
+						226 image
+			60 button (disabled) 恢复最近关闭的页签
+				61 image
+			62 checkbox Description: 收藏当前页面, Value: 0
+				63 image
+			64 checkbox Description: 专注模式, Value: 0
+				65 image
+			227 container
+				228 heading 导师分配, Value: 1
+					229 text 导师分配
+				230 text 当前批次
+				231 pop up button (collapsed, settable) Description: 选择实习批次, Value: 2024级岗位实习（进行中） · INT-2024-2026FALL, Secondary Actions: Expand
+					232 menu
+						233 2025 年暑期行业见习（历史归档样本） · INT-2025-SUMMER-HIST
+						234 (selected) 2024级岗位实习（进行中） · INT-2024-2026FALL
+				235 text 进行中 2026-07-20 ~ 2027-01-15
+				236 button 导出名单
+				237 button 管理学生名单
+				238 container 实习学生视图
+					270 text 6402 名学生
+					240 checkbox 全部学生, Value: 0
+					241 checkbox 待资格认定, Value: 0
+					242 checkbox 待分配岗位, Value: 0
+					243 checkbox 在岗学生, Value: 0
+					244 checkbox 去向待落实, Value: 0
+					245 checkbox 导师分配, Value: 1
+				246 container
+					247 text 学生姓名 / 学号
+					248 search text field (settable) 学生姓名 / 学号
+					249 text 实习状态
+					250 pop up button (collapsed, settable) 实习状态, Value: 全部, Secondary Actions: Expand
+						251 menu
+							252 (selected) 全部
+							253 准备中
+							254 待上岗
+							255 在岗中
+							256 考核中
+							257 已归档
+					258 text 实习资格
+					259 pop up button (collapsed, settable) 实习资格, Value: 全部, Secondary Actions: Expand
+						260 menu
+							261 (selected) 全部
+							262 待认定
+							263 资格合格
+							264 资格不合格
+					265 button 查询
+					266 button 重置
+					267 button (collapsed) 更多筛选, Secondary Actions: Expand
+						268 text 更多筛选
+				271 table
+					272 row
+						273 cell
+							274 text 学生
+						275 cell
+							276 text 实习资格
+						277 cell
+							278 text 岗位与去向
+						279 cell
+							280 text 实习状态
+						281 cell
+							282 text 指导教师
+						283 cell
+							284 text 操作
+					285 row
+						286 cell
+							287 link Description: 联通学生乙, Value: 127.0.0.1:5173/admin/internship/students/64063?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							288 container
+								289 text P****2  · 联通试用2601班
+						290 cell
+							291 text 资格合格
+						292 cell
+							293 text 未落实
+						294 cell
+							295 text 待上岗
+						296 cell
+							297 text 王可欣
+						298 cell
+							299 button 调整导师
+							300 button 档案
+					301 row
+						302 cell
+							303 link Description: 联通学生甲, Value: 127.0.0.1:5173/admin/internship/students/64062?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							304 container
+								305 text P****1  · 联通试用2601班
+						306 cell
+							307 text 资格合格
+						308 cell
+							309 text 未落实
+						310 cell
+							311 text 待上岗
+						312 cell
+							313 text 王可欣
+						314 cell
+							315 button 调整导师
+							316 button 档案
+					317 row
+						318 cell
+							319 link Description: 谢致远, Value: 127.0.0.1:5173/admin/internship/students/63762?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							320 container
+								321 text 2****4  · 广告艺术设计2403班
+						322 cell
+							323 text 资格合格
+						324 cell
+							325 text 未落实
+						326 cell
+							327 text 准备中
+						328 cell
+							329 text 谢泽宇
+						330 cell
+							331 button 调整导师
+							332 button 档案
+					333 row
+						334 cell
+							335 link Description: 郑致远, Value: 127.0.0.1:5173/admin/internship/students/63761?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							336 container
+								337 text 2****3  · 广告艺术设计2403班
+						338 cell
+							339 text 资格合格
+						340 cell
+							341 text 未落实
+						342 cell
+							343 text 准备中
+						344 cell
+							345 text 郑泽宇
+						346 cell
+							347 button 调整导师
+							348 button 档案
+					349 row
+						350 cell
+							351 link Description: 宋致远, Value: 127.0.0.1:5173/admin/internship/students/63760?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							352 container
+								353 text 2****2  · 广告艺术设计2403班
+						354 cell
+							355 text 资格合格
+						356 cell
+							357 text 未落实
+						358 cell
+							359 text 准备中
+						360 cell
+							361 text 于泽宇
+						362 cell
+							363 button 调整导师
+							364 button 档案
+					365 row
+						366 cell
+							367 link Description: 梁致远, Value: 127.0.0.1:5173/admin/internship/students/63759?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							368 container
+								369 text 2****1  · 广告艺术设计2403班
+						370 cell
+							371 text 资格合格
+						372 cell
+							373 text 未落实
+						374 cell
+							375 text 准备中
+						376 cell
+							377 text 冯泽宇
+						378 cell
+							379 button 调整导师
+							380 button 档案
+					381 row
+						382 cell
+							383 link Description: 罗诗涵, Value: 127.0.0.1:5173/admin/internship/students/64058?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							384 container
+								385 text 2****0  · 视觉传达设计2402班
+						386 cell
+							387 text 待认定
+						388 cell
+							389 text 未落实
+						390 cell
+							391 text 准备中
+						392 cell
+							393 text 赵佳宁
+						394 cell
+							395 button 调整导师
+							396 button 档案
+					397 row
+						398 cell
+							399 link Description: 马诗涵, Value: 127.0.0.1:5173/admin/internship/students/64057?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							400 container
+								401 text 2****9  · 视觉传达设计2402班
+						402 cell
+							403 text 待认定
+						404 cell
+							405 text 未落实
+						406 cell
+							407 text 准备中
+						408 cell
+							409 text 黄佳宁
+						410 cell
+							411 button 调整导师
+							412 button 档案
+					413 row
+						414 cell
+							415 link Description: 郭诗涵, Value: 127.0.0.1:5173/admin/internship/students/64056?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							416 container
+								417 text 2****8  · 视觉传达设计2402班
+						418 cell
+							419 text 待认定
+						420 cell
+							421 text 未落实
+						422 cell
+							423 text 准备中
+						424 cell
+							425 text 杨佳宁
+						426 cell
+							427 button 调整导师
+							428 button 档案
+					429 row
+						430 cell
+							431 link Description: 何诗涵, Value: 127.0.0.1:5173/admin/internship/students/64055?batchId=47&section=profile&returnTo=/admin/internship/students?panel=mentor%26batchId=47
+							432 container
+								433 text 2****7  · 视觉传达设计2402班
+						434 cell
+							435 text 待认定
+						436 cell
+							437 text 未落实
+						438 cell
+							439 text 准备中
+						440 cell
+							441 text 陈佳宁
+						442 cell
+							443 button 调整导师
+							444 button 档案
+				445 text 共 6402 条
+				446 button (disabled) 上一页
+				447 button 1
+				448 button 2
+				449 button (disabled) …
+				450 button 641
+				451 button 下一页
+			199 button 我的常用
+
+The focused UI element is 212 button 导师分配

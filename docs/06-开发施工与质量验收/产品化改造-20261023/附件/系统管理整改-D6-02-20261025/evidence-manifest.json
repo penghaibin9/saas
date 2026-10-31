@@ -1,0 +1,321 @@
+{
+  "card": "D6-02",
+  "recordedAt": "2026-10-25T18:42:22.588214+08:00",
+  "baseline": "ff7786877ff27cf983aa3e0e2f80334026444025",
+  "files": [
+    {
+      "path": "backend/app/api/v1/auth.py",
+      "sha256": "69aa46cfe46e34d60cb2cd376c2816f874ae937af589a5f395b5c4368108523e",
+      "beforeSha256": "4bedadca2fbd28920594b27cf1b07ca1e61c7f76de8f942d25e1b632b906d5e9"
+    },
+    {
+      "path": "backend/app/api/v1/auth_browser.py",
+      "sha256": "c03f3653fb68cfda6e217edc37dcb135cfeec56fe27702835c84722360492834",
+      "beforeSha256": "63255dd954418a4ccc0b25df7caab5c42bd42c08f21ca3e92f16844be9b8868f"
+    },
+    {
+      "path": "backend/app/api/v1/authz.py",
+      "sha256": "07fcfb1cc4cbd0322a78e1af9e8d0a047f067e9a4ef9eae0315734bab896960c",
+      "beforeSha256": "22885dd2e835b34387c4e59df6b13b3ef8d04f243d9c25e0acecb842f80ce0e6"
+    },
+    {
+      "path": "backend/app/api/v1/control_plane_auth.py",
+      "sha256": "d14a2ff643230b957a97fba29beb3beb2c858bd40fec8927264983ce1c0c3423",
+      "beforeSha256": "3a44443e4d821bc4516c3c5c668d44852ae821884d76119ca00efd78972a9bfe"
+    },
+    {
+      "path": "backend/app/core/exceptions.py",
+      "sha256": "9baad0098354089a422b445f78c1c5a3c4c815f43c1df8a4773bc25895043309",
+      "beforeSha256": "299de5b4616f1e672ac2f9028fb3882f9bff2f23c8f4365937fcae4f32e55bed"
+    },
+    {
+      "path": "backend/app/modules/system_admin/routers/system_bundle.py",
+      "sha256": "fb23d0e56b1b493b872b86d2a6506aa3f9d688e8af1d72d0e5c51a23ed9cd4ca",
+      "beforeSha256": "c3645df464126bc7d45240bb67024692a84c6442154c3413c5409da7498ab289"
+    },
+    {
+      "path": "backend/app/services/audit_evidence_service.py",
+      "sha256": "511463b0b7680f5b843d65d25abc3d593bc5d5fe2d094dfd37eb1fb2c2984dcc",
+      "beforeSha256": "dd99cab8f8be8a9f43d6def9346db89f7deddc2a29b148d696bd537e00d6c3dd"
+    },
+    {
+      "path": "backend/app/services/control_plane_auth_service.py",
+      "sha256": "5f41a2506079f801b2aab36671a6beea54cedbb9d68ff70a6f2922088be7b4d1",
+      "beforeSha256": "fc165114f3e0e043ae691fa72c88b3eab13037bdc2fc39811ce2bb4448e01a53"
+    },
+    {
+      "path": "backend/app/services/db_service.py",
+      "sha256": "1b6000e96b544605a5c0f604b11853070a2f017aa54ad54d4ef88ab883ca966b",
+      "beforeSha256": "446fd9e1a8a1a23b437390df66980088e1bc53b564b82967e337f38bb9569745"
+    },
+    {
+      "path": "backend/app/services/operation_audit_service.py",
+      "sha256": "a887421e14faa22677b56865bad97080cab705d24abf9ada8e21217ba3ee38d1",
+      "beforeSha256": "b1940aa4abf9920a02c7e007c650f211a1355741545f68752b5b02e4657c0d25"
+    },
+    {
+      "path": "backend/tests/test_audit_evidence_integrity.py",
+      "sha256": "56b668c28d5cb0c65d0ab7fc7ddf0846290b6dfbc27f796992a82f3f2c2625de",
+      "beforeSha256": "8a728a0b8cb4b8cc3072da7a89e217b57b81437917fb0ff59213c689e3866cb7"
+    },
+    {
+      "path": "backend/tests/test_system_log_consistency.py",
+      "sha256": "49a352b98511704d4265be7356c81d277eb04ee663fcb6cde6f1317ff4c63349",
+      "beforeSha256": null
+    },
+    {
+      "path": "frontend/src/modules/system/api/system.api.js",
+      "sha256": "a8fcef7da3de2e5c482c2e33bbaada8bfe3fc4b355d56ae0d409ad8d7c8181b4",
+      "beforeSha256": "300794078fdc39226133778440c6173723707a257806a80192389ea90be48ad6"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemAuditView.vue",
+      "sha256": "c3be7c0a737d14f60e29901e5a9c890f4077abbc6434562239d0438d0a0cc7d4",
+      "beforeSha256": "42c879c1ea42bc7119d0979813cc30a5ad840be52dd933c5cf271468d9830d5b"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemLogView.vue",
+      "sha256": "bb8eb771c355a30dab94b84c5d3a7f36849fa6e929264533df60f9612a77fba9",
+      "beforeSha256": "60f380ce525ae86ca1824f8cbad35d083d948e5039efdcea1f70418c13088de8"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemUserListView.vue",
+      "sha256": "bba500f529e6b1139be7d0cd04c56f774ce6d815e2897bd3efbe4500df02f969",
+      "beforeSha256": "19f81f7b79f9cd7664a31241f5c96778499eaa5a009995f5377ebc73d9778abe"
+    },
+    {
+      "path": "frontend/src/utils/dateUtils.js",
+      "sha256": "a24f12a0327186660aa82789187740981cfa0fbb746e2c421fad6a6736d8acc8",
+      "beforeSha256": "e9d395b0fb3ee69b2a2641a11bfd05d479d3daef57811ee47f7b3b15c285f6d0"
+    },
+    {
+      "path": "frontend/src/utils/presentationSafety.js",
+      "sha256": "eb7346884be1ce92b685a8e2f3b275a0613f5474839b1a5a14663ebcd6b4ee5d",
+      "beforeSha256": "9ad54fd1c27d5fd4f5f0d1c0ccf82c915f24ba283ea62fed6d5e477e799d96be"
+    },
+    {
+      "path": "frontend/tests/system-log-consistency.behavior.test.mjs",
+      "sha256": "72e97259c90d9a97b05f10edb83b3de706e5f038904652c32e5fc5d493265f43",
+      "beforeSha256": null
+    }
+  ],
+  "evidence": [
+    {
+      "file": "01-before-operation.jpg",
+      "sha256": "660cdb59b394b20246632778430194005cf46bf979b3d38cbccf6972ec42ec7a",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "01-before-operation.txt",
+      "sha256": "fe498bc99f6225b09454fe60f6410cc57285fa3521ce297ecb2152f2a59922c4",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "02-before-login.jpg",
+      "sha256": "f53d9102fb98dbce290b08b36d95c68c463a4072119e8b59c9a2374aaafd7bda",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "02-before-login.txt",
+      "sha256": "76d85fd243c73cc973282d4269430d3a92ff695b42850db197b4648e753ca1b3",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "03-after-operation.jpg",
+      "sha256": "e90d7fa33f6d89f8fa51567739a5683a88df2e9153645df6551392b303833b76",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "03-after-operation.txt",
+      "sha256": "d0562b9281ebd21b2f5fcf6371e16fbd0895a7aafe5656118f789daf8c3dd622",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "04-legacy-result-note.jpg",
+      "sha256": "3a3535020df2b4319b242a5b22433d017f5ef2cc7525b1fdff62a0f9fd8743aa",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "04-legacy-result-note.txt",
+      "sha256": "a531a72f2cb901521a2c0bcccc8bdbf7f2b08d017f49edb0f232113551f1c394",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "05-after-login.jpg",
+      "sha256": "d0bf51b959a30a4158b70df69c989abd4d07d4182924992dea16e79cb8cf4266",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "05-after-login.txt",
+      "sha256": "91e3001c05084cb98eb1ad91f4f04bb232bb585a2e1c2c9961f615db3fa685c1",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "06-final-login-and-refresh.jpg",
+      "sha256": "d082bcb8c8d9b777e22a4492f2aaa05a0c9bf70bdad38a3669c36e14bf46ec1f",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "06-final-login-and-refresh.txt",
+      "sha256": "1a3e7c6aff2b7c71d020b178c0b5e98baa54b7d13d7e55d466374ae282584c3e",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "07-account-filter.jpg",
+      "sha256": "42cdd9c2dd39999608214851b3737647933afe6b2a67d31f9b6253ac0425bcbd",
+      "state": "查询过程，不作筛选完成证据；使用07a"
+    },
+    {
+      "file": "07-account-filter.txt",
+      "sha256": "61ee04c9510dcca785c5589328dde4d13bd601f4f7c55e018f3113d56b15ce57",
+      "state": "查询过程，不作筛选完成证据；使用07a"
+    },
+    {
+      "file": "07a-account-filter-stable.jpg",
+      "sha256": "6f1a9f09a19af2864c3f4475cea9dd1b78b7d7bbbfe7d1a15f71169450f06203",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "07a-account-filter-stable.txt",
+      "sha256": "0dd96ca21d0d9acd07869082cd857a2b2dc377e1aa3a59510a4c698c1b3f56a4",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "08-denied-filter.jpg",
+      "sha256": "eb80fb4638dadc1a9eba28560709e7ad14e82736cb6243944153d6d652fcb780",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "08-denied-filter.txt",
+      "sha256": "b81fc5b3d4295995f7dcf87d27651a73abb845be6770eda3a7a99918f6066861",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "09-invalid-range-retains-input.jpg",
+      "sha256": "6f78058d234796f0495f18d5b640099785b67250a4aec5cb09f89c8190975198",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "09-invalid-range-retains-input.txt",
+      "sha256": "e4bbd913192fc365b7d44b3d8447d81d716deda51f6aeea5d603df986e77293d",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "10-account-last-login.jpg",
+      "sha256": "90ccd63d491aaec1d05b6c01d8741a66dd9fff9f35252a66c7cdcc5dc850a411",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "10-account-last-login.txt",
+      "sha256": "00cec580fba798e694e95eedf8ee8520a6aea5678f4f94352ef80fd645bd94da",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "11-account-login-history.jpg",
+      "sha256": "1a3b3677c95168eb7ce6511c197b23cbe370ce88a834b96748be5885a6b22913",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "11-account-login-history.txt",
+      "sha256": "883a33d881ab251df29fde4c9a11edb74b7a8f185f815a99bb7560905dc3ff07",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "12-final-audit-evidence.jpg",
+      "sha256": "e6fc8e57397b218ed1572b693029f53e3c6fb8cd0cbeb895bd83659b62f030ca",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "12-final-audit-evidence.txt",
+      "sha256": "a29ab2c9d31b5ca4f50087640ac928d50ce9d24ba34a7175d66ae423460fb865",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "13-overview-same-event.jpg",
+      "sha256": "375f8ffe543aea3111a7733b226d78d5179f75d2ed3cfead91e5cd6316998ea5",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "13-overview-same-event.txt",
+      "sha256": "74775b10b2a0d65e7384327f14aa309f7a5406165debd4a8a5a88ad1b1b2d0bd",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "14-final-account-last-login.jpg",
+      "sha256": "b7d628493c6ae2f11d66adee44ac2e2e2fa5f60f446a40df248f0593b02d4667",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "14-final-account-last-login.txt",
+      "sha256": "43265d1e4571f9947057928585409f360b0300975ccdbb253f5c482a023b07a6",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "15-final-account-detail.jpg",
+      "sha256": "9f5f747f16442ce01b4867e779918d9f7ac66530af8b3a9d9b5cd52d7329cde0",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "15-final-account-detail.txt",
+      "sha256": "23a4dec755b6461f41484489e1ef2800d1500ae38939551722a8c2253b6185fb",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "16-final-login-outcomes.jpg",
+      "sha256": "f721811da6c8e04b139df2a03e023a881595ad97168774bc1b45fdd521976389",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "16-final-login-outcomes.txt",
+      "sha256": "3cba7422f1142193bc54641d60f4543f96ea06c409395e2a8378dbe55bdfcb03",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "17-narrow-375.jpg",
+      "sha256": "63793b5e8a25f4cd5a5770994f3dcdcb09165c6bfa705761530634c96af1a636",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "17-narrow-375.txt",
+      "sha256": "e1f8c30f668416d75d1bfab70b0e73f3e4dae44f6c47d8e3107c0bace91e7ad1",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "18-narrow-390.jpg",
+      "sha256": "3e860ac5ea6ace6526e3c890ae9d17f01a9a78836e76ea9a44dc7f896f79c9c6",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "18-narrow-390.txt",
+      "sha256": "e1f8c30f668416d75d1bfab70b0e73f3e4dae44f6c47d8e3107c0bace91e7ad1",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "19-narrow-431.jpg",
+      "sha256": "d8d4a5cd8f970e16768186d4f99f42667c414f60bf4daee8af29f5b9b6c2235f",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "19-narrow-431.txt",
+      "sha256": "e1f8c30f668416d75d1bfab70b0e73f3e4dae44f6c47d8e3107c0bace91e7ad1",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "runtime-persistence-final.json",
+      "sha256": "57410e82a3a968eb00d7ab49afbed48d06d2c89f5ad07773173932e986721c44",
+      "state": "已记录的真实页面/验证数据"
+    },
+    {
+      "file": "runtime-persistence.json",
+      "sha256": "1f6cefabd1fdaa61870c425f8a7e40d8173176ba6890e9968676e48f9aff7a68",
+      "state": "已记录的真实页面/验证数据"
+    }
+  ],
+  "knownRegressionFollowup": "旧test_wx_login.py夹具缺有效岗位及现行绑定批准前置，失败保留并交D6-13迁移后复跑；没有放宽校验。",
+  "measuredCssWidths": [
+    375,
+    390,
+    431
+  ],
+  "mobileAcceptance": "本卡仅检查控件与根宽度，日志表格窄屏拥挤与浮层遮挡由D6-12处理，不代表手机整页验收通过。"
+}

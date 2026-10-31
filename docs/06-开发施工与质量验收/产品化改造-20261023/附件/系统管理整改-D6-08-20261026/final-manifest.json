@@ -1,0 +1,72 @@
+{
+  "card": "D6-08",
+  "headAtRecord": "fa493c73c4373de00897e4658b51a2b079d57be2",
+  "note": "当前文件校验及可用开工副本；共享文件既有差异保留，不构成提交授权",
+  "files": [
+    {
+      "path": "backend/app/services/academic_calendar_service.py",
+      "sha256": "11de68eaacb4d42ca005a1bfd67bb33ee611bb4121811811eebd686b258c3495",
+      "beforeSha256": "38e7e36600ada370cd5f1cb9c8e111cd5c537f229a7010d70503080c70728924"
+    },
+    {
+      "path": "backend/app/services/effective_config_service.py",
+      "sha256": "d5b34c9593c04cc9f7addeaeb652940a0e0bf371c97551152cad12fc0bf28cd7",
+      "beforeSha256": "199d9e10756349293ab9816a7fc5f7ac7f71db71e175dd4abd70605058e7374d"
+    },
+    {
+      "path": "backend/app/api/v1/system_p1_closure.py",
+      "sha256": "32f3b0d7966a6915b2e7ba71faed9dc354e90e12554b257afdf47d9bccdb76bd",
+      "beforeSha256": "02b6a512fbff885d09c0a6a78fec4e0d462ec5ea58e5e08bd3c4216508fec25e"
+    },
+    {
+      "path": "backend/tests/test_academic_calendar_transition.py",
+      "sha256": "d2c1f64554671b895bc14de7f06ff127a744619235a2d374c5af5c58dc0b3578",
+      "beforeSha256": null
+    },
+    {
+      "path": "backend/tests/test_effective_config_inheritance.py",
+      "sha256": "9117f40071cc50b9ff8514e988de0cd4ff93ba64d653508cf134233adc91b56b",
+      "beforeSha256": null
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemAcademicCalendarView.vue",
+      "sha256": "5cf98da76bbe6c9d1a62e71a9beba3fb4e4195758e03044003584d296a2d1614",
+      "beforeSha256": "678a261286d40f75740fb778e41b12373b85613a8a47bcc7c2c4504bf902fbf6"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemDictionariesView.vue",
+      "sha256": "85437bb6ddd1166d1a7050d7d9683b4906d73a44b398fb4c537ad77aa9b23d94",
+      "beforeSha256": "e895224b563fb88dd01ef15c28dd67119c3e8dfd33d9d1b9130b8b894c9bc919"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemLoginPolicyView.vue",
+      "sha256": "c62831553ab0d540ae83fe3a60cc157d3a3908b0c79c7c8016e6d11e6ed591a4",
+      "beforeSha256": "4e5bc5fa8f3160cb4d0c9f32f63be04c6943c0ea2285f5d08da0a8b498338653"
+    },
+    {
+      "path": "frontend/src/modules/system/components/SystemP1ClosurePanel.vue",
+      "sha256": "b0c91ce7daec197b8db128220370f2fd4f6f1844505e32914740960a5786b252",
+      "beforeSha256": "5c452e2be43560b91703e6b937fdd1e3849b3389937b0282ef83413b524ea4e5"
+    },
+    {
+      "path": "frontend/src/modules/student/api/student.api.js",
+      "sha256": "8b78d9c76b5c956b762bdbbd60d962804c5e7c86e6b94f1ea1bdde5ab5179623",
+      "beforeSha256": "a97001c39d6833791397d76e72ba9e100f46909bffee7574bb7a42183e0ae6b7"
+    },
+    {
+      "path": "frontend/src/views/admin/student/AdminStudentLayout.vue",
+      "sha256": "e807e26b5a921839ddc5eae0aaf0996d0347420c8369ba81b345648144d379da",
+      "beforeSha256": "86268f2ce34575d86461f73193ee891e9f8ac4f64a4c96c57ad240ccf8827844"
+    },
+    {
+      "path": "frontend/tests/system-calendar-policy.behavior.test.mjs",
+      "sha256": "52e1af1a838483f55aab5ff0e016aa2b4bd82c45c0372f3f17f1fa588ad9807a",
+      "beforeSha256": null
+    },
+    {
+      "path": "frontend/tests/student-dictionary-effective.contract.test.mjs",
+      "sha256": "ebc4e779204ad48ae5ebedb5358a9f503fec5391625bc8e996bdfe4fb110d610",
+      "beforeSha256": "02e21765278a369b9baeef92cadf311cb774fbbbe679bd4bbe79e5b676f1ac14"
+    }
+  ]
+}

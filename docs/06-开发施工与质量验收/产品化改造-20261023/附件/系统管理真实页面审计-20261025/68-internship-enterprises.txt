@@ -1,0 +1,480 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/internship/enterprises?panel=list&batchId=47".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/internship/enterprises?panel=list&batchId=47
+	1 container app
+		2 container
+			17 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				18 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:19, Secondary Actions: Expand
+				11 image
+				221 text 10/25周日 12:19
+			19 button 帮助与引导
+			20 button 消息中心
+				21 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		22 container
+			23 container 一级菜单
+				24 button 学工中心
+				25 button 教务中心
+				26 button 毕业设计中心
+				27 button 岗位实习中心
+				28 button 系统管理
+			29 button (collapsed) 当前范围, Secondary Actions: Expand
+				30 image
+				31 text 当前范围
+				32 image
+			33 button (collapsed) 本次工作 00:13:10, Secondary Actions: Expand
+				34 image
+				284 text 本次工作 00:13:10
+		36 container 二级菜单
+			37 button 展开二级菜单
+			38 container 二级菜单
+				39 button 今日工作
+				40 button 实习中心大屏
+				41 button 批次与学生
+				42 button 企业与岗位
+				43 button 申请与落岗
+				44 button 实习过程
+				45 button 风险与变更
+				46 button 评价与成绩
+				47 button 归档与分析
+			48 checkbox Description: 取消固定二级菜单, Value: 1
+		49 container 三级菜单
+			50 button 展开三级菜单
+			51 container 三级菜单
+				228 button 企业库
+				229 button 岗位库
+				230 button 招聘与邀请
+				231 button 企业准入
+			53 checkbox Description: 取消固定三级菜单, Value: 1
+		54 container
+			55 tab group 已打开页面
+				56 container
+					57 tab (selectable, settable, boolean) 待办与进度, Help: 今日工作 / 待办与进度, Value: 0
+待办与进度
+					58 button 关闭待办与进度
+						59 image
+				204 container
+					205 tab (selectable, settable, boolean) 批次管理, Help: 批次与学生 / 批次管理, Value: 0
+批次管理
+					206 button 关闭批次管理
+						207 image
+				217 container
+					218 tab (selectable, settable, boolean) 岗位确认, Help: 申请与落岗 / 岗位确认, Value: 0
+岗位确认
+					219 button 关闭岗位确认
+						220 image
+				223 container
+					224 tab (selectable, settable, boolean) 导师分配, Help: 申请与落岗 / 导师分配, Value: 0
+导师分配
+					225 button 关闭导师分配
+						226 image
+				232 container
+					233 tab (selected, settable, boolean) 企业库, Help: 企业与岗位 / 企业库, Value: 1
+企业库
+					234 button 关闭企业库
+						235 image
+			60 button (disabled) 恢复最近关闭的页签
+				61 image
+			62 checkbox Description: 收藏当前页面, Value: 0
+				63 image
+			64 checkbox Description: 专注模式, Value: 0
+				65 image
+			236 container
+				237 heading 企业库, Value: 1
+					238 text 企业库
+				239 text 当前批次
+				240 pop up button (collapsed, settable) Description: 选择实习批次, Value: 2024级岗位实习（进行中） · INT-2024-2026FALL, Secondary Actions: Expand
+					241 menu
+						242 2025 年暑期行业见习（历史归档样本） · INT-2025-SUMMER-HIST
+						243 (selected) 2024级岗位实习（进行中） · INT-2024-2026FALL
+				244 text 进行中 2026-07-20 ~ 2027-01-15
+				245 button 导出企业台账
+				246 button 新增企业
+				247 button 导入企业
+				248 text 关键词
+				249 text field (settable) 关键词
+				250 text 合作状态
+				251 pop up button (collapsed, settable) 合作状态, Value: 全部, Secondary Actions: Expand
+					252 menu
+						253 (selected) 全部
+						254 待审核
+						255 合作中
+						256 已驳回
+						257 已暂停
+						258 黑名单
+						259 已归档
+				260 text 行业
+				261 pop up button (collapsed, settable) 行业, Value: 全部, Secondary Actions: Expand
+					262 menu
+						263 (selected) 全部
+						264 软件
+						265 智能制造
+						266 电子商务
+						267 现代物流
+				268 text 地区
+				269 text field (settable) 地区
+				270 text 黑名单
+				271 pop up button (collapsed, settable) 黑名单, Value: 全部, Secondary Actions: Expand
+					272 menu
+						273 (selected) 全部
+						274 仅黑名单
+						275 排除黑名单
+				276 button 查询
+				277 button 重置
+				285 text 筛选结果 80 家
+				279 button 刷新列表
+				286 table
+					287 row
+						288 cell
+							289 text 企业信息
+						290 cell
+							291 text 联系人 / 电话
+						292 cell
+							293 text 合作状态
+						294 cell
+							295 text 资质
+						296 cell
+							297 text 实习生
+						298 cell
+							299 text 操作
+					300 row
+						301 cell
+							302 link Description: 常德科创视觉传达产教合作02有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/827?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							303 text 信用代码未登记
+							304 text 视觉传播与品牌设计 · 常德
+						305 cell
+							306 text 未登记
+						307 cell
+							308 text 合作中
+						309 cell
+							310 text 资质通过
+						311 cell
+							312 text 0
+						313 cell
+							314 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/827?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							315 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/827/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					316 row
+						317 cell
+							318 link Description: 衡阳华拓视觉传达产教合作01有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/826?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							319 text 信用代码未登记
+							320 text 视觉传播与品牌设计 · 衡阳
+						321 cell
+							322 text 未登记
+						323 cell
+							324 text 合作中
+						325 cell
+							326 text 资质通过
+						327 cell
+							328 text 0
+						329 cell
+							330 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/826?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							331 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/826/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					332 row
+						333 cell
+							334 link Description: 湘潭华拓动漫设计产教合作02有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/825?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							335 text 信用代码未登记
+							336 text 动漫与数字娱乐 · 湘潭
+						337 cell
+							338 text 未登记
+						339 cell
+							340 text 合作中
+						341 cell
+							342 text 资质通过
+						343 cell
+							344 text 0
+						345 cell
+							346 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/825?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							347 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/825/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					348 row
+						349 cell
+							350 link Description: 株洲远航动漫设计产教合作01有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/824?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							351 text 信用代码未登记
+							352 text 动漫与数字娱乐 · 株洲
+						353 cell
+							354 text 未登记
+						355 cell
+							356 text 合作中
+						357 cell
+							358 text 资质通过
+						359 cell
+							360 text 0
+						361 cell
+							362 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/824?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							363 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/824/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					364 row
+						365 cell
+							366 link Description: 杭州远航广告艺术产教合作02有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/823?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							367 text 信用代码未登记
+							368 text 广告与品牌创意 · 杭州
+						369 cell
+							370 text 未登记
+						371 cell
+							372 text 合作中
+						373 cell
+							374 text 资质通过
+						375 cell
+							376 text 50
+						377 cell
+							378 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/823?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							379 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/823/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					380 row
+						381 cell
+							382 link Description: 深圳云启广告艺术产教合作01有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/822?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							383 text 信用代码未登记
+							384 text 广告与品牌创意 · 深圳
+						385 cell
+							386 text 未登记
+						387 cell
+							388 text 合作中
+						389 cell
+							390 text 资质通过
+						391 cell
+							392 text 50
+						393 cell
+							394 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/822?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							395 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/822/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					396 row
+						397 cell
+							398 link Description: 郴州云启数字媒体产教合作02有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/821?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							399 text 信用代码未登记
+							400 text 数字内容与创意设计 · 郴州
+						401 cell
+							402 text 未登记
+						403 cell
+							404 text 合作中
+						405 cell
+							406 text 资质通过
+						407 cell
+							408 text 100
+						409 cell
+							410 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/821?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							411 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/821/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					412 row
+						413 cell
+							414 link Description: 常德湘江数字媒体产教合作01有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/820?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							415 text 信用代码未登记
+							416 text 数字内容与创意设计 · 常德
+						417 cell
+							418 text 未登记
+						419 cell
+							420 text 合作中
+						421 cell
+							422 text 资质通过
+						423 cell
+							424 text 100
+						425 cell
+							426 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/820?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							427 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/820/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					428 row
+						429 cell
+							430 link Description: 岳阳湘江健康管理产教合作02有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/819?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							431 text 信用代码未登记
+							432 text 健康服务与管理 · 岳阳
+						433 cell
+							434 text 未登记
+						435 cell
+							436 text 合作中
+						437 cell
+							438 text 资质通过
+						439 cell
+							440 text 74
+						441 cell
+							442 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/819?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							443 link Description: 编辑资料, Value: 127.0.0.1:5173/admin/internship/enterprises/819/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+					444 row
+						445 cell
+							446 link Description: 湘潭卓越健康管理产教合作01有限公司, Value: 127.0.0.1:5173/admin/internship/enterprises/818?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+							447 text 信用代码未登记
+							448 text 健康服务与管理 · 湘潭
+						449 cell
+							450 text 未登记
+						451 cell
+							452 text 合作中
+						453 cell
+							454 text 资质通过
+						455 cell
+							456 text 76
+						457 cell
+							458 link Description: 合作与资质, Value: 127.0.0.1:5173/admin/internship/enterprises/818?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+							459 link Description: 编辑资料, Value: …
+					460 row
+						461 cell
+							462 link Description: 长沙卓越婴幼儿托产教合作02有限公司, Value: …
+							463 text 信用代码未登记
+							464 text 托育与儿童服务 · 长沙
+						465 cell
+							466 text 未登记
+						467 cell
+							468 text 合作中
+						469 cell
+							470 text 资质通过
+						471 cell
+							472 text 74
+						473 cell
+							474 link Description: 合作与资质, Value: …
+							475 link Description: 编辑资料, Value: …
+					476 row
+						477 cell
+							478 link Description: 杭州新程婴幼儿托产教合作01有限公司, Value: …
+							479 text 信用代码未登记
+							480 text 托育与儿童服务 · 杭州
+						481 cell
+							482 text 未登记
+						483 cell
+							484 text 合作中
+						485 cell
+							486 text 资质通过
+						487 cell
+							488 text 76
+						489 cell
+							490 link Description: 合作与资质, Value: …
+							491 link Description: 编辑资料, Value: …
+					492 row
+						493 cell
+							494 link Description: 广州新程康复治疗产教合作02有限公司, Value: …
+							495 text 信用代码未登记
+							496 text 康复医疗服务 · 广州
+						497 cell
+							498 text 未登记
+						499 cell
+							500 text 合作中
+						501 cell
+							502 text 资质通过
+						503 cell
+							504 text 100
+						505 cell
+							506 link Description: 合作与资质, Value: …
+							507 link Description: 编辑资料, Value: …
+					508 row
+						509 cell
+							510 link Description: 郴州智联康复治疗产教合作01有限公司, Value: …
+							511 text 信用代码未登记
+							512 text 康复医疗服务 · 郴州
+						513 cell
+							514 text 未登记
+						515 cell
+							516 text 合作中
+						517 cell
+							518 text 资质通过
+						519 cell
+							520 text 100
+						521 cell
+							522 link Description: 合作与资质, Value: …
+							523 link Description: 编辑资料, Value: …
+					524 row
+						525 cell
+							526 link Description: 常德新程护理产教合作03有限公司, Value: …
+							527 text 信用代码未登记
+							528 text 医疗护理服务 · 常德
+						529 cell
+							530 text 未登记
+						531 cell
+							532 text 合作中
+						533 cell
+							534 text 资质通过
+						535 cell
+							536 text 132
+						537 cell
+							538 link Description: 合作与资质, Value: …
+							539 link Description: 编辑资料, Value: …
+					540 row
+						541 cell
+							542 link Description: 衡阳智联护理产教合作02有限公司, Value: …
+							543 text 信用代码未登记
+							544 text 医疗护理服务 · 衡阳
+						545 cell
+							546 text 未登记
+						547 cell
+							548 text 合作中
+						549 cell
+							550 text 资质通过
+						551 cell
+							552 text 134
+						553 cell
+							554 link Description: 合作与资质, Value: …
+							555 link Description: 编辑资料, Value: …
+					556 row
+						557 cell
+							558 link Description: 岳阳科创护理产教合作01有限公司, Value: …
+							559 text 信用代码未登记
+							560 text 医疗护理服务 · 岳阳
+						561 cell
+							562 text 未登记
+						563 cell
+							564 text 合作中
+						565 cell
+							566 text 资质通过
+						567 cell
+							568 text 134
+						569 cell
+							570 link Description: 合作与资质, Value: …
+							571 link Description: 编辑资料, Value: …
+					572 row
+						573 cell
+							574 link Description: 株洲科创建设工程产教合作02有限公司, Value: …
+							575 text 信用代码未登记
+							576 text 工程项目管理 · 株洲
+						577 cell
+							578 text 未登记
+						579 cell
+							580 text 合作中
+						581 cell
+							582 text 资质通过
+						583 cell
+							584 text 74
+						585 cell
+							586 link Description: 合作与资质, Value: …
+							587 link Description: 编辑资料, Value: …
+					588 row
+						589 cell
+							590 link Description: 长沙华拓建设工程产教合作01有限公司, Value: …
+							591 text 信用代码未登记
+							592 text 工程项目管理 · 长沙
+						593 cell
+							594 text 未登记
+						595 cell
+							596 text 合作中
+						597 cell
+							598 text 资质通过
+						599 cell
+							600 text 76
+						601 cell
+							602 link Description: 合作与资质, Value: …
+							603 link Description: 编辑资料, Value: …
+					604 row
+						605 cell
+							606 link Description: 深圳华拓建筑室内产教合作02有限公司, Value: …
+							607 text 信用代码未登记
+							608 text 建筑装饰与空间设计 · 深圳
+						609 cell
+							610 text 未登记
+						611 cell
+							612 text 合作中
+						613 cell
+							614 text 资质通过
+						615 cell
+							616 text 100
+						617 cell
+							618 link Description: 合作与资质, Value: …
+							619 link Description: 编辑资料, Value: …
+				620 text 共 80 条
+				621 button (disabled) 上一页
+				622 button 1
+				623 button 2
+				624 button (disabled) …
+				625 button 4
+				626 button 下一页
+				281 button (collapsed) 本校企业概况 全校企业库，非当前批次或筛选结果, Secondary Actions: Expand
+					282 text 本校企业概况 
+					283 text 全校企业库，非当前批次或筛选结果
+			199 button 我的常用
+
+The focused UI element is 42 button 企业与岗位

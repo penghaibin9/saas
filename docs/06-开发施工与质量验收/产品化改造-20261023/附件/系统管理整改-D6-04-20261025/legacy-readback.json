@@ -1,0 +1,7 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "fixtureCollegeOnly": true,
+  "staffNameResolved": true,
+  "source": "current production read service",
+  "legacyRecordId": "college-sec-1"
+}

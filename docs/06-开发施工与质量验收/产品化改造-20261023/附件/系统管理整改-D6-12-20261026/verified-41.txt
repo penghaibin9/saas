@@ -1,0 +1,240 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:15":
+    - generic: 10/27周二 09:15
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:12:51":
+  - generic: 本次工作 00:12:51
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 学校设置
+  - navigation "三级菜单":
+    - button "学校信息与品牌":
+      - generic: 学校信息与品牌
+    - button "数据字典":
+      - generic: 数据字典
+    - button "模块授权与业务开关":
+      - generic: 模块授权与业务开关
+    - button "学年学期与业务日历":
+      - generic: 学年学期与业务日历
+    - button "统一消息、待办与通知治理":
+      - generic: 统一消息、待办与通知治理
+    - button "文件存储治理":
+      - generic: 文件存储治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "统一消息、待办与通知治理" [selected]:
+    - generic: 统一消息、待办与通知治理
+  - button "关闭统一消息、待办与通知治理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - heading "统一消息、待办与通知治理" [level=1]
+  - button "刷新"
+  - generic: 首屏结论
+  - generic: "0"
+  - generic: 死信事件
+  - generic: "0"
+  - generic: 近7天通知失败
+  - generic: "2"
+  - generic: 积压待办
+  - generic: "0"
+  - generic: 逾期待办
+  - generic: "0"
+  - generic: 重复模板
+  - generic: 短信：未启用模板
+  - generic: 微信：未启用模板
+  - paragraph: 2 类待办尚未登记所属模块，需要实施人员核对来源。
+  - generic "实施人员使用：待办类型标识"
+  - text: AA_GRADE_ENTRY、INTERN_LEAVE_APPROVAL
+  - paragraph: 62 类系统事件尚未登记治理目录；这不等于消息投递失败。
+  - generic "实施人员使用：事件标识"
+  - text: AID.NOTICE、AID_OBJECTION.RESULT、AUTH.PASSWORD_RESET、AUTH.PHONE_CHANGED、AUTH.PHONE_VERIFY_REMINDER、CAMPUS_SERVICE.WORKORDER_UPDATED、COURSE.SCHEDULE_CHANGED、COURSE.SCHEDULE_PUBLISHED、DISCIPLINE.NOTICE、DISCIPLINE_APPEAL.RESULT、DORM.CHECKOUT.CONFIRMED、DORM.RECTIFICATION.CLOSED、DORM.RECTIFICATION.CREATED、DORM.RECTIFICATION.ESCALATED、DORM.RECTIFICATION.RETURNED、DORM.TRANSFER.EXECUTED、DORM.TRANSFER.REJECTED、EMPLOYMENT_DESTINATION.APPROVED、EMPLOYMENT_DESTINATION.REJECTED、EXAM.ARRANGED、FUNDING.NOTICE、FUNDING_APPEAL.RESULT、GRADE.CORRECTED、GRADE.ENTRY_DEADLINE_REMINDER、GRADE.ENTRY_OVERDUE_DIGEST、GRADE.ENTRY_REMINDED、GRADE.RECHECK_RESULT、GRADUATION_DESIGN.DEFENSE_ARRANGED、GRADUATION_DESIGN.GRADE_APPEAL_REVIEWED、GRADUATION_DESIGN.PLAGIARISM_DISPUTE_REVIEWED、GRADUATION_DESIGN.PROPOSAL_SUBMITTED、GRADUATION_DESIGN.REVIEW_APPROVED、INTERNSHIP.COUNSELOR_NOTICE、INTERNSHIP.POSITION.PUBLISHED、INTERNSHIP.POSITION.RETURNED、INTERNSHIP.POSITION.STATUS_CHANGED、INTERNSHIP.RISK_CREATED、INTERNSHIP.RISK_REMINDED、INTERNSHIP.VOLUNTEER.SCHOOL_RESULT、INTERNSHIP.WEEKLY_APPROVED、INTERNSHIP.WEEKLY_REMIND、INTERNSHIP.WEEKLY_RETURNED、LEAVE.CLOSED、LEAVE.EXTEND_APPROVED、LEAVE.EXTEND_REJECTED、LEAVE.RETURN_DONE、LEAVE.RETURN_REJECTED、MATERIAL.ACCEPTED、MATERIAL.REMINDED、MATERIAL.REQUIRED、MATERIAL.RETURNED、MATERIAL.WAIVED、MESSAGE.ACK_NUDGE、RISK.ALERT、RISK.STATUS、SCHEDULE_CHANGE.RESULT、SCHEDULE_CHANGE.RETURNED、SECOND_CLASS_APPEAL.RESULT、STATUS_CHANGE.RESULT、STATUS_CHANGE.RETURNED、WARNING.CREATED、WARNING.REMINDED
+  - generic: 积压待办
+  - generic: 仅修复来源业务已完成或已撤销的失效提醒
+  - table:
+    - rowgroup:
+      - row "待办 期限 操作":
+        - columnheader "待办"
+        - columnheader "期限"
+        - columnheader "操作"
+    - rowgroup:
+      - row "第十卡：仍待审批不得关闭的提醒 岗位实习 · 业务记录 2 · 版本 0 无期限 核验并关闭提醒":
+        - cell "第十卡：仍待审批不得关闭的提醒 岗位实习 · 业务记录 2 · 版本 0":
+          - generic: 第十卡：仍待审批不得关闭的提醒
+          - generic: 岗位实习 · 业务记录 2 · 版本 0
+          - generic "实施人员使用：来源标识"
+          - text: internship · INTERN_LEAVE · INTERN_LEAVE_APPROVAL
+        - cell "无期限"
+        - cell "核验并关闭提醒":
+          - button "核验并关闭提醒"
+      - row "D611任课教师本人待录成绩（仅验身份） 教务 · 业务记录 2 · 版本 0 无期限 核验并关闭提醒":
+        - cell "D611任课教师本人待录成绩（仅验身份） 教务 · 业务记录 2 · 版本 0":
+          - generic: D611任课教师本人待录成绩（仅验身份）
+          - generic: 教务 · 业务记录 2 · 版本 0
+          - generic "实施人员使用：来源标识"
+          - text: academic-affairs · AA_GRADE_TASK · AA_GRADE_ENTRY
+        - cell "无期限"
+        - cell "核验并关闭提醒":
+          - button "核验并关闭提醒"
+  - generic: 共 2 项 · 第 1 页
+  - button "上一页待办" [disabled]
+  - button "下一页待办" [disabled]
+  - generic: 死信事件
+  - generic: 重试只重新排队，不会重复触发业务操作
+  - status:
+    - generic: ▢
+    - generic: 暂无死信事件
+    - generic: 当前条件下没有可展示的内容，可尝试调整筛选或创建新数据
+    - button "返回"
+  - generic: 共 0 项 · 第 1 页
+  - button "上一页投递" [disabled]
+  - button "下一页投递" [disabled]
+  - generic: 登记表（事件 / 待办类型 / 渠道）
+  - paragraph: 事件是否合法以系统为准；本登记表只登记谁负责与治理信息。
+  - list:
+    - text: 请假审批通过通知 · 学工
+    - generic "实施人员使用：事件标识"
+    - text: LEAVE.APPROVED
+    - text: 请假审批驳回通知 · 学工
+    - generic "实施人员使用：事件标识"
+    - text: LEAVE.REJECTED
+    - text: 请假被退回通知 · 学工
+    - generic "实施人员使用：事件标识"
+    - text: LEAVE.RETURNED
+    - text: 请假逾期提醒 · 学工
+    - generic "实施人员使用：事件标识"
+    - text: LEAVE.OVERDUE
+    - text: 毕业设计开题/成果批阅退回学生整改通知 · 毕业设计
+    - generic "实施人员使用：事件标识"
+    - text: GRADUATION_DESIGN.REVIEW_REJECTED
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

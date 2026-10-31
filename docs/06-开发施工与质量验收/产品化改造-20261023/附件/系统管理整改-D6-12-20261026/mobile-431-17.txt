@@ -1,0 +1,141 @@
+- banner:
+  - textbox "搜索功能与帮助":
+    - /placeholder: 搜索功能或帮助
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 系统管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "目录"
+- tablist "已打开页面":
+  - tab "本校角色":
+    - generic: 本校角色
+  - button "关闭本校角色":
+  - tab "日志中心":
+    - generic: 日志中心
+  - button "关闭日志中心":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "树形定位工作台" [selected]:
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- navigation "组织与任职":
+  - button "树形定位工作台"
+  - button "学院与部门"
+  - button "专业管理"
+  - button "年级与班级"
+  - button "岗位管理"
+  - button "教职工任职归属查询"
+  - button "业务关系中心"
+  - button "变更版本"
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:36
+  - heading "组织与任职" [level=1]
+  - button "⇪ 数据导入与匹配"
+  - button "⇩ 导出组织结构"
+  - complementary "组织目录":
+    - textbox "搜索组织":
+      - /placeholder: 搜索学院、专业或班级
+    - button "全校组织" [pressed]:
+      - text: 全校组织
+    - generic "组织层级":
+      - button "D604隔离验收学院":
+        - generic: D604隔离验收学院
+      - button "展开D606四域验收学院":
+      - button "D606四域验收学院":
+        - generic: D606四域验收学院
+  - region "组织详情":
+    - navigation "组织归属":
+      - button "全校"
+    - heading "全校组织" [level=2]
+    - paragraph: 选择左侧组织查看下级，也可以直接搜索名称或编码。
+    - button "新增学院":
+      - text: 新增学院
+    - textbox "筛选下级组织":
+      - /placeholder: 搜索当前层级名称或编码
+    - generic: 当前层级 · 2 项
+    - table:
+      - rowgroup:
+        - row "组织名称 类型 编码 成员数 状态 操作":
+          - columnheader "组织名称"
+          - columnheader "类型"
+          - columnheader "编码"
+          - columnheader "成员数"
+          - columnheader "状态"
+          - columnheader "操作"
+      - rowgroup:
+        - row "D604隔离验收学院 学院 — 0 正常 查看":
+          - cell "D604隔离验收学院":
+            - button "D604隔离验收学院"
+          - cell "学院"
+          - cell "—"
+          - cell "0"
+          - cell "正常"
+          - cell "查看":
+            - button "查看"
+        - row "D606四域验收学院 学院 — 3 正常 查看":
+          - cell "D606四域验收学院":
+            - button "D606四域验收学院"
+          - cell "学院"
+          - cell "—"
+          - cell "3"
+          - cell "正常"
+          - cell "查看":
+            - button "查看"
+    - generic: 共 2 项 · 每页 10 项
+    - button "上一页" [disabled]
+    - generic: 1 / 1
+    - button "下一页" [disabled]
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

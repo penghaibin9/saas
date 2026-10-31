@@ -1,0 +1,498 @@
+http://127.0.0.1:5173/admin/internship/enterprises?panel=list&batchId=47
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:50":
+    - generic: 10/25周日 14:50
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:44:35":
+  - generic: 本次工作 02:44:35
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日
+    - button "实习中心大屏":
+      - generic: 实习
+    - button "批次与学生":
+      - generic: 批次
+    - button "企业与岗位":
+      - generic: 企业
+    - button "申请与落岗":
+      - generic: 申请
+    - button "实习过程":
+      - generic: 实习
+    - button "风险与变更":
+      - generic: 风险
+    - button "评价与成绩":
+      - generic: 评价
+    - button "归档与分析":
+      - generic: 归档
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "企业库":
+      - generic: 企业
+    - button "岗位库":
+      - generic: 岗位
+    - button "招聘与邀请":
+      - generic: 招聘
+    - button "企业准入":
+      - generic: 企业
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "企业库" [selected]:
+    - generic: 企业库
+  - button "关闭企业库":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50
+  - heading "企业库" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "2025 年暑期行业见习（历史归档样本） · INT-2025-SUMMER-HIST"
+    - option "2024级岗位实习（进行中） · INT-2024-2026FALL" [selected]
+  - generic: 进行中
+  - generic: 2026-07-20 ~ 2027-01-15
+  - button "导出企业台账"
+  - button "新增企业"
+  - button "导入企业"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 企业名称 / 信用代码 / 联系人
+  - generic: 合作状态
+  - combobox "合作状态":
+    - option "全部" [selected]
+    - option "待审核"
+    - option "合作中"
+    - option "已驳回"
+    - option "已暂停"
+    - option "黑名单"
+    - option "已归档"
+  - generic: 行业
+  - combobox "行业":
+    - option "全部" [selected]
+    - option "软件"
+    - option "智能制造"
+    - option "电子商务"
+    - option "现代物流"
+  - generic: 地区
+  - textbox "地区":
+    - /placeholder: 省/市
+  - generic: 黑名单
+  - combobox "黑名单":
+    - option "全部" [selected]
+    - option "仅黑名单"
+    - option "排除黑名单"
+  - button "查询"
+  - button "重置"
+  - generic: 筛选结果 80 家
+  - button "刷新列表"
+  - table:
+    - rowgroup:
+      - row "企业信息 联系人 / 电话 合作状态 资质 实习生 操作":
+        - columnheader "企业信息"
+        - columnheader "联系人 / 电话"
+        - columnheader "合作状态"
+        - columnheader "资质"
+        - columnheader "实习生"
+        - columnheader "操作"
+    - rowgroup:
+      - row "常德科创视觉传达产教合作02有限公司 信用代码未登记 视觉传播与品牌设计 · 常德 未登记 合作中 资质通过 0 合作与资质 编辑资料":
+        - cell "常德科创视觉传达产教合作02有限公司 信用代码未登记 视觉传播与品牌设计 · 常德":
+          - link "常德科创视觉传达产教合作02有限公司":
+            - /url: /admin/internship/enterprises/827?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 视觉传播与品牌设计 · 常德
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "0"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/827?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/827/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "衡阳华拓视觉传达产教合作01有限公司 信用代码未登记 视觉传播与品牌设计 · 衡阳 未登记 合作中 资质通过 0 合作与资质 编辑资料":
+        - cell "衡阳华拓视觉传达产教合作01有限公司 信用代码未登记 视觉传播与品牌设计 · 衡阳":
+          - link "衡阳华拓视觉传达产教合作01有限公司":
+            - /url: /admin/internship/enterprises/826?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 视觉传播与品牌设计 · 衡阳
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "0"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/826?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/826/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "湘潭华拓动漫设计产教合作02有限公司 信用代码未登记 动漫与数字娱乐 · 湘潭 未登记 合作中 资质通过 0 合作与资质 编辑资料":
+        - cell "湘潭华拓动漫设计产教合作02有限公司 信用代码未登记 动漫与数字娱乐 · 湘潭":
+          - link "湘潭华拓动漫设计产教合作02有限公司":
+            - /url: /admin/internship/enterprises/825?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 动漫与数字娱乐 · 湘潭
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "0"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/825?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/825/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "株洲远航动漫设计产教合作01有限公司 信用代码未登记 动漫与数字娱乐 · 株洲 未登记 合作中 资质通过 0 合作与资质 编辑资料":
+        - cell "株洲远航动漫设计产教合作01有限公司 信用代码未登记 动漫与数字娱乐 · 株洲":
+          - link "株洲远航动漫设计产教合作01有限公司":
+            - /url: /admin/internship/enterprises/824?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 动漫与数字娱乐 · 株洲
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "0"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/824?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/824/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "杭州远航广告艺术产教合作02有限公司 信用代码未登记 广告与品牌创意 · 杭州 未登记 合作中 资质通过 50 合作与资质 编辑资料":
+        - cell "杭州远航广告艺术产教合作02有限公司 信用代码未登记 广告与品牌创意 · 杭州":
+          - link "杭州远航广告艺术产教合作02有限公司":
+            - /url: /admin/internship/enterprises/823?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 广告与品牌创意 · 杭州
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "50"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/823?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/823/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "深圳云启广告艺术产教合作01有限公司 信用代码未登记 广告与品牌创意 · 深圳 未登记 合作中 资质通过 50 合作与资质 编辑资料":
+        - cell "深圳云启广告艺术产教合作01有限公司 信用代码未登记 广告与品牌创意 · 深圳":
+          - link "深圳云启广告艺术产教合作01有限公司":
+            - /url: /admin/internship/enterprises/822?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 广告与品牌创意 · 深圳
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "50"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/822?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/822/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "郴州云启数字媒体产教合作02有限公司 信用代码未登记 数字内容与创意设计 · 郴州 未登记 合作中 资质通过 100 合作与资质 编辑资料":
+        - cell "郴州云启数字媒体产教合作02有限公司 信用代码未登记 数字内容与创意设计 · 郴州":
+          - link "郴州云启数字媒体产教合作02有限公司":
+            - /url: /admin/internship/enterprises/821?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 数字内容与创意设计 · 郴州
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "100"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/821?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/821/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "常德湘江数字媒体产教合作01有限公司 信用代码未登记 数字内容与创意设计 · 常德 未登记 合作中 资质通过 100 合作与资质 编辑资料":
+        - cell "常德湘江数字媒体产教合作01有限公司 信用代码未登记 数字内容与创意设计 · 常德":
+          - link "常德湘江数字媒体产教合作01有限公司":
+            - /url: /admin/internship/enterprises/820?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 数字内容与创意设计 · 常德
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "100"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/820?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/820/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "岳阳湘江健康管理产教合作02有限公司 信用代码未登记 健康服务与管理 · 岳阳 未登记 合作中 资质通过 74 合作与资质 编辑资料":
+        - cell "岳阳湘江健康管理产教合作02有限公司 信用代码未登记 健康服务与管理 · 岳阳":
+          - link "岳阳湘江健康管理产教合作02有限公司":
+            - /url: /admin/internship/enterprises/819?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 健康服务与管理 · 岳阳
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "74"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/819?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/819/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "湘潭卓越健康管理产教合作01有限公司 信用代码未登记 健康服务与管理 · 湘潭 未登记 合作中 资质通过 76 合作与资质 编辑资料":
+        - cell "湘潭卓越健康管理产教合作01有限公司 信用代码未登记 健康服务与管理 · 湘潭":
+          - link "湘潭卓越健康管理产教合作01有限公司":
+            - /url: /admin/internship/enterprises/818?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 健康服务与管理 · 湘潭
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "76"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/818?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/818/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "长沙卓越婴幼儿托产教合作02有限公司 信用代码未登记 托育与儿童服务 · 长沙 未登记 合作中 资质通过 74 合作与资质 编辑资料":
+        - cell "长沙卓越婴幼儿托产教合作02有限公司 信用代码未登记 托育与儿童服务 · 长沙":
+          - link "长沙卓越婴幼儿托产教合作02有限公司":
+            - /url: /admin/internship/enterprises/817?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 托育与儿童服务 · 长沙
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "74"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/817?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/817/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "杭州新程婴幼儿托产教合作01有限公司 信用代码未登记 托育与儿童服务 · 杭州 未登记 合作中 资质通过 76 合作与资质 编辑资料":
+        - cell "杭州新程婴幼儿托产教合作01有限公司 信用代码未登记 托育与儿童服务 · 杭州":
+          - link "杭州新程婴幼儿托产教合作01有限公司":
+            - /url: /admin/internship/enterprises/816?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 托育与儿童服务 · 杭州
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "76"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/816?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/816/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "广州新程康复治疗产教合作02有限公司 信用代码未登记 康复医疗服务 · 广州 未登记 合作中 资质通过 100 合作与资质 编辑资料":
+        - cell "广州新程康复治疗产教合作02有限公司 信用代码未登记 康复医疗服务 · 广州":
+          - link "广州新程康复治疗产教合作02有限公司":
+            - /url: /admin/internship/enterprises/815?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 康复医疗服务 · 广州
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "100"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/815?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/815/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "郴州智联康复治疗产教合作01有限公司 信用代码未登记 康复医疗服务 · 郴州 未登记 合作中 资质通过 100 合作与资质 编辑资料":
+        - cell "郴州智联康复治疗产教合作01有限公司 信用代码未登记 康复医疗服务 · 郴州":
+          - link "郴州智联康复治疗产教合作01有限公司":
+            - /url: /admin/internship/enterprises/814?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 康复医疗服务 · 郴州
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "100"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/814?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/814/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "常德新程护理产教合作03有限公司 信用代码未登记 医疗护理服务 · 常德 未登记 合作中 资质通过 132 合作与资质 编辑资料":
+        - cell "常德新程护理产教合作03有限公司 信用代码未登记 医疗护理服务 · 常德":
+          - link "常德新程护理产教合作03有限公司":
+            - /url: /admin/internship/enterprises/813?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 医疗护理服务 · 常德
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "132"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/813?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/813/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "衡阳智联护理产教合作02有限公司 信用代码未登记 医疗护理服务 · 衡阳 未登记 合作中 资质通过 134 合作与资质 编辑资料":
+        - cell "衡阳智联护理产教合作02有限公司 信用代码未登记 医疗护理服务 · 衡阳":
+          - link "衡阳智联护理产教合作02有限公司":
+            - /url: /admin/internship/enterprises/812?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 医疗护理服务 · 衡阳
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "134"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/812?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/812/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "岳阳科创护理产教合作01有限公司 信用代码未登记 医疗护理服务 · 岳阳 未登记 合作中 资质通过 134 合作与资质 编辑资料":
+        - cell "岳阳科创护理产教合作01有限公司 信用代码未登记 医疗护理服务 · 岳阳":
+          - link "岳阳科创护理产教合作01有限公司":
+            - /url: /admin/internship/enterprises/811?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 医疗护理服务 · 岳阳
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "134"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/811?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/811/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "株洲科创建设工程产教合作02有限公司 信用代码未登记 工程项目管理 · 株洲 未登记 合作中 资质通过 74 合作与资质 编辑资料":
+        - cell "株洲科创建设工程产教合作02有限公司 信用代码未登记 工程项目管理 · 株洲":
+          - link "株洲科创建设工程产教合作02有限公司":
+            - /url: /admin/internship/enterprises/810?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 工程项目管理 · 株洲
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "74"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/810?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/810/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "长沙华拓建设工程产教合作01有限公司 信用代码未登记 工程项目管理 · 长沙 未登记 合作中 资质通过 76 合作与资质 编辑资料":
+        - cell "长沙华拓建设工程产教合作01有限公司 信用代码未登记 工程项目管理 · 长沙":
+          - link "长沙华拓建设工程产教合作01有限公司":
+            - /url: /admin/internship/enterprises/809?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 工程项目管理 · 长沙
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "76"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/809?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/809/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+      - row "深圳华拓建筑室内产教合作02有限公司 信用代码未登记 建筑装饰与空间设计 · 深圳 未登记 合作中 资质通过 100 合作与资质 编辑资料":
+        - cell "深圳华拓建筑室内产教合作02有限公司 信用代码未登记 建筑装饰与空间设计 · 深圳":
+          - link "深圳华拓建筑室内产教合作02有限公司":
+            - /url: /admin/internship/enterprises/808?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=basic
+          - generic: 信用代码未登记
+          - generic: 建筑装饰与空间设计 · 深圳
+        - cell "未登记"
+        - cell "合作中":
+          - generic: 合作中
+        - cell "资质通过":
+          - generic: 资质通过
+        - cell "100"
+        - cell "合作与资质 编辑资料":
+          - link "合作与资质":
+            - /url: /admin/internship/enterprises/808?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=&section=coop
+          - link "编辑资料":
+            - /url: /admin/internship/enterprises/808/edit?panel=list&page=1&batchId=47&keyword=&coopStatus=&industry=&region=&blacklist=
+  - generic: 共 80 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "4"
+  - button "下一页": ›
+  - generic "本校企业概况 全校企业库，非当前批次或筛选结果":
+    - text: 本校企业概况
+    - generic: 全校企业库，非当前批次或筛选结果
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

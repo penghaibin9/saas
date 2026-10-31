@@ -1,0 +1,37 @@
+{
+  "card": "D6-04",
+  "files": [
+    {
+      "path": "frontend/src/modules/system/views/SystemUserListView.vue",
+      "sha256": "142fff0219e062722b2b8341b1b6cc60b5a66a91a787c7c41906db51acd8fa5c"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemStaffAffiliationView.vue",
+      "sha256": "e4a8bbee59b5193f4f08626c7bd1af27497e2a91f6bac236f34f876c75e34901"
+    },
+    {
+      "path": "frontend/src/modules/system/api/system.api.js",
+      "sha256": "01706bdcd5a94fd29353f75559cce9cd14250897272330d1327eb7b991dfb2d4"
+    },
+    {
+      "path": "backend/app/modules/system_admin/routers/system_bundle.py",
+      "sha256": "c3405e1554268b201bd59fdbd8e86074c9922930394e660a518785fb2477ec63"
+    },
+    {
+      "path": "backend/app/services/organization_version_service.py",
+      "sha256": "631d1c0fbf849caf8894699d18200a2d48fa857461e27e12e7502abe89181ada"
+    },
+    {
+      "path": "backend/tests/test_staff_assignment_names.py",
+      "sha256": "bd8224ef3b9823b28df727709d1c7e326d0038b72285aa67a91e906bce10e8c9"
+    },
+    {
+      "path": "backend/tests/test_organization_versioning.py",
+      "sha256": "a6bcf8f9c1ffe32ee498eb97d356a9b5cb0bc04fa3b0a913c70cb1e20c4062ec"
+    },
+    {
+      "path": "frontend/tests/system-account-navigation.behavior.test.mjs",
+      "sha256": "7fe41b5351729b7247bf2d95778c1437e1f2074dbb3808552f289547720d9359"
+    }
+  ]
+}

@@ -1,0 +1,1337 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/iam".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/iam
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:11, Secondary Actions: Expand
+				11 image
+				681 text 10/25周日 12:11
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:05:19, Secondary Actions: Expand
+				32 image
+				727 text 本次工作 00:05:19
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		714 container 三级菜单
+			715 button 展开三级菜单
+			716 container 三级菜单
+				717 button 身份权限总览
+				718 button 预设角色模板
+				719 button 学校角色与成员
+				720 button 角色成员与业务身份
+				721 button 菜单与操作权限
+				722 button 数据范围规则
+				723 button 临时授权与工作移交
+				724 button 安全变更
+				725 button 访问治理
+			726 checkbox Description: 取消固定三级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				208 container
+					209 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					210 button 关闭首次开局向导
+						211 image
+				215 container
+					216 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					217 button 关闭预设方案
+						218 image
+				238 container
+					239 tab (selectable, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 0
+职业教育国家标准库
+					240 button 关闭职业教育国家标准库
+						241 image
+				243 container
+					244 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					245 button 关闭数据导入与智能匹配
+						246 image
+				252 container
+					253 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					254 button 关闭已安装配置
+						255 image
+				258 container
+					259 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					260 button 关闭变更与升级
+						261 image
+				265 container
+					266 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					267 button 关闭上线检查与验收
+						268 image
+				330 container
+					331 tab (selectable, settable, boolean) 学生账号, Help: 身份与账号 / 学生账号, Value: 0
+学生账号
+					332 button 关闭学生账号
+						333 image
+				335 container
+					336 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					337 button 关闭学生导入与账号开通
+						338 image
+				340 container
+					341 tab (selectable, settable, boolean) 账号异常排查, Help: 身份与账号 / 账号异常排查, Value: 0
+账号异常排查
+					342 button 关闭账号异常排查
+						343 image
+				396 container
+					397 tab (selectable, settable, boolean) 登录与安全策略, Help: 身份与账号 / 登录与安全策略, Value: 0
+登录与安全策略
+					398 button 关闭登录与安全策略
+						399 image
+				401 container
+					402 tab (selectable, settable, boolean) 树形定位工作台, Help: 组织主数据 / 树形定位工作台, Value: 0
+树形定位工作台
+					403 button 关闭树形定位工作台
+						404 image
+				642 container
+					643 tab (selectable, settable, boolean) 学院与部门, Help: 组织主数据 / 学院与部门, Value: 0
+学院与部门
+					644 button 关闭学院与部门
+						645 image
+				647 container
+					648 tab (selectable, settable, boolean) 专业管理, Help: 组织主数据 / 专业管理, Value: 0
+专业管理
+					649 button 关闭专业管理
+						650 image
+				652 container
+					653 tab (selectable, settable, boolean) 年级与班级, Help: 组织主数据 / 年级与班级, Value: 0
+年级与班级
+					654 button 关闭年级与班级
+						655 image
+				657 container
+					658 tab (selectable, settable, boolean) 岗位管理, Help: 组织主数据 / 岗位管理, Value: 0
+岗位管理
+					659 button 关闭岗位管理
+						660 image
+				662 container
+					663 tab (selectable, settable, boolean) 教职工任职归属查询, Help: 组织主数据 / 教职工任职归属查询, Value: 0
+教职工任职归属查询
+					664 button 关闭教职工任职归属查询
+						665 image
+				667 container
+					668 tab (selectable, settable, boolean) 业务关系中心, Help: 组织主数据 / 业务关系中心, Value: 0
+业务关系中心
+					669 button 关闭业务关系中心
+						670 image
+				672 container
+					673 tab (selectable, settable, boolean) 变更版本, Help: 组织主数据 / 变更版本, Value: 0
+变更版本
+					674 button 关闭变更版本
+						675 image
+				728 container
+					729 tab (selected, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 1
+身份权限总览
+					730 button 关闭身份权限总览
+						731 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 收藏当前页面, Value: 0
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			732 container
+				733 heading 权限总览, Value: 1
+					734 text 权限总览
+				735 button 刷新
+				736 container
+					737 text 学校角色 29
+				738 container
+					739 text 学校成员 21308
+				740 container
+					741 text 可分配权限 657
+				742 text 学校权限与企业权限分开治理
+				743 text 企业管理员、人力资源人员、企业导师及企业实习权限由“企业成员和访问授权”功能管理，不能在学校角色中分配；企业实习权限不会进入学校可分配权限目录。身份权限通过后，具体业务对象仍由业务守卫再次校验。
+				744 button 角色
+					745 text 角色
+				746 button 角色模板
+					747 text 角色模板
+				748 button 成员与业务身份
+					749 text 成员与业务身份
+				750 button 菜单与操作权限
+					751 text 菜单与操作权限
+				752 button 数据范围
+					753 text 数据范围
+				754 button 委托
+					755 text 委托
+				756 button 安全变更
+					757 text 安全变更
+				758 button 访问解释
+					759 text 访问解释
+				760 container
+					761 heading 学校可分配权限目录, Value: 3
+						762 text 学校可分配权限目录
+					763 text 按业务域和功能分组查找学校可分配的权限。 搜索权限
+					764 text field (settable) 搜索权限
+					765 container 权限风险筛选
+						766 button 全部 140
+							767 text 全部 
+							768 text 140
+						769 button 高风险 72
+							770 text 高风险 
+							771 text 72
+						772 button 中低风险 68
+							773 text 中低风险 
+							774 text 68
+				775 text 常用专题 · 招聘季学校侧权限
+				776 text 查看招聘季 管理招聘季 邀请企业参与招聘季 关闭招聘季
+				777 container 权限业务域
+					778 heading 业务域导航, Value: 4
+						779 text 业务域导航
+					780 button 全部权限 657
+						781 text 全部权限
+						782 text 657
+					783 button 系统与身份 140
+						784 text 系统与身份
+						785 text 140
+					786 button 学工管理 107
+						787 text 学工管理
+						788 text 107
+					789 button 教务管理 169
+						790 text 教务管理
+						791 text 169
+					792 button 岗位实习 136
+						793 text 岗位实习
+						794 text 136
+					795 button 毕业设计 88
+						796 text 毕业设计
+						797 text 88
+					798 button 就业管理 17
+						799 text 就业管理
+						800 text 17
+				801 container
+					802 heading 系统与身份 （140 项）, Value: 4
+						803 text 系统与身份  （140 项）
+					804 text 账号安全、身份核验、登录控制、角色权限与审计。
+					805 button 展开全部
+					806 button 收起全部
+				807 container
+					808 button (expanded) 手机号治理与认证 10 管理手机号登录凭据、本人验证和安全策略。 收起, Secondary Actions: Collapse
+						809 text 手机号治理与认证
+						810 text 10
+						811 text 管理手机号登录凭据、本人验证和安全策略。
+						812 text 收起
+					813 text 权限名称 风险等级 自定义角色 查看脱敏号码治理 业务模块 中风险 可分配 精确核对手机号 业务模块 高风险 可分配 登记或清除待验证号码 业务模块 高风险 可分配 发送本人验证站内提醒 业务模块 中风险 可分配 撤销手机号凭据 业务模块 重大风险 可分配 导出脱敏号码台账 业务模块 高风险 可分配 申请账号恢复核验 业务模块 高风险 可分配 独立审批账号恢复 业务模块 重大风险 可分配 查看手机号安全策略 业务模块 低风险 可分配 管理手机号安全策略 业务模块 重大风险 可分配
+				814 button (collapsed) 完成 1 完成相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					815 text 完成
+					816 text 1
+					817 text 完成相关的查看、办理与管理权限。
+					818 text 展开
+				819 button (collapsed) 业务办理权限 2 本业务域下的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					820 text 业务办理权限
+					821 text 2
+					822 text 本业务域下的查看、办理与管理权限。
+					823 text 展开
+				824 button (collapsed) 已退回 1 已退回相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					825 text 已退回
+					826 text 1
+					827 text 已退回相关的查看、办理与管理权限。
+					828 text 展开
+				829 button (collapsed) 任务 2 任务相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					830 text 任务
+					831 text 2
+					832 text 任务相关的查看、办理与管理权限。
+					833 text 展开
+				834 button (collapsed) 模板 1 模板相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					835 text 模板
+					836 text 1
+					837 text 模板相关的查看、办理与管理权限。
+					838 text 展开
+				839 button (collapsed) 待办 1 待办相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					840 text 待办
+					841 text 1
+					842 text 待办相关的查看、办理与管理权限。
+					843 text 展开
+				844 button (collapsed) 概览 3 概览相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					845 text 概览
+					846 text 3
+					847 text 概览相关的查看、办理与管理权限。
+					848 text 展开
+				849 button (collapsed) 生命周期 1 生命周期相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					850 text 生命周期
+					851 text 1
+					852 text 生命周期相关的查看、办理与管理权限。
+					853 text 展开
+				854 button (collapsed) 排名 1 排名相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					855 text 排名
+					856 text 1
+					857 text 排名相关的查看、办理与管理权限。
+					858 text 展开
+				859 button (collapsed) 报告 4 报告相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					860 text 报告
+					861 text 4
+					862 text 报告相关的查看、办理与管理权限。
+					863 text 展开
+				864 button (collapsed) 风险 1 风险相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					865 text 风险
+					866 text 1
+					867 text 风险相关的查看、办理与管理权限。
+					868 text 展开
+				869 button (collapsed) 导入与数据交换 7 模板、导入任务、校验与结果查看相关权限。 展开, Secondary Actions: Expand
+					870 text 导入与数据交换
+					871 text 7
+					872 text 模板、导入任务、校验与结果查看相关权限。
+					873 text 展开
+				874 button (collapsed) 个人档案 5 个人档案相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					875 text 个人档案
+					876 text 5
+					877 text 个人档案相关的查看、办理与管理权限。
+					878 text 展开
+				879 button (collapsed) 审计与合规 11 登录日志、敏感操作和安全审计相关权限。 展开, Secondary Actions: Expand
+					880 text 审计与合规
+					881 text 11
+					882 text 登录日志、敏感操作和安全审计相关权限。
+					883 text 展开
+				884 button (collapsed) 配置 · 学校品牌 2 配置 · 学校品牌相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					885 text 配置 · 学校品牌
+					886 text 2
+					887 text 配置 · 学校品牌相关的查看、办理与管理权限。
+					888 text 展开
+				889 button (collapsed) 配置 · 功能开关 2 配置 · 功能开关相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					890 text 配置 · 功能开关
+					891 text 2
+					892 text 配置 · 功能开关相关的查看、办理与管理权限。
+					893 text 展开
+				894 button (collapsed) 配置 3 配置相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					895 text 配置
+					896 text 3
+					897 text 配置相关的查看、办理与管理权限。
+					898 text 展开
+				899 button (collapsed) 权限与角色管理 15 角色、成员、权限分配与回收相关权限。 展开, Secondary Actions: Expand
+					900 text 权限与角色管理
+					901 text 15
+					902 text 角色、成员、权限分配与回收相关权限。
+					903 text 展开
+				904 button (collapsed) 系统集成 2 系统集成相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					905 text 系统集成
+					906 text 2
+					907 text 系统集成相关的查看、办理与管理权限。
+					908 text 展开
+				909 button (collapsed) 数据迁移 2 数据迁移相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					910 text 数据迁移
+					911 text 2
+					912 text 数据迁移相关的查看、办理与管理权限。
+					913 text 展开
+				914 button (collapsed) 组织 · 任职关系 2 组织 · 任职关系相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					915 text 组织 · 任职关系
+					916 text 2
+					917 text 组织 · 任职关系相关的查看、办理与管理权限。
+					918 text 展开
+				919 button (collapsed) 组织 · 班级 2 组织 · 班级相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					920 text 组织 · 班级
+					921 text 2
+					922 text 组织 · 班级相关的查看、办理与管理权限。
+					923 text 展开
+				924 button (collapsed) 组织 · 专业 2 组织 · 专业相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					925 text 组织 · 专业
+					926 text 2
+					927 text 组织 · 专业相关的查看、办理与管理权限。
+					928 text 展开
+				929 button (collapsed) 组织 6 组织相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					930 text 组织
+					931 text 6
+					932 text 组织相关的查看、办理与管理权限。
+					933 text 展开
+				934 button (collapsed) 身份核验 12 身份、账号与本人关系核验相关权限。 展开, Secondary Actions: Expand
+					935 text 身份核验
+					936 text 12
+					937 text 身份、账号与本人关系核验相关权限。
+					938 text 展开
+				939 button (collapsed) 访问 1 访问相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					940 text 访问
+					941 text 1
+					942 text 访问相关的查看、办理与管理权限。
+					943 text 展开
+				944 button (collapsed) 通信 2 通信相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					945 text 通信
+					946 text 2
+					947 text 通信相关的查看、办理与管理权限。
+					948 text 展开
+				949 button (collapsed) 文件 1 文件相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					950 text 文件
+					951 text 1
+					952 text 文件相关的查看、办理与管理权限。
+					953 text 展开
+				954 button (collapsed) 文件治理 1 文件治理相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					955 text 文件治理
+					956 text 1
+					957 text 文件治理相关的查看、办理与管理权限。
+					958 text 展开
+				959 button (collapsed) 实施验收 6 实施验收相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					960 text 实施验收
+					961 text 6
+					962 text 实施验收相关的查看、办理与管理权限。
+					963 text 展开
+				964 button (collapsed) 实施验收 · 变更 1 实施验收 · 变更相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					965 text 实施验收 · 变更
+					966 text 1
+					967 text 实施验收 · 变更相关的查看、办理与管理权限。
+					968 text 展开
+				969 button (collapsed) 实施验收 · 检查 1 实施验收 · 检查相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					970 text 实施验收 · 检查
+					971 text 1
+					972 text 实施验收 · 检查相关的查看、办理与管理权限。
+					973 text 展开
+				974 button (collapsed) 实施验收 · 已安装能力 1 实施验收 · 已安装能力相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					975 text 实施验收 · 已安装能力
+					976 text 1
+					977 text 实施验收 · 已安装能力相关的查看、办理与管理权限。
+					978 text 展开
+				979 button (collapsed) 实施验收 · 映射 2 实施验收 · 映射相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					980 text 实施验收 · 映射
+					981 text 2
+					982 text 实施验收 · 映射相关的查看、办理与管理权限。
+					983 text 展开
+				984 button (collapsed) 实施验收 · 预设 1 实施验收 · 预设相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					985 text 实施验收 · 预设
+					986 text 1
+					987 text 实施验收 · 预设相关的查看、办理与管理权限。
+					988 text 展开
+				989 button (collapsed) 实施验收 · 关联关系 3 实施验收 · 关联关系相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					990 text 实施验收 · 关联关系
+					991 text 3
+					992 text 实施验收 · 关联关系相关的查看、办理与管理权限。
+					993 text 展开
+				994 button (collapsed) 后台任务 2 后台任务相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					995 text 后台任务
+					996 text 2
+					997 text 后台任务相关的查看、办理与管理权限。
+					998 text 展开
+				999 button (collapsed) 工作流 2 工作流相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1000 text 工作流
+					1001 text 2
+					1002 text 工作流相关的查看、办理与管理权限。
+					1003 text 展开
+				1004 button (collapsed) 消息 · 班级 1 消息 · 班级相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1005 text 消息 · 班级
+					1006 text 1
+					1007 text 消息 · 班级相关的查看、办理与管理权限。
+					1008 text 展开
+				1009 button (collapsed) 消息 · 学院 1 消息 · 学院相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1010 text 消息 · 学院
+					1011 text 1
+					1012 text 消息 · 学院相关的查看、办理与管理权限。
+					1013 text 展开
+				1014 button (collapsed) 消息 · 紧急事项 2 消息 · 紧急事项相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1015 text 消息 · 紧急事项
+					1016 text 2
+					1017 text 消息 · 紧急事项相关的查看、办理与管理权限。
+					1018 text 展开
+				1019 button (collapsed) 消息 3 消息相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1020 text 消息
+					1021 text 3
+					1022 text 消息相关的查看、办理与管理权限。
+					1023 text 展开
+				1024 button (collapsed) 消息 · 全校人员 1 消息 · 全校人员相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1025 text 消息 · 全校人员
+					1026 text 1
+					1027 text 消息 · 全校人员相关的查看、办理与管理权限。
+					1028 text 展开
+				1029 button (collapsed) 消息 · 全校教职工 1 消息 · 全校教职工相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1030 text 消息 · 全校教职工
+					1031 text 1
+					1032 text 消息 · 全校教职工相关的查看、办理与管理权限。
+					1033 text 展开
+				1034 button (collapsed) 消息 · 全校学生 1 消息 · 全校学生相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1035 text 消息 · 全校学生
+					1036 text 1
+					1037 text 消息 · 全校学生相关的查看、办理与管理权限。
+					1038 text 展开
+				1039 button (collapsed) 消息 · 统计 1 消息 · 统计相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1040 text 消息 · 统计
+					1041 text 1
+					1042 text 消息 · 统计相关的查看、办理与管理权限。
+					1043 text 展开
+				1044 button (collapsed) 消息 · 模板 1 消息 · 模板相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1045 text 消息 · 模板
+					1046 text 1
+					1047 text 消息 · 模板相关的查看、办理与管理权限。
+					1048 text 展开
+				1049 button (collapsed) 首页 2 首页相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1050 text 首页
+					1051 text 2
+					1052 text 首页相关的查看、办理与管理权限。
+					1053 text 展开
+				1054 button (collapsed) 流程 1 流程相关的查看、办理与管理权限。 展开, Secondary Actions: Expand
+					1055 text 流程
+					1056 text 1
+					1057 text 流程相关的查看、办理与管理权限。
+					1058 text 展开
+				1059 container
+					1060 heading 学校角色模板, Value: 3
+						1061 text 学校角色模板
+					1062 text 已发布模板不可修改；自定义角色始终固定到来源版本，升级前需先查看本校影响。
+					1063 button 进入模板管理
+				1064 container
+					1065 text 教务管理员
+					1066 text 第 3 版
+					1067 button 查看教务管理员的模板权限
+						1068 text 权限 
+						1069 text 180
+						1070 text  项 · 查看
+					1071 text 绑定角色  0  个
+					1072 button 查看影响
+					1073 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1074 text 版本与摘要
+				1075 container
+					1076 text 任课教师
+					1077 text 第 3 版
+					1078 button 查看任课教师的模板权限
+						1079 text 权限 
+						1080 text 34
+						1081 text  项 · 查看
+					1082 text 绑定角色  3  个
+					1083 button 查看影响
+					1084 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1085 text 版本与摘要
+				1086 container
+					1087 text 学院管理员
+					1088 text 第 6 版
+					1089 button 查看学院管理员的模板权限
+						1090 text 权限 
+						1091 text 431
+						1092 text  项 · 查看
+					1093 text 绑定角色  0  个
+					1094 button 查看影响
+					1095 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1096 text 版本与摘要
+				1097 container
+					1098 text 辅导员
+					1099 text 第 4 版
+					1100 button 查看辅导员的模板权限
+						1101 text 权限 
+						1102 text 59
+						1103 text  项 · 查看
+					1104 text 绑定角色  0  个
+					1105 button 查看影响
+					1106 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1107 text 版本与摘要
+				1108 container
+					1109 text 宿管老师
+					1110 text 第 3 版
+					1111 button 查看宿管老师的模板权限
+						1112 text 权限 
+						1113 text 13
+						1114 text  项 · 查看
+					1115 text 绑定角色  0  个
+					1116 button 查看影响
+					1117 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1118 text 版本与摘要
+				1119 container
+					1120 text 就业老师
+					1121 text 第 4 版
+					1122 button 查看就业老师的模板权限
+						1123 text 权限 
+						1124 text 29
+						1125 text  项 · 查看
+					1126 text 绑定角色  0  个
+					1127 button 查看影响
+					1128 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1129 text 版本与摘要
+				1130 container
+					1131 text 资助老师
+					1132 text 第 3 版
+					1133 button 查看资助老师的模板权限
+						1134 text 权限 
+						1135 text 20
+						1136 text  项 · 查看
+					1137 text 绑定角色  0  个
+					1138 button 查看影响
+					1139 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1140 text 版本与摘要
+				1141 container
+					1142 text 学院毕设管理员
+					1143 text 第 3 版
+					1144 button 查看学院毕设管理员的模板权限
+						1145 text 权限 
+						1146 text 84
+						1147 text  项 · 查看
+					1148 text 绑定角色  0  个
+					1149 button 查看影响
+					1150 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1151 text 版本与摘要
+				1152 container
+					1153 text 答辩专家
+					1154 text 第 4 版
+					1155 button 查看答辩专家的模板权限
+						1156 text 权限 
+						1157 text 8
+						1158 text  项 · 查看
+					1159 text 绑定角色  0  个
+					1160 button 查看影响
+					1161 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1162 text 版本与摘要
+				1163 container
+					1164 text 答辩秘书
+					1165 text 第 4 版
+					1166 button 查看答辩秘书的模板权限
+						1167 text 权限 
+						1168 text 10
+						1169 text  项 · 查看
+					1170 text 绑定角色  0  个
+					1171 button 查看影响
+					1172 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1173 text 版本与摘要
+				1174 container
+					1175 text 毕设成绩管理员
+					1176 text 第 4 版
+					1177 button 查看毕设成绩管理员的模板权限
+						1178 text 权限 
+						1179 text 12
+						1180 text  项 · 查看
+					1181 text 绑定角色  0  个
+					1182 button 查看影响
+					1183 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1184 text 版本与摘要
+				1185 container
+					1186 text 专业毕设管理员
+					1187 text 第 3 版
+					1188 button 查看专业毕设管理员的模板权限
+						1189 text 权限 
+						1190 text 41
+						1191 text  项 · 查看
+					1192 text 绑定角色  0  个
+					1193 button 查看影响
+					1194 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1195 text 版本与摘要
+				1196 container
+					1197 text 毕设指导教师
+					1198 text 第 3 版
+					1199 button 查看毕设指导教师的模板权限
+						1200 text 权限 
+						1201 text 25
+						1202 text  项 · 查看
+					1203 text 绑定角色  0  个
+					1204 button 查看影响
+					1205 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1206 text 版本与摘要
+				1207 container
+					1208 text 毕设评阅教师
+					1209 text 第 4 版
+					1210 button 查看毕设评阅教师的模板权限
+						1211 text 权限 
+						1212 text 9
+						1213 text  项 · 查看
+					1214 text 绑定角色  0  个
+					1215 button 查看影响
+					1216 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1217 text 版本与摘要
+				1218 container
+					1219 text 毕业设计管理员
+					1220 text 第 3 版
+					1221 button 查看毕业设计管理员的模板权限
+						1222 text 权限 
+						1223 text 84
+						1224 text  项 · 查看
+					1225 text 绑定角色  0  个
+					1226 button 查看影响
+					1227 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1228 text 版本与摘要
+				1229 container
+					1230 text 实习指导教师
+					1231 text 第 3 版
+					1232 button 查看实习指导教师的模板权限
+						1233 text 权限 
+						1234 text 71
+						1235 text  项 · 查看
+					1236 text 绑定角色  0  个
+					1237 button 查看影响
+					1238 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1239 text 版本与摘要
+				1240 container
+					1241 text 校领导
+					1242 text 第 4 版
+					1243 button 查看校领导的模板权限
+						1244 text 权限 
+						1245 text 209
+						1246 text  项 · 查看
+					1247 text 绑定角色  0  个
+					1248 button 查看影响
+					1249 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1250 text 版本与摘要
+				1251 container
+					1252 text 组织人事人员
+					1253 text 第 3 版
+					1254 button 查看组织人事人员的模板权限
+						1255 text 权限 
+						1256 text 7
+						1257 text  项 · 查看
+					1258 text 绑定角色  0  个
+					1259 button 查看影响
+					1260 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1261 text 版本与摘要
+				1262 container
+					1263 text 心理老师
+					1264 text 第 3 版
+					1265 button 查看心理老师的模板权限
+						1266 text 权限 
+						1267 text 17
+						1268 text  项 · 查看
+					1269 text 绑定角色  0  个
+					1270 button 查看影响
+					1271 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1272 text 版本与摘要
+				1273 container
+					1274 text 学校管理员
+					1275 text 第 5 版
+					1276 button 查看学校管理员的模板权限
+						1277 text 权限 
+						1278 text 656
+						1279 text  项 · 查看
+					1280 text 绑定角色  0  个
+					1281 button 查看影响
+					1282 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1283 text 版本与摘要
+				1284 container
+					1285 text 安全审计员
+					1286 text 第 3 版
+					1287 button 查看安全审计员的模板权限
+						1288 text 权限 
+						1289 text 28
+						1290 text  项 · 查看
+					1291 text 绑定角色  0  个
+					1292 button 查看影响
+					1293 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1294 text 版本与摘要
+				1295 container
+					1296 text 教职工
+					1297 text 第 1 版
+					1298 button 查看教职工的模板权限
+						1299 text 权限 
+						1300 text 0
+						1301 text  项 · 查看
+					1302 text 绑定角色  1  个
+					1303 button 查看影响
+					1304 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1305 text 版本与摘要
+				1306 container
+					1307 text 学生
+					1308 text 第 1 版
+					1309 button 查看学生的模板权限
+						1310 text 权限 
+						1311 text 0
+						1312 text  项 · 查看
+					1313 text 绑定角色  0  个
+					1314 button 查看影响
+					1315 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1316 text 版本与摘要
+				1317 container
+					1318 text 学工老师
+					1319 text 第 4 版
+					1320 button 查看学工老师的模板权限
+						1321 text 权限 
+						1322 text 109
+						1323 text  项 · 查看
+					1324 text 绑定角色  0  个
+					1325 button 查看影响
+					1326 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1327 text 版本与摘要
+				1328 container
+					1329 text 学工管理员
+					1330 text 第 4 版
+					1331 button 查看学工管理员的模板权限
+						1332 text 权限 
+						1333 text 113
+						1334 text  项 · 查看
+					1335 text 绑定角色  0  个
+					1336 button 查看影响
+					1337 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1338 text 版本与摘要
+				1339 container
+					1340 text 系统管理员
+					1341 text 第 4 版
+					1342 button 查看系统管理员的模板权限
+						1343 text 权限 
+						1344 text 82
+						1345 text  项 · 查看
+					1346 text 绑定角色  0  个
+					1347 button 查看影响
+					1348 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1349 text 版本与摘要
+				1350 container
+					1351 text 团委老师
+					1352 text 第 3 版
+					1353 button 查看团委老师的模板权限
+						1354 text 权限 
+						1355 text 16
+						1356 text  项 · 查看
+					1357 text 绑定角色  0  个
+					1358 button 查看影响
+					1359 button (collapsed) 版本与摘要, Secondary Actions: Expand
+						1360 text 版本与摘要
+				1361 container access-explain
+					1362 container
+						1363 heading 访问解释, Value: 3
+							1364 text 访问解释
+						1365 text 解释“某个学校成员为什么能或不能访问具体对象”。身份权限通过不等于业务最终允许；数据范围目标与业务对象上下文会交给业务规则裁决，缺失上下文时将继续按拒绝处理。
+					1366 container
+						1367 text 学校成员编号
+						1368 text field (settable) 学校成员编号
+						1369 text 模块
+						1370 text field (settable) 模块, Value: internship
+						1371 text 权限
+						1372 pop up button (collapsed, settable) 权限, Value: 管理招聘季, Secondary Actions: Expand
+							1373 menu (showing 0-500 of 657 items)
+								1374 查看脱敏号码治理
+								1375 精确核对手机号
+								1376 登记或清除待验证号码
+								1377 发送本人验证站内提醒
+								1378 撤销手机号凭据
+								1379 导出脱敏号码台账
+								1380 申请账号恢复核验
+								1381 独立审批账号恢复
+								1382 查看手机号安全策略
+								1383 管理手机号安全策略
+								1384 查看招聘季
+								1385 (selected) 管理招聘季
+								1386 邀请企业参与招聘季
+								1387 关闭招聘季
+								1388 导出宿舍台账
+								1389 教务 · 档案 · 管理
+								1390 教务 · 考勤 · 查看
+								1391 教务 · 校历 · 管理
+								1392 教务 · 校历 · 查看
+								1393 教务 · 校历发布 · 管理
+								1394 教务 · 上课时间段 · 管理
+								1395 教务 · 上课时间段 · 查看
+								1396 教务 · 教室 · 新增
+								1397 教务 · 教室 · 删除
+								1398 教务 · 教室 · 修改
+								1399 教务 · 教室 · 查看
+								1400 教务 · 课程 · 审批
+								1401 教务 · 课程 · 管理
+								1402 教务 · 课程 · 查看
+								1403 教务 · 设备 · 新增
+								1404 教务 · 设备 · 删除
+								1405 教务 · 设备 · 修改
+								1406 教务 · 设备 · 查看
+								1407 教务 · 评价 · 查看
+								1408 教务 · 考试 · 登记异常
+								1409 教务 · 考试 · 查看
+								1410 教务 · 成绩 · 档案
+								1411 教务 · 成绩 · 学院审核
+								1412 教务 · 成绩 · 导出
+								1413 教务 · 成绩 · 导入
+								1414 教务 · 成绩 · 录入
+								1415 教务 · 成绩 · 策略 · 管理
+								1416 教务 · 成绩 · 策略 · 查看
+								1417 教务 · 成绩 · 发布
+								1418 教务 · 成绩 · 退回
+								1419 教务 · 成绩 · 提交
+								1420 教务 · 成绩 · 查看
+								1421 教务 · 成绩更正 · 应用
+								1422 教务 · 成绩更正 · 审核
+								1423 教务 · 成绩认定 · 管理
+								1424 教务 · 成绩认定 · 查看
+								1425 教务 · 毕业证书 · 管理
+								1426 教务 · 毕业证书 · 查看
+								1427 教务 · 实训室 · 新增
+								1428 教务 · 实训室 · 删除
+								1429 教务 · 实训室 · 修改
+								1430 教务 · 实训室 · 查看
+								1431 教务 · 等级考试 · 管理
+								1432 教务 · 等级考试 · 查看
+								1433 教务 · 补考 · 档案
+								1434 教务 · 补考 · 管理
+								1435 教务 · 组织 · 管理
+								1436 教务 · 组织 · 查看
+								1437 教务 · 培养方案 · 变更状态
+								1438 教务 · 培养方案 · 管理
+								1439 教务 · 培养方案 · 发布
+								1440 教务 · 培养方案 · 审核
+								1441 教务 · 培养方案 · 提交
+								1442 教务 · 培养方案 · 查看
+								1443 教务 · 注册 · 管理
+								1444 教务 · 注册 · 查看
+								1445 教务 · 资源冲突 · 查看
+								1446 教务 · 资源占用 · 查看
+								1447 教务 · 资源报修 · 管理
+								1448 教务 · 资源报修 · 查看
+								1449 教务 · 资源统计 · 查看
+								1450 教务 · 名单 · 导出
+								1451 教务 · 名单 · 导入
+								1452 教务 · 名单 · 查看
+								1453 教务 · 名单 · 查看敏感信息
+								1454 教务 · 排期 · 档案
+								1455 教务 · 排期 · 编辑
+								1456 教务 · 排期 · 导入
+								1457 教务 · 排期 · 规则 · 管理
+								1458 教务 · 排期 · 教师确认
+								1459 教务 · 排期 · 查看
+								1460 教务 · 调停课 · 教务审核
+								1461 教务 · 调停课 · 应用
+								1462 教务 · 调停课 · 学院审核
+								1463 教务 · 调停课 · 查看
+								1464 教务 · 统计 · 快照 · 新增
+								1465 教务 · 统计 · 快照 · 管理
+								1466 教务 · 统计 · 快照 · 查看
+								1467 教务 · 统计 · 查看
+								1468 教务 · 状态变更 · 应用
+								1469 教务 · 状态变更 · 查看
+								1470 教务 · 教学任务 · 调整
+								1471 教务 · 教学任务 · 确认
+								1472 教务 · 教学任务 · 管理
+								1473 教务 · 教学任务 · 合并
+								1474 教务 · 教学任务 · 统计
+								1475 教务 · 教学任务 · 查看
+								1476 教务 · 教材 · 分配 · 管理
+								1477 教务 · 教材 · 订单 · 管理
+								1478 教务 · 教材 · 审核 · 管理
+								1479 教务 · 作息时间 · 管理
+								1480 教务 · 作息时间 · 查看
+								1481 审批 · 完成 · 查看
+								1482 审批 · 管理
+								1483 审批 · 已退回 · 查看
+								1484 审批 · 任务 · 处理
+								1485 审批 · 模板 · 查看
+								1486 审批 · 待办 · 查看
+								1487 校区 · 记录 · 查看
+								1488 校园服务 · 审计 · 查看
+								1489 校园服务 · 概览 · 查看
+								1490 校园服务 · 处分 · 新增
+								1491 校园服务 · 处分 · 编辑
+								1492 校园服务 · 处分 · 查看
+								1493 校园服务 · 处分 · 作废
+								1494 校园服务 · 宿舍 · 处理
+								1495 校园服务 · 宿舍 · 查看
+								1496 校园服务 · 授予 · 审批
+								1497 校园服务 · 授予 · 查看
+								1498 校园服务 · 学生 · 新增
+								1499 校园服务 · 学生 · 编辑
+								1500 校园服务 · 学生 · 查看
+								1501 校园服务 · 学生 · 作废
+								1502 校园服务 · 工单 · 分配
+								1503 校园服务 · 工单 · 新增
+								1504 校园服务 · 工单 · 处理
+								1505 校园服务 · 工单 · 查看
+								1506 数据中心 · 概览 · 查看
+								1507 数据中心 · 生命周期 · 查看
+								1508 数据中心 · 排名 · 查看
+								1509 数据中心 · 报告 · 查看
+								1510 数据中心 · 风险 · 查看
+								1511 就业 · 审计 · 查看
+								1512 就业 · 企业 · 管理
+								1513 就业 · 企业 · 查看
+								1514 就业 · 概览 · 查看
+								1515 就业 · 跟进 · 管理
+								1516 就业 · 跟进 · 查看
+								1517 就业 · 后台任务 · 管理
+								1518 就业 · 后台任务 · 查看
+								1519 就业 · 材料 · 审批
+								1520 就业 · 材料 · 查看
+								1521 就业 · 学生 · 管理
+								1522 就业 · 学生 · 查看
+								1523 就业 · 未就业人员 · 分配
+								1524 就业 · 未就业人员 · 管理
+								1525 就业 · 未就业人员 · 查看
+								1526 字段 · 查看完整信息
+								1527 毕业设计 · 档案 · 导出
+								1528 毕业设计 · 档案 · 文件
+								1529 毕业设计 · 档案 · 提交
+								1530 毕业设计 · 审计 · 查看
+								1531 毕业设计 · 批次 · 新增
+								1532 毕业设计 · 批次 · 修改
+								1533 毕业设计 · 批次 · 查看
+								1534 毕业设计 · 概览 · 查看
+								1535 毕业设计 · 答辩 · 分组管理
+								1536 毕业设计 · 答辩 · 发布
+								1537 毕业设计 · 答辩 · 评分
+								1538 毕业设计 · 答辩 · 成绩确认
+								1539 毕业设计 · 答辩 · 查看
+								1540 毕业设计 · 最终成果 · 导出
+								1541 毕业设计 · 最终成果 · 审核
+								1542 毕业设计 · 最终成果 · 查看
+								1543 毕业设计 · 成绩 · 发布
+								1544 毕业设计 · 成绩 · 审核
+								1545 毕业设计 · 成绩 · 查看
+								1546 毕业设计 · 指导 · 查看
+								1547 毕业设计 · 导师 · 管理
+								1548 毕业设计 · 扩展功能 · 管理
+								1549 毕业设计 · 查重 · 查看
+								1550 毕业设计 · 开题 · 导出
+								1551 毕业设计 · 开题 · 审核
+								1552 毕业设计 · 开题 · 查看
+								1553 毕业设计 · 审核 · 查看
+								1554 毕业设计 · 风险归档 · 管理
+								1555 毕业设计 · 统计 · 查看
+								1556 毕业设计 · 学生 · 导出
+								1557 毕业设计 · 学生 · 管理
+								1558 毕业设计 · 学生 · 查看
+								1559 毕业设计 · 任务书 · 导出
+								1560 毕业设计 · 模板 · 管理
+								1561 毕业设计 · 课题 · 变更
+								1562 毕业设计 · 课题 · 导出
+								1563 毕业设计 · 课题 · 资源库
+								1564 毕业设计 · 课题 · 管理
+								1565 毕业设计 · 课题 · 审核
+								1566 毕业设计 · 课题 · 轮次
+								1567 毕业设计 · 课题 · 提交
+								1568 岗位实习 · 协议 · 导出
+								1569 岗位实习 · 协议 · 管理
+								1570 岗位实习 · 协议 · 学校确认
+								1571 岗位实习 · 协议 · 签署
+								1572 岗位实习 · 协议 · 模板 · 管理
+								1573 岗位实习 · 协议 · 查看
+								1574 岗位实习 · 申请 · 审核
+								1575 岗位实习 · 申请 · 查看
+								1576 岗位实习 · 档案 · 强制
+								1577 岗位实习 · 档案 · 管理
+								1578 岗位实习 · 档案 · 资源包
+								1579 岗位实习 · 档案 · 查看
+								1580 岗位实习 · 考勤 · 导出
+								1581 岗位实习 · 考勤 · 审核
+								1582 岗位实习 · 考勤 · 查看
+								1583 岗位实习 · 批次 · 导出
+								1584 岗位实习 · 批次 · 管理
+								1585 岗位实习 · 批次 · 查看
+								1586 岗位实习 · 变更 · 查看
+								1587 岗位实习 · 投诉 · 敏感信息
+								1588 岗位实习 · 合规 · 免修 · 审批
+								1589 岗位实习 · 合规 · 免修 · 申请
+								1590 岗位实习 · 合规 · 管理
+								1591 岗位实习 · 合规 · 审核
+								1592 岗位实习 · 合规 · 查看
+								1593 岗位实习 · 知情同意 · 管理
+								1594 岗位实习 · 概览 · 查看
+								1595 岗位实习 · 企业 · 导出
+								1596 岗位实习 · 企业 · 检查 · 管理
+								1597 岗位实习 · 企业 · 检查 · 查看
+								1598 岗位实习 · 企业 · 管理
+								1599 岗位实习 · 企业 · 查看
+								1600 岗位实习 · 评价 · 指导教师 · 管理
+								1601 岗位实习 · 评价 · 企业 · 导出
+								1602 岗位实习 · 评价 · 企业 · 管理
+								1603 岗位实习 · 评价 · 企业 · 审核
+								1604 岗位实习 · 评价 · 企业 · 查看
+								1605 岗位实习 · 评价 · 本人 · 导出
+								1606 岗位实习 · 评价 · 本人 · 审核
+								1607 岗位实习 · 评价 · 本人 · 查看
+								1608 岗位实习 · 证明材料 · 导出
+								1609 岗位实习 · 备案 · 审核
+								1610 岗位实习 · 指导 · 导出
+								1611 岗位实习 · 指导 · 管理
+								1612 岗位实习 · 指导 · 查看
+								1613 岗位实习 · 事件 · 关闭
+								1614 岗位实习 · 事件 · 处理
+								1615 岗位实习 · 事件 · 报告
+								1616 岗位实习 · 保险 · 核验
+								1617 岗位实习 · 保险 · 查看
+								1618 岗位实习 · 请假 · 导出
+								1619 岗位实习 · 请假 · 审核
+								1620 岗位实习 · 请假 · 查看
+								1621 岗位实习 · 补考 · 导出
+								1622 岗位实习 · 补考 · 审核
+								1623 岗位实习 · 补考 · 查看
+								1624 岗位实习 · 匹配 · 意向 · 查看
+								1625 岗位实习 · 匹配 · 日志 · 查看
+								1626 岗位实习 · 计划 · 查看
+								1627 岗位实习 · 岗位 · 管理
+								1628 岗位实习 · 岗位 · 查看
+								1629 岗位实习 · 报告 · 导出
+								1630 岗位实习 · 报告 · 审核
+								1631 岗位实习 · 报告 · 查看
+								1632 岗位实习 · 风险 · 导出
+								1633 岗位实习 · 风险 · 处理
+								1634 岗位实习 · 风险 · 查看
+								1635 岗位实习 · 安全 · 管理
+								1636 岗位实习 · 安全 · 查看
+								1637 岗位实习 · 评分 · 配置 · 管理
+								1638 岗位实习 · 评分 · 导出
+								1639 岗位实习 · 评分 · 管理
+								1640 岗位实习 · 评分 · 发布
+								1641 岗位实习 · 评分 · 查看
+								1642 岗位实习 · 统计 · 查看
+								1643 岗位实习 · 学生 · 查看
+								1644 岗位实习 · 任务 · 审核
+								1645 岗位实习 · 任务 · 查看
+								1646 岗位实习 · 走访 · 导出
+								1647 岗位实习 · 走访 · 管理
+								1648 岗位实习 · 走访 · 查看
+								1649 迎新 · 宿舍 · 确认
+								1650 迎新 · 异常 · 处理
+								1651 迎新 · 材料 · 审核
+								1652 迎新 · 缴费 · 查看
+								1653 迎新 · 学生 · 查看
+								1654 学生 · 导出
+								1655 学生 · 个人档案 · 新增
+								1656 学生 · 个人档案 · 管理
+								1657 学生 · 个人档案 · 恢复
+								1658 学生 · 个人档案 · 修改
+								1659 学生 · 个人档案 · 查看
+								1660 学工 · 活动 · 确认
+								1661 学工 · 活动 · 新增
+								1662 学工 · 活动 · 发布
+								1663 学工 · 活动 · 查看
+								1664 学工 · 困难认定 · 调整
+								1665 学工 · 困难认定 · 审批
+								1666 学工 · 困难认定 · 批次 · 管理
+								1667 学工 · 困难认定 · 辅导员审核
+								1668 学工 · 困难认定 · 新增
+								1669 学工 · 困难认定 · 查看
+								1670 学工 · 档案 · 批次 · 管理
+								1671 学工 · 档案 · 查看
+								1672 学工 · 班级 · 班干部 · 管理
+								1673 学工 · 班级 · 新增
+								1674 学工 · 班级 · 查看
+								1675 学工 · 社团 · 管理
+								1676 学工 · 社团 · 查看
+								1677 学工 · 配置 · 管理
+								1678 学工 · 辅导员考核 · 申诉 · 新增
+								1679 学工 · 辅导员考核 · 管理
+								1680 学工 · 辅导员考核 · 查看
+								1681 学工 · 概览 · 查看
+								1682 学工 · 处分 · 申诉 · 新增
+								1683 学工 · 处分 · 申诉 · 审核
+								1684 学工 · 处分 · 审批
+								1685 学工 · 处分 · 新增
+								1686 学工 · 处分 · 送达
+								1687 学工 · 处分 · 解除 · 审批
+								1688 学工 · 处分 · 解除 · 新增
+								1689 学工 · 处分 · 查看
+								1690 学工 · 宿舍 · 分配 · 管理
+								1691 学工 · 宿舍 · 异常 · 处理
+								1692 学工 · 宿舍 · 检查 · 管理
+								1693 学工 · 宿舍 · 资源 · 管理
+								1694 学工 · 宿舍 · 转交 · 审批
+								1695 学工 · 宿舍 · 转交 · 新增
+								1696 学工 · 宿舍 · 查看
+								1697 学工 · 奖助资助 · 审批
+								1698 学工 · 奖助资助 · 新增
+								1699 学工 · 奖助资助 · 发放 · 管理
+								1700 学工 · 奖助资助 · 助学贷款 · 管理
+								1701 学工 · 奖助资助 · 项目 · 管理
+								1702 学工 · 奖助资助 · 公示 · 管理
+								1703 学工 · 奖助资助 · 费用减免 · 管理
+								1704 学工 · 奖助资助 · 查看
+								1705 学工 · 奖助资助 · 勤工助学 · 管理
+								1706 学工 · 家校沟通 · 记录 · 新增
+								1707 学工 · 家校沟通 · 查看
+								1708 学工 · 团学 · 管理
+								1709 学工 · 团学 · 查看
+								1710 学工 · 请假 · 审批
+								1711 学工 · 请假 · 销假确认
+								1712 学工 · 请假 · 新增
+								1713 学工 · 请假 · 导出
+								1714 学工 · 请假 · 延期 · 审批
+								1715 学工 · 请假 · 逾期 · 处理
+								1716 学工 · 请假 · 查看
+								1717 学工 · 心理 · 管理
+								1718 学工 · 组织 · 管理
+								1719 学工 · 组织 · 查看
+								1720 学工 · 风险 · 分配
+								1721 学工 · 风险 · 关闭
+								1722 学工 · 风险 · 新增
+								1723 学工 · 风险 · 升级处理
+								1724 学工 · 风险 · 处理
+								1725 学工 · 风险 · 心理敏感详情 · 查看
+								1726 学工 · 风险 · 重新开启
+								1727 学工 · 风险 · 转交
+								1728 学工 · 风险 · 查看
+								1729 学工 · 统计 · 查看
+								1730 学工 · 学生 · 查看
+								1731 学工 · 谈心谈话 · 新增
+								1732 学工 · 谈心谈话 · 查看
+								1733 系统管理 · 审计 · 登录 · 查看
+								1734 系统管理 · 审计 · 操作 · 查看
+								1735 系统管理 · 审计 · 敏感信息 · 查看
+								1736 系统管理 · 配置 · 学校品牌 · 管理
+								1737 系统管理 · 配置 · 功能开关 · 查看
+								1738 系统管理 · 配置 · 查看
+								1739 系统管理 · 概览 · 查看
+								1740 系统管理 · 临时授权 · 管理
+								1741 系统管理 · 系统集成 · 管理
+								1742 系统管理 · 系统集成 · 同步 · 查看
+								1743 系统管理 · 数据迁移 · 查看
+								1744 系统管理 · 组织 · 任职关系 · 管理
+								1745 系统管理 · 组织 · 班级 · 管理
+								1746 系统管理 · 组织 · 专业 · 管理
+								1747 系统管理 · 组织 · 查看
+								1748 系统管理 · 角色 · 权限 · 管理
+								1749 系统管理 · 角色 · 模板 · 查看
+								1750 系统管理 · 角色 · 查看
+								1751 系统管理 · 数据范围 · 查看
+								1752 系统管理 · 安全 · 策略 · 管理
+								1753 系统管理 · 账号 · 异常 · 查看
+								1754 系统管理 · 账号 · 导入
+								1755 系统管理 · 账号 · 查看
+								1756 系统管理 · 校历 · 管理
+								1757 系统管理 · 校历 · 查看
+								1758 系统管理 · 访问 · 解释
+								1759 系统管理 · 审计 · 敏感信息 · 查看
+								1760 系统管理 · 审计 · 查看
+								1761 系统管理 · 通信 · 管理
+								1762 系统管理 · 通信 · 查看
+								1763 系统管理 · 配置 · 功能开关 · 查看
+								1764 系统管理 · 配置 · 管理
+								1765 系统管理 · 配置 · 查看
+								1766 系统管理 · 概览 · 查看
+								1767 系统管理 · 数据交换 · 查看本人数据
+								1768 系统管理 · 数据交换 · 查看本校数据
+								1769 系统管理 · 临时授权 · 管理
+								1770 系统管理 · 文件 · 管理
+								1771 系统管理 · 文件治理 · 查看
+								1772 系统管理 · 实施验收 · 验收
+								1773 系统管理 · 实施验收 · 应用
+								1774 系统管理 · 实施验收 · 变更 · 管理
+								1775 系统管理 · 实施验收 · 检查 · 执行
+								1776 系统管理 · 实施验收 · 配置
+								1777 系统管理 · 实施验收 · 新增
+								1778 系统管理 · 实施验收 · 已安装能力 · 查看
+								1779 系统管理 · 实施验收 · 映射 · 应用
+								1780 系统管理 · 实施验收 · 映射 · 管理
+								1781 系统管理 · 实施验收 · 预设 · 查看
+								1782 系统管理 · 实施验收 · 预览
+								1783 系统管理 · 实施验收 · 关联关系 · 应用
+								1784 系统管理 · 实施验收 · 关联关系 · 管理
+								1785 系统管理 · 实施验收 · 关联关系 · 回滚
+								1786 系统管理 · 实施验收 · 查看
+								1787 系统管理 · 系统集成 · 管理
+								1788 系统管理 · 系统集成 · 同步 · 查看
+								1789 系统管理 · 后台任务 · 管理
+								1790 系统管理 · 后台任务 · 查看
+								1791 系统管理 · 数据迁移 · 导入
+								1792 系统管理 · 数据迁移 · 查看
+								1793 系统管理 · 组织 · 启用
+								1794 系统管理 · 组织 · 任职关系 · 管理
+								1795 系统管理 · 组织 · 班级 · 管理
+								1796 系统管理 · 组织 · 新增
+								1797 系统管理 · 组织 · 专业 · 管理
+								1798 系统管理 · 组织 · 管理
+								1799 系统管理 · 组织 · 修改
+								1800 系统管理 · 组织 · 查看
+								1801 系统管理 · 角色 · 配置
+								1802 系统管理 · 角色 · 新增
+								1803 系统管理 · 角色 · 查看
+								1804 系统管理 · 数据范围 · 管理
+								1805 系统管理 · 数据范围 · 查看
+								1806 系统管理 · 安全 · 管理
+								1807 系统管理 · 安全 · 策略 · 管理
+								1808 系统管理 · 安全 · 查看
+								1809 系统管理 · 账号 · 分配
+								1810 系统管理 · 账号 · 分配角色
+								1811 系统管理 · 账号 · 绑定
+								1812 系统管理 · 账号 · 异常 · 查看
+								1813 系统管理 · 账号 · 导出
+								1814 系统管理 · 账号 · 导入
+								1815 系统管理 · 账号 · 管理
+								1816 系统管理 · 账号 · 敏感信息 · 查看
+								1817 系统管理 · 账号 · 查看
+								1818 系统管理 · 工作流 · 管理
+								1819 系统管理 · 工作流 · 查看
+								1820 工作台 · 消息 · 班级 · 发布
+								1821 工作台 · 消息 · 学院 · 发布
+								1822 工作台 · 消息 · 紧急事项 · 审批
+								1823 工作台 · 消息 · 紧急事项 · 提交
+								1824 工作台 · 消息 · 发布
+								1825 工作台 · 消息 · 排期
+								1826 工作台 · 消息 · 全校人员 · 发布
+								1827 工作台 · 消息 · 全校教职工 · 发布
+								1828 工作台 · 消息 · 全校学生 · 发布
+								1829 工作台 · 消息 · 统计 · 查看
+								1830 工作台 · 消息 · 模板 · 管理
+								1831 工作台 · 消息 · 查看
+								1832 工作台 · 消息 · 撤回
+								1833 工作流 · 首页 · 查看
+								1834 工作流 · 权限 · 查看
+								1835 工作流 · 流程 · 查看
+								1836 工作流 · 角色 · 查看
+								1837 工作流 · 任务 · 查看
+								1838 教务 · 档案 · 导出
+								1839 教务 · 档案 · 查看
+								1840 教务 · 概览 · 查看
+								1841 教务 · 缓考 · 辅导员审核
+								1842 教务 · 缓考 · 审核
+								1843 教务 · 评价 · 申诉 · 审核
+								1844 教务 · 评价 · 批次 · 管理
+								1845 教务 · 评价 · 导出
+								1846 教务 · 考试 · 安排
+								1847 教务 · 考试 · 管理
+								1848 教务 · 考试 · 发布
+								1849 教务 · 免修 · 审核
+								1850 教务 · 毕业审核 · 学院审核
+								1851 教务 · 毕业审核 · 最终成果
+								1852 教务 · 毕业审核 · 管理
+								1853 教务 · 毕业审核 · 查看
+								1854 教务 · 专业分流 · 管理
+								1855 教务 · 专业分流 · 查看
+								1856 教务 · 补考 · 导出
+								1857 教务 · 补考 · 查看
+								1858 教务 · 教学质量 · 档案 · 导出
+								1859 教务 · 教学质量 · 档案 · 查看
+								1860 教务 · 教学质量 · 概览 · 查看
+								1861 教务 · 教学质量 · 事件 · 管理
+								1862 教务 · 教学质量 · 记录 · 管理
+								1863 教务 · 教学质量 · 记录 · 查看
+								1864 教务 · 教学质量 · 整改 · 管理
+								1865 教务 · 教学质量 · 整改 · 查看
+								1866 教务 · 教学质量 · 报告 · 导出
+								1867 教务 · 注册 · 档案 · 导出
+								1868 教务 · 注册 · 档案 · 管理
+								1869 教务 · 注册 · 档案 · 查看
+								1870 教务 · 注册 · 缓注册 · 应用
+								1871 教务 · 注册 · 缓注册 · 审批
+								1872 教务 · 注册 · 缓注册 · 查看
+								1873 教务 · 注册 · 资格 · 核验
+						1874 text 数据范围目标类型
+						1875 pop up button (collapsed, settable) 数据范围目标类型, Value: 学院, Secondary Actions: Expand
+							1876 menu
+								1877 (selected) 学院
+								1878 专业
+								1879 班级
+								1880 终端范围
+						1881 text 数据范围目标编号
+						1882 text field (settable) 数据范围目标编号
+						1883 text 业务对象类型
+						1884 pop up button (collapsed, settable) 业务对象类型, Value: 学生, Secondary Actions: Expand
+							1885 menu
+								1886 (selected) 学生
+								1887 实习学生
+								1888 毕设学生
+								1889 用户
+								1890 班级
+								1891 专业
+								1892 学院
+								1893 楼栋
+								1894 宿舍楼
+						1895 text 业务对象编号
+						1896 text field (settable) 业务对象编号
+						1897 button 解释访问
+			199 button 我的常用
+
+The focused UI element is 717 button 身份权限总览

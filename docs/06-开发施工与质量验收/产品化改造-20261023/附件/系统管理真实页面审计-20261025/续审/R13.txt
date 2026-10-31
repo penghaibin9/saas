@@ -1,0 +1,176 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/identity-import/students".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/identity-import/students
+	1 container app
+		2 container
+			244 text 高校学生全生命周期管理平台
+			3 image
+			4 text field (settable) 搜索学生、功能或帮助
+			5 text Ctrl K
+			245 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				246 image
+				247 text 北京 13° 阴
+			248 button (collapsed) 10/25周日 14:33, Secondary Actions: Expand
+				249 image
+				999 text 10/25周日 14:33
+			6 button 帮助与引导
+			7 button 消息中心
+				8 image
+			9 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				10 text 胡
+				11 text 胡管理
+				12 text 系统管理员
+		13 container
+			14 container 一级菜单
+				15 button 学工中心
+				16 button 系统管理
+			17 button (collapsed) 当前范围, Secondary Actions: Expand
+				18 image
+				19 text 当前范围
+				20 image
+			251 button (collapsed) 本次工作 02:13:12, Secondary Actions: Expand
+				252 image
+				1010 text 本次工作 02:13:12
+		254 container 二级菜单
+			255 button 收窄二级菜单
+				256 text 系统管理
+			257 container 二级菜单
+				258 button 系统概览
+				259 button 身份与账号
+				260 button 组织主数据
+				261 button 角色与权限
+				262 button 学校配置
+				263 button 流程配置
+				264 button 安全与审计
+				265 button 接口与同步
+			266 checkbox Description: 取消固定二级菜单, Value: 1
+		267 container 三级菜单
+			268 button 收窄三级菜单
+				621 text 身份与账号
+			270 container 三级菜单
+				622 button 教职工账号
+				623 button 学生账号
+				624 button 教职工导入
+				625 button 学生导入与账号开通
+				626 button 数据交换任务中心
+				627 button 账号异常排查
+				628 button 登录与安全策略
+			280 checkbox Description: 取消固定三级菜单, Value: 1
+		21 container
+			23 tab group 已打开页面
+				24 container
+					25 tab (selected, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 1
+学生导入与账号开通
+					26 button 关闭学生导入与账号开通
+						27 image
+				28 container
+					29 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					30 button 关闭系统总览
+						31 image
+				155 container
+					156 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					157 button 关闭实施总览
+						158 image
+				282 container
+					283 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					284 button 关闭首次开局向导
+						285 image
+				527 container
+					528 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					529 button 关闭预设方案
+						530 image
+				549 container
+					550 tab (selectable, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 0
+职业教育国家标准库
+					551 button 关闭职业教育国家标准库
+						552 image
+				554 container
+					555 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					556 button 关闭数据导入与智能匹配
+						557 image
+				579 container
+					580 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					581 button 关闭已安装配置
+						582 image
+				594 container
+					595 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					596 button 关闭变更与升级
+						597 image
+				599 container
+					600 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					601 button 关闭上线检查与验收
+						602 image
+				629 container
+					630 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					631 button 关闭教职工账号
+						632 image
+				1001 container
+					1002 tab (selectable, settable, boolean) 学生账号, Help: 身份与账号 / 学生账号, Value: 0
+学生账号
+					1003 button 关闭学生账号
+						1004 image
+				1006 container
+					1007 tab (selectable, settable, boolean) 教职工导入, Help: 身份与账号 / 教职工导入, Value: 0
+教职工导入
+					1008 button 关闭教职工导入
+						1009 image
+			32 button 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			1011 container
+				1012 heading 学生导入与账号开通, Value: 1
+					1013 text 学生导入与账号开通
+				1014 button 数据交换任务
+				1015 button 下载标准 XLSX 模板
+				1016 content list 身份导入步骤
+					1017 container
+						1018 text 1 准备文件
+					1019 container
+						1020 text 2 安全扫描
+					1021 container
+						1022 text 3 预检查
+					1023 container
+						1024 text 4 确认导入
+					1025 container
+						1026 text 5 结果回执
+				1027 heading 准备学生名单, Value: 2
+					1028 text 准备学生名单
+				1029 text 师生名单分开上传，不在浏览器解析或改写表格内容。
+				1030 text 学生身份
+				1031 heading 选择标准 Excel 名单, Value: 3
+					1032 text 选择标准 Excel 名单
+				1033 text 使用本页下载的模板。文件登记成功后，还需等待安全扫描和预检查。
+				1034 text 选择 .xlsx 文件
+				1035 button Description: 选择身份导入文件, ID: identity-workbook
+				1036 button (disabled) 上传并开始预检
+				1037 text 导入前确认
+				1038 heading 先把问题留在预检阶段, Value: 2
+					1039 text 先把问题留在预检阶段
+				1040 text 1
+				1041 heading 使用正确模板, Value: 3
+					1042 text 使用正确模板
+				1043 text 学号、姓名、学院、专业、班级与年级按学生模板填写。学生账号不能用于分配教职工权限。
+				1044 text 2
+				1045 heading 核对主档与组织冲突, Value: 3
+					1046 text 核对主档与组织冲突
+				1047 text 已有的学生主档按规则复用；身份或组织冲突先处理，不强行覆盖学籍信息。
+				1048 text 3
+				1049 heading 凭据单独受控下载, Value: 3
+					1050 text 凭据单独受控下载
+				1051 text 原文件、错误与初始凭据回执保留在任务中心。任务可见不等于有权下载凭据。
+				1052 text 任务可以继续办理
+				1053 text 登记成功后本页链接会保留任务编号。刷新或重新打开链接，只读取该任务，不自动重新上传或确认。
+			154 button 我的常用
+
+The focused UI element is 625 button 学生导入与账号开通

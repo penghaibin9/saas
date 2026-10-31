@@ -1,0 +1,224 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:15":
+    - generic: 10/27周二 09:15
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:12:40":
+  - generic: 本次工作 00:12:40
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 学校设置
+  - navigation "三级菜单":
+    - button "学校信息与品牌":
+      - generic: 学校信息与品牌
+    - button "数据字典":
+      - generic: 数据字典
+    - button "模块授权与业务开关":
+      - generic: 模块授权与业务开关
+    - button "学年学期与业务日历":
+      - generic: 学年学期与业务日历
+    - button "统一消息、待办与通知治理":
+      - generic: 统一消息、待办与通知治理
+    - button "文件存储治理":
+      - generic: 文件存储治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "学年学期与业务日历" [selected]:
+    - generic: 学年学期与业务日历
+  - button "关闭学年学期与业务日历":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:15
+  - heading "学年学期与业务日历" [level=1]
+  - text: 当前生效学期
+  - strong: 2026-2027 第1学期 D606验收学期
+  - paragraph: 激活于 2026-10-26 08:16 · 北京时间
+  - generic: "1"
+  - text: 已纳入治理
+  - generic: "0"
+  - text: 未纳入治理
+  - generic: "0"
+  - text: 已排期待激活
+  - generic: 学期治理
+  - generic: 切换影响：教务中心；未接入模块不会同步切换
+  - table:
+    - rowgroup:
+      - row "学期 全校状态 教务状态 时间范围 排期激活 操作":
+        - columnheader "学期"
+        - columnheader "全校状态"
+        - columnheader "教务状态"
+        - columnheader "时间范围"
+        - columnheader "排期激活"
+        - columnheader "操作"
+    - rowgroup:
+      - row "2026-2027 第1学期 D606验收学期 全校生效 草稿 教务当前 2026-09-01 ~ 2027-01-31 — 详情 开始结期":
+        - cell "2026-2027 第1学期 D606验收学期":
+          - text: 2026-2027 第1学期
+          - generic: D606验收学期
+        - cell "全校生效":
+          - generic: 全校生效
+        - cell "草稿 教务当前"
+        - cell "2026-09-01 ~ 2027-01-31"
+        - cell "—"
+        - cell "详情 开始结期":
+          - button "详情"
+          - button "开始结期"
+  - generic: 切换影响的模块
+  - generic: 未接入的模块仍按各自口径取值，后续统一收口
+  - table:
+    - rowgroup:
+      - row "模块 依赖学期的业务 接入状态":
+        - columnheader "模块"
+        - columnheader "依赖学期的业务"
+        - columnheader "接入状态"
+    - rowgroup:
+      - row "教务中心 教学任务、考勤、成绩、归档 已接入":
+        - cell "教务中心"
+        - cell "教学任务、考勤、成绩、归档"
+        - cell "已接入"
+      - row "学工中心 请假、违纪、资助批次 未接入":
+        - cell "学工中心"
+        - cell "请假、违纪、资助批次"
+        - cell "未接入"
+      - row "岗位实习中心 实习批次与周报周期 未接入":
+        - cell "岗位实习中心"
+        - cell "实习批次与周报周期"
+        - cell "未接入"
+      - row "毕业设计中心 毕设批次与答辩场次 未接入":
+        - cell "毕业设计中心"
+        - cell "毕设批次与答辩场次"
+        - cell "未接入"
+      - row "就业中心 就业统计年度口径 未接入":
+        - cell "就业中心"
+        - cell "就业统计年度口径"
+        - cell "未接入"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,344 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:16":
+    - generic: 10/27周二 09:16
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:13:13":
+  - generic: 本次工作 00:13:13
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - button "全部业务与设置"
+  - navigation "三级菜单":
+    - button "日志中心":
+      - generic: 日志中心
+    - button "登录与安全策略":
+      - generic: 登录与安全策略
+    - button "登录与安全审计":
+      - generic: 登录与安全审计
+    - button "敏感与导入导出审计":
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性":
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "登录与安全审计" [selected]:
+    - generic: 登录与安全审计
+  - button "关闭登录与安全审计":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - heading "日志中心" [level=1]
+  - button "⇩ 导出日志"
+  - generic: 导出动作本身也会写入审计日志
+  - button "操作日志"
+  - button "登录日志"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 工号
+  - generic: 开始日期
+  - combobox "全部时间"
+  - generic: 结束日期
+  - combobox "全部时间"
+  - generic: 结果
+  - combobox "结果":
+    - option "全部" [selected]
+    - option "成功"
+    - option "失败"
+    - option "越权拦截"
+    - option "已拦截"
+    - option "结果未确认"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "时间 事件 账号 结果 说明 网络地址（脱敏） 地点 设备":
+        - columnheader "时间"
+        - columnheader "事件"
+        - columnheader "账号"
+        - columnheader "结果"
+        - columnheader "说明"
+        - columnheader "网络地址（脱敏）"
+        - columnheader "地点"
+        - columnheader "设备"
+    - rowgroup:
+      - row "2026-10-27 09:16 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:16"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:16 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:16"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:16 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:16"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:15 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:15"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:15 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:15"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:15 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:15"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:15 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:15"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:15 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:15"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:15 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:15"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+      - row "2026-10-27 09:15 会话刷新 整改验收经办人 d6_a****or · 学校管理员 成功 — 127.0.*.* 电脑浏览器":
+        - cell "2026-10-27 09:15"
+        - cell "会话刷新"
+        - cell "整改验收经办人 d6_a****or · 学校管理员":
+          - generic: 整改验收经办人
+          - generic: d6_a****or · 学校管理员
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "电脑浏览器":
+          - text: 电脑浏览器
+          - generic "实施人员使用"
+  - generic: 共 141 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "15"
+  - button "下一页": ›
+  - paragraph: 合规说明：审计日志不提供删除 / 修改入口（含系统管理员）；日志中的网络地址、账号已固定脱敏，明文仅存于安全存储并需专项审计流程调取。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

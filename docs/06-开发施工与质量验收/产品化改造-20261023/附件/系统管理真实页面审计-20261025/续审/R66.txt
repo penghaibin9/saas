@@ -1,0 +1,160 @@
+http://127.0.0.1:5173/admin/internship/batches?panel=list&batchId=47
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:50":
+    - generic: 10/25周日 14:50
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:44:04":
+  - generic: 本次工作 02:44:04
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "今日工作":
+      - generic: 今日
+    - button "实习中心大屏":
+      - generic: 实习
+    - button "批次与学生":
+      - generic: 批次
+    - button "企业与岗位":
+      - generic: 企业
+    - button "申请与落岗":
+      - generic: 申请
+    - button "实习过程":
+      - generic: 实习
+    - button "风险与变更":
+      - generic: 风险
+    - button "评价与成绩":
+      - generic: 评价
+    - button "归档与分析":
+      - generic: 归档
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "批次管理":
+      - generic: 批次
+    - button "学生名单":
+      - generic: 学生
+    - button "资格认定":
+      - generic: 资格
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "批次管理" [selected]:
+    - generic: 批次管理
+  - button "关闭批次管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:50 · 实习批次管理
+  - heading "批次管理" [level=1]
+  - generic: 当前批次
+  - combobox "选择实习批次":
+    - option "2025 年暑期行业见习（历史归档样本） · INT-2025-SUMMER-HIST"
+    - option "2024级岗位实习（进行中） · INT-2024-2026FALL" [selected]
+  - generic: 进行中
+  - generic: 2026-07-20 ~ 2027-01-15
+  - button "导出台账"
+  - button "新建批次"
+  - region "实习批次列表":
+    - generic: 授权范围内的实习批次
+    - generic: 共 2 个批次
+    - generic: 搜索批次
+    - textbox "搜索批次":
+      - /placeholder: 批次名称或编号
+    - generic: 批次状态
+    - combobox "批次状态":
+      - option "全部" [selected]
+      - option "草稿"
+      - option "进行中"
+      - option "已结束"
+      - option "已归档"
+      - option "已作废"
+    - button "查询"
+    - button "重置"
+    - table:
+      - rowgroup:
+        - row "实习批次 实习周期 实际 / 计划人数 状态 操作":
+          - columnheader "实习批次"
+          - columnheader "实习周期"
+          - columnheader "实际 / 计划人数"
+          - columnheader "状态"
+          - columnheader "操作"
+      - rowgroup:
+        - row "2025 年暑期行业见习（历史归档样本） INT-2025-SUMMER-HIST · 2024-2025 暑期 2025-07-07 至 2025-08-29 3 / 3 已归档 查看详情":
+          - cell "2025 年暑期行业见习（历史归档样本） INT-2025-SUMMER-HIST · 2024-2025 暑期":
+            - link "2025 年暑期行业见习（历史归档样本）":
+              - /url: /admin/internship/batches/48?batchId=48&returnTo=/admin/internship/batches?panel=list%26batchId=47
+            - generic: INT-2025-SUMMER-HIST · 2024-2025 暑期
+          - cell "2025-07-07 至 2025-08-29"
+          - cell "3 / 3":
+            - strong: "3"
+            - text: / 3
+          - cell "已归档":
+            - generic: 已归档
+          - cell "查看详情":
+            - button "查看详情"
+        - row "2024级岗位实习 INT-2024-2026FALL · 2026-2027 1 2026-07-20 至 2027-01-15 6402 / 6400 进行中 查看详情":
+          - cell "2024级岗位实习 INT-2024-2026FALL · 2026-2027 1":
+            - link "2024级岗位实习":
+              - /url: /admin/internship/batches/47?batchId=47&returnTo=/admin/internship/batches?panel=list%26batchId=47
+            - generic: INT-2024-2026FALL · 2026-2027 1
+          - cell "2026-07-20 至 2027-01-15"
+          - cell "6402 / 6400":
+            - strong: "6402"
+            - text: / 6400
+          - cell "进行中":
+            - generic: 进行中
+          - cell "查看详情":
+            - button "查看详情"
+    - generic: 共 2 条
+    - button "上一页" [disabled]: ‹
+    - button "1"
+    - button "下一页" [disabled]: ›
+  - paragraph: 草稿批次可配置范围与规则；预览并冻结参与名单后启用。批次启用不代表学生已具备上岗条件。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

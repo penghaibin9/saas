@@ -1,0 +1,104 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索功能与帮助":
+    - /placeholder: 搜索功能或帮助
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 10:08":
+    - generic: 10/27周二 10:08
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 任课教师":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 任课教师
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:01:24":
+  - generic: 本次工作 00:01:24
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "学工工作台":
+      - generic: 工作
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "我的工作台":
+      - generic: 首页
+    - button "我的待办":
+      - generic: 待办
+    - button "审批中心":
+      - generic: 审批
+    - button "消息中心":
+      - generic: 消息
+    - button "最近访问":
+      - generic: 最近
+    - button "帮助中心":
+      - generic: 帮助
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "我的工作台" [selected]:
+    - generic: 我的工作台
+  - button "关闭我的工作台":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - heading "我的工作台" [level=1]
+  - button "刷新"
+  - button "自定义"
+  - button "帮助"
+  - generic "我的待办与个人设置"
+  - region "待办汇总":
+    - button "待我处理 0":
+      - generic: 待我处理
+      - strong: "0"
+    - button "已逾期 0":
+      - generic: 已逾期
+      - strong: "0"
+    - button "24小时内到期 0":
+      - generic: 24小时内到期
+      - strong: "0"
+    - button "今日已完成 0":
+      - generic: 今日已完成
+      - strong: "0"
+  - region "待处理事项":
+    - group "事项类型":
+      - button "待我审批"
+      - button "业务待办 1" [active] [pressed]
+    - button "全部待办"
+    - generic "按业务查看待办":
+      - button "待录成绩 1"
+    - region "业务待办 1":
+      - generic: 事项 / 来源
+      - generic: 办理时限
+      - generic: 操作
+      - list:
+        - strong: D611任课教师本人待录成绩（仅验身份）
+        - generic: 待录成绩
+        - generic: 未设时限
+        - button "去处理"
+      - generic: 已展示 1 项
+  - region "个人常用入口":
+    - generic: 常用
+    - button "成绩录入"
+    - button "我的课表"
+    - button "教学任务"
+    - button "发起调停课"
+    - button "消息"
+  - heading "今日课程 10月27日周二" [level=2]
+  - button "查看课表"
+  - paragraph: 今日无课程安排
+  - generic "业务概况"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,351 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/sensitive-audit".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/sensitive-audit
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				17 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:14, Secondary Actions: Expand
+				11 image
+				198 text 10/25周日 12:14
+			18 button 帮助与引导
+			19 button 消息中心
+				20 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:07:55, Secondary Actions: Expand
+				33 image
+				204 text 本次工作 00:07:55
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				155 button 操作与权限审计
+				156 button 登录与安全审计
+				157 button 敏感与导入导出审计
+				158 button 安全审计证据与完整性
+				159 button 完整性异常中心
+				160 button 文件存储治理
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				73 container
+					74 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					75 button 关闭预设角色模板
+						76 image
+				77 container
+					78 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					79 button 关闭学校角色与成员
+						80 image
+				81 container
+					82 tab (selectable, settable, boolean) 角色成员与业务身份, Help: 角色与权限 / 角色成员与业务身份, Value: 0
+角色成员与业务身份
+					83 button 关闭角色成员与业务身份
+						84 image
+				85 container
+					86 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					87 button 关闭菜单与操作权限
+						88 image
+				89 container
+					90 tab (selectable, settable, boolean) 数据范围规则, Help: 角色与权限 / 数据范围规则, Value: 0
+数据范围规则
+					91 button 关闭数据范围规则
+						92 image
+				93 container
+					94 tab (selectable, settable, boolean) 临时授权与工作移交, Help: 角色与权限 / 临时授权与工作移交, Value: 0
+临时授权与工作移交
+					95 button 关闭临时授权与工作移交
+						96 image
+				97 container
+					98 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					99 button 关闭安全变更
+						100 image
+				101 container
+					102 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					103 button 关闭访问治理
+						104 image
+				105 container
+					106 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					107 button 关闭学校信息与品牌
+						108 image
+				109 container
+					110 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					111 button 关闭数据字典
+						112 image
+				113 container
+					114 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					115 button 关闭模块授权与业务开关
+						116 image
+				117 container
+					118 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					119 button 关闭主数据责任与数据质量
+						120 image
+				121 container
+					122 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					123 button 关闭合规与业务表单
+						124 image
+				125 container
+					126 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					127 button 关闭学年学期与业务日历
+						128 image
+				129 container
+					130 tab (selectable, settable, boolean) 流程安全与运行治理, Help: 流程配置 / 流程安全与运行治理, Value: 0
+流程安全与运行治理
+					131 button 关闭流程安全与运行治理
+						132 image
+				133 container
+					134 tab (selectable, settable, boolean) 统一消息、待办与通知治理, Help: 流程配置 / 统一消息、待办与通知治理, Value: 0
+统一消息、待办与通知治理
+					135 button 关闭统一消息、待办与通知治理
+						136 image
+				150 container
+					151 tab (selectable, settable, boolean) 批处理与后台任务, Help: 流程配置 / 批处理与后台任务, Value: 0
+批处理与后台任务
+					152 button 关闭批处理与后台任务
+						153 image
+				161 container
+					162 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					163 button 关闭操作与权限审计
+						164 image
+				200 container
+					201 tab (selectable, settable, boolean) 登录与安全审计, Help: 安全与审计 / 登录与安全审计, Value: 0
+登录与安全审计
+					202 button 关闭登录与安全审计
+						203 image
+				205 container
+					206 tab (selected, settable, boolean) 敏感与导入导出审计, Help: 安全与审计 / 敏感与导入导出审计, Value: 1
+敏感与导入导出审计
+					207 button 关闭敏感与导入导出审计
+						208 image
+			137 button (disabled) 恢复最近关闭的页签
+				138 image
+			139 checkbox Description: 收藏当前页面, Value: 0
+				140 image
+			141 checkbox Description: 专注模式, Value: 0
+				142 image
+			209 container
+				210 heading 敏感与导入导出审计, Value: 1
+					211 text 敏感与导入导出审计
+				212 text 关键词
+				213 text field (settable) 关键词
+				214 text 开始日期
+				215 container
+					216 image
+					217 combo box (collapsed, settable) Description: 全部时间, ID: el-id-2333-6, Secondary Actions: Expand
+				218 text 结束日期
+				219 container
+					220 image
+					221 combo box (collapsed, settable) Description: 全部时间, ID: el-id-2333-7, Secondary Actions: Expand
+				222 text 结果
+				223 pop up button (collapsed, settable) 结果, Value: 全部, Secondary Actions: Expand
+					224 menu
+						225 (selected) 全部
+						226 成功
+						227 拒绝
+						228 失败
+				229 button 查询
+				230 button 重置
+				235 table
+					236 row
+						237 cell
+							238 text 时间
+						239 cell
+							240 text 操作人
+						241 cell
+							242 text 动作
+						243 cell
+							244 text 对象
+						245 cell
+							246 text 结果
+						247 cell
+							248 text 模块
+					249 row
+						250 cell
+							251 text 2026-09-22 17:50
+						252 cell
+							253 text 黄明轩
+						254 cell
+							255 text 导出
+						256 cell
+							257 text 相关业务对象
+						258 cell
+							259 text 成功
+						260 cell
+							261 text 系统管理
+					262 row
+						263 cell
+							264 text 2026-09-22 17:50
+						265 cell
+							266 text 黄明轩
+						267 cell
+							268 text 导出
+						269 cell
+							270 text 相关业务对象
+						271 cell
+							272 text 成功
+						273 cell
+							274 text 系统管理
+					275 row
+						276 cell
+							277 text 2026-09-22 17:47
+						278 cell
+							279 text 黄明轩
+						280 cell
+							281 text 导出
+						282 cell
+							283 text 相关业务对象
+						284 cell
+							285 text 成功
+						286 cell
+							287 text 系统管理
+					288 row
+						289 cell
+							290 text 2026-09-22 17:47
+						291 cell
+							292 text 黄明轩
+						293 cell
+							294 text 导出
+						295 cell
+							296 text 相关业务对象
+						297 cell
+							298 text 成功
+						299 cell
+							300 text 系统管理
+					301 row
+						302 cell
+							303 text 2026-09-22 17:41
+						304 cell
+							305 text 黄明轩
+						306 cell
+							307 text 导出
+						308 cell
+							309 text 相关业务对象
+						310 cell
+							311 text 成功
+						312 cell
+							313 text 系统管理
+					314 row
+						315 cell
+							316 text 2026-09-22 17:41
+						317 cell
+							318 text 黄明轩
+						319 cell
+							320 text 导出
+						321 cell
+							322 text 相关业务对象
+						323 cell
+							324 text 成功
+						325 cell
+							326 text 系统管理
+					327 row
+						328 cell
+							329 text 2026-09-15 03:50
+						330 cell
+							331 text 胡管理
+						332 cell
+							333 text 导入
+						334 cell
+							335 text 相关业务对象
+						336 cell
+							337 text 成功
+						338 cell
+							339 text 系统管理
+					340 row
+						341 cell
+							342 text 2026-09-15 03:50
+						343 cell
+							344 text 胡管理
+						345 cell
+							346 text 导入
+						347 cell
+							348 text 相关业务对象
+						349 cell
+							350 text 成功
+						351 cell
+							352 text 系统管理
+					353 row
+						354 cell
+							355 text 2026-09-15 02:10
+						356 cell
+							357 text 胡管理
+						358 cell
+							359 text 导出
+						360 cell
+							361 text 相关业务对象
+						362 cell
+							363 text 成功
+						364 cell
+							365 text 系统管理
+					366 row
+						367 cell
+							368 text 2026-09-15 02:10
+						369 cell
+							370 text 胡管理
+						371 cell
+							372 text 导出
+						373 cell
+							374 text 相关业务对象
+						375 cell
+							376 text 成功
+						377 cell
+							378 text 系统管理
+					379 row
+						380 cell
+							381 text 2026-09-12 12:24
+						382 cell
+							383 text 胡管理
+						384 cell
+							385 text 敏感查看
+						386 cell
+							387 text 相关业务对象
+						388 cell
+							389 text 成功
+						390 cell
+							391 text 系统管理
+				231 text 共 11 条
+				232 button (disabled) 上一页
+				233 button 1
+				234 button (disabled) 下一页
+			148 button 我的常用
+
+The focused UI element is 157 button 敏感与导入导出审计

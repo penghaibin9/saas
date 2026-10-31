@@ -1,0 +1,15 @@
+{
+  "jobId": "EXPORT:2",
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "status": "CANCELLED",
+  "version": 1,
+  "auditCount": 1,
+  "reason": "独立验收任务已完成核对，不再生成此测试证据包",
+  "expectedVersion": 0,
+  "auditVersion": 1,
+  "traceId": "req-9fb586547bde4cb2",
+  "missingVersionHttp": 422,
+  "staleVersionHttp": 409,
+  "duplicateCancelHttp": 409,
+  "unchangedAfterRejections": true
+}

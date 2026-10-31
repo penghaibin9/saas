@@ -1,0 +1,233 @@
+- banner:
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 系统管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "目录"
+- tablist "已打开页面":
+  - tab "学校角色与成员" [selected]:
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 16:58
+  - heading "菜单与操作权限" [level=1]
+  - button "治理概览"
+  - button "刷新目录"
+  - button "新增角色":
+    - text: 新增角色
+  - complementary "选择学校角色":
+    - text: 选择学校角色
+    - textbox "工作区查找角色":
+      - /placeholder: 角色名称 / 编码
+    - button "查询角色"
+    - button "整改验收教师 自定义角色 · 0 位成员":
+      - generic: 整改验收教师
+      - generic: 自定义角色 · 0 位成员
+    - button "任课教师 预设角色 · 0 位成员":
+      - generic: 任课教师
+      - generic: 预设角色 · 0 位成员
+    - button "学校管理员 预设角色 · 1 位成员":
+      - generic: 学校管理员
+      - generic: 预设角色 · 1 位成员
+    - button "系统管理员 预设角色 · 1 位成员":
+      - generic: 系统管理员
+      - generic: 预设角色 · 1 位成员
+    - button "角色目录上一页" [disabled]: ‹
+    - generic: 1 / 1
+    - button "角色目录下一页" [disabled]: ›
+    - button "← 返回角色目录"
+  - heading "整改验收教师" [level=2]
+  - paragraph: ACADEMIC_TEACHER_CUSTOM_1 · 当前版本 2
+  - generic: 自定义角色
+  - tablist "角色办理步骤":
+    - tab "菜单与操作" [selected]
+    - tab "数据范围"
+    - tab "成员 0":
+      - text: 成员
+      - generic: "0"
+    - tab "留痕记录"
+    - tab "详情与维护"
+  - generic "角色权限配置摘要":
+    - term: 角色当前权限
+    - definition: 33 项
+    - term: 其中本身份可编辑
+    - definition: 2 项
+    - term: 只读保留
+    - definition: 31 项
+  - text: 查找权限
+  - textbox "查找权限":
+    - /placeholder: 功能名称或权限编码
+  - text: 本次可编辑部分已选
+  - generic: "2"
+  - text: 项
+  - generic "审批与流程 1 项 · 点击展开":
+    - generic: 审批与流程
+    - generic: 1 项 · 点击展开
+  - generic "工作台 2 项 · 点击展开":
+    - generic: 工作台
+    - generic: 2 项 · 点击展开
+  - generic "系统管理 79 项 · 点击展开":
+    - generic: 系统管理
+    - generic: 79 项 · 点击展开
+  - complementary "角色菜单样式预览":
+    - heading "角色菜单预览" [level=3]:
+      - text: 角色菜单预览
+    - group "菜单预览范围":
+      - button "角色完整菜单" [pressed]
+      - button "本次可编辑部分"
+    - paragraph: 包含只读保留权限对应的菜单。 进入业务仍须满足数据范围与业务关系。
+    - region "选中角色的菜单入口":
+      - generic: 我的工作台
+      - generic: 消息中心
+      - generic: 最近访问
+      - generic: 帮助中心
+      - generic: 教务运行大屏
+      - generic: 运行总览
+      - generic: 学业过程
+      - generic: 成绩提交进度
+      - generic: 考试安排提醒
+      - generic: 学籍异动提醒
+      - generic: 学业预警提醒
+      - generic: 毕业资格预警
+      - generic: 教务待办
+      - generic: 今日教学运行
+      - generic: 今日课程
+      - generic: 调停课提醒
+      - generic: 教学资源占用
+      - generic: 教务数据趋势
+      - generic: 学期管理
+      - generic: 学年管理
+      - generic: 当前学期
+      - generic: 学期周次
+      - generic: 学期切换记录
+      - generic: 学期归档
+      - generic: 校历管理
+      - generic: 作息时间
+      - generic: 节假日配置
+      - generic: 补课日配置
+      - generic: 上课时间段
+      - generic: 教学周日历
+      - generic: 学籍名册
+      - generic: 学籍状态
+      - generic: 休学学生
+      - generic: 退学学生
+      - generic: 保留学籍
+      - generic: 方案列表
+      - generic: 方案制定
+      - generic: 方案版本
+      - generic: 课程模块
+      - generic: 学分要求
+      - generic: 实践环节
+      - generic: 毕业要求
+      - generic: 方案审核
+      - generic: 方案发布
+      - generic: 方案归档
+      - generic: 课程列表
+      - generic: 课程分类
+      - generic: 课程性质
+      - generic: 学分学时
+      - generic: 课程大纲
+      - generic: 考核方式
+      - generic: 课程负责人
+      - generic: 课程材料
+      - generic: 课程停用
+      - generic: 历史课程（已停用/旧版本）
+      - generic: 实践教学计划
+      - generic: 计划变更
+      - generic: 教学任务批次
+      - generic: 教师任务确认
+      - generic: 选课结果
+      - generic: 班级课表
+      - generic: 教师课表
+      - generic: 学生课表
+      - generic: 教室课表
+      - generic: 教学班课表
+      - generic: 周课表
+      - generic: 学期课表
+      - generic: 课表发布
+      - generic: 课表调整记录
+      - generic: 排课规则
+      - generic: 教师可用时间
+      - generic: 自动排课
+      - generic: 冲突报告
+      - generic: 排课约束
+      - generic: 教室可用时间
+      - generic: 排课结果
+      - generic: 选课批次
+      - generic: 补选管理
+      - generic: 冲突检测
+      - generic: 调停课台账
+      - generic: 调停课申请
+      - generic: 调停课统计
+      - generic: 调停课归档
+      - generic: 课堂考勤
+      - generic: 考勤场次查询
+      - generic: 教室预约
+      - generic: 实训室预约
+      - generic: 考务安排
+      - generic: 考务打印
+      - generic: 缓考审批
+      - generic: 考务归档
+      - generic: 成绩总览
+      - generic: 成绩录入
+      - generic: 挂科清单
+      - generic: 学生成绩单
+      - generic: 成绩导入
+      - generic: 成绩异常
+      - generic: 成绩更正
+      - generic: 成绩复查
+      - generic: 成绩操作审计
+      - generic: 教材目录
+      - generic: 教材选用
+      - generic: 教室资源
+      - generic: 实训室资源
+      - generic: 资源占用
+      - generic: 评价批次
+      - generic: 申诉审核
+      - generic: 学生评教
+      - generic: 评价统计
+      - generic: 评价归档
+  - generic "只读保留 31 项权限"
+  - text: 本次新增 0 项，移除 0 项
+  - paragraph: 默认范围 保持不变 · 版本 2
+  - button "还原选择" [disabled]
+  - button "核对变更 →" [disabled]
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

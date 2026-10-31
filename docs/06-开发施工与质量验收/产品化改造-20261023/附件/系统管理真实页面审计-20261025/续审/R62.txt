@@ -1,0 +1,163 @@
+http://127.0.0.1:5173/admin/graduation/batches?panel=list&batchId=51
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:48":
+    - generic: 10/25周日 14:48
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:42:36":
+  - generic: 本次工作 02:42:36
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ①
+    - button "② 选题":
+      - generic: ②
+    - button "③ 过程与中期":
+      - generic: ③
+    - button "④ 论文与评阅":
+      - generic: ④
+    - button "⑤ 答辩":
+      - generic: ⑤
+    - button "⑥ 成绩与归档":
+      - generic: ⑥
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "批次与时间节点":
+      - generic: 批次
+    - button "学生与进度":
+      - generic: 学生
+    - button "导师与分配":
+      - generic: 导师
+    - button "材料规则":
+      - generic: 材料
+    - button "分配冲突检测":
+      - generic: 分配
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "批次与时间节点" [selected]:
+    - generic: 批次与时间节点
+  - button "关闭批次与时间节点":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - heading "毕设批次" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "2026 届毕业设计历史归档批次 · 2026届"
+    - option "2027届毕业设计（论文）（进行中） · 2027届" [selected]
+  - generic: 进行中
+  - button "＋ 新建批次"
+  - button "导出台账"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 批次名称 / 编号 / 届
+  - generic: 状态
+  - combobox "状态":
+    - option "全部" [selected]
+    - option "草稿"
+    - option "进行中"
+    - option "已结束"
+    - option "已归档"
+    - option "已作废"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "批次 / 编号 起止 计划人数 状态 操作":
+        - columnheader "批次 / 编号"
+        - columnheader "起止"
+        - columnheader "计划人数"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "2026 届毕业设计历史归档批次 GD-2026-HIST · 2026届 · 2025-2026 2025-09-01 ~ 2026-06-25 3 已归档 打开2026 届毕业设计历史归档批次详情配置":
+        - cell "2026 届毕业设计历史归档批次 GD-2026-HIST · 2026届 · 2025-2026":
+          - generic: 2026 届毕业设计历史归档批次
+          - generic: GD-2026-HIST · 2026届 · 2025-2026
+        - cell "2025-09-01 ~ 2026-06-25":
+          - generic "2025-09-01 08:00":
+            - generic: 2025-09-01
+          - text: ~
+          - generic "2026-06-25 08:00":
+            - generic: 2026-06-25
+        - cell "3"
+        - cell "已归档":
+          - generic: 已归档
+        - cell "打开2026 届毕业设计历史归档批次详情配置":
+          - button "打开2026 届毕业设计历史归档批次详情配置": 详情/配置
+      - row "2027届毕业设计（论文） GD-2027 · 2027届 · 2026-2027 2026-08-01 ~ 2027-06-20 6400 进行中 打开2027届毕业设计（论文）详情配置 编辑2027届毕业设计（论文） 结束":
+        - cell "2027届毕业设计（论文） GD-2027 · 2027届 · 2026-2027":
+          - generic: 2027届毕业设计（论文）
+          - generic: GD-2027 · 2027届 · 2026-2027
+        - cell "2026-08-01 ~ 2027-06-20":
+          - generic "2026-08-01 08:00":
+            - generic: 2026-08-01
+          - text: ~
+          - generic "2027-06-20 08:00":
+            - generic: 2027-06-20
+        - cell "6400"
+        - cell "进行中":
+          - generic: 进行中
+        - cell "打开2027届毕业设计（论文）详情配置 编辑2027届毕业设计（论文） 结束":
+          - button "打开2027届毕业设计（论文）详情配置": 详情/配置
+          - button "编辑2027届毕业设计（论文）": 编辑
+          - button "结束"
+  - generic: 共 2 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

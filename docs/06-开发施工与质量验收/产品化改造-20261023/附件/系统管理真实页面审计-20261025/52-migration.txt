@@ -1,0 +1,193 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/migration".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/migration
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				17 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:14, Secondary Actions: Expand
+				11 image
+				198 text 10/25周日 12:14
+			18 button 帮助与引导
+			19 button 消息中心
+				20 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:08:38, Secondary Actions: Expand
+				33 image
+				237 text 本次工作 00:08:38
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				225 button 接口、凭证与 Webhook
+				226 button 同步任务与失败中心
+				227 button 老系统数据迁移
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				97 container
+					98 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					99 button 关闭安全变更
+						100 image
+				101 container
+					102 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					103 button 关闭访问治理
+						104 image
+				105 container
+					106 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					107 button 关闭学校信息与品牌
+						108 image
+				109 container
+					110 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					111 button 关闭数据字典
+						112 image
+				113 container
+					114 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					115 button 关闭模块授权与业务开关
+						116 image
+				117 container
+					118 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					119 button 关闭主数据责任与数据质量
+						120 image
+				121 container
+					122 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					123 button 关闭合规与业务表单
+						124 image
+				125 container
+					126 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					127 button 关闭学年学期与业务日历
+						128 image
+				129 container
+					130 tab (selectable, settable, boolean) 流程安全与运行治理, Help: 流程配置 / 流程安全与运行治理, Value: 0
+流程安全与运行治理
+					131 button 关闭流程安全与运行治理
+						132 image
+				133 container
+					134 tab (selectable, settable, boolean) 统一消息、待办与通知治理, Help: 流程配置 / 统一消息、待办与通知治理, Value: 0
+统一消息、待办与通知治理
+					135 button 关闭统一消息、待办与通知治理
+						136 image
+				150 container
+					151 tab (selectable, settable, boolean) 批处理与后台任务, Help: 流程配置 / 批处理与后台任务, Value: 0
+批处理与后台任务
+					152 button 关闭批处理与后台任务
+						153 image
+				161 container
+					162 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					163 button 关闭操作与权限审计
+						164 image
+				200 container
+					201 tab (selectable, settable, boolean) 登录与安全审计, Help: 安全与审计 / 登录与安全审计, Value: 0
+登录与安全审计
+					202 button 关闭登录与安全审计
+						203 image
+				205 container
+					206 tab (selectable, settable, boolean) 敏感与导入导出审计, Help: 安全与审计 / 敏感与导入导出审计, Value: 0
+敏感与导入导出审计
+					207 button 关闭敏感与导入导出审计
+						208 image
+				210 container
+					211 tab (selectable, settable, boolean) 安全审计证据与完整性, Help: 安全与审计 / 安全审计证据与完整性, Value: 0
+安全审计证据与完整性
+					212 button 关闭安全审计证据与完整性
+						213 image
+				215 container
+					216 tab (selectable, settable, boolean) 完整性异常中心, Help: 安全与审计 / 完整性异常中心, Value: 0
+完整性异常中心
+					217 button 关闭完整性异常中心
+						218 image
+				220 container
+					221 tab (selectable, settable, boolean) 文件存储治理, Help: 安全与审计 / 文件存储治理, Value: 0
+文件存储治理
+					222 button 关闭文件存储治理
+						223 image
+				228 container
+					229 tab (selectable, settable, boolean) 接口、凭证与 Webhook, Help: 接口与同步 / 接口、凭证与 Webhook, Value: 0
+接口、凭证与 Webhook
+					230 button 关闭接口、凭证与 Webhook
+						231 image
+				233 container
+					234 tab (selectable, settable, boolean) 同步任务与失败中心, Help: 接口与同步 / 同步任务与失败中心, Value: 0
+同步任务与失败中心
+					235 button 关闭同步任务与失败中心
+						236 image
+				238 container
+					239 tab (selected, settable, boolean) 老系统数据迁移, Help: 接口与同步 / 老系统数据迁移, Value: 1
+老系统数据迁移
+					240 button 关闭老系统数据迁移
+						241 image
+			137 button (disabled) 恢复最近关闭的页签
+				138 image
+			139 checkbox Description: 收藏当前页面, Value: 0
+				140 image
+			141 checkbox Description: 专注模式, Value: 0
+				142 image
+			242 container
+				243 heading 老系统数据迁移, Value: 1
+					244 text 老系统数据迁移
+				245 container
+					246 text 迁移地图（21 域 · 学工 + 教务全量历史） 老系统只要能导出 Excel 即可迁移；原始 XLSX、预检和确认结果统一进入数据交换任务中心。
+				247 container
+					248 text 0 学生主档 0/21 已有数据域 0 迁移批次
+				249 container
+					250 text 迁移域（按依赖顺序执行） 灰色域表示前置依赖未完成；确认只提交统一的任务编号与任务版本
+				251 container
+					252 text 迁移批次记录
+					253 button 任务中心
+					254 button (disabled) 刷新
+				255 text 暂无迁移批次；先在上方选择迁移域并上传老系统导出的 XLSX 文件。
+				256 text 实施口径（对学校可承诺的验收方式）
+				257 content list
+					258 container
+						259 AXListMarker • 
+						260 text 老系统原始 XLSX、预检错误、确认结果和任务版本全部可追溯，刷新页面任务不丢。
+					261 container
+						262 AXListMarker • 
+						263 text 预校验存在任何错误行时禁止确认；确认阶段整批一个事务，任一行失败全部回滚。
+					264 container
+						265 AXListMarker • 
+						266 text 历史数据只进终态：不产生待办、不触发工作流；导入行为全部写入安全审计。
+					267 container
+						268 AXListMarker • 
+						269 text 导入完成后按域对账：库内数量与老系统报表逐项核对一致方可签认。
+			148 button 我的常用
+
+The focused UI element is 227 button 老系统数据迁移

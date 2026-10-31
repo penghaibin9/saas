@@ -1,0 +1,271 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:14":
+    - generic: 10/27周二 09:14
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:11:07":
+  - generic: 本次工作 00:11:07
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "业务关系中心" [selected]:
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- navigation "组织与任职":
+  - button "树形定位工作台"
+  - button "学院与部门"
+  - button "专业管理"
+  - button "年级与班级"
+  - button "岗位管理"
+  - button "教职工任职归属查询"
+  - button "业务关系中心"
+  - button "变更版本"
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - heading "业务关系中心" [level=1]
+  - button "刷新"
+  - generic: 关系登记表
+  - generic: 共 6 种关系，登记异常 1 种
+  - table:
+    - rowgroup:
+      - row "业务关系 归属模块 权威数据位置 登记校验 关系缺口 操作":
+        - columnheader "业务关系"
+        - columnheader "归属模块"
+        - columnheader "权威数据位置"
+        - columnheader "登记校验"
+        - columnheader "关系缺口"
+        - columnheader "操作"
+    - rowgroup:
+      - row "辅导员-班级 学工中心 班级当前辅导员 登记正常 本次检查未发现缺口 已检查 2 / 2 条 重新校验":
+        - cell "辅导员-班级":
+          - generic: 辅导员-班级
+          - generic "实施人员使用"
+          - text: COUNSELOR_CLASS
+        - cell "学工中心"
+        - cell "班级当前辅导员":
+          - generic: 班级当前辅导员
+          - generic "实施人员使用"
+          - text: app.models.org.SchoolClass.counselor_id
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "本次检查未发现缺口 已检查 2 / 2 条":
+          - generic: 本次检查未发现缺口
+          - generic: 已检查 2 / 2 条
+        - cell "重新校验":
+          - button "重新校验"
+      - row "班主任-班级 学工中心 班级当前班主任 登记正常 已检查 2 / 2 条 1 条 · 没有指定负责人，相关数据范围解析不出任何人 重新校验":
+        - cell "班主任-班级":
+          - generic: 班主任-班级
+          - generic "实施人员使用"
+          - text: HEAD_TEACHER_CLASS
+        - cell "学工中心"
+        - cell "班级当前班主任":
+          - generic: 班级当前班主任
+          - generic "实施人员使用"
+          - text: app.models.org.SchoolClass.head_teacher_id
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "已检查 2 / 2 条 1 条 · 没有指定负责人，相关数据范围解析不出任何人":
+          - generic: 已检查 2 / 2 条
+          - generic: 1 条 · 没有指定负责人，相关数据范围解析不出任何人
+        - cell "重新校验":
+          - button "重新校验"
+      - row "毕设导师-学生 毕业设计 毕设批次内导师与学生关系 登记正常 本次检查未发现缺口 已检查 1 / 1 条 重新校验":
+        - cell "毕设导师-学生":
+          - generic: 毕设导师-学生
+          - generic "实施人员使用"
+          - text: GD_MENTOR_STUDENT
+        - cell "毕业设计"
+        - cell "毕设批次内导师与学生关系":
+          - generic: 毕设批次内导师与学生关系
+          - generic "实施人员使用"
+          - text: app.models.graduation.GraduationStudent.mentor_id
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "本次检查未发现缺口 已检查 1 / 1 条":
+          - generic: 本次检查未发现缺口
+          - generic: 已检查 1 / 1 条
+        - cell "重新校验":
+          - button "重新校验"
+      - row "实习校内指导教师-学生 岗位实习 实习批次内校内指导关系 登记正常 本次检查未发现缺口 已检查 3 / 3 条 重新校验":
+        - cell "实习校内指导教师-学生":
+          - generic: 实习校内指导教师-学生
+          - generic "实施人员使用"
+          - text: INTERNSHIP_ADVISOR_STUDENT
+        - cell "岗位实习"
+        - cell "实习批次内校内指导关系":
+          - generic: 实习批次内校内指导关系
+          - generic "实施人员使用"
+          - text: app.models.internship.InternshipRecord.advisor_user_id
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "本次检查未发现缺口 已检查 3 / 3 条":
+          - generic: 本次检查未发现缺口
+          - generic: 已检查 3 / 3 条
+        - cell "重新校验":
+          - button "重新校验"
+      - row "任课教师-教学班 教务中心 教学班任课关系 登记正常 本次检查未发现缺口 已检查 1 / 1 条 重新校验":
+        - cell "任课教师-教学班":
+          - generic: 任课教师-教学班
+          - generic "实施人员使用"
+          - text: TEACHING_CLASS_TEACHER
+        - cell "教务中心"
+        - cell "教学班任课关系":
+          - generic: 教学班任课关系
+          - generic "实施人员使用"
+          - text: app.models.academic_affairs_teaching_class.AaTeachingClassTeacher.teacher_key
+        - cell "登记正常":
+          - generic: 登记正常
+        - cell "本次检查未发现缺口 已检查 1 / 1 条":
+          - generic: 本次检查未发现缺口
+          - generic: 已检查 1 / 1 条
+        - cell "重新校验":
+          - button "重新校验"
+      - row "宿管-楼栋 学工中心 宿舍楼栋负责人 登记异常 依赖姓名或文本匹配，改名后可能失联 尚无可校验对象 已检查 0 / 0 条 重新校验":
+        - cell "宿管-楼栋":
+          - generic: 宿管-楼栋
+          - generic "实施人员使用"
+          - text: DORM_MANAGER_BUILDING
+        - cell "学工中心"
+        - cell "宿舍楼栋负责人":
+          - generic: 宿舍楼栋负责人
+          - generic "实施人员使用"
+          - text: app.models.affairs_dorm.DormBuilding.manager_teacher_key
+        - cell "登记异常 依赖姓名或文本匹配，改名后可能失联":
+          - generic: 登记异常
+          - text: 依赖姓名或文本匹配，改名后可能失联
+          - generic "实施人员使用"
+          - text: UNSTABLE_KEY：关系键是文本（manager_teacher_key），改名即失联，待整改
+        - cell "尚无可校验对象 已检查 0 / 0 条":
+          - generic: 尚无可校验对象
+          - generic: 已检查 0 / 0 条
+        - cell "重新校验":
+          - button "重新校验"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

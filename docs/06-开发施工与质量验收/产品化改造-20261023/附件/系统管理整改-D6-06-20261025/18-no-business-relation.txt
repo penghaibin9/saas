@@ -1,0 +1,175 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 角色与权限
+  - navigation "三级菜单":
+    - button "身份权限总览":
+      - generic: 身份权限总览
+    - button "预设角色模板":
+      - generic: 预设角色模板
+    - button "学校角色与成员":
+      - generic: 学校角色与成员
+    - button "角色成员与业务身份":
+      - generic: 角色成员与业务身份
+    - button "菜单与操作权限":
+      - generic: 菜单与操作权限
+    - button "数据范围规则":
+      - generic: 数据范围规则
+    - button "临时授权与工作移交":
+      - generic: 临时授权与工作移交
+    - button "安全变更":
+      - generic: 安全变更
+    - button "访问治理":
+      - generic: 访问治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份" [selected]:
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:18
+  - heading "角色成员与业务身份" [level=1]
+  - button "立即回收到期授权"
+  - button "刷新"
+  - tablist:
+    - button "固定角色成员"
+    - button "自动业务身份"
+  - generic: 自动业务身份
+  - generic: 关系直接读取各业务模块；对象数不代表实际可访问人数，教学周与批次权限仍由业务模块校验。本页不修改关系。
+  - region "选择本校人员":
+    - text: 姓名或工号
+    - textbox "姓名或工号"
+    - button "查询人员"
+    - status: 已选：整改验收经办人 · d6_auditor · 组织归属见关系清单
+  - status:
+    - generic: ▢
+    - generic: 该账号当前没有可识别的业务责任
+    - generic: 可能尚未建立关系或原对象已失效；请在对应模块核对。读取失败会单独提示。
+    - button "返回"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

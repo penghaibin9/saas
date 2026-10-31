@@ -1,0 +1,178 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:53":
+    - generic: 10/27周二 09:53
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:50:03":
+  - generic: 本次工作 00:50:03
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 毕业设计中心
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ① 准备
+    - button "② 选题":
+      - generic: ② 选题
+    - button "③ 过程与中期":
+      - generic: ③ 过程与中期
+    - button "④ 论文与评阅":
+      - generic: ④ 论文与评阅
+    - button "⑤ 答辩":
+      - generic: ⑤ 答辩
+    - button "⑥ 成绩与归档":
+      - generic: ⑥ 成绩与归档
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 总览
+  - navigation "三级菜单":
+    - button "毕设总览":
+      - generic: 毕设总览
+    - button "开工检查":
+      - generic: 开工检查
+    - button "我的毕设工作":
+      - generic: 我的毕设工作
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "毕设总览" [selected]:
+    - generic: 毕设总览
+  - button "关闭毕设总览":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - heading "毕设总览" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "D606毕设批次" [selected]
+  - generic: 草稿
+  - generic "当前批次关键指标":
+    - generic "毕设学生":
+      - generic: 毕设学生
+      - strong: "1"
+    - generic "待批 0":
+      - generic: 开题待审阅
+      - strong: "0"
+    - generic "待批 0":
+      - generic: 成果待审阅
+      - strong: "0"
+    - generic "未发布 0 组":
+      - generic: 答辩待发布
+      - strong: "0"
+    - generic "高风险学生":
+      - generic: 高风险学生
+      - strong: "0"
+  - button "＋ 新增毕设批次"
+  - button "导入学生名单"
+  - button "导出进度统计"
+  - button "操作日志"
+  - region "开工检查":
+    - strong: 开工检查：还差 3 步
+    - paragraph: 下一步：建好批次和时间节点。还没有设置各阶段的开始/截止日期，老师和学生看不到截止时间
+    - button "去完成 →"
+  - region "当前最高优先工作":
+    - generic: ✓
+    - strong: 当前批次暂无待处理事项
+    - paragraph: 继续关注队列、风险和阶段进度。
+  - generic: 队列入口
+  - button "全部学生 →"
+  - button "0 开题材料待审阅 指导教师批阅开题报告 进入 →":
+    - generic: "0"
+    - strong: 开题材料待审阅
+    - generic: 指导教师批阅开题报告
+    - generic: 进入 →
+  - button "0 开题未提交催交 已确认选题但未交开题 进入 →":
+    - generic: "0"
+    - strong: 开题未提交催交
+    - generic: 已确认选题但未交开题
+    - generic: 进入 →
+  - button "0 成果待审阅 论文初稿/定稿批阅 进入 →":
+    - generic: "0"
+    - strong: 成果待审阅
+    - generic: 论文初稿/定稿批阅
+    - generic: 进入 →
+  - button "0 中期待检查/复核 待检查 0 · 整改待复核 0 进入 →":
+    - generic: "0"
+    - strong: 中期待检查/复核
+    - generic: 待检查 0 · 整改待复核 0
+    - generic: 进入 →
+  - button "0 答辩组待发布 分组排期完成后发布 进入 →":
+    - generic: "0"
+    - strong: 答辩组待发布
+    - generic: 分组排期完成后发布
+    - generic: 进入 →
+  - generic: 风险提醒
+  - button "风险台账 →"
+  - generic: ✓
+  - strong: 暂无新的风险提醒
+  - paragraph: 最高优先任务中已展示的风险不会在这里重复。
+  - generic: 批次进度
+  - generic: D606毕设批次 · 状态待确认（草稿）
+  - strong: "1"
+  - generic: 选题中
+  - strong: "0"
+  - generic: 任务书确认
+  - strong: "0"
+  - generic: 指导中
+  - strong: "0"
+  - generic: 中期检查
+  - strong: "0"
+  - generic: 成果检查
+  - strong: "0"
+  - generic: 答辩中
+  - strong: "0"
+  - generic: 已完成
+  - strong: "0"
+  - generic: 已归档
+  - generic "跨模块统计"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

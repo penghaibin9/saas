@@ -1,0 +1,75 @@
+{
+  "card": "D6-03",
+  "scope": "local-only",
+  "files": [
+    {
+      "path": "backend/app/services/job_registry.py",
+      "sha256": "f6225023c6e297bdfaf50bbdac08517a2cd9725732f92b4983da28225576100f"
+    },
+    {
+      "path": "backend/app/services/audit_log.py",
+      "sha256": "dba76c06c4b623f7c4f9734d27182475b31a24694d6446dad4d8b896d05ec460"
+    },
+    {
+      "path": "backend/app/services/operation_audit_service.py",
+      "sha256": "9a67632757168c894843a7b8851e2161a4ec14139edbef4805c1cbfc976a3386"
+    },
+    {
+      "path": "backend/app/services/data_exchange_job_service.py",
+      "sha256": "245014af4c728310c317f9d968d66c7a715bfa24e439f9362ee2c330ae419193"
+    },
+    {
+      "path": "backend/app/modules/system_admin/routers/system_bundle.py",
+      "sha256": "32fcde67784552f5fd660778a6b00e73fca5d53a9f93e29f31eeb15357d4e14d"
+    },
+    {
+      "path": "backend/tests/test_job_action_availability.py",
+      "sha256": "47fdffc4806e7a36308749c2fc538726538b8e73e03619244cdff49e668acf61"
+    },
+    {
+      "path": "backend/tests/test_job_command_atomicity.py",
+      "sha256": "fca35e258c7ea0112dcc3704db6731423f4c5175754fd79dfe3908a39b0df1e3"
+    },
+    {
+      "path": "backend/tests/test_job_authorization_and_monitoring.py",
+      "sha256": "3d3f1ab2834d9ca93b87cf3a72c51021a2a79c69f52409fd594e7ab0a6c14257"
+    },
+    {
+      "path": "backend/tests/test_system_log_export.py",
+      "sha256": "6a00f1e281e8ebb7371d7316b7c106f006088c44896e7f5242681761a93cfd86"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemJobCenterView.vue",
+      "sha256": "988ea92bdb2795d7a606104822a8710965fd20c2b253fd62406ddfc7abc32b38"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemDataExchangeView.vue",
+      "sha256": "37d88256b1c153561fa7399f7b20e864cb4d4c5c4aefa80a5c2d129eb75cc0c9"
+    },
+    {
+      "path": "frontend/src/modules/system/views/SystemLogView.vue",
+      "sha256": "e3d49afae590402858ba8b9eed91e72dd89e49bf8e5d5b634adee7a2f8d994a3"
+    },
+    {
+      "path": "frontend/src/modules/system/api/system.api.js",
+      "sha256": "af66e62d6dc993adb0d65ca6e9ae49e98977152977dacebc71d1b9e62a0de042"
+    },
+    {
+      "path": "frontend/src/services/http/client.js",
+      "sha256": "c0ea73481f16e09cc80ec136531b72139bae18cb6abf7b4748589c326b06952b"
+    },
+    {
+      "path": "frontend/src/modules/system/system.ui-config.js",
+      "sha256": "fa4b9ba95654fbb4c052115a09862f42f59feb8353fe58e8c2f495d0f4930791"
+    },
+    {
+      "path": "frontend/tests/system-job-actions.behavior.test.mjs",
+      "sha256": "58f30bfcbad925313abdaa8936aab54c26da4a668ea6650e1e9994a9dfe33e2e"
+    },
+    {
+      "path": "frontend/tests/system-log-consistency.behavior.test.mjs",
+      "sha256": "de1c67e9edd529e2bd186b956e078a902a3327b147f5b102b0f68604cf3ba63f"
+    }
+  ],
+  "note": "共享文件包含前两卡差异；校验值不是授权提交清单。"
+}

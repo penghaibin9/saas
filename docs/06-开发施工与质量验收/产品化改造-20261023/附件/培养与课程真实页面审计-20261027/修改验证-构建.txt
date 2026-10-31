@@ -1,0 +1,1420 @@
+
+> school-lifecycle-frontend@1.0.0 build
+> vite build
+
+vite v6.4.3 building for production...
+transforming...
+node_modules/@vueuse/core/dist/index.js (3362:0): A comment
+
+"/* #__PURE__ */"
+
+in "node_modules/@vueuse/core/dist/index.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+node_modules/@vueuse/core/dist/index.js (5780:22): A comment
+
+"/* #__PURE__ */"
+
+in "node_modules/@vueuse/core/dist/index.js" contains an annotation that Rollup cannot interpret due to the position of the comment. The comment will be removed to avoid issues.
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+9  |  @media(max-width: 1000px) { .gd-topic-batch { max-width: 100%; } }
+10 |  
+11 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |  .gd-actions { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
+13 |  .mp-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: var(--space-3); margin-bottom: var(--space-4); }
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+10 |  .ar-skip__why { color: var(--text-secondary, #334155); }
+11 |  @media (max-width: 720px) { .ar-skip__list li { grid-template-columns: 1fr; } }
+12 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |  .ra-panel { gap: var(--space-3); }
+14 |  .gp-tabs { display: flex; gap: var(--space-1); margin-bottom: var(--space-3); border-bottom: 1px solid var(--border-light, #e2e8f0); }
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+252|    }
+253|  }
+254|  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+255|  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+12 |  .dl-batch { color: var(--text-tertiary); font-size: var(--font-size-sm); }
+13 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+14 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+15 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+13 |  .bf-link { border: 0; background: transparent; color: var(--primary-600, #2563eb); padding: 8px 0; cursor: pointer; font: inherit; }
+14 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .bf-grid { grid-template-columns: 1fr; } }
+15 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+9  |  .sa-empty { color: var(--text-tertiary); padding: var(--space-4); text-align: center; }
+10 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+11 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+10 |  .ob-intake { margin: 12px 0 20px; border: 1px solid var(--border-light); border-radius: 10px; padding: 12px 16px; background: var(--bg-card); }.ob-intake summary { cursor: pointer; font-weight: 600; }.ob-intake summary span { margin-left: 12px; color: var(--text-tertiary); font-size: 12px; font-weight: 400; }.ob-intake[open] summary { margin-bottom: 16px; }.ob-review-context { line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+11 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+12 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+2  |  .ln-focused{padding:16px 0;min-width:0}.ln-focused>header{display:flex;justify-content:space-between;gap:16px;align-items:center}.ln-focused>header>div{display:grid;gap:6px}.ln-focused>header span,.ln-focused dt{color:var(--text-secondary)}.ln-focused dl{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px 28px;margin:24px 0}.ln-focused dl>div{display:grid;gap:7px;min-width:0}.ln-focused dd{margin:0;overflow-wrap:anywhere}.ln-focused-note{display:grid;gap:7px;margin:0;padding:16px 0;border-top:1px solid var(--border-light);line-height:1.6;overflow-wrap:anywhere}.ln-focused>footer{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}.ln-focused>footer:empty{display:none}@media(max-width:640px){.ln-focused dl{grid-template-columns:1fr;gap:14px}.ln-focused>header{align-items:flex-start}}
+3  |  
+4  |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+5  |  .ln-statusbar { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; }.ln-statusbar > button:not(:last-child) { display: inline-flex; gap: 7px; align-items: center; min-height: 32px; padding: 0 10px; border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-secondary); background: transparent; cursor: pointer; }.ln-statusbar > button.active:not(:last-child) { border-color: var(--color-primary); color: var(--color-primary); background: var(--color-primary-light); }.ln-statusbar > button:last-child { margin-left: auto; }.ln-statusbar strong { font-size: 12px; }.ln-toolbar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }.ln-search { flex: 1 1 240px; }.ln-filter { flex: 0 1 150px; }.ln-year { flex: 0 1 160px; }.ln-secondary { min-height: 36px; padding: 0 15px; border: 1px solid var(--border-light); border-radius: var(--radius-md); color: var(--text-primary); background: var(--bg-card); cursor: pointer; }.ln-secondary:disabled { opacity: .55; cursor: not-allowed; }.ln-main,.ln-main + small,.ln-table strong,.ln-table small { display: block; }.ln-main + small,[data-key='loan'] small { display: block; margin-top: 3px; color: var(--text-secondary); font-size: 12px; }.ln-file { display: block; max-width: 190px; overflow: hidden; margin-top: 4px; padding: 0; border: 0; color: var(--color-primary); background: transparent; font: inherit; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }.ln-opinion { display: block; max-width: 150px; overflow: hidden; margin-top: 4px; color: var(--text-secondary); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }.ln-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }.ln-muted { color: var(--text-tertiary); font-size: 12px; }.ln-empty { padding: 42px 20px; color: var(--text-secondary); text-align: center; }.ln-empty strong { color: var(--text-primary); }.ln-empty p { margin: 6px 0 0; font-size: 13px; }.ln-form { display: grid; gap: 14px; }.ln-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px 16px; }.ln-span2 { grid-column: 1 / -1; }.ln-uploaded { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 8px 10px; border: 1px solid var(--border-light); border-radius: 8px; color: var(--text-secondary); font-size: 12px; }.ln-uploaded span:first-child { color: var(--text-primary); }.ln-uploaded button { margin-left: auto; border: 0; color: var(--color-primary); background: transparent; cursor: pointer; }.ln-context { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 10px; padding: 12px; border: 1px solid var(--border-light); border-radius: 10px; background: var(--bg-card); }.ln-context div { display: grid; gap: 4px; min-width: 0; }.ln-context span { color: var(--text-secondary); font-size: 11px; }.ln-context strong { overflow: hidden; color: var(--text-primary); font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+6  |  @media (max-width: 900px) { .ln-form-grid,.ln-context { grid-template-columns: 1fr; }.ln-span2 { grid-column: auto; } }
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+8  |  .fl-pager { margin-top: var(--space-4); }
+9  |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+10 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+11 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+16 |  .ob-dash { color: var(--text-tertiary); }
+17 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+18 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+19 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+15 |  :deep(.dt) + .app-pagination { margin-top: var(--space-3); }
+16 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+17 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+15 |  .ap-undelivered { color: var(--warning-700, #b45309); font-weight: 600; }
+16 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+17 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+18 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+9  |  .ts-bar span { position: relative; font-size: var(--font-size-xs); padding-left: 8px; line-height: 18px; }
+10 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+11 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+9  |  .tl-psy { font-size: var(--font-size-xs); }
+10 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+11 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+12 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+10 |  .cl-report-total .cl-weighted b { color: var(--color-primary); }
+11 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+12 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+13 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+28 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } .af-grid, .af-grid--two { grid-template-columns: 1fr; } .af-field--wide { grid-column: span 1; } }
+29 |  @media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } .af-actions { align-items: stretch; flex-direction: column-reverse; } .af-actions > * { width: 100%; } }
+30 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+31 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+20 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } .vf-grid { grid-template-columns: 1fr; } }
+21 |  @media (max-width: 640px) { .vf-actions { align-items: stretch; flex-direction: column-reverse; } .vf-actions > * { width: 100%; } }
+22 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+23 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+31 |  @media (max-width: 960px) { .sa-grid--metrics, .og-grid, .og-layout { grid-template-columns: 1fr; } .og-field--wide { grid-column: span 1; } .og-inline { grid-template-columns: 1fr; } }
+32 |  @media (max-width: 640px) { .og-actions { align-items: stretch; flex-direction: column-reverse; } .og-actions > * { width: 100%; } .og-selected-summary, .og-subhead { flex-direction: column; } }
+33 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+34 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+18 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+19 |  @media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } .sa-toolbar { align-items: stretch; } .sa-pick { width: 100%; } }
+20 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+21 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+11 |  @media(max-width:960px){.sa-grid--metrics{grid-template-columns:1fr 1fr}}
+12 |  @media(max-width:640px){.sa-grid--metrics{grid-template-columns:1fr}}
+13 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+17 |  @media (max-width: 960px) { .sa-grid--metrics, .mental-summary-layout { grid-template-columns: 1fr 1fr; } .mental-summary-layout { grid-template-columns: 1fr; } }
+18 |  @media (max-width: 640px) { .sa-grid--metrics, .sa-summary { grid-template-columns: 1fr; } .sa-input { width: 100%; min-width: 0; } }
+19 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+20 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+13 |  @media(max-width:960px){.sa-grid--metrics{grid-template-columns:1fr 1fr}}
+14 |  @media(max-width:640px){.sa-grid--metrics{grid-template-columns:1fr}}
+15 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+16 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+6  |  @media (max-width: 960px) { .sa-grid--metrics, .sa-grid--two { grid-template-columns: 1fr 1fr; } }
+7  |  @media (max-width: 640px) { .sa-grid--metrics, .sa-grid--two { grid-template-columns: 1fr; } }
+8  |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+9  |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+19 |  .target-preview strong { margin-top:3px;color:var(--primary-700,#1d4ed8) }
+20 |  @media (max-width:960px){.route-cell{align-items:flex-start;flex-direction:column}.route-arrow{transform:rotate(90deg)}}
+21 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+22 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+34 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+35 |  @media (max-width: 640px) { .sa-grid--metrics, .dorm-room-detail { grid-template-columns: 1fr; } .sa-beds { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+36 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+37 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+14 |  .presence-provider div span { display:block;color:var(--text-tertiary);font-size:var(--font-size-xs);margin-bottom:4px }.presence-provider div strong { color:var(--text-primary) }.presence-provider p { grid-column:1/-1;margin:0;color:var(--text-secondary);font-size:var(--font-size-sm) }
+15 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+16 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+17 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+14 |  .cell-sub { display:block;margin-top:3px;color:var(--text-tertiary);font-size:12px }.danger-text { color:#dc2626;font-weight:650 }.sa-native-input { width:100%;min-height:38px;box-sizing:border-box;border:1px solid var(--border-base);border-radius:8px;padding:7px 10px }.floor-grid { display:flex;gap:12px;flex-wrap:wrap }.floor-grid label { padding:7px 10px;border:1px solid var(--border-base);border-radius:8px }.item-list { display:grid;gap:8px }.item-row { display:grid;grid-template-columns:minmax(180px,1fr) 150px 90px;gap:10px;align-items:center;padding:10px;border:1px solid var(--border-base);border-radius:9px }.item-row small { display:block;margin-top:3px;color:var(--text-tertiary) }.score-input { width:100%;min-height:36px;box-sizing:border-box;border:1px solid var(--border-base);border-radius:8px;padding:6px }.file-chips { display:flex;gap:8px;flex-wrap:wrap;margin-top:8px }.file-chips span { padding:6px 8px;border-radius:8px;background:#eff6ff;color:#1d4ed8;font-size:12px }.file-chips button { border:0;background:transparent;color:#64748b;cursor:pointer }
+15 |  @media(max-width:760px){.item-row{grid-template-columns:1fr}.score-input{width:100%}}
+16 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+17 |  
+[vite:css][postcss] @import must precede all other statements (besides @charset or empty @layer)
+11 |  @media (max-width: 960px) { .sa-grid--metrics { grid-template-columns: 1fr 1fr; } }
+12 |  @media (max-width: 640px) { .sa-grid--metrics { grid-template-columns: 1fr; } }
+13 |  @import '@/styles/module-page.css';
+   |  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+14 |  
+✓ 4029 modules transformed.
+rendering chunks...
+[plugin vite:reporter] 
+(!) C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/security/permissionGate.js is dynamically imported by C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/services/http/client.js but also statically imported by C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/components/workspace/TeacherWorkspaceFrame.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/api/academic-affairs.api.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/components/AaAcademicProgressWorkspace.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/components/AaDashboardPanelWorkspace.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/components/AaExamIncidentWorkbench.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/components/AaStatsSnapshotWorkspace.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/components/AaTodayTeachingWorkspace.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/views/AaTeacherTodayView.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/academicAffairs/views/AaTeachingClassDetailView.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/employment/api/employment.api.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/graduation/api/graduation-defense-grade.api.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/graduation/api/graduation.api.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/internship/api/internship.api.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/internship/views/InternshipComplianceView.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/platform/components/TenantLifecycleWorkspace.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/platform/components/TenantRulesWorkspace.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/platform/views/AdminPlatformLayout.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/platform/views/control/PlatformControlOrders.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/platform/views/control/PlatformControlOverview.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/platform/views/control/PlatformControlTenantDetail.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/platform/views/control/PlatformControlTenants.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/modules/studentAffairs/api/studentAffairs.api.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/router/index.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/security/platformAccessGate.js, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/views/admin/student/StudentImportGatewayView.vue, C:/Users/10850/Desktop/职校学生全生命周期系统/frontend/src/views/security/RouteAccessNotice.vue, dynamic import will not move module into another chunk.
+
+computing gzip size...
+dist/index.html                                                                                   0.77 kB │ gzip:   0.43 kB
+dist/assets/campus-plan-DD-u0ZB7.svg                                                             10.22 kB │ gzip:   1.18 kB
+dist/assets/campus-clean-Zh9jS-T7.webp                                                          311.32 kB
+dist/assets/pdf.worker.min-CLrFZWeq.mjs                                                       1,312.45 kB
+dist/assets/campus-operations-night-D1QWPdfQ.png                                              3,045.77 kB
+dist/assets/OrientationDormPreassignView-CxWqmivi.css                                             0.05 kB │ gzip:   0.07 kB
+dist/assets/WorkflowStateBlock-Bf7xJGPA.css                                                       0.07 kB │ gzip:   0.09 kB
+dist/assets/OrientationNoticeView-CdZoQwiG.css                                                    0.08 kB │ gzip:   0.10 kB
+dist/assets/AppIcon-DPYnjPzU.css                                                                  0.09 kB │ gzip:   0.10 kB
+dist/assets/OrientationVerifyView-Cj9CUSb7.css                                                    0.14 kB │ gzip:   0.12 kB
+dist/assets/AaLeadershipWallView-CwRFQbcl.css                                                     0.14 kB │ gzip:   0.14 kB
+dist/assets/OrientationDataView-DCRmGwUG.css                                                      0.15 kB │ gzip:   0.14 kB
+dist/assets/AdminStudentLayout-Ba1CxWz_.css                                                       0.20 kB │ gzip:   0.15 kB
+dist/assets/PlatformControlAudit-DwoTrvfj.css                                                     0.25 kB │ gzip:   0.19 kB
+dist/assets/routeState-DrwMCFj9.css                                                               0.26 kB │ gzip:   0.18 kB
+dist/assets/AdminApprovalLayout-SkPUAwyy.css                                                      0.28 kB │ gzip:   0.20 kB
+dist/assets/AaStatusChangeTypedListView-CI6Ntu89.css                                              0.31 kB │ gzip:   0.21 kB
+dist/assets/AaStatusChangeEffectiveView-BGnB4RKg.css                                              0.37 kB │ gzip:   0.21 kB
+dist/assets/AdminDataCenterLayout-DJt1rHXV.css                                                    0.45 kB │ gzip:   0.25 kB
+dist/assets/RouteAccessNotice-Cry90VQc.css                                                        0.50 kB │ gzip:   0.29 kB
+dist/assets/AaStatusChangeArchiveView-BivibI-z.css                                                0.52 kB │ gzip:   0.29 kB
+dist/assets/MessageOutboxView-COfULNeY.css                                                        0.57 kB │ gzip:   0.27 kB
+dist/assets/LeaveProgressContext-xANiG4zr.css                                                     0.59 kB │ gzip:   0.29 kB
+dist/assets/AaOperationReceipt-UFeHBRsr.css                                                       0.60 kB │ gzip:   0.31 kB
+dist/assets/OrientationQualificationView-3xKqr8I4.css                                             0.62 kB │ gzip:   0.28 kB
+dist/assets/RecruitmentCampaignListView-ixOqjgap.css                                              0.62 kB │ gzip:   0.31 kB
+dist/assets/AcademicObjectResponsibility-CJNT-xIe.css                                             0.62 kB │ gzip:   0.26 kB
+dist/assets/BusinessMetrics-21eKVcKE.css                                                          0.64 kB │ gzip:   0.32 kB
+dist/assets/AaStatusChangeStatsView-BBfiuVls.css                                                  0.68 kB │ gzip:   0.33 kB
+dist/assets/BreakdownTable-BLjVJR_-.css                                                           0.68 kB │ gzip:   0.32 kB
+dist/assets/OrientationArchiveView-G3sV_09-.css                                                   0.69 kB │ gzip:   0.32 kB
+dist/assets/PlatformControlPackages-D_QeQrQH.css                                                  0.70 kB │ gzip:   0.35 kB
+dist/assets/PermissionTag-Cf7Op4IO.css                                                            0.70 kB │ gzip:   0.30 kB
+dist/assets/PlatformControlNotices-ju_CJ3ez.css                                                   0.70 kB │ gzip:   0.31 kB
+dist/assets/AuditTrailPanel-D45EbCj8.css                                                          0.71 kB │ gzip:   0.32 kB
+dist/assets/AidStatsView-D_nBGARC.css                                                             0.71 kB │ gzip:   0.33 kB
+dist/assets/AaStatusChangeDetailView-D0YRcVm9.css                                                 0.76 kB │ gzip:   0.36 kB
+dist/assets/AccountImportBoundaryNotice-CCxv9AU_.css                                              0.76 kB │ gzip:   0.39 kB
+dist/assets/PlatformControlDictionaries-7z0c2maG.css                                              0.78 kB │ gzip:   0.38 kB
+dist/assets/PlatformControlSettings-w3WzNJyD.css                                                  0.79 kB │ gzip:   0.38 kB
+dist/assets/MentalStatsView-CoaW1Ma4.css                                                          0.79 kB │ gzip:   0.32 kB
+dist/assets/GuidancePlanView-QR_qz9bQ.css                                                         0.79 kB │ gzip:   0.37 kB
+dist/assets/AaMakeupStatsView-Dx7WIht1.css                                                        0.84 kB │ gzip:   0.36 kB
+dist/assets/AdminOrientationLayout-CmAk182B.css                                                   0.84 kB │ gzip:   0.36 kB
+dist/assets/InternshipBatchListView-D8vJ5WLF.css                                                  0.85 kB │ gzip:   0.37 kB
+dist/assets/OrientationFlowConfigView-Bim9Z2ha.css                                                0.86 kB │ gzip:   0.39 kB
+dist/assets/FundingLedgerView-CP_0hnMv.css                                                        0.86 kB │ gzip:   0.38 kB
+dist/assets/FileUploader-CaeptwRY.css                                                             0.88 kB │ gzip:   0.40 kB
+dist/assets/OrientationBatchListView-CEKdHmXl.css                                                 0.90 kB │ gzip:   0.36 kB
+dist/assets/FormFields-k5-JJS8R.css                                                               0.92 kB │ gzip:   0.31 kB
+dist/assets/ReviewQueueBar-BNkYpEjN.css                                                           0.95 kB │ gzip:   0.42 kB
+dist/assets/AaTeachingTaskObjectBar-CTBuuqP8.css                                                  0.96 kB │ gzip:   0.43 kB
+dist/assets/AaScheduleObjectBar-CJVP_XA5.css                                                      0.96 kB │ gzip:   0.42 kB
+dist/assets/AaMakeupPrintView-jnpJUn4y.css                                                        0.97 kB │ gzip:   0.38 kB
+dist/assets/WorkOrderView-BazOLkZp.css                                                            0.98 kB │ gzip:   0.40 kB
+dist/assets/SecurityErrorShell-NFK30Cak.css                                                       0.98 kB │ gzip:   0.37 kB
+dist/assets/TalkLedgerView-BKbP0ZtN.css                                                           0.99 kB │ gzip:   0.43 kB
+dist/assets/AaObjectContext-zdwzM6aM.css                                                          1.01 kB │ gzip:   0.44 kB
+dist/assets/AssignmentLogView-BeNwGd3B.css                                                        1.01 kB │ gzip:   0.41 kB
+dist/assets/AidPublicityView-BP9HfiOr.css                                                         1.02 kB │ gzip:   0.44 kB
+dist/assets/MessageOpsView-CZLyBnbd.css                                                           1.03 kB │ gzip:   0.40 kB
+dist/assets/AdminInternshipLayout-DYVcYDa-.css                                                    1.03 kB │ gzip:   0.44 kB
+dist/assets/MentalCrisisView-b_qlHU3Z.css                                                         1.06 kB │ gzip:   0.45 kB
+dist/assets/TalkStatsView-uGz9PQAJ.css                                                            1.11 kB │ gzip:   0.45 kB
+dist/assets/SecondClassLedgerView-DpyUbugS.css                                                    1.12 kB │ gzip:   0.42 kB
+dist/assets/FilePreviewer-BcnRFZED.css                                                            1.13 kB │ gzip:   0.45 kB
+dist/assets/MessageCampaignDetailView-B4-xH-FB.css                                                1.15 kB │ gzip:   0.47 kB
+dist/assets/MessageSettingsView-GGZqbmaR.css                                                      1.18 kB │ gzip:   0.54 kB
+dist/assets/DualPaneWorkspace-TUYQ4jbO.css                                                        1.19 kB │ gzip:   0.53 kB
+dist/assets/PlatformProvisioningView-C-NhsCyh.css                                                 1.21 kB │ gzip:   0.45 kB
+dist/assets/SecureFileList-Dib-W3tB.css                                                           1.23 kB │ gzip:   0.44 kB
+dist/assets/PhoneGovernancePanel-De-jIh0C.css                                                     1.24 kB │ gzip:   0.47 kB
+dist/assets/AaStatusChangePrintView-DRHEgB2J.css                                                  1.27 kB │ gzip:   0.47 kB
+dist/assets/DifficultStudentsView-BV3RoQY2.css                                                    1.29 kB │ gzip:   0.52 kB
+dist/assets/DualPaneWorkspace-B7La9FUI.css                                                        1.30 kB │ gzip:   0.58 kB
+dist/assets/MentalReferralFollowView-mKZ_IOeb.css                                                 1.32 kB │ gzip:   0.52 kB
+dist/assets/DormStatsView-p9bRRGSR.css                                                            1.36 kB │ gzip:   0.47 kB
+dist/assets/MessageStatisticsView-BmJ8WIMP.css                                                    1.39 kB │ gzip:   0.49 kB
+dist/assets/AaAcademicProgressWorkspace-CETiPN_U.css                                              1.41 kB │ gzip:   0.47 kB
+dist/assets/DisciplineLedgerView-GBbeu-De.css                                                     1.41 kB │ gzip:   0.50 kB
+dist/assets/AaWarningView-BpctNVtL.css                                                            1.42 kB │ gzip:   0.51 kB
+dist/assets/StudentImportGatewayView-DKPLY4EP.css                                                 1.44 kB │ gzip:   0.49 kB
+dist/assets/PlatformIncidentView-DgxGKRko.css                                                     1.44 kB │ gzip:   0.46 kB
+dist/assets/AidObjectionView-BwPGEDR0.css                                                         1.48 kB │ gzip:   0.55 kB
+dist/assets/GraduationBatchStrip-CO5Utzfa.css                                                     1.48 kB │ gzip:   0.55 kB
+dist/assets/AidBatchView-C9PWlu9Z.css                                                             1.51 kB │ gzip:   0.54 kB
+dist/assets/PlatformChangeView-Bm8IhK0K.css                                                       1.54 kB │ gzip:   0.48 kB
+dist/assets/OrientationCheckinWorkspace-jFs2jLyZ.css                                              1.57 kB │ gzip:   0.58 kB
+dist/assets/AaLevelExamView-DSmJ4veu.css                                                          1.60 kB │ gzip:   0.56 kB
+dist/assets/AaStatusChangeApprovalView-B2INXS9-.css                                               1.60 kB │ gzip:   0.59 kB
+dist/assets/AaMakeupStudentView-Li0OhErY.css                                                      1.60 kB │ gzip:   0.60 kB
+dist/assets/ApprovalTimeline-CcpQJYT3.css                                                         1.68 kB │ gzip:   0.55 kB
+dist/assets/MessageTemplateView-BjWioqb0.css                                                      1.69 kB │ gzip:   0.55 kB
+dist/assets/AaScheduleChangeNoticePrintView-EpqqJOsU.css                                          1.72 kB │ gzip:   0.63 kB
+dist/assets/DisciplineStatsView-TH45RvI-.css                                                      1.75 kB │ gzip:   0.57 kB
+dist/assets/InternshipStudentMaterialEntryView-Dj00IV5k.css                                       1.75 kB │ gzip:   0.65 kB
+dist/assets/FundingPublicityView-dH37iUqj.css                                                     1.78 kB │ gzip:   0.59 kB
+dist/assets/SystemDictionariesView-xvMVQsfj.css                                                   1.78 kB │ gzip:   0.65 kB
+dist/assets/AaResourceStatsView-DhfCGdvm.css                                                      1.82 kB │ gzip:   0.58 kB
+dist/assets/FundingAppealView-DyHYYP3i.css                                                        1.84 kB │ gzip:   0.63 kB
+dist/assets/AaStatusChangeListView-C2K3rkQr.css                                                   1.86 kB │ gzip:   0.58 kB
+dist/assets/AppInlineAlert-auyw8f7W.css                                                           1.87 kB │ gzip:   0.53 kB
+dist/assets/GraduationMidtermByMentorView-DaJbkzmo.css                                            1.88 kB │ gzip:   0.60 kB
+dist/assets/DisciplineAppealView-v8HW4BcZ.css                                                     1.91 kB │ gzip:   0.62 kB
+dist/assets/StudentAffairsRiskDetailView-Cl5nyDen.css                                             1.97 kB │ gzip:   0.59 kB
+dist/assets/PlatformMetricStrip-mNIopefO.css                                                      1.98 kB │ gzip:   0.60 kB
+dist/assets/MentalWarningSummaryView-Cf6IaGvK.css                                                 1.99 kB │ gzip:   0.64 kB
+dist/assets/MentalAttentionListView-dem3mOuP.css                                                  1.99 kB │ gzip:   0.65 kB
+dist/assets/DormExceptionView-DL5aPO_c.css                                                        2.02 kB │ gzip:   0.66 kB
+dist/assets/GraduationSetupView-pMTCbPgg.css                                                      2.09 kB │ gzip:   0.71 kB
+dist/assets/CreditAppealView-nKeU0jzo.css                                                         2.12 kB │ gzip:   0.64 kB
+dist/assets/StudentAffairsProfileDetailView-DBCtDpNz.css                                          2.13 kB │ gzip:   0.62 kB
+dist/assets/StatusChangeReview-Dyyw8Hj9.css                                                       2.14 kB │ gzip:   0.69 kB
+dist/assets/GraduationStageRail-DyiTlKts.css                                                      2.15 kB │ gzip:   0.83 kB
+dist/assets/AaSelectionArchiveView-D1TSE0HN.css                                                   2.16 kB │ gzip:   0.67 kB
+dist/assets/RiskDisposalView-CWsySoe-.css                                                         2.20 kB │ gzip:   0.69 kB
+dist/assets/PlatformControlFileStorage-CXVc2iHu.css                                               2.20 kB │ gzip:   0.69 kB
+dist/assets/AaTeachingTaskStageRail-BWZCSgEn.css                                                  2.23 kB │ gzip:   0.74 kB
+dist/assets/AaScheduleGrid-Ccuv8KpL.css                                                           2.25 kB │ gzip:   0.73 kB
+dist/assets/AaSelectionStudentView-CuYUyQfu.css                                                   2.26 kB │ gzip:   0.64 kB
+dist/assets/PlatformServiceCatalogView-BZgJH53f.css                                               2.29 kB │ gzip:   0.67 kB
+dist/assets/ActionReceipt-DqL4W_Vy.css                                                            2.29 kB │ gzip:   0.81 kB
+dist/assets/ResourceBookingWorkspace-B43qcwWG.css                                                 2.33 kB │ gzip:   0.68 kB
+dist/assets/AaExemptionArchiveView-BmLdZwHn.css                                                   2.33 kB │ gzip:   0.67 kB
+dist/assets/ArchiveExportView-C5-c_w1-.css                                                        2.37 kB │ gzip:   0.73 kB
+dist/assets/AdminPlatformLayout-snJ19ceq.css                                                      2.40 kB │ gzip:   0.67 kB
+dist/assets/WorkflowPermissionsView-DAPGgKmw.css                                                  2.40 kB │ gzip:   0.70 kB
+dist/assets/DormTransferView-C7OeuRt0.css                                                         2.41 kB │ gzip:   0.81 kB
+dist/assets/AaCalendarMonth-CczMv5to.css                                                          2.43 kB │ gzip:   0.80 kB
+dist/assets/AppStepGuide-BLm4bsl-.css                                                             2.45 kB │ gzip:   0.71 kB
+dist/assets/MessageComposeView-DAaB7eQ0.css                                                       2.48 kB │ gzip:   0.69 kB
+dist/assets/AaScheduleStageRail-C8MWxOFF.css                                                      2.50 kB │ gzip:   0.84 kB
+dist/assets/VolunteerRecordView-Ca2gpDni.css                                                      2.60 kB │ gzip:   0.75 kB
+dist/assets/InternshipApplicationReviewView-tSj1hopT.css                                          2.63 kB │ gzip:   0.86 kB
+dist/assets/ModuleSummaryStrip-j4lFTsP-.css                                                       2.82 kB │ gzip:   0.88 kB
+dist/assets/PlannedPlaceholderView-CXPvHp2b.css                                                   2.84 kB │ gzip:   0.84 kB
+dist/assets/ModulePageShell-DFRipgxE.css                                                          2.92 kB │ gzip:   0.92 kB
+dist/assets/TopicLibListView-Cz6nBqhL.css                                                         2.95 kB │ gzip:   0.96 kB
+dist/assets/AaAuthoritativeImportDrawer-DYkmVzyP.css                                              3.00 kB │ gzip:   0.89 kB
+dist/assets/WorkflowHomeView-BKtHpWkP.css                                                         3.03 kB │ gzip:   0.81 kB
+dist/assets/PlatformLoginView-BWlUd08H.css                                                        3.07 kB │ gzip:   1.15 kB
+dist/assets/SystemPlatformIntegrityView-wVlky7yJ.css                                              3.10 kB │ gzip:   0.89 kB
+dist/assets/AaExamStageRail-C8iIls59.css                                                          3.11 kB │ gzip:   1.05 kB
+dist/assets/OrientationStatsView-Dzlis6kO.css                                                     3.13 kB │ gzip:   0.83 kB
+dist/assets/DormCheckView-DRjjUgog.css                                                            3.16 kB │ gzip:   0.92 kB
+dist/assets/ArchivePrecheckView-BUR9MEIu.css                                                      3.20 kB │ gzip:   0.88 kB
+dist/assets/SystemFileStorageGovernanceView-D70Kb8sh.css                                          3.26 kB │ gzip:   0.91 kB
+dist/assets/AaTeacherTodayView-H4cm09C8.css                                                       3.30 kB │ gzip:   0.83 kB
+dist/assets/ForcePasswordChangeView-BLAVtgi_.css                                                  3.36 kB │ gzip:   1.14 kB
+dist/assets/AaTodayTeachingWorkspace--hQz4bGQ.css                                                 3.43 kB │ gzip:   0.91 kB
+dist/assets/DataTable-DyW_3PL0.css                                                                3.44 kB │ gzip:   1.03 kB
+dist/assets/ScheduleChangeEvidence-DuuLjSA-.css                                                   3.50 kB │ gzip:   0.90 kB
+dist/assets/IdentityImportWorkspace-Bt3Uxs0D.css                                                  3.52 kB │ gzip:   0.98 kB
+dist/assets/PlatformAccessView-bP409AJM.css                                                       3.53 kB │ gzip:   0.93 kB
+dist/assets/AaOverviewPageFrame-BB_CZ9Ft.css                                                      3.55 kB │ gzip:   1.01 kB
+dist/assets/workspace-BstoJUOj.css                                                                3.57 kB │ gzip:   1.03 kB
+dist/assets/InsuranceVerifyView-BEvXWocw.css                                                      3.57 kB │ gzip:   1.08 kB
+dist/assets/AgreementView-DVhiK8ho.css                                                            3.58 kB │ gzip:   1.04 kB
+dist/assets/AppGlobalState-DjM6LX5i.css                                                           3.66 kB │ gzip:   1.04 kB
+dist/assets/AaExamSeatingPrintView-D9vGA4Ma.css                                                   3.77 kB │ gzip:   1.24 kB
+dist/assets/PlatformControlSecurity-D_r_bEs0.css                                                  3.78 kB │ gzip:   1.01 kB
+dist/assets/ActivityWorkbenchView-CZ9BTT2x.css                                                    3.97 kB │ gzip:   1.03 kB
+dist/assets/SystemDataExchangeView-CZbi2hKw.css                                                   4.00 kB │ gzip:   1.06 kB
+dist/assets/PlatformProductIamView-DZ7x4GOb.css                                                   4.13 kB │ gzip:   1.21 kB
+dist/assets/StudentOrgView-BgEOffYG.css                                                           4.31 kB │ gzip:   1.02 kB
+dist/assets/AppExcelImportDrawer-C_k_kWxc.css                                                     4.46 kB │ gzip:   1.16 kB
+dist/assets/WorkflowRolesView-Dxoy47fT.css                                                        4.48 kB │ gzip:   1.00 kB
+dist/assets/DormCheckinView-DIP_-9MH.css                                                          4.60 kB │ gzip:   1.02 kB
+dist/assets/EmploymentDashboardView-D5gfB1MS.css                                                  4.60 kB │ gzip:   1.02 kB
+dist/assets/EmploymentMaterialListView-chGBCf6g.css                                               4.60 kB │ gzip:   1.02 kB
+dist/assets/AttendanceView-aXE5CiGL.css                                                           4.65 kB │ gzip:   1.25 kB
+dist/assets/StudentLoanView-CtNZtZ-N.css                                                          4.65 kB │ gzip:   1.10 kB
+dist/assets/InternshipMatchListView-piVlH_K5.css                                                  4.78 kB │ gzip:   1.26 kB
+dist/assets/AcademicFlowOverview-CPzWlD9k.css                                                     4.79 kB │ gzip:   1.22 kB
+dist/assets/StudentAffairsDashboardView-PDX4ymp3.css                                              4.80 kB │ gzip:   1.22 kB
+dist/assets/MessageInboxView-BFb5T5O3.css                                                         4.80 kB │ gzip:   1.27 kB
+dist/assets/ArchiveManageView-BhDT5Uwt.css                                                        4.81 kB │ gzip:   1.17 kB
+dist/assets/OrientationStudentListView-rAQsRgWm.css                                               4.82 kB │ gzip:   1.06 kB
+dist/assets/UnemployedStudentListView-DQlDHlD1.css                                                4.87 kB │ gzip:   1.08 kB
+dist/assets/AaDashboardPanelWorkspace-Bk1oa9uV.css                                                4.92 kB │ gzip:   1.12 kB
+dist/assets/FamilyContactView-CfHOQc5O.css                                                        4.92 kB │ gzip:   1.19 kB
+dist/assets/ComponentDevPreview-DKCpMldM.css                                                      4.96 kB │ gzip:   1.21 kB
+dist/assets/EmploymentFollowUpView-DtmhYhZO.css                                                   4.96 kB │ gzip:   1.06 kB
+dist/assets/EmploymentStudentListView-DMNDFWTu.css                                                5.00 kB │ gzip:   1.12 kB
+dist/assets/DormAllocationView-DM4KyecU.css                                                       5.01 kB │ gzip:   1.24 kB
+dist/assets/EmploymentMaterialDetailView-DLHXdjtr.css                                             5.04 kB │ gzip:   1.11 kB
+dist/assets/AppConfirmDialog-TZLFQs8p.css                                                         5.18 kB │ gzip:   1.23 kB
+dist/assets/OrientationMaterialReviewView-Dsg97OiT.css                                            5.47 kB │ gzip:   1.17 kB
+dist/assets/RecruitmentCampaignFormView-BLLjAmiz.css                                              5.47 kB │ gzip:   1.31 kB
+dist/assets/OrientationExceptionView-tbquYgHc.css                                                 5.48 kB │ gzip:   1.15 kB
+dist/assets/WorkflowTasksView-brnvkdeV.css                                                        5.48 kB │ gzip:   1.20 kB
+dist/assets/RegistrationProgressView-BvkBoW6q.css                                                 5.58 kB │ gzip:   1.17 kB
+dist/assets/AaGradeRecognitionView-BtIb4rLN.css                                                   5.58 kB │ gzip:   1.51 kB
+dist/assets/EmploymentStudentDetailView-0F2lKO_R.css                                              5.62 kB │ gzip:   1.18 kB
+dist/assets/PublicHelpView-BQZwbjlB.css                                                           5.63 kB │ gzip:   1.59 kB
+dist/assets/StatsView-C4tEG_em.css                                                                5.75 kB │ gzip:   1.36 kB
+dist/assets/PaymentGreenChannelView-B5Tjq_1y.css                                                  5.86 kB │ gzip:   1.20 kB
+dist/assets/TeacherWorkbenchView-CdEWw8a9.css                                                     5.90 kB │ gzip:   1.35 kB
+dist/assets/StudentAffairsRiskListView-CRKs1Kn0.css                                               5.92 kB │ gzip:   1.56 kB
+dist/assets/AppDocumentViewer-BevYsbYC.css                                                        5.97 kB │ gzip:   1.59 kB
+dist/assets/AaMajorSplitView-CGxeeHVu.css                                                         6.08 kB │ gzip:   1.60 kB
+dist/assets/TalkWorkbenchView-CLAl95CU.css                                                        6.10 kB │ gzip:   1.34 kB
+dist/assets/DisciplineWorkbenchView-B_ssyeBA.css                                                  6.16 kB │ gzip:   1.27 kB
+dist/assets/PartyLeagueView-CdX-hCed.css                                                          6.38 kB │ gzip:   1.39 kB
+dist/assets/WorkflowProcessesView-jMcXr-eR.css                                                    6.42 kB │ gzip:   1.29 kB
+dist/assets/OrientationDashboardView-1j9WVNQI.css                                                 6.46 kB │ gzip:   1.39 kB
+dist/assets/AaStatusChangeFormView-el-b5P4T.css                                                   6.70 kB │ gzip:   1.60 kB
+dist/assets/AaOverviewWorkspace-DxLy4Ig4.css                                                      7.27 kB │ gzip:   1.54 kB
+dist/assets/OrientationStudentDetailView-B7BCPrhd.css                                             7.42 kB │ gzip:   1.43 kB
+dist/assets/GraduationMaterialCenterView-ClApgdVr.css                                             7.82 kB │ gzip:   1.91 kB
+dist/assets/InternshipMaterialCenterView-B-gqZQX4.css                                             7.99 kB │ gzip:   1.83 kB
+dist/assets/AaRosterChangeResultListView-DLkT6lW6.css                                             8.32 kB │ gzip:   1.93 kB
+dist/assets/AttendanceExceptionListView-Bv4ZGxak.css                                              8.32 kB │ gzip:   1.93 kB
+dist/assets/ProposalReviewDetailView-CrnjR1qY.css                                                 8.32 kB │ gzip:   1.92 kB
+dist/assets/ApprovalTodoListView-DxKIcKj4.css                                                     8.32 kB │ gzip:   1.93 kB
+dist/assets/ApprovalDoneListView-C3hBdONW.css                                                     8.32 kB │ gzip:   1.93 kB
+dist/assets/SystemSensitiveAuditView-Di4egTcq.css                                                 8.32 kB │ gzip:   1.93 kB
+dist/assets/SystemSyncJobView-Dqw0JN6R.css                                                        8.38 kB │ gzip:   1.94 kB
+dist/assets/TopicLibCapacityView--ZPOLsYF.css                                                     8.38 kB │ gzip:   1.93 kB
+dist/assets/SystemDelegationView-sZWEEKsw.css                                                     8.39 kB │ gzip:   1.95 kB
+dist/assets/GraduationBatchListView-B20sG-8V.css                                                  8.41 kB │ gzip:   1.95 kB
+dist/assets/TopicManageView-CvbaWj3W.css                                                          8.41 kB │ gzip:   1.94 kB
+dist/assets/ArchiveView-C9-dJCnb.css                                                              8.42 kB │ gzip:   1.80 kB
+dist/assets/ProcessReportDetailView-Begj4RYg.css                                                  8.44 kB │ gzip:   1.97 kB
+dist/assets/ApprovalReturnedListView-CiaAvdgc.css                                                 8.50 kB │ gzip:   1.98 kB
+dist/assets/ClassListView-Bc5Ba1HN.css                                                            8.53 kB │ gzip:   1.97 kB
+dist/assets/TopicManageDetailView-l-WaNtD0.css                                                    8.55 kB │ gzip:   1.98 kB
+dist/assets/SystemBusinessRelationView-Cg99C7P-.css                                               8.63 kB │ gzip:   1.99 kB
+dist/assets/TopicLibRequirementsView-BtdZrQLQ.css                                                 8.63 kB │ gzip:   1.96 kB
+dist/assets/TopicLibCategoryView-Bm6A82ay.css                                                     8.63 kB │ gzip:   1.97 kB
+dist/assets/TopicRoundFormView-BRldmSSN.css                                                       8.63 kB │ gzip:   1.96 kB
+dist/assets/TopicManageFormView-C6fe1dNF.css                                                      8.63 kB │ gzip:   1.97 kB
+dist/assets/GraduationMorePeerView-D1UuB4iL.css                                                   8.63 kB │ gzip:   1.96 kB
+dist/assets/GraduationMoreExpertView-Df-9ZPV0.css                                                 8.63 kB │ gzip:   1.96 kB
+dist/assets/GraduationMentorFormView-DB7TKOT5.css                                                 8.63 kB │ gzip:   1.96 kB
+dist/assets/GraduationProcessActionView-dyRLzT2O.css                                              8.63 kB │ gzip:   1.96 kB
+dist/assets/AaTextbookDistributionGenerateView-DtQphfjI.css                                       8.67 kB │ gzip:   1.99 kB
+dist/assets/AaRosterDetailView-CHT4_2j4.css                                                       8.68 kB │ gzip:   2.01 kB
+dist/assets/AaTaskMergeSplitView-BEjDZFAr.css                                                     8.68 kB │ gzip:   2.02 kB
+dist/assets/AaWorkloadReviewView-BU03B58P.css                                                     8.71 kB │ gzip:   2.02 kB
+dist/assets/AaEquipmentListView-IdZ6pEgc.css                                                      8.72 kB │ gzip:   2.01 kB
+dist/assets/SystemAccountExceptionView-Cr20xKNk.css                                               8.75 kB │ gzip:   1.99 kB
+dist/assets/StudentArchivePackageView-B_825vit.css                                                8.79 kB │ gzip:   2.02 kB
+dist/assets/GraduationReviewCenterView-CqLOAzED.css                                               8.82 kB │ gzip:   1.95 kB
+dist/assets/AaPrintScheduleView-Bg-LMK5O.css                                                      8.84 kB │ gzip:   2.04 kB
+dist/assets/TopicLibDetailView-DoxpPHRf.css                                                       8.85 kB │ gzip:   2.02 kB
+dist/assets/DormResourceView-C-lQtQ8U.css                                                         8.86 kB │ gzip:   1.88 kB
+dist/assets/TopicChangeDetailView-C51OWfHV.css                                                    8.86 kB │ gzip:   2.02 kB
+dist/assets/AaRosterChangeRecordsView-DcIjxqSc.css                                                8.87 kB │ gzip:   2.05 kB
+dist/assets/PlatformControlOverview-BM1T9gfh.css                                                  8.87 kB │ gzip:   1.70 kB
+dist/assets/TopicLibAttachmentsView-d6RYzBfu.css                                                  8.88 kB │ gzip:   2.00 kB
+dist/assets/AaGradeFailListView-D1AiOM76.css                                                      8.89 kB │ gzip:   2.07 kB
+dist/assets/AaClassScheduleView-CfisX9-4.css                                                      8.90 kB │ gzip:   2.07 kB
+dist/assets/AaRoomScheduleView-DIck50gn.css                                                       8.90 kB │ gzip:   2.07 kB
+dist/assets/AaCalendarArchivePanel-DZjFFO1v.css                                                   8.90 kB │ gzip:   2.05 kB
+dist/assets/PlatformTenantMigrationView-BIncjxZ7.css                                              8.91 kB │ gzip:   2.00 kB
+dist/assets/PlatformControlTenants-l_UelMcn.css                                                   8.91 kB │ gzip:   1.94 kB
+dist/assets/AaTaskStatsView-COrU6zQt.css                                                          8.92 kB │ gzip:   2.06 kB
+dist/assets/AppSectionHeader-COkcPAfM.css                                                         8.92 kB │ gzip:   1.94 kB
+dist/assets/DataCenterReportDetailView-D4r2ikOf.css                                               8.93 kB │ gzip:   2.01 kB
+dist/assets/GraduationStatsView-CSLZOAiz.css                                                      8.93 kB │ gzip:   2.01 kB
+dist/assets/GraduationAuditLogView-j-dnNDY6.css                                                   8.94 kB │ gzip:   2.03 kB
+dist/assets/GraduationTemplateFormView-xNJxoqk7.css                                               8.94 kB │ gzip:   2.01 kB
+dist/assets/AaTeacherAssignConsoleView-BUtp8pTO.css                                               8.95 kB │ gzip:   2.07 kB
+dist/assets/InternshipRiskView-IQT_KHxR.css                                                       8.95 kB │ gzip:   2.05 kB
+dist/assets/GraduationMentorEvalView-239ErPxw.css                                                 8.95 kB │ gzip:   2.03 kB
+dist/assets/DataCenterReportListView-BpMi3dIB.css                                                 8.98 kB │ gzip:   2.02 kB
+dist/assets/GraduationMentorDetailView-CRAc8C-b.css                                               9.00 kB │ gzip:   2.05 kB
+dist/assets/SystemMasterDataView-CQ187aez.css                                                     9.01 kB │ gzip:   2.05 kB
+dist/assets/AaGradeExceptionView-BgsAzATj.css                                                     9.05 kB │ gzip:   2.07 kB
+dist/assets/AaTextbookDistributionDetailView-CHSh6XHc.css                                         9.06 kB │ gzip:   2.09 kB
+dist/assets/AaRosterStatusView-0SHA6lFZ.css                                                       9.06 kB │ gzip:   2.02 kB
+dist/assets/TopicRoundListView-p3VMKmxB.css                                                       9.08 kB │ gzip:   2.03 kB
+dist/assets/EnterpriseFormView-BvebX-A3.css                                                       9.09 kB │ gzip:   2.07 kB
+dist/assets/SystemStaffAffiliationView-C1BseF4z.css                                               9.11 kB │ gzip:   2.06 kB
+dist/assets/AaEvaluationConsoleView-DdWkAlWM.css                                                  9.12 kB │ gzip:   1.88 kB
+dist/assets/ExportDialog-DkPoiuLA.css                                                             9.12 kB │ gzip:   2.03 kB
+dist/assets/PlatformGovernanceView-BqsTSrXJ.css                                                   9.12 kB │ gzip:   2.05 kB
+dist/assets/AaResourceConflictView-Dj_7vy-P.css                                                   9.13 kB │ gzip:   2.09 kB
+dist/assets/AaLabResourceListView-B1t2Rc-l.css                                                    9.16 kB │ gzip:   2.08 kB
+dist/assets/SystemCommunicationGovernanceView-BJMWwIUB.css                                        9.17 kB │ gzip:   2.08 kB
+dist/assets/KeyStudentFollowView-CWf-wvxT.css                                                     9.19 kB │ gzip:   2.07 kB
+dist/assets/AaResourceOccupancyView-DiUOk_T9.css                                                  9.20 kB │ gzip:   2.11 kB
+dist/assets/FundingStatsView-BGcphgZ-.css                                                         9.21 kB │ gzip:   1.82 kB
+dist/assets/GuidanceRecordFormView-DqcRTCdJ.css                                                   9.23 kB │ gzip:   2.10 kB
+dist/assets/InternshipAgreementTemplateListView-CVRAaB8e.css                                      9.23 kB │ gzip:   2.12 kB
+dist/assets/ApprovalTemplateListView-Cn9YW2vy.css                                                 9.24 kB │ gzip:   2.06 kB
+dist/assets/StudentRiskTagListView-D0ouV9cK.css                                                   9.25 kB │ gzip:   2.05 kB
+dist/assets/AaTaskAdjustView-WpZOZqoM.css                                                         9.26 kB │ gzip:   2.10 kB
+dist/assets/SystemWorkflowGovernanceView-CE55nH6X.css                                             9.27 kB │ gzip:   2.11 kB
+dist/assets/WeeklyReportListView-CXrLWdRY.css                                                     9.27 kB │ gzip:   2.13 kB
+dist/assets/PlatformFoundationOpsView-DOlwuj0v.css                                                9.28 kB │ gzip:   2.07 kB
+dist/assets/SystemLogView-C1DQkc13.css                                                            9.28 kB │ gzip:   2.11 kB
+dist/assets/SystemAuditView-zV1jytJc.css                                                          9.29 kB │ gzip:   2.09 kB
+dist/assets/AaRosterImportExportView-lWIEqq2v.css                                                 9.29 kB │ gzip:   2.13 kB
+dist/assets/SystemAccessGovernanceView-BJWbEgt_.css                                               9.29 kB │ gzip:   2.11 kB
+dist/assets/PlatformCapabilityView-CeVpIYOg.css                                                   9.31 kB │ gzip:   2.07 kB
+dist/assets/AaCourseListView-HSyDRNV4.css                                                         9.33 kB │ gzip:   2.16 kB
+dist/assets/SystemJobCenterView-CKM_KGyg.css                                                      9.34 kB │ gzip:   2.11 kB
+dist/assets/StudentOverviewView-jzXaqqjl.css                                                      9.36 kB │ gzip:   2.05 kB
+dist/assets/GraduationBatchFormView-md4tk4VZ.css                                                  9.38 kB │ gzip:   2.14 kB
+dist/assets/PlatformFairUseView-B6HoH-KF.css                                                      9.39 kB │ gzip:   2.08 kB
+dist/assets/LeaveLedgerView-9RE7ZTlN.css                                                          9.40 kB │ gzip:   2.14 kB
+dist/assets/LeaveStatsView-BKZ5vft0.css                                                           9.41 kB │ gzip:   2.10 kB
+dist/assets/AaTranscriptPrintView-DRoaYye3.css                                                    9.42 kB │ gzip:   2.15 kB
+dist/assets/AaTaskConfirmView-BuOJEEX7.css                                                        9.43 kB │ gzip:   2.14 kB
+dist/assets/ActivityStatsView-DaqobLMY.css                                                        9.45 kB │ gzip:   2.15 kB
+dist/assets/SystemLoginPolicyView-BsUizZ3A.css                                                    9.46 kB │ gzip:   2.15 kB
+dist/assets/FundingWorkbenchView-Cd26C1TF.css                                                     9.49 kB │ gzip:   1.94 kB
+dist/assets/AdminSystemLayout-DlMRSLEU.css                                                        9.50 kB │ gzip:   2.23 kB
+dist/assets/AaStudentScheduleView-UzZMetzY.css                                                    9.52 kB │ gzip:   2.15 kB
+dist/assets/AaTermStatusView-Bw0LlSgr.css                                                         9.53 kB │ gzip:   2.14 kB
+dist/assets/PlatformProblemView-CUcQMcVF.css                                                      9.56 kB │ gzip:   2.11 kB
+dist/assets/GraduationMoreView-D0RZ3MDM.css                                                       9.58 kB │ gzip:   2.15 kB
+dist/assets/MaterialOperationsView-CoxDfqsB.css                                                   9.58 kB │ gzip:   2.11 kB
+dist/assets/StudentStatusView-BRIU7lIn.css                                                        9.61 kB │ gzip:   2.12 kB
+dist/assets/StudentListView-B4UGLf8L.css                                                          9.63 kB │ gzip:   2.10 kB
+dist/assets/StudentEditView-BFTy__-L.css                                                          9.63 kB │ gzip:   2.13 kB
+dist/assets/PositionFormView-BBmJ-_au.css                                                         9.69 kB │ gzip:   2.18 kB
+dist/assets/TopicLibFormView-Da0Hba_Y.css                                                         9.72 kB │ gzip:   2.19 kB
+dist/assets/AaGradeAuditView-90H8JbHR.css                                                         9.75 kB │ gzip:   2.26 kB
+dist/assets/AaScheduleChangeArchiveView-JtUGed6L.css                                              9.75 kB │ gzip:   2.23 kB
+dist/assets/EnterpriseEvalFormView-DSUB2zw8.css                                                   9.78 kB │ gzip:   2.22 kB
+dist/assets/AttendanceExceptionDetailView-CE2OnbHw.css                                            9.81 kB │ gzip:   2.22 kB
+dist/assets/SystemSecurityChangeView-GavnGDgI.css                                                 9.82 kB │ gzip:   2.15 kB
+dist/assets/PlatformCustomerSuccessView-DaV_d1TY.css                                              9.85 kB │ gzip:   2.17 kB
+dist/assets/NationalStandardsView-BFSUq_0W.css                                                    9.88 kB │ gzip:   2.19 kB
+dist/assets/AaTermArchiveView-BwQxBflO.css                                                        9.91 kB │ gzip:   2.21 kB
+dist/assets/AaTranscriptView-CF6T24oC.css                                                         9.93 kB │ gzip:   2.25 kB
+dist/assets/AgreementTemplateDetailView-Bae0w66P.css                                              9.95 kB │ gzip:   2.27 kB
+dist/assets/AaCourseDetailView-CABLgJVx.css                                                      10.00 kB │ gzip:   2.24 kB
+dist/assets/AidLedgerView-C-WU2mmN.css                                                           10.00 kB │ gzip:   2.23 kB
+dist/assets/InternshipEnterpriseListView-CMuK5ET6.css                                            10.02 kB │ gzip:   2.24 kB
+dist/assets/FamilyReceiptView-BrE_9ACB.css                                                       10.02 kB │ gzip:   2.23 kB
+dist/assets/AaCourseConsoleView-CYK6wHBY.css                                                     10.06 kB │ gzip:   2.24 kB
+dist/assets/GraduationBatchDetailView-D9zNoIQM.css                                               10.06 kB │ gzip:   2.26 kB
+dist/assets/DataCenterRiskView-CKKGNKNz.css                                                      10.07 kB │ gzip:   2.24 kB
+dist/assets/SystemRoleAssignmentView-D-F6nKFT.css                                                10.08 kB │ gzip:   2.22 kB
+dist/assets/StudentImportExportView-T8riFui0.css                                                 10.08 kB │ gzip:   2.15 kB
+dist/assets/ClassProfileView-CMr9i0CM.css                                                        10.09 kB │ gzip:   2.15 kB
+dist/assets/ApprovalDetailView-wWvjizHx.css                                                      10.09 kB │ gzip:   2.21 kB
+dist/assets/AaWeekScheduleView-ECKfcYRU.css                                                      10.09 kB │ gzip:   2.30 kB
+dist/assets/WeeklyReportDetailView-Bllg3HCQ.css                                                  10.11 kB │ gzip:   2.29 kB
+dist/assets/AaMakeupConsoleView-Ccz1Kuho.css                                                     10.16 kB │ gzip:   2.27 kB
+dist/assets/AaScheduleChangeStatsView-nAzQbFpj.css                                               10.20 kB │ gzip:   2.26 kB
+dist/assets/LeaveApprovalWorkbenchView-B2ppTzGg.css                                              10.25 kB │ gzip:   2.19 kB
+dist/assets/InternshipVolunteerReviewView-et8gEOOe.css                                           10.27 kB │ gzip:   2.24 kB
+dist/assets/PlatformDisasterRecoveryView-DZ79t8g1.css                                            10.29 kB │ gzip:   2.21 kB
+dist/assets/SystemMigrationView-BdxoTT8G.css                                                     10.33 kB │ gzip:   2.20 kB
+dist/assets/GraduationStudentDetailView-P2NnyMup.css                                             10.34 kB │ gzip:   2.28 kB
+dist/assets/DeleteConfirmDialog-CoAi23_C.css                                                     10.37 kB │ gzip:   2.01 kB
+dist/assets/AaScheduleChangeLedgerView-DHYG7YN1.css                                              10.38 kB │ gzip:   2.32 kB
+dist/assets/DataCenterRankingView-wty67AQu.css                                                   10.38 kB │ gzip:   2.25 kB
+dist/assets/AaTermWeeksView-Wzf9BIuY.css                                                         10.39 kB │ gzip:   2.32 kB
+dist/assets/AaAcademicYearView-jaZA4Y5w.css                                                      10.39 kB │ gzip:   2.31 kB
+dist/assets/TopicChangeRequestListView-DkOuxA4O.css                                              10.41 kB │ gzip:   2.35 kB
+dist/assets/GraduationMaterialRuleView-Dmas9MF2.css                                              10.45 kB │ gzip:   2.35 kB
+dist/assets/CounselorEvalView-CKkVoLOY.css                                                       10.48 kB │ gzip:   2.33 kB
+dist/assets/SystemConfigView-Cfz7Ee8C.css                                                        10.54 kB │ gzip:   2.29 kB
+dist/assets/InternshipPositionListView-Hqxb5yuW.css                                              10.56 kB │ gzip:   2.32 kB
+dist/assets/employment-DMcYEO0u.css                                                              10.57 kB │ gzip:   2.00 kB
+dist/assets/SystemDashboardView-DGIGCmMq.css                                                     10.63 kB │ gzip:   2.36 kB
+dist/assets/AaCertificateView-DAADBtVR.css                                                       10.64 kB │ gzip:   2.33 kB
+dist/assets/GraduationMentorListView-DcPpjyEt.css                                                10.66 kB │ gzip:   2.23 kB
+dist/assets/DataCenterLifecycleView-CsY_AFd2.css                                                 10.67 kB │ gzip:   2.28 kB
+dist/assets/GraduationReviewAssignView-BJVjZotM.css                                              10.73 kB │ gzip:   2.39 kB
+dist/assets/InternshipPositionDetailView-Dw6PdPkK.css                                            10.75 kB │ gzip:   2.43 kB
+dist/assets/SystemIntegrationView-neUVZZbS.css                                                   10.80 kB │ gzip:   2.42 kB
+dist/assets/AaScheduleChangeApprovalView-mvF758le.css                                            10.81 kB │ gzip:   2.45 kB
+dist/assets/AaTeacherScheduleView-bHElXefu.css                                                   10.83 kB │ gzip:   2.38 kB
+dist/assets/AgreementTemplateFormView-C2wv7Pzh.css                                               10.84 kB │ gzip:   2.40 kB
+dist/assets/AaGraduationResultView-ClBgTZOw.css                                                  10.84 kB │ gzip:   2.44 kB
+dist/assets/AaExamConsoleView-CW-eBxZ3.css                                                       10.86 kB │ gzip:   2.16 kB
+dist/assets/PlatformOnboardingCheckView-D4VnDz9g.css                                             10.88 kB │ gzip:   2.30 kB
+dist/assets/AaTeachingWeekConfigView-LpK4O1jd.css                                                10.89 kB │ gzip:   2.41 kB
+dist/assets/LoginView-WepNtRlQ.css                                                               10.91 kB │ gzip:   2.78 kB
+dist/assets/AaScheduleViewsView-lv4r4Xv6.css                                                     10.91 kB │ gzip:   2.43 kB
+dist/assets/GraduationAdvisorScoreView-DlNQMRx7.css                                              11.02 kB │ gzip:   2.42 kB
+dist/assets/AaTermSwitchLogView-BcE1SBC-.css                                                     11.05 kB │ gzip:   2.41 kB
+dist/assets/InternshipPlanView-CNIRr39J.css                                                      11.05 kB │ gzip:   2.39 kB
+dist/assets/GraduationTemplateView-Bj50IRof.css                                                  11.09 kB │ gzip:   2.42 kB
+dist/assets/LeaveExtensionCancelView-Bj0570QT.css                                                11.10 kB │ gzip:   2.35 kB
+dist/assets/ProposalReviewCard-q8Xdiz0-.css                                                      11.12 kB │ gzip:   2.49 kB
+dist/assets/RecruitmentCampaignDetailView-BLEOmfLC.css                                           11.15 kB │ gzip:   2.46 kB
+dist/assets/AaGradeOverviewView-BDSi1mDx.css                                                     11.15 kB │ gzip:   2.47 kB
+dist/assets/AaTextbookConsoleView-BZ-sVwvJ.css                                                   11.16 kB │ gzip:   2.56 kB
+dist/assets/FeeReductionView-xeEdndF3.css                                                        11.17 kB │ gzip:   2.42 kB
+dist/assets/StudentAffairsDormitoryView-CKVL06Zz.css                                             11.17 kB │ gzip:   2.26 kB
+dist/assets/AgreementDetailView-DkzuZ2WL.css                                                     11.19 kB │ gzip:   2.44 kB
+dist/assets/ApprovalDashboardView-Uozvnp-F.css                                                   11.26 kB │ gzip:   2.32 kB
+dist/assets/AaScheduleAdjustmentLogView--w94gkiU.css                                             11.28 kB │ gzip:   2.51 kB
+dist/assets/AaTeachingClassScheduleView-3B7InDmt.css                                             11.32 kB │ gzip:   2.48 kB
+dist/assets/SystemImplementationWorkspaceView-CrHXYGri.css                                       11.33 kB │ gzip:   2.48 kB
+dist/assets/FundingProjectView-BcG53b5K.css                                                      11.33 kB │ gzip:   2.43 kB
+dist/assets/GuidanceVisitView-BIWZMz54.css                                                       11.35 kB │ gzip:   2.35 kB
+dist/assets/AaTeacherTaskConfirmView-BsAsRJXd.css                                                11.37 kB │ gzip:   2.42 kB
+dist/assets/StudentCorrectionListView-wh6lIjST.css                                               11.39 kB │ gzip:   2.40 kB
+dist/assets/SystemAcademicCalendarView-CzFOeR2d.css                                              11.42 kB │ gzip:   2.38 kB
+dist/assets/AaResourceRepairView-B-OcDv4p.css                                                    11.43 kB │ gzip:   2.44 kB
+dist/assets/AaScheduleExportView-BSQjW36d.css                                                    11.44 kB │ gzip:   2.54 kB
+dist/assets/AaArchiveConsoleView-BlTDXaro.css                                                    11.45 kB │ gzip:   2.33 kB
+dist/assets/FundingDisbursementView-DCPzAGDy.css                                                 11.45 kB │ gzip:   2.49 kB
+dist/assets/FinalSubmissionListView-Gi3dqQNd.css                                                 11.51 kB │ gzip:   2.56 kB
+dist/assets/AaQualityDashboardView-CjKkdk0I.css                                                  11.53 kB │ gzip:   2.31 kB
+dist/assets/EnterpriseEvalView-CvIQNoWt.css                                                      11.57 kB │ gzip:   2.43 kB
+dist/assets/ClubWorkbenchView-B_8CEzfs.css                                                       11.64 kB │ gzip:   2.47 kB
+dist/assets/AaRosterListView-XjLOX34K.css                                                        11.65 kB │ gzip:   2.54 kB
+dist/assets/ScoreView-CZE5ZR2V.css                                                               11.72 kB │ gzip:   2.34 kB
+dist/assets/PlatformControlOrders-BJYLlv7k.css                                                   11.72 kB │ gzip:   2.24 kB
+dist/assets/StudentEvalView-BA_HbaEv.css                                                         11.74 kB │ gzip:   2.44 kB
+dist/assets/StudentIdentityCapabilityView-DCYaNBtC.css                                           11.76 kB │ gzip:   2.60 kB
+dist/assets/AaWarningConsoleView-C_SnFT6U.css                                                    11.77 kB │ gzip:   2.61 kB
+dist/assets/GraduationStudentGroupView-Bf1IRCUE.css                                              11.84 kB │ gzip:   2.54 kB
+dist/assets/GraduationStudentAssignTopicView-DV5x07U3.css                                        11.85 kB │ gzip:   2.54 kB
+dist/assets/GraduationStudentFormView-V_qjqcDE.css                                               11.86 kB │ gzip:   2.57 kB
+dist/assets/GraduationStudentDefenseView-COQklngJ.css                                            11.87 kB │ gzip:   2.54 kB
+dist/assets/GraduationMentorAssignView-C2Dxp6Tu.css                                              11.87 kB │ gzip:   2.54 kB
+dist/assets/AaTermCurrentView-DNYrN0rj.css                                                       11.92 kB │ gzip:   2.55 kB
+dist/assets/StudentAffairsLeaderWallView-CayxTAg2.css                                            12.07 kB │ gzip:   2.96 kB
+dist/assets/DormCheckinView-LTjCAiFr.css                                                         12.17 kB │ gzip:   2.65 kB
+dist/assets/WorkStudyView-CtkNsQKU.css                                                           12.24 kB │ gzip:   2.61 kB
+dist/assets/StudentAffairsCockpitView-D3u9CR-a.css                                               12.26 kB │ gzip:   2.75 kB
+dist/assets/SystemDataScopeView-CDoHmr1h.css                                                     12.33 kB │ gzip:   2.63 kB
+dist/assets/AaTermFormView-BKvxRLdn.css                                                          12.34 kB │ gzip:   2.67 kB
+dist/assets/GraduationMentorConflictsView-Uprnxx_k.css                                           12.41 kB │ gzip:   2.65 kB
+dist/assets/FundingBatchView-DxjmKZIn.css                                                        12.42 kB │ gzip:   2.63 kB
+dist/assets/AaCourseFormView-BswXLEBS.css                                                        12.42 kB │ gzip:   2.75 kB
+dist/assets/BatchFormView-D2auaYBb.css                                                           12.49 kB │ gzip:   2.67 kB
+dist/assets/AdminStudentAffairsLayout-lkpK3c1f.css                                               12.49 kB │ gzip:   2.45 kB
+dist/assets/InternshipStudentListView-DRb5pGfX.css                                               12.55 kB │ gzip:   2.61 kB
+dist/assets/AaTaskDetailView-DiBVFJkF.css                                                        12.56 kB │ gzip:   2.66 kB
+dist/assets/GraduationDefenseGradeFormView-BMYEnRhk.css                                          12.57 kB │ gzip:   2.62 kB
+dist/assets/GraduationRiskArchiveView-DtmO7dvc.css                                               12.58 kB │ gzip:   2.41 kB
+dist/assets/CounselorAssignmentView-DINanQQk.css                                                 12.60 kB │ gzip:   2.68 kB
+dist/assets/SystemImplementationView-B7L4I35q.css                                                12.65 kB │ gzip:   2.50 kB
+dist/assets/AaGradePublishView-Bi_aihKZ.css                                                      12.77 kB │ gzip:   2.67 kB
+dist/assets/AaTermListView-SB6sicpQ.css                                                          12.80 kB │ gzip:   2.70 kB
+dist/assets/ChangeRequestListView-NbP6rgoG.css                                                   12.94 kB │ gzip:   2.71 kB
+dist/assets/DefenseScheduleView-D__RvCP_.css                                                     13.15 kB │ gzip:   2.79 kB
+dist/assets/LeaveReviewView-BkoGXoub.css                                                         13.16 kB │ gzip:   2.74 kB
+dist/assets/AaGraduationBatchView-CtrfLM85.css                                                   13.25 kB │ gzip:   2.97 kB
+dist/assets/AaSchedulePublishView-BopBuaZ6.css                                                   13.39 kB │ gzip:   2.81 kB
+dist/assets/GraduationDocumentReviewWorkspace-BX5yiWeZ.css                                       13.43 kB │ gzip:   2.58 kB
+dist/assets/AaAttendanceStatsView-DIyAR7L8.css                                                   13.46 kB │ gzip:   3.01 kB
+dist/assets/StudentDetailView-DZmFXQmL.css                                                       13.47 kB │ gzip:   2.70 kB
+dist/assets/AaSemesterScheduleView-eeSdv-cu.css                                                  13.48 kB │ gzip:   2.90 kB
+dist/assets/InternshipDashboardView-DL4OFUPV.css                                                 13.53 kB │ gzip:   2.88 kB
+dist/assets/AaGradeRecheckView-CHgrrfVJ.css                                                      13.55 kB │ gzip:   2.98 kB
+dist/assets/SystemUserListView-DSJqVTq5.css                                                      13.57 kB │ gzip:   2.65 kB
+dist/assets/AaTimeSlotView-DkDt17u0.css                                                          13.59 kB │ gzip:   2.89 kB
+dist/assets/DefenseGroupFormView-DwiBr8T2.css                                                    13.64 kB │ gzip:   2.81 kB
+dist/assets/AaProgramListView-CbKSSehA.css                                                       13.66 kB │ gzip:   2.99 kB
+dist/assets/AdminWorkbenchView-D08iTQag.css                                                      13.78 kB │ gzip:   2.51 kB
+dist/assets/InternshipEnterpriseDetailView-BQldFdTr.css                                          13.83 kB │ gzip:   2.96 kB
+dist/assets/AppUserChip-D9ay4NlZ.css                                                             14.15 kB │ gzip:   3.25 kB
+dist/assets/AaGradeChangeView-CXA2Kzf_.css                                                       14.19 kB │ gzip:   2.99 kB
+dist/assets/AaScheduleMaintainView-CNWUmjre.css                                                  14.33 kB │ gzip:   2.78 kB
+dist/assets/AaRosterCorrectionListView-BFUeUQK8.css                                              14.35 kB │ gzip:   3.05 kB
+dist/assets/AaRegistrationWorkbenchView-BpXAd788.css                                             14.53 kB │ gzip:   2.94 kB
+dist/assets/AaScheduleChangeApplyView-cUuSyfY_.css                                               14.55 kB │ gzip:   2.96 kB
+dist/assets/AaScheduleBatchListView-DHueMGXi.css                                                 14.66 kB │ gzip:   3.21 kB
+dist/assets/AaRegistrationBatchListView-BRgaKgv3.css                                             14.75 kB │ gzip:   3.21 kB
+dist/assets/AaSelectionConsoleView-B4_3gCvj.css                                                  14.95 kB │ gzip:   3.12 kB
+dist/assets/ProposalListView-C2FgpB1j.css                                                        15.17 kB │ gzip:   3.06 kB
+dist/assets/AdminHelpView-C6M_w7h3.css                                                           15.50 kB │ gzip:   2.77 kB
+dist/assets/SystemOrgView-YvzN81Et.css                                                           15.61 kB │ gzip:   3.28 kB
+dist/assets/GraduationProcessView-a6LuXEYs.css                                                   16.11 kB │ gzip:   3.29 kB
+dist/assets/GraduationFormPageShell-TrYoi5Yr.css                                                 16.17 kB │ gzip:   3.33 kB
+dist/assets/AaRegistrationDetailView-BBBBFTZv.css                                                16.18 kB │ gzip:   3.29 kB
+dist/assets/SystemIamWorkspaceView-D1EaN-S7.css                                                  16.49 kB │ gzip:   3.21 kB
+dist/assets/InternshipStudentDetailView-CcSVFqQs.css                                             16.58 kB │ gzip:   3.34 kB
+dist/assets/AaGradeCollegeReviewView-PVOLbHAN.css                                                16.95 kB │ gzip:   3.41 kB
+dist/assets/GraduationStudentListView-C_RR5sTm.css                                               17.11 kB │ gzip:   3.23 kB
+dist/assets/AaProgramConsoleView-Cd9VvvGw.css                                                    17.31 kB │ gzip:   3.42 kB
+dist/assets/AaTermDetailView-Bm7LFBkb.css                                                        17.58 kB │ gzip:   3.45 kB
+dist/assets/StudentAffairsWallView-DNbwa1nn.css                                                  17.84 kB │ gzip:   4.03 kB
+dist/assets/GraduationDefenseGradeView-2MDTu2DL.css                                              17.92 kB │ gzip:   3.39 kB
+dist/assets/AaCalendarView-Dz9ceSh4.css                                                          18.12 kB │ gzip:   3.57 kB
+dist/assets/AaGradeEntryView-kE-OjSvK.css                                                        18.27 kB │ gzip:   3.61 kB
+dist/assets/AdminAcademicAffairsLayout-DL7WJ7no.css                                              18.63 kB │ gzip:   4.03 kB
+dist/assets/PlatformBusinessFormsView-DyJaDYW-.css                                               18.70 kB │ gzip:   2.87 kB
+dist/assets/GraduationDashboardView-C5xA1J0d.css                                                 18.80 kB │ gzip:   3.57 kB
+dist/assets/AaStatsOverviewView-6HA2T-St.css                                                     19.12 kB │ gzip:   3.69 kB
+dist/assets/AaGraduationAuditConsoleView-Cm4txlQ_.css                                            19.37 kB │ gzip:   4.08 kB
+dist/assets/AidWorkbenchView-BLeg2J_e.css                                                        19.56 kB │ gzip:   3.22 kB
+dist/assets/UiPreview-D8djqZkI.css                                                               19.84 kB │ gzip:   3.15 kB
+dist/assets/PlatformControlTenantDetail-WXaR220H.css                                             20.62 kB │ gzip:   3.91 kB
+dist/assets/AaClassroomListView-CfQULmZf.css                                                     20.87 kB │ gzip:   3.70 kB
+dist/assets/PlatformCommercialControlView-D1AN0CrZ.css                                           22.83 kB │ gzip:   4.27 kB
+dist/assets/InternshipComplianceView-BAMyf-GD.css                                                22.94 kB │ gzip:   4.43 kB
+dist/assets/AaSchedulingConsoleView-DnCcxrQO.css                                                 23.01 kB │ gzip:   4.42 kB
+dist/assets/BatchDetailView-DEP1ilnn.css                                                         23.27 kB │ gzip:   3.47 kB
+dist/assets/SystemWorkspaceFrame-CrOQjXzk.css                                                    23.37 kB │ gzip:   4.34 kB
+dist/assets/AaProgramEditorView-CHREVuv9.css                                                     24.42 kB │ gzip:   3.60 kB
+dist/assets/AaOrgConsole-Dwf0G65C.css                                                            26.31 kB │ gzip:   3.94 kB
+dist/assets/AaTaskBatchListView-CdVblVTQ.css                                                     34.82 kB │ gzip:   4.42 kB
+dist/assets/InternshipCommandScreenView-DSC0MTdv.css                                             35.02 kB │ gzip:   8.74 kB
+dist/assets/BasePortalLayout-B18pRMqZ.css                                                        46.52 kB │ gzip:   8.04 kB
+dist/assets/vendor-element-B2LgfYTX.css                                                          69.03 kB │ gzip:   9.50 kB
+dist/assets/AdminGraduationLayout-CJIZ9q_V.css                                                   85.83 kB │ gzip:  10.65 kB
+dist/assets/AppQRCode-CJorRGa5.css                                                               92.98 kB │ gzip:  12.88 kB
+dist/assets/index-BAUc_cOF.css                                                                  189.41 kB │ gzip:  24.04 kB
+dist/assets/orientation.worklist-kQScP1_F.js                                                      0.14 kB │ gzip:   0.15 kB
+dist/assets/guideBus-K0LZ2j4g.js                                                                  0.21 kB │ gzip:   0.17 kB
+dist/assets/businessHeader-CXNmd2Zr.js                                                            0.22 kB │ gzip:   0.19 kB
+dist/assets/graduation-batch-context-DYetVBLq.js                                                  0.23 kB │ gzip:   0.23 kB
+dist/assets/permission-3NcfiyeZ.js                                                                0.24 kB │ gzip:   0.20 kB
+dist/assets/graduation-mentor.constants-4YbY9Dls.js                                               0.34 kB │ gzip:   0.23 kB
+dist/assets/workflow.helpers-CFn67GnC.js                                                          0.35 kB │ gzip:   0.28 kB
+dist/assets/unconfirmedWrite-Dez6FZXW.js                                                          0.38 kB │ gzip:   0.25 kB
+dist/assets/permission-BdQJqam2.js                                                                0.39 kB │ gzip:   0.29 kB
+dist/assets/LoadingState-gnH71G_S.js                                                              0.44 kB │ gzip:   0.34 kB
+dist/assets/systemRelationshipNavigation-UClY531O.js                                              0.55 kB │ gzip:   0.37 kB
+dist/assets/textbookNavigation-rmGKsL_d.js                                                        0.55 kB │ gzip:   0.33 kB
+dist/assets/StudentAffairsStatsView-BgXzkRWo.js                                                   0.55 kB │ gzip:   0.34 kB
+dist/assets/program-quality.api-BgGJY8oE.js                                                       0.57 kB │ gzip:   0.38 kB
+dist/assets/routeState-gIlEmqnT.js                                                                0.58 kB │ gzip:   0.38 kB
+dist/assets/AppCard-DZCiX5KR.js                                                                   0.59 kB │ gzip:   0.39 kB
+dist/assets/phoneGovernance.api-dT0U03h3.js                                                       0.60 kB │ gzip:   0.27 kB
+dist/assets/academic-affairs-term-detail.api-5-c__gj-.js                                          0.60 kB │ gzip:   0.37 kB
+dist/assets/academicStudentLabels-BgDBGcrV.js                                                     0.61 kB │ gzip:   0.39 kB
+dist/assets/grade-identity.api-BBCvcmYS.js                                                        0.61 kB │ gzip:   0.40 kB
+dist/assets/systemP1Closure.api-CWU9AhEy.js                                                       0.63 kB │ gzip:   0.38 kB
+dist/assets/term-calendar-convenience.api-B92uUQtL.js                                             0.65 kB │ gzip:   0.42 kB
+dist/assets/BusinessMetrics-BPjQNJI7.js                                                           0.65 kB │ gzip:   0.50 kB
+dist/assets/conflictGuard-D-taViZD.js                                                             0.66 kB │ gzip:   0.49 kB
+dist/assets/PermissionTag-CJE6Vzj4.js                                                             0.68 kB │ gzip:   0.44 kB
+dist/assets/stats.api-CttA7oAj.js                                                                 0.68 kB │ gzip:   0.40 kB
+dist/assets/queueContext-DP6zpUWY.js                                                              0.68 kB │ gzip:   0.39 kB
+dist/assets/resultState-CU272Nwu.js                                                               0.71 kB │ gzip:   0.32 kB
+dist/assets/todoTypedRouteBridge-DJliTE5h.js                                                      0.72 kB │ gzip:   0.42 kB
+dist/assets/AppHelpTooltip-CSoWDE5j.js                                                            0.74 kB │ gzip:   0.48 kB
+dist/assets/Error419View-DHrzRT8V.js                                                              0.74 kB │ gzip:   0.44 kB
+dist/assets/Error500View-CC1JDW--.js                                                              0.76 kB │ gzip:   0.48 kB
+dist/assets/Error401View-B4MtTR-i.js                                                              0.77 kB │ gzip:   0.47 kB
+dist/assets/status-change-convenience.api-D4_RQKP5.js                                             0.78 kB │ gzip:   0.46 kB
+dist/assets/Error404View-Dt9QQSQT.js                                                              0.79 kB │ gzip:   0.50 kB
+dist/assets/SystemWorkspaceFrame-BgJR7Q0R.js                                                      0.79 kB │ gzip:   0.46 kB
+dist/assets/graduation-topic.constants-SfBdNMtz.js                                                0.79 kB │ gzip:   0.47 kB
+dist/assets/academic-archive-correction.api-BXiLuoug.js                                           0.80 kB │ gzip:   0.43 kB
+dist/assets/position.constants-hBhf9f8V.js                                                        0.84 kB │ gzip:   0.43 kB
+dist/assets/LeaveProgressContext-DrxZxyo9.js                                                      0.84 kB │ gzip:   0.62 kB
+dist/assets/pagedRead-CujY-Hll.js                                                                 0.85 kB │ gzip:   0.59 kB
+dist/assets/AppTemplateChips-DJ0IZBM_.js                                                          0.87 kB │ gzip:   0.57 kB
+dist/assets/AaOperationReceipt-kCNN84-t.js                                                        0.87 kB │ gzip:   0.54 kB
+dist/assets/AccountImportBoundaryNotice-syjUz6CA.js                                               0.87 kB │ gzip:   0.65 kB
+dist/assets/graduation-topic-change.api-CJkOyTEC.js                                               0.88 kB │ gzip:   0.51 kB
+dist/assets/AppButton-BDL8RuRF.js                                                                 0.88 kB │ gzip:   0.52 kB
+dist/assets/AppActionBar-DmtW8EM2.js                                                              0.90 kB │ gzip:   0.53 kB
+dist/assets/PlatformMetricStrip-Yzy06YM7.js                                                       0.92 kB │ gzip:   0.60 kB
+dist/assets/TableActionColumn-CunvbPYP.js                                                         0.92 kB │ gzip:   0.59 kB
+dist/assets/TableActionColumn-DmK_A5NY.js                                                         0.93 kB │ gzip:   0.59 kB
+dist/assets/reviewQueue-CvhbrQYD.js                                                               0.94 kB │ gzip:   0.54 kB
+dist/assets/DualPaneWorkspace-D6EPlMwf.js                                                         1.01 kB │ gzip:   0.52 kB
+dist/assets/DualPaneWorkspace-IdySoumT.js                                                         1.01 kB │ gzip:   0.53 kB
+dist/assets/permission.context-C8GvCIxK.js                                                        1.04 kB │ gzip:   0.51 kB
+dist/assets/BatchActionBar-Drf1Wqit.js                                                            1.04 kB │ gzip:   0.63 kB
+dist/assets/form-state-C29f4TIG.js                                                                1.04 kB │ gzip:   0.72 kB
+dist/assets/SplitWorkspace-Bw-PAEhC.js                                                            1.05 kB │ gzip:   0.57 kB
+dist/assets/AaTeachingTaskObjectBar-CKnHIzMT.js                                                   1.05 kB │ gzip:   0.54 kB
+dist/assets/enterprise-eval.api-B0qoSCdJ.js                                                       1.06 kB │ gzip:   0.63 kB
+dist/assets/AppBadge-CWjN7t7K.js                                                                  1.07 kB │ gzip:   0.59 kB
+dist/assets/platformSecurityOps.api-D4c3e_6u.js                                                   1.07 kB │ gzip:   0.49 kB
+dist/assets/graduation-template.api-CBPFJ4rn.js                                                   1.07 kB │ gzip:   0.55 kB
+dist/assets/taskFacts-U9sHG05S.js                                                                 1.10 kB │ gzip:   0.64 kB
+dist/assets/AppSectionHeader-9eSkm4Vm.js                                                          1.10 kB │ gzip:   0.53 kB
+dist/assets/portalConfig-Cyg7e3ei.js                                                              1.11 kB │ gzip:   0.56 kB
+dist/assets/Error403View-DqpCScJL.js                                                              1.11 kB │ gzip:   0.63 kB
+dist/assets/BreakdownTable-DgrqgI-0.js                                                            1.12 kB │ gzip:   0.68 kB
+dist/assets/scheduleTruthPresentation-CssRKYzT.js                                                 1.13 kB │ gzip:   0.61 kB
+dist/assets/AaScheduleObjectBar-B1qtkLK2.js                                                       1.14 kB │ gzip:   0.57 kB
+dist/assets/AppFormSection-c4DAhKDo.js                                                            1.14 kB │ gzip:   0.59 kB
+dist/assets/AaObjectContext-yTBi5Uh7.js                                                           1.16 kB │ gzip:   0.59 kB
+dist/assets/teaching-task-workbench.api-BRAeelHM.js                                               1.16 kB │ gzip:   0.51 kB
+dist/assets/SystemStudentImportView-dpMgMhXG.js                                                   1.16 kB │ gzip:   0.61 kB
+dist/assets/SystemTeacherImportView-DGgFuQEg.js                                                   1.16 kB │ gzip:   0.61 kB
+dist/assets/GraduationStageRail-DFVNLTSp.js                                                       1.17 kB │ gzip:   0.79 kB
+dist/assets/graduation-student.constants-Di9ZCxYx.js                                              1.17 kB │ gzip:   0.54 kB
+dist/assets/graduation-material.constants-C_pOT2IV.js                                             1.18 kB │ gzip:   0.74 kB
+dist/assets/AppStepBar-B5d-9M6U.js                                                                1.19 kB │ gzip:   0.67 kB
+dist/assets/AppTimePicker-DDqPnhbw.js                                                             1.23 kB │ gzip:   0.70 kB
+dist/assets/AppRiskTag-6kGQYdDI.js                                                                1.25 kB │ gzip:   0.77 kB
+dist/assets/aa-wall-runtime-Su4RjTxk.js                                                           1.27 kB │ gzip:   0.75 kB
+dist/assets/teaching-DYUK-6it.js                                                                  1.27 kB │ gzip:   0.63 kB
+dist/assets/workContext-NHUgHkLJ.js                                                               1.28 kB │ gzip:   0.66 kB
+dist/assets/auth.context-C8JRA_hP.js                                                              1.32 kB │ gzip:   0.75 kB
+dist/assets/ModuleToolbar-Cg8zNMIC.js                                                             1.33 kB │ gzip:   0.78 kB
+dist/assets/xlsxDownload-CkyjMUup.js                                                              1.35 kB │ gzip:   0.80 kB
+dist/assets/agreement-template.api-Df7iwUdt.js                                                    1.36 kB │ gzip:   0.61 kB
+dist/assets/AppTimeline-PS-XjzlX.js                                                               1.36 kB │ gzip:   0.75 kB
+dist/assets/AppInlineAlert-ClK-FTK4.js                                                            1.39 kB │ gzip:   0.71 kB
+dist/assets/EmptyState-CtjYfH46.js                                                                1.39 kB │ gzip:   0.57 kB
+dist/assets/NoPermissionState-B7uyE3Pg.js                                                         1.40 kB │ gzip:   0.67 kB
+dist/assets/NoPermissionState-D1kDOkK9.js                                                         1.40 kB │ gzip:   0.67 kB
+dist/assets/textbook-p0.api-CY2pTXbE.js                                                           1.41 kB │ gzip:   0.66 kB
+dist/assets/AppDescriptionList-BKicfxVG.js                                                        1.43 kB │ gzip:   0.80 kB
+dist/assets/AdminEmploymentLayout-DwN18WXd.js                                                     1.44 kB │ gzip:   0.79 kB
+dist/assets/plan-insurance.api-BpuhrcLN.js                                                        1.44 kB │ gzip:   0.62 kB
+dist/assets/AppCopyableText-CbWbTPKX.js                                                           1.45 kB │ gzip:   0.88 kB
+dist/assets/AppChartCard-BC4NLwOl.js                                                              1.46 kB │ gzip:   0.73 kB
+dist/assets/WorkflowStateBlock-CN0Nl_Pj.js                                                        1.48 kB │ gzip:   0.95 kB
+dist/assets/AaTeachingTaskStageRail-Crzy2vs_.js                                                   1.49 kB │ gzip:   0.93 kB
+dist/assets/graduation-batch.api-Cf2ebS9g.js                                                      1.53 kB │ gzip:   0.66 kB
+dist/assets/AcademicObjectResponsibility-CJXcPQpC.js                                              1.53 kB │ gzip:   0.78 kB
+dist/assets/PlatformSyncTaskView-6AdHe8ua.js                                                      1.54 kB │ gzip:   0.57 kB
+dist/assets/PlatformApiAccessView-Bb8ie_vE.js                                                     1.55 kB │ gzip:   0.57 kB
+dist/assets/PlatformIntegrationView-4OI-8QHa.js                                                   1.55 kB │ gzip:   0.57 kB
+dist/assets/material-center.api-C7MTkseF.js                                                       1.55 kB │ gzip:   0.85 kB
+dist/assets/AppExportButton-DvVVU97i.js                                                           1.55 kB │ gzip:   0.89 kB
+dist/assets/AppRadioGroup-C9QyZlSY.js                                                             1.57 kB │ gzip:   0.82 kB
+dist/assets/chartPresets-DopNBqSz.js                                                              1.58 kB │ gzip:   0.77 kB
+dist/assets/ApprovalTimeline-Buc64c9f.js                                                          1.59 kB │ gzip:   0.83 kB
+dist/assets/AaScheduleStageRail-LkyhV578.js                                                       1.60 kB │ gzip:   0.96 kB
+dist/assets/AppPrintButton-DP4gUlGl.js                                                            1.62 kB │ gzip:   0.79 kB
+dist/assets/AppTextarea-D92vsOoY.js                                                               1.63 kB │ gzip:   0.82 kB
+dist/assets/AppQuickFilterChips-jVcVxY2F.js                                                       1.64 kB │ gzip:   0.87 kB
+dist/assets/SecurityErrorShell-PGex9kvw.js                                                        1.64 kB │ gzip:   0.90 kB
+dist/assets/message-center.constants-BrE3bBoo.js                                                  1.66 kB │ gzip:   0.97 kB
+dist/assets/academic-display.constants-K2DZfbXc.js                                                1.67 kB │ gzip:   0.96 kB
+dist/assets/AaOverviewPageFrame-Eq2iU8b-.js                                                       1.68 kB │ gzip:   0.73 kB
+dist/assets/AppPermissionButton-CNpetXPR.js                                                       1.72 kB │ gzip:   0.86 kB
+dist/assets/ModuleHero-GopY8Rje.js                                                                1.72 kB │ gzip:   0.78 kB
+dist/assets/schoolIam.api-CqsIgXs7.js                                                             1.74 kB │ gzip:   0.80 kB
+dist/assets/SecureFileList-2dDhPiqO.js                                                            1.75 kB │ gzip:   0.95 kB
+dist/assets/routeContext-CkC4GIvK.js                                                              1.76 kB │ gzip:   0.68 kB
+dist/assets/insertAtCursor-BaxTBw_R.js                                                            1.77 kB │ gzip:   0.96 kB
+dist/assets/AppExportConfirm-3e7F2xt2.js                                                          1.77 kB │ gzip:   1.05 kB
+dist/assets/AppFilePreview-CT80K7ci.js                                                            1.79 kB │ gzip:   0.99 kB
+dist/assets/AppIcon-DZT-TIyg.js                                                                   1.79 kB │ gzip:   0.96 kB
+dist/assets/message-campaign.api-Ce0STsRJ.js                                                      1.81 kB │ gzip:   0.46 kB
+dist/assets/AppDrawer-weoK6eNc.js                                                                 1.84 kB │ gzip:   0.90 kB
+dist/assets/AppDateDisplay-DHIZbY_5.js                                                            1.85 kB │ gzip:   0.87 kB
+dist/assets/AppCheckboxGroup-DYW4wi_e.js                                                          1.85 kB │ gzip:   0.91 kB
+dist/assets/PlatformDashboardView-BFaX2Ky4.js                                                     1.85 kB │ gzip:   0.67 kB
+dist/assets/academic-schedule-change.api-D_oTjnxP.js                                              1.85 kB │ gzip:   0.90 kB
+dist/assets/AppSelect-C_LGVV2F.js                                                                 1.88 kB │ gzip:   0.94 kB
+dist/assets/employment.constants-CzPNVBz3.js                                                      1.88 kB │ gzip:   1.13 kB
+dist/assets/course-program-CPL3ssP6.js                                                            1.90 kB │ gzip:   1.09 kB
+dist/assets/AppSubmitBar-BZ2iMCja.js                                                              1.91 kB │ gzip:   0.88 kB
+dist/assets/FileUploader-r_PtxL_O.js                                                              1.93 kB │ gzip:   1.02 kB
+dist/assets/AppSensitiveText-BevbQYiP.js                                                          1.96 kB │ gzip:   0.98 kB
+dist/assets/ErrorState-D2jdZMdR.js                                                                1.96 kB │ gzip:   0.86 kB
+dist/assets/attendance.api-B70u5Kes.js                                                            1.98 kB │ gzip:   0.74 kB
+dist/assets/AppBatchActionBar-DMKMwNdv.js                                                         2.00 kB │ gzip:   1.01 kB
+dist/assets/queryParams-QjXC2WhI.js                                                               2.00 kB │ gzip:   0.73 kB
+dist/assets/agreement.api-DA_EyGkw.js                                                             2.02 kB │ gzip:   0.74 kB
+dist/assets/AppStackedBarChart-DV9JfTWG.js                                                        2.03 kB │ gzip:   1.03 kB
+dist/assets/grade-review-4HmKXK5I.js                                                              2.05 kB │ gzip:   1.22 kB
+dist/assets/AppSearchBox-Ck0-9xNV.js                                                              2.08 kB │ gzip:   1.00 kB
+dist/assets/class.api-DV1gvXDy.js                                                                 2.18 kB │ gzip:   0.74 kB
+dist/assets/WorkspaceConfirmDialog-oA1DAByx.js                                                    2.21 kB │ gzip:   1.05 kB
+dist/assets/AaLabBookingView-D4CJofH5.js                                                          2.24 kB │ gzip:   0.87 kB
+dist/assets/RouteAccessNotice-DQ0aPxk1.js                                                         2.24 kB │ gzip:   1.18 kB
+dist/assets/AaClassroomBookingView-SI_057rE.js                                                    2.25 kB │ gzip:   0.89 kB
+dist/assets/DeleteConfirmDialog-B0J2NGDy.js                                                       2.30 kB │ gzip:   0.99 kB
+dist/assets/DeleteConfirmDialog-Cj54_q9S.js                                                       2.35 kB │ gzip:   0.97 kB
+dist/assets/AppForm-BSBwmcZd.js                                                                   2.35 kB │ gzip:   1.19 kB
+dist/assets/AppSectionCard-CZIZsnr5.js                                                            2.38 kB │ gzip:   1.02 kB
+dist/assets/AaExamStageRail-Cr4bUt6j.js                                                           2.41 kB │ gzip:   1.14 kB
+dist/assets/leave-presentation-69SRCicZ.js                                                        2.43 kB │ gzip:   1.14 kB
+dist/assets/AppTextInput-B-CBAhfp.js                                                              2.44 kB │ gzip:   1.12 kB
+dist/assets/AppStepGuide-D-MMVnAV.js                                                              2.46 kB │ gzip:   1.09 kB
+dist/assets/status-change-D7Q8ODUL.js                                                             2.48 kB │ gzip:   1.23 kB
+dist/assets/FilePreviewer-BTrr-gGJ.js                                                             2.49 kB │ gzip:   1.17 kB
+dist/assets/ReviewQueueBar-C6FAT1qo.js                                                            2.49 kB │ gzip:   1.18 kB
+dist/assets/MessageCenterLayout-C9ho-aof.js                                                       2.52 kB │ gzip:   1.31 kB
+dist/assets/grade-graduation-BzHXygv_.js                                                          2.54 kB │ gzip:   1.36 kB
+dist/assets/AppMetricCard-Db0OXduw.js                                                             2.54 kB │ gzip:   1.05 kB
+dist/assets/viewer-contract-CHg2zn4F.js                                                           2.57 kB │ gzip:   1.18 kB
+dist/assets/presetPrompts-BPiGVFi2.js                                                             2.57 kB │ gzip:   1.40 kB
+dist/assets/operations.api-DZS3J5cD.js                                                            2.59 kB │ gzip:   1.18 kB
+dist/assets/AppOrgCascader-BmykV1_K.js                                                            2.60 kB │ gzip:   1.35 kB
+dist/assets/AppDatePicker-mxNhv1r9.js                                                             2.67 kB │ gzip:   1.23 kB
+dist/assets/AppDateTimePicker-BwBBDBzo.js                                                         2.69 kB │ gzip:   1.26 kB
+dist/assets/graduation-topic-round.api-BCQAlNib.js                                                2.70 kB │ gzip:   1.04 kB
+dist/assets/recruitmentCampaign.constants-BH-ShZ0g.js                                             2.72 kB │ gzip:   1.34 kB
+dist/assets/leave-risk.api-CA-qwkgB.js                                                            2.73 kB │ gzip:   0.90 kB
+dist/assets/orgAdapters-8UHb34JM.js                                                               2.75 kB │ gzip:   1.16 kB
+dist/assets/guidance-visit.api-iZuLPXJd.js                                                        2.76 kB │ gzip:   0.94 kB
+dist/assets/ColumnSettings-2pI6l824.js                                                            2.80 kB │ gzip:   1.26 kB
+dist/assets/makeup-evidence-BrciDWfC.js                                                           2.82 kB │ gzip:   1.41 kB
+dist/assets/graduation-mentor.api-Cwh2Qw3A.js                                                     2.84 kB │ gzip:   1.08 kB
+dist/assets/AppAuditTrail-BILuROtL.js                                                             2.87 kB │ gzip:   1.38 kB
+dist/assets/position.api-kNqH3N_6.js                                                              2.89 kB │ gzip:   1.15 kB
+dist/assets/academicFlowContext-vx5I-dto.js                                                       2.90 kB │ gzip:   1.58 kB
+dist/assets/AdminStudentLayout-CjRNo56Q.js                                                        2.92 kB │ gzip:   1.40 kB
+dist/assets/graduation-taskbook.api-BcPIgat_.js                                                   2.95 kB │ gzip:   0.92 kB
+dist/assets/tenantWorkspace-CZWQWIyQ.js                                                           2.99 kB │ gzip:   1.47 kB
+dist/assets/navigation-B6lJ0xUA.js                                                                3.05 kB │ gzip:   1.59 kB
+dist/assets/AppFormItem-uAQ47dMo.js                                                               3.06 kB │ gzip:   1.32 kB
+dist/assets/AppPagination-CpbFNryn.js                                                             3.06 kB │ gzip:   1.39 kB
+dist/assets/AaPrintScheduleView-C27kKu2B.js                                                       3.08 kB │ gzip:   1.32 kB
+dist/assets/graduationBatch-DfVVGdj-.js                                                           3.08 kB │ gzip:   1.07 kB
+dist/assets/ProposalReviewDetailView-BoUfVNFu.js                                                  3.09 kB │ gzip:   1.37 kB
+dist/assets/orientation.constants-BuSpNP8a.js                                                     3.09 kB │ gzip:   1.61 kB
+dist/assets/AccountCandidatePicker-Dz06u-Me.js                                                    3.10 kB │ gzip:   1.50 kB
+dist/assets/graduation-more.api-DkSUxTrN.js                                                       3.12 kB │ gzip:   0.96 kB
+dist/assets/AppNumberInput-84XOcRsE.js                                                            3.15 kB │ gzip:   1.30 kB
+dist/assets/ActionReceipt-B0j0HSbB.js                                                             3.16 kB │ gzip:   1.43 kB
+dist/assets/AppFileList-lR-IuaTi.js                                                               3.16 kB │ gzip:   1.47 kB
+dist/assets/EditDrawer-Bdu5UmjN.js                                                                3.21 kB │ gzip:   1.44 kB
+dist/assets/graduation-topic.api-Cjcf0C1w.js                                                      3.21 kB │ gzip:   1.22 kB
+dist/assets/ModuleSummaryStrip-CSpNv73Y.js                                                        3.24 kB │ gzip:   1.48 kB
+dist/assets/workflow.constants-ZPDNX-i0.js                                                        3.29 kB │ gzip:   1.37 kB
+dist/assets/AdminDataCenterLayout-DWQvpo5L.js                                                     3.35 kB │ gzip:   1.49 kB
+dist/assets/AaTranscriptPrintView-BfVXY4Q2.js                                                     3.43 kB │ gzip:   1.49 kB
+dist/assets/AdminApprovalLayout-aGh5E7_Z.js                                                       3.45 kB │ gzip:   1.51 kB
+dist/assets/AppDateRangePicker-COPVpV2T.js                                                        3.49 kB │ gzip:   1.49 kB
+dist/assets/ExportDialog-Kx7rKPp1.js                                                              3.52 kB │ gzip:   1.73 kB
+dist/assets/grade-command-recovery-D4M050Xe.js                                                    3.52 kB │ gzip:   1.55 kB
+dist/assets/dataCenter.api-CNaCYb5W.js                                                            3.54 kB │ gzip:   1.50 kB
+dist/assets/internship-student.api-UCIhnJw5.js                                                    3.64 kB │ gzip:   1.43 kB
+dist/assets/ModulePageShell-D_MZmogs.js                                                           3.65 kB │ gzip:   1.46 kB
+dist/assets/workbench.api-Dglj18hY.js                                                             3.72 kB │ gzip:   1.84 kB
+dist/assets/AppDeadlinePicker-RcRP_O8u.js                                                         3.72 kB │ gzip:   1.67 kB
+dist/assets/vendor-pinia-DahltK7h.js                                                              3.73 kB │ gzip:   1.93 kB
+dist/assets/AppMultiSelect-LKACNIqr.js                                                            3.75 kB │ gzip:   1.65 kB
+dist/assets/GraduationBatchStrip-QUWdjZNj.js                                                      3.77 kB │ gzip:   1.61 kB
+dist/assets/AaScheduleGrid-e2En1l7e.js                                                            3.80 kB │ gzip:   1.63 kB
+dist/assets/AdminWorkflowLayout-DjKgylPz.js                                                       3.81 kB │ gzip:   1.61 kB
+dist/assets/match.api-DSwfxtLB.js                                                                 3.83 kB │ gzip:   1.43 kB
+dist/assets/GraduationMorePeerView-aYjQ3zM0.js                                                    3.84 kB │ gzip:   1.55 kB
+dist/assets/MessageSettingsView-DMvosBEo.js                                                       3.91 kB │ gzip:   1.72 kB
+dist/assets/FormFields-63hJHy_M.js                                                                3.92 kB │ gzip:   1.39 kB
+dist/assets/TopicLibCategoryView-B6rP6Xd8.js                                                      3.95 kB │ gzip:   1.72 kB
+dist/assets/PlatformControlDictionaries-0INX4e6i.js                                               3.95 kB │ gzip:   1.78 kB
+dist/assets/graduation-defense-grade.api-DutjABtY.js                                              3.95 kB │ gzip:   1.49 kB
+dist/assets/TopicLibCapacityView-hYz0nMzL.js                                                      3.97 kB │ gzip:   1.77 kB
+dist/assets/MessageOutboxView-BCg9r06y.js                                                         4.00 kB │ gzip:   1.85 kB
+dist/assets/AppChinaRegionPicker-LU_vEshR.js                                                      4.01 kB │ gzip:   1.59 kB
+dist/assets/todoFilterSemantics-DIoZmLGT.js                                                       4.02 kB │ gzip:   1.08 kB
+dist/assets/internshipBatch-BtGvIkWd.js                                                           4.03 kB │ gzip:   1.50 kB
+dist/assets/graduation-student.api-DH1NNdFw.js                                                    4.07 kB │ gzip:   1.50 kB
+dist/assets/AppExcelImportDrawer.vue_vue_type_style_index_0_scoped_61c5e4a4_lang-DkKzvyxZ.js      4.15 kB │ gzip:   2.17 kB
+dist/assets/AdminOrientationLayout-DGDocArU.js                                                    4.17 kB │ gzip:   1.93 kB
+dist/assets/leave.api-SqM-k4Xt.js                                                                 4.21 kB │ gzip:   1.93 kB
+dist/assets/ImplementationProjectSummary-CSuj2IB-.js                                              4.23 kB │ gzip:   1.82 kB
+dist/assets/PlatformTenantMigrationView-Bc6Z-Zec.js                                               4.26 kB │ gzip:   1.96 kB
+dist/assets/dateUtils-Bnmv_sWz.js                                                                 4.38 kB │ gzip:   1.81 kB
+dist/assets/DataTable-BymIzdVn.js                                                                 4.38 kB │ gzip:   1.66 kB
+dist/assets/GraduationMoreExpertView-D29QwBAf.js                                                  4.40 kB │ gzip:   1.75 kB
+dist/assets/compliance.api-CYZGUGPN.js                                                            4.40 kB │ gzip:   1.48 kB
+dist/assets/PlatformControlSettings-CEZBtb4x.js                                                   4.40 kB │ gzip:   1.65 kB
+dist/assets/TopicLibAttachmentsView-Dk809im0.js                                                   4.41 kB │ gzip:   1.95 kB
+dist/assets/AaRosterStatusView-CAHSYR8t.js                                                        4.44 kB │ gzip:   2.06 kB
+dist/assets/TopicManageFormView-DC5vXYGn.js                                                       4.51 kB │ gzip:   1.83 kB
+dist/assets/TopicManageDetailView-CzvKmdzD.js                                                     4.52 kB │ gzip:   1.86 kB
+dist/assets/TopicLibRequirementsView-DduiT3vz.js                                                  4.55 kB │ gzip:   1.88 kB
+dist/assets/PlatformControlPackages-D3bxH0MN.js                                                   4.56 kB │ gzip:   1.87 kB
+dist/assets/SystemSensitiveAuditView-Bic_3sEk.js                                                  4.70 kB │ gzip:   2.14 kB
+dist/assets/AppConfirmDialog-Ckb9Ua0y.js                                                          4.73 kB │ gzip:   1.97 kB
+dist/assets/dataExchange.api-DVWcffzU.js                                                          4.83 kB │ gzip:   2.13 kB
+dist/assets/AaMakeupPrintView-52L5NSw3.js                                                         4.83 kB │ gzip:   2.06 kB
+dist/assets/ForcePasswordChangeView-kiaeAPZH.js                                                   4.85 kB │ gzip:   2.20 kB
+dist/assets/WorkflowPermissionsView-CYQ0rldG.js                                                   4.89 kB │ gzip:   2.16 kB
+dist/assets/DisciplineStatsView-7tCs1kbB.js                                                       4.92 kB │ gzip:   2.25 kB
+dist/assets/GraduationAuditLogView-Bsb-fg9o.js                                                    4.96 kB │ gzip:   2.13 kB
+dist/assets/AppStatusTag-Bn5O5DUi.js                                                              4.96 kB │ gzip:   1.89 kB
+dist/assets/StudentImportGatewayView-Co4vVQpf.js                                                  4.97 kB │ gzip:   2.27 kB
+dist/assets/TalkStatsView-tp84dN7V.js                                                             4.97 kB │ gzip:   2.21 kB
+dist/assets/campaignForm-CTmR9vB0.js                                                              4.97 kB │ gzip:   2.25 kB
+dist/assets/AdvancedFilter-DmR4h7Bb.js                                                            5.10 kB │ gzip:   1.90 kB
+dist/assets/PlatformControlAudit-B1wfrHge.js                                                      5.10 kB │ gzip:   2.26 kB
+dist/assets/MessageStatisticsView-BtpqZFQb.js                                                     5.11 kB │ gzip:   2.13 kB
+dist/assets/GraduationMentorDetailView-DsU1-xiW.js                                                5.12 kB │ gzip:   2.14 kB
+dist/assets/MentalStatsView-De5fi8O9.js                                                           5.28 kB │ gzip:   2.20 kB
+dist/assets/AaTaskConfirmView-vd852S5y.js                                                         5.33 kB │ gzip:   2.46 kB
+dist/assets/EmploymentDashboardView-Bk5tkx63.js                                                   5.33 kB │ gzip:   2.20 kB
+dist/assets/PlatformLoginView-CHasBXvj.js                                                         5.35 kB │ gzip:   2.41 kB
+dist/assets/MessageOpsView-BQrLG15N.js                                                            5.36 kB │ gzip:   2.28 kB
+dist/assets/GraduationTemplateFormView-z8vcQvJC.js                                                5.38 kB │ gzip:   2.18 kB
+dist/assets/AidStatsView-D95cu2MY.js                                                              5.39 kB │ gzip:   2.57 kB
+dist/assets/MessageTemplateView-C9Xu7nFN.js                                                       5.40 kB │ gzip:   2.26 kB
+dist/assets/TopicLibDetailView-znO06jLf.js                                                        5.41 kB │ gzip:   2.17 kB
+dist/assets/LeaveStatsView-CWpAlvDU.js                                                            5.41 kB │ gzip:   2.41 kB
+dist/assets/PlatformGovernanceView-ok8jBMfY.js                                                    5.42 kB │ gzip:   2.19 kB
+dist/assets/TopicRoundFormView-gn3xOwI0.js                                                        5.43 kB │ gzip:   2.18 kB
+dist/assets/ClassListView-CozbgIK0.js                                                             5.49 kB │ gzip:   2.39 kB
+dist/assets/GraduationFormPageShell-BVoyJv_o.js                                                   5.52 kB │ gzip:   1.81 kB
+dist/assets/GraduationMentorEvalView-sG9gKM6_.js                                                  5.54 kB │ gzip:   2.34 kB
+dist/assets/academicFlowRegistry-BjNCLMlC.js                                                      5.54 kB │ gzip:   2.55 kB
+dist/assets/AaTermSwitchLogView-C3exNLc_.js                                                       5.56 kB │ gzip:   2.54 kB
+dist/assets/graduation-risk-archive.api-Dh-CpEqd.js                                               5.58 kB │ gzip:   2.23 kB
+dist/assets/PlatformCapabilityView-BwdsrYPK.js                                                    5.58 kB │ gzip:   2.57 kB
+dist/assets/WorkflowHomeView-RBUdWOZr.js                                                          5.72 kB │ gzip:   2.38 kB
+dist/assets/AppGlobalState-B-LqCHhm.js                                                            5.72 kB │ gzip:   2.30 kB
+dist/assets/AaRoomScheduleView-BU46Sjj3.js                                                        5.79 kB │ gzip:   2.57 kB
+dist/assets/PlatformFairUseView-CITQYuYD.js                                                       5.81 kB │ gzip:   2.37 kB
+dist/assets/ActivityStatsView-B4-oqG57.js                                                         5.86 kB │ gzip:   2.48 kB
+dist/assets/PlatformControlNotices-CG1LZ55J.js                                                    5.94 kB │ gzip:   2.39 kB
+dist/assets/StudentArchivePackageView-8Wb8W9TG.js                                                 5.94 kB │ gzip:   2.64 kB
+dist/assets/AaStudentScheduleView-biXqtTyx.js                                                     5.98 kB │ gzip:   2.61 kB
+dist/assets/phoneBindingFlow-B55dK-Xa.js                                                          6.02 kB │ gzip:   2.72 kB
+dist/assets/AaScheduleChangeNoticePrintView-BeYjdizT.js                                           6.03 kB │ gzip:   2.57 kB
+dist/assets/EditDrawer-D6Ty2wsO.js                                                                6.04 kB │ gzip:   2.04 kB
+dist/assets/GraduationMentorFormView-CZNm8RcL.js                                                  6.07 kB │ gzip:   2.18 kB
+dist/assets/TopicChangeDetailView-CyQfeIy9.js                                                     6.11 kB │ gzip:   2.36 kB
+dist/assets/AaStatusChangePrintView-BKpGpOzc.js                                                   6.17 kB │ gzip:   2.56 kB
+dist/assets/AaStatusChangeArchiveView-t5_aVCzk.js                                                 6.19 kB │ gzip:   2.83 kB
+dist/assets/AaCalendarMonth-BOTbUNuM.js                                                           6.25 kB │ gzip:   2.84 kB
+dist/assets/MentalWarningSummaryView-D9sbHjUk.js                                                  6.31 kB │ gzip:   2.76 kB
+dist/assets/GraduationStatsView-BxHyHLAW.js                                                       6.36 kB │ gzip:   2.65 kB
+dist/assets/ExportDialog-B2xOQyLC.js                                                              6.41 kB │ gzip:   2.79 kB
+dist/assets/PlatformFoundationOpsView-spPpqkK5.js                                                 6.44 kB │ gzip:   2.64 kB
+dist/assets/TalkLedgerView-7jzW3f5r.js                                                            6.45 kB │ gzip:   2.74 kB
+dist/assets/OrientationNoShowView-U9rr_APM.js                                                     6.46 kB │ gzip:   2.70 kB
+dist/assets/ApprovalDashboardView-CRVtePIj.js                                                     6.48 kB │ gzip:   2.79 kB
+dist/assets/AidLedgerView-CG3vdujq.js                                                             6.49 kB │ gzip:   2.81 kB
+dist/assets/KeyStudentFollowView-BSHXLM7U.js                                                      6.49 kB │ gzip:   2.64 kB
+dist/assets/AaClassScheduleView-CPw0WFJF.js                                                       6.51 kB │ gzip:   2.72 kB
+dist/assets/FundingLedgerView-B2GSjuHb.js                                                         6.54 kB │ gzip:   2.79 kB
+dist/assets/AaRosterChangeResultListView-CdVQVrAS.js                                              6.57 kB │ gzip:   2.82 kB
+dist/assets/StudentOverviewView-C0PXZ98n.js                                                       6.59 kB │ gzip:   2.78 kB
+dist/assets/platform-display.constants-BfwRvDn8.js                                                6.60 kB │ gzip:   3.40 kB
+dist/assets/SystemSyncJobView-DVl8C50k.js                                                         6.66 kB │ gzip:   2.73 kB
+dist/assets/AaStatusChangeApprovalView-0Cq7GWGO.js                                                6.68 kB │ gzip:   2.89 kB
+dist/assets/GraduationSetupView-BZOhvtmm.js                                                       6.71 kB │ gzip:   3.11 kB
+dist/assets/DifficultStudentsView-DRbRyV49.js                                                     6.80 kB │ gzip:   2.87 kB
+dist/assets/AaRosterChangeRecordsView-BAic9CIM.js                                                 6.81 kB │ gzip:   2.91 kB
+dist/assets/AaDashboardView-B2FY-ZQL.js                                                           6.82 kB │ gzip:   3.05 kB
+dist/assets/AssignmentLogView-CR3lwd9I.js                                                         6.86 kB │ gzip:   2.92 kB
+dist/assets/AaStatusChangeTypedListView-CsL2LN5d.js                                               6.88 kB │ gzip:   2.96 kB
+dist/assets/OrientationDataView-BjeA8kOe.js                                                       6.89 kB │ gzip:   2.92 kB
+dist/assets/OrientationDormPreassignView-BbW8pbEH.js                                              6.89 kB │ gzip:   2.89 kB
+dist/assets/OrientationCheckinWorkspace-yE_c5Rw8.js                                               6.94 kB │ gzip:   2.84 kB
+dist/assets/ApprovalReturnedListView-D8dRq33g.js                                                  6.97 kB │ gzip:   3.02 kB
+dist/assets/AaTextbookDistributionGenerateView-BbiOpHV2.js                                        7.00 kB │ gzip:   2.96 kB
+dist/assets/studentAffairsB.api-CedNolXv.js                                                       7.12 kB │ gzip:   2.11 kB
+dist/assets/AaGradeFailListView-BxjD53YS.js                                                       7.12 kB │ gzip:   3.29 kB
+dist/assets/DisciplineLedgerView-BQHRvr2p.js                                                      7.12 kB │ gzip:   3.00 kB
+dist/assets/AaTermArchiveView-B-r7yNO6.js                                                         7.21 kB │ gzip:   3.06 kB
+dist/assets/GraduationMidtermByMentorView-HgkwzaUJ.js                                             7.22 kB │ gzip:   2.98 kB
+dist/assets/AaTeachingClassScheduleView-RfO3ko2l.js                                               7.24 kB │ gzip:   2.94 kB
+dist/assets/AaResourceStatsView-ChblC_Y6.js                                                       7.28 kB │ gzip:   2.71 kB
+dist/assets/FamilyReceiptView-CpGe9JsZ.js                                                         7.33 kB │ gzip:   3.17 kB
+dist/assets/OrientationNoticeView-ucFQqYil.js                                                     7.40 kB │ gzip:   3.05 kB
+dist/assets/AppExcelImportDrawer-BWCSuii0.js                                                      7.48 kB │ gzip:   2.92 kB
+dist/assets/SecondClassLedgerView-B0tYwMbW.js                                                     7.49 kB │ gzip:   3.17 kB
+dist/assets/AaTaskStatsView-BnQvSadf.js                                                           7.53 kB │ gzip:   2.95 kB
+dist/assets/AaRosterListView-D-BMK7kM.js                                                          7.53 kB │ gzip:   3.23 kB
+dist/assets/AaScheduleViewsView-DlYxwKz-.js                                                       7.54 kB │ gzip:   2.95 kB
+dist/assets/AaStatusChangeEffectiveView-8Wk1Cqa7.js                                               7.59 kB │ gzip:   3.22 kB
+dist/assets/MessageCampaignDetailView-Bsu2hmRQ.js                                                 7.61 kB │ gzip:   2.82 kB
+dist/assets/OrientationCheckinPointView-Br2hUt0x.js                                               7.73 kB │ gzip:   3.06 kB
+dist/assets/SystemDashboardView-BFQTmAby.js                                                       7.73 kB │ gzip:   3.20 kB
+dist/assets/graduation-material-center.api-B1TzI3pW.js                                            7.77 kB │ gzip:   2.72 kB
+dist/assets/AaRosterDetailView-CcjwauKl.js                                                        7.79 kB │ gzip:   3.27 kB
+dist/assets/AaScheduleChangeArchiveView-DZTLMEiV.js                                               7.84 kB │ gzip:   3.50 kB
+dist/assets/InternshipAgreementTemplateListView-DTN9ocJP.js                                       7.87 kB │ gzip:   3.29 kB
+dist/assets/RecruitmentCampaignListView-Kz00Q-vx.js                                               8.18 kB │ gzip:   3.30 kB
+dist/assets/SystemPlatformIntegrityView-CJNHKMhY.js                                               8.19 kB │ gzip:   3.71 kB
+dist/assets/pickerAdapters-BRTb88eb.js                                                            8.20 kB │ gzip:   2.39 kB
+dist/assets/AaStatusChangeListView-BGLTvo9J.js                                                    8.21 kB │ gzip:   3.49 kB
+dist/assets/PlatformControlFileStorage-DNrknIGM.js                                                8.21 kB │ gzip:   3.34 kB
+dist/assets/GraduationReviewAssignView-Cg20adeR.js                                                8.26 kB │ gzip:   3.32 kB
+dist/assets/WorkflowRolesView-BVv_pTgc.js                                                         8.38 kB │ gzip:   3.31 kB
+dist/assets/AaScheduleExportView-DnwgqztW.js                                                      8.53 kB │ gzip:   3.37 kB
+dist/assets/AaTermWeeksView-DegDgqS_.js                                                           8.58 kB │ gzip:   3.40 kB
+dist/assets/AaScheduleAdjustmentLogView-DN6iaqhd.js                                               8.61 kB │ gzip:   3.64 kB
+dist/assets/AidPublicityView-WP7bqKyJ.js                                                          8.65 kB │ gzip:   3.67 kB
+dist/assets/AttendanceExceptionListView-B7RgCv_A.js                                               8.65 kB │ gzip:   3.73 kB
+dist/assets/AaScheduleChangeStatsView-CkD23ykf.js                                                 8.77 kB │ gzip:   3.64 kB
+dist/assets/SystemAccountExceptionView-BhHRut45.js                                                8.78 kB │ gzip:   3.63 kB
+dist/assets/AaStatusChangeStatsView-BseYQzmk.js                                                   8.80 kB │ gzip:   3.52 kB
+dist/assets/SystemAuditView-BH0wtmRL.js                                                           8.80 kB │ gzip:   3.76 kB
+dist/assets/SystemDictionariesView-BNlvakfW.js                                                    8.83 kB │ gzip:   3.71 kB
+dist/assets/DormStatsView-D3KZdfMm.js                                                             8.83 kB │ gzip:   3.67 kB
+dist/assets/NationalStandardsView-C96lAQ1s.js                                                     8.88 kB │ gzip:   3.75 kB
+dist/assets/InternshipStudentMaterialEntryView-Bgh_3N8e.js                                        8.89 kB │ gzip:   3.45 kB
+dist/assets/AaAcademicYearView-DFD8PO1v.js                                                        8.94 kB │ gzip:   3.68 kB
+dist/assets/GraduationStudentFormView-FO0Sv0H8.js                                                 9.06 kB │ gzip:   3.62 kB
+dist/assets/AaGradeAuditView-UsVcViZm.js                                                          9.09 kB │ gzip:   3.98 kB
+dist/assets/OrientationFlowConfigView-DnnSexSf.js                                                 9.10 kB │ gzip:   3.74 kB
+dist/assets/NoPermissionState-Be-vqdAF.js                                                         9.28 kB │ gzip:   3.68 kB
+dist/assets/PublicHelpView-BEBuckNz.js                                                            9.30 kB │ gzip:   3.93 kB
+dist/assets/MentalCrisisView-0vDR4lpv.js                                                          9.32 kB │ gzip:   4.00 kB
+dist/assets/GuidancePlanView-3pyuPRMT.js                                                          9.36 kB │ gzip:   3.62 kB
+dist/assets/DataCenterLifecycleView-K5m5yGqU.js                                                   9.36 kB │ gzip:   3.57 kB
+dist/assets/InternshipBatchListView-C3-zvW4r.js                                                   9.40 kB │ gzip:   3.96 kB
+dist/assets/GraduationAdvisorScoreView-BUSRmFvH.js                                                9.44 kB │ gzip:   3.82 kB
+dist/assets/SystemBusinessRelationView-BfiN3r42.js                                                9.50 kB │ gzip:   3.91 kB
+dist/assets/AaTextbookDistributionDetailView-r6utvTR_.js                                          9.56 kB │ gzip:   3.79 kB
+dist/assets/GraduationStudentAssignTopicView-ImNjMtsL.js                                          9.58 kB │ gzip:   3.80 kB
+dist/assets/ApprovalDoneListView-CYwi4zqz.js                                                      9.59 kB │ gzip:   3.62 kB
+dist/assets/OrientationStatsView-BdQKiFoH.js                                                      9.61 kB │ gzip:   3.59 kB
+dist/assets/AdminPlatformLayout-Dx8klV_L.js                                                       9.86 kB │ gzip:   3.74 kB
+dist/assets/GraduationMentorConflictsView-DAlepX-I.js                                             9.88 kB │ gzip:   3.72 kB
+dist/assets/OrientationVerifyView-pnx1zw-n.js                                                    10.01 kB │ gzip:   3.97 kB
+dist/assets/WorkOrderView-DNXTvJDb.js                                                            10.02 kB │ gzip:   3.80 kB
+dist/assets/ProcessReportDetailView-DPSeFlCN.js                                                  10.04 kB │ gzip:   4.09 kB
+dist/assets/AaAcademicProgressWorkspace-DtMoS9UR.js                                              10.13 kB │ gzip:   4.05 kB
+dist/assets/StudentImportExportView-CsttDIKf.js                                                  10.14 kB │ gzip:   3.80 kB
+dist/assets/GraduationDocumentReviewWorkspace-DEqioD5v.js                                        10.22 kB │ gzip:   3.81 kB
+dist/assets/EmploymentMaterialDetailView-D-vrXrMo.js                                             10.24 kB │ gzip:   3.93 kB
+dist/assets/DataCenterRiskView-BtsJTLi2.js                                                       10.26 kB │ gzip:   3.75 kB
+dist/assets/SystemMigrationView-BBINzmCE.js                                                      10.32 kB │ gzip:   4.28 kB
+dist/assets/graduation.api-hgT2OXUb.js                                                           10.34 kB │ gzip:   3.49 kB
+dist/assets/ScheduleChangeEvidence-CwQsGdHn.js                                                   10.36 kB │ gzip:   4.17 kB
+dist/assets/AaTermFormView-QjQZmCsL.js                                                           10.48 kB │ gzip:   3.90 kB
+dist/assets/VolunteerRecordView-2ZKn0YJH.js                                                      10.51 kB │ gzip:   3.96 kB
+dist/assets/PlatformControlSecurity-Dpyc9GGH.js                                                  10.53 kB │ gzip:   4.13 kB
+dist/assets/StudentEditView-DXbhYONp.js                                                          10.55 kB │ gzip:   4.30 kB
+dist/assets/SystemDelegationView-Bp34N-I7.js                                                     10.55 kB │ gzip:   4.37 kB
+dist/assets/GraduationStudentDefenseView-Dg2wcdgv.js                                             10.57 kB │ gzip:   4.18 kB
+dist/assets/PlatformOnboardingCheckView-BcOjZnBy.js                                              10.57 kB │ gzip:   4.41 kB
+dist/assets/GraduationBatchDetailView-BCf4gK9z.js                                                10.64 kB │ gzip:   3.76 kB
+dist/assets/AaTermCurrentView-Cu-6Hg3A.js                                                        10.68 kB │ gzip:   4.10 kB
+dist/assets/AaWarningView-Di9D0PFq.js                                                            10.72 kB │ gzip:   4.30 kB
+dist/assets/PlatformIncidentView-DSX7_c4C.js                                                     10.76 kB │ gzip:   3.97 kB
+dist/assets/PlatformDisasterRecoveryView-DiOPAgOm.js                                             10.81 kB │ gzip:   4.10 kB
+dist/assets/PlatformProblemView-D4IkThFr.js                                                      10.83 kB │ gzip:   3.68 kB
+dist/assets/AgreementTemplateDetailView-BQSp2Sdy.js                                              10.86 kB │ gzip:   4.21 kB
+dist/assets/EnterpriseEvalFormView-Bwk91eyH.js                                                   10.87 kB │ gzip:   4.34 kB
+dist/assets/AaCalendarArchivePanel-D-TCJRDS.js                                                   10.90 kB │ gzip:   4.22 kB
+dist/assets/EnterpriseFormView-A3BDB9AN.js                                                       10.94 kB │ gzip:   4.13 kB
+dist/assets/AaStatusChangeDetailView-cd8FJ_GU.js                                                 10.98 kB │ gzip:   4.50 kB
+dist/assets/InternshipRiskView-B2hU1Skd.js                                                       10.98 kB │ gzip:   4.44 kB
+dist/assets/StudentAffairsDashboardView-B74NmCyL.js                                              11.06 kB │ gzip:   4.23 kB
+dist/assets/AaGradeExceptionView-BWGL975Y.js                                                     11.09 kB │ gzip:   4.57 kB
+dist/assets/AidBatchView-Dmk_mLmO.js                                                             11.16 kB │ gzip:   4.21 kB
+dist/assets/AaCourseListView-B1D76uBt.js                                                         11.21 kB │ gzip:   4.28 kB
+dist/assets/AaSelectionArchiveView-RCTpIrcx.js                                                   11.25 kB │ gzip:   4.10 kB
+dist/assets/EmploymentFollowUpView-CfR4btqR.js                                                   11.44 kB │ gzip:   4.32 kB
+dist/assets/GraduationBatchFormView-tJZTexsi.js                                                  11.48 kB │ gzip:   4.39 kB
+dist/assets/StudentOrgView-Bb6rkHjh.js                                                           11.56 kB │ gzip:   4.36 kB
+dist/assets/SystemModuleFeatureView-BxRLxTBj.js                                                  11.69 kB │ gzip:   4.70 kB
+dist/assets/GraduationBatchListView-B4SofMh_.js                                                  11.70 kB │ gzip:   4.54 kB
+dist/assets/FundingPublicityView-D9icOJ_d.js                                                     11.79 kB │ gzip:   4.85 kB
+dist/assets/DataCenterRankingView-BSFdCMZv.js                                                    11.80 kB │ gzip:   4.49 kB
+dist/assets/SystemLogView-Dzbnac8g.js                                                            11.86 kB │ gzip:   4.49 kB
+dist/assets/FamilyContactView-DTdsGDsW.js                                                        11.88 kB │ gzip:   4.49 kB
+dist/assets/AaMakeupStatsView-DV1v3Ewb.js                                                        11.92 kB │ gzip:   4.53 kB
+dist/assets/WorkflowTasksView-BBh_yid8.js                                                        11.93 kB │ gzip:   4.52 kB
+dist/assets/AidObjectionView-Cw3XFCsP.js                                                         11.98 kB │ gzip:   4.50 kB
+dist/assets/GraduationStudentGroupView-C8fiIEL-.js                                               12.02 kB │ gzip:   4.73 kB
+dist/assets/GraduationMentorAssignView-CZi-OXq0.js                                               12.05 kB │ gzip:   4.57 kB
+dist/assets/StatusChangeReview-ChqxFKZk.js                                                       12.14 kB │ gzip:   4.65 kB
+dist/assets/SystemConfigView-DBmD2LrX.js                                                         12.16 kB │ gzip:   4.65 kB
+dist/assets/EmploymentMaterialListView-zgbVEASw.js                                               12.20 kB │ gzip:   4.56 kB
+dist/assets/SystemLoginPolicyView-CGNhew0Q.js                                                    12.39 kB │ gzip:   4.99 kB
+dist/assets/OrientationDashboardView-B3-IN5qf.js                                                 12.40 kB │ gzip:   4.66 kB
+dist/assets/AaTeacherAssignConsoleView-BsAPlKZN.js                                               12.46 kB │ gzip:   4.85 kB
+dist/assets/OrientationGreenChannelView-BEl5Lg-j.js                                              12.47 kB │ gzip:   4.75 kB
+dist/assets/AaWeekScheduleView-TWRwL4rn.js                                                       12.49 kB │ gzip:   4.44 kB
+dist/assets/InternshipDashboardView-7H1Af4IR.js                                                  12.59 kB │ gzip:   5.26 kB
+dist/assets/LeaveApprovalWorkbenchView-BZFb4Mm_.js                                               12.63 kB │ gzip:   4.73 kB
+dist/assets/FundingAppealView-DHU-NECR.js                                                        12.63 kB │ gzip:   4.70 kB
+dist/assets/AaTeacherScheduleView-D2OSuFGx.js                                                    12.63 kB │ gzip:   4.86 kB
+dist/assets/MessageInboxView-zJuKUD4P.js                                                         12.70 kB │ gzip:   4.40 kB
+dist/assets/StudentAffairsRiskDetailView-D_nkja36.js                                             12.71 kB │ gzip:   4.54 kB
+dist/assets/UnemployedStudentListView-CbBfczF-.js                                                12.73 kB │ gzip:   4.68 kB
+dist/assets/useStudentAffairsWallData-sqBWuTkr.js                                                12.80 kB │ gzip:   4.83 kB
+dist/assets/RegistrationProgressView-Dg1butA4.js                                                 12.93 kB │ gzip:   4.79 kB
+dist/assets/DormCheckinView-By4go-WH.js                                                          12.98 kB │ gzip:   4.99 kB
+dist/assets/AaTermStatusView-thvf7hXB.js                                                         12.98 kB │ gzip:   4.98 kB
+dist/assets/TopicManageView-Dkjv-3Pp.js                                                          13.05 kB │ gzip:   4.87 kB
+dist/assets/AppPageGuide-D9qM6V7d.js                                                             13.07 kB │ gzip:   5.91 kB
+dist/assets/WeeklyReportListView-BU-3xTDv.js                                                     13.11 kB │ gzip:   5.03 kB
+dist/assets/AaTranscriptView-CHtNbMGy.js                                                         13.15 kB │ gzip:   5.31 kB
+dist/assets/CreditAppealView-dVVD04Hu.js                                                         13.21 kB │ gzip:   4.89 kB
+dist/assets/SystemCommunicationGovernanceView-PcD50sl6.js                                        13.34 kB │ gzip:   5.01 kB
+dist/assets/AdminInternshipLayout-DW-lMrLb.js                                                    13.39 kB │ gzip:   4.98 kB
+dist/assets/platformControl.api-Dv7zh0Aj.js                                                      13.40 kB │ gzip:   3.33 kB
+dist/assets/AaTodayTeachingWorkspace-CRUud3L-.js                                                 13.40 kB │ gzip:   5.13 kB
+dist/assets/CounselorAssignmentView-C3_Id03i.js                                                  13.43 kB │ gzip:   4.91 kB
+dist/assets/SystemJobCenterView-CF2j2SpH.js                                                      13.44 kB │ gzip:   5.56 kB
+dist/assets/GuidanceRecordFormView-BQR5fMhn.js                                                   13.46 kB │ gzip:   4.83 kB
+dist/assets/TopicChangeRequestListView-BIvtiqh1.js                                               13.68 kB │ gzip:   5.17 kB
+dist/assets/PlatformChangeView-COZ4M2kF.js                                                       13.68 kB │ gzip:   4.57 kB
+dist/assets/AaTeacherTodayView-DQWMShfI.js                                                       13.69 kB │ gzip:   5.14 kB
+dist/assets/GraduationTemplateView-BLJHaEFD.js                                                   13.69 kB │ gzip:   4.99 kB
+dist/assets/PlatformProvisioningView-4Dz-9ntu.js                                                 13.78 kB │ gzip:   5.02 kB
+dist/assets/StudentAffairsLeaderWallView-ZwCFoXrX.js                                             13.79 kB │ gzip:   5.79 kB
+dist/assets/StudentStatusView-CsWd6JPm.js                                                        13.82 kB │ gzip:   5.39 kB
+dist/assets/AaResourceConflictView-BAnH-2PX.js                                                   13.83 kB │ gzip:   5.53 kB
+dist/assets/GraduationMoreView-aaYBB2tr.js                                                       13.83 kB │ gzip:   5.31 kB
+dist/assets/internship.api-_XnLOsNw.js                                                           13.89 kB │ gzip:   4.20 kB
+dist/assets/EmploymentStudentDetailView-DqG5IFaE.js                                              13.95 kB │ gzip:   5.04 kB
+dist/assets/AppG2Chart-CEk2yU3l.js                                                               13.96 kB │ gzip:   4.93 kB
+dist/assets/SystemStaffAffiliationView-BzZDjDCz.js                                               13.98 kB │ gzip:   5.23 kB
+dist/assets/DataCenterReportListView-BmdOv6hr.js                                                 14.07 kB │ gzip:   5.22 kB
+dist/assets/AttendanceExceptionDetailView-CyQAcb8E.js                                            14.09 kB │ gzip:   5.71 kB
+dist/assets/MentalReferralFollowView-C0-ZtxfI.js                                                 14.12 kB │ gzip:   5.28 kB
+dist/assets/GraduationMaterialRuleView-jWqRH1B8.js                                               14.13 kB │ gzip:   5.32 kB
+dist/assets/AaExamSeatingPrintView-BQx3ZBgp.js                                                   14.26 kB │ gzip:   5.28 kB
+dist/assets/AaResourceOccupancyView-CAfJUHSe.js                                                  14.33 kB │ gzip:   5.63 kB
+dist/assets/DataCenterReportDetailView-DRNbk0bC.js                                               14.35 kB │ gzip:   5.00 kB
+dist/assets/DormExceptionView-BUFCMhgo.js                                                        14.40 kB │ gzip:   5.34 kB
+dist/assets/AdminStudentAffairsLayout-0IhfMZxp.js                                                14.40 kB │ gzip:   5.70 kB
+dist/assets/PhoneGovernancePanel-BQ0lTeQ0.js                                                     14.42 kB │ gzip:   5.27 kB
+dist/assets/AaSemesterScheduleView-DMeoKNGJ.js                                                   14.44 kB │ gzip:   5.15 kB
+dist/assets/FundingStatsView-D62dbAY1.js                                                         14.53 kB │ gzip:   5.51 kB
+dist/assets/WorkflowProcessesView-BWlmMGlN.js                                                    14.61 kB │ gzip:   5.44 kB
+dist/assets/approval.api-CSDq--jj.js                                                             14.65 kB │ gzip:   5.72 kB
+dist/assets/PartyLeagueView-BVf-5QpT.js                                                          14.66 kB │ gzip:   5.43 kB
+dist/assets/OrientationArchiveView-BwPJxLbi.js                                                   14.68 kB │ gzip:   5.23 kB
+dist/assets/InternshipEnterpriseListView-BDaG_zY4.js                                             14.68 kB │ gzip:   5.44 kB
+dist/assets/PlatformCustomerSuccessView-DNiYJE_F.js                                              14.69 kB │ gzip:   4.51 kB
+dist/assets/FundingProjectView-BaGn7Gik.js                                                       14.85 kB │ gzip:   5.48 kB
+dist/assets/StudentAffairsDormitoryView-CtZ2Bbgw.js                                              14.98 kB │ gzip:   5.21 kB
+dist/assets/AaProgramListView-C770kSPJ.js                                                        15.18 kB │ gzip:   5.70 kB
+dist/assets/employment.api-CXtgl8MR.js                                                           15.19 kB │ gzip:   5.02 kB
+dist/assets/PlatformControlTenants-B0kvjgd3.js                                                   15.20 kB │ gzip:   5.98 kB
+dist/assets/AgreementTemplateFormView-1_3hK27a.js                                                15.25 kB │ gzip:   5.37 kB
+dist/assets/AaScheduleChangeLedgerView-D_uPFLyR.js                                               15.29 kB │ gzip:   5.43 kB
+dist/assets/AaScheduleBatchListView-DEN3fnl_.js                                                  15.52 kB │ gzip:   5.57 kB
+dist/assets/AaTermListView-D65MEnHx.js                                                           15.63 kB │ gzip:   5.62 kB
+dist/assets/WeeklyReportDetailView-D4Y0lQw5.js                                                   15.70 kB │ gzip:   5.77 kB
+dist/assets/ApprovalTodoListView-BrDL0lNb.js                                                     15.70 kB │ gzip:   6.13 kB
+dist/assets/TeacherWorkbenchView-CF2d7Kih.js                                                     15.87 kB │ gzip:   5.83 kB
+dist/assets/InsuranceVerifyView-BMvugGnG.js                                                      15.88 kB │ gzip:   6.11 kB
+dist/assets/ApprovalTemplateListView-B60I_Nai.js                                                 16.00 kB │ gzip:   5.87 kB
+dist/assets/StudentAffairsProfileDetailView-DEaO_sAC.js                                          16.07 kB │ gzip:   5.28 kB
+dist/assets/OrientationMaterialReviewView-CXOqJOtF.js                                            16.10 kB │ gzip:   5.73 kB
+dist/assets/LeaveLedgerView-ToZqGu2N.js                                                          16.15 kB │ gzip:   5.96 kB
+dist/assets/TopicLibFormView-zw-_jUG8.js                                                         16.16 kB │ gzip:   6.33 kB
+dist/assets/AaScheduleChangeApprovalView-C_mrbZgi.js                                             16.17 kB │ gzip:   6.19 kB
+dist/assets/AaTaskAdjustView-zVgET2DN.js                                                         16.20 kB │ gzip:   5.95 kB
+dist/assets/SystemSecurityChangeView-Bq7-GoV-.js                                                 16.24 kB │ gzip:   5.90 kB
+dist/assets/StudentCorrectionListView-DOHoc_fD.js                                                16.26 kB │ gzip:   5.83 kB
+dist/assets/AaWorkloadReviewView-Bpe1tyAb.js                                                     16.29 kB │ gzip:   5.98 kB
+dist/assets/AaGradeOverviewView-ma48suCL.js                                                      16.31 kB │ gzip:   5.86 kB
+dist/assets/MentalAttentionListView-rxtDcUK6.js                                                  16.34 kB │ gzip:   5.85 kB
+dist/assets/InternshipPositionListView-HapAUpi9.js                                               16.39 kB │ gzip:   6.10 kB
+dist/assets/ArchivePrecheckView-Hvxpxpuv.js                                                      16.44 kB │ gzip:   6.05 kB
+dist/assets/AaSelectionStudentView-DeldkC8F.js                                                   16.45 kB │ gzip:   5.81 kB
+dist/assets/AaTaskMergeSplitView-BGKHvDe-.js                                                     16.54 kB │ gzip:   5.80 kB
+dist/assets/CounselorEvalView-gXuu25u5.js                                                        16.71 kB │ gzip:   5.58 kB
+dist/assets/AppConfirmDialog.vue_vue_type_style_index_0_scoped_f040fc63_lang-Df3iFdAk.js         16.84 kB │ gzip:   7.96 kB
+dist/assets/StudentRiskTagListView-Dr6HU54B.js                                                   16.96 kB │ gzip:   5.88 kB
+dist/assets/ClubWorkbenchView-o2N9GUlm.js                                                        16.99 kB │ gzip:   5.70 kB
+dist/assets/InternshipPositionDetailView-GU2mRaFJ.js                                             17.21 kB │ gzip:   6.61 kB
+dist/assets/SystemWorkflowGovernanceView-D4HAejg-.js                                             17.24 kB │ gzip:   6.50 kB
+dist/assets/StatsView-BJcsfaBO.js                                                                17.26 kB │ gzip:   6.50 kB
+dist/assets/SystemIntegrationView-BJvDPU0r.js                                                    17.26 kB │ gzip:   6.15 kB
+dist/assets/AaCourseDetailView-O938l2G2.js                                                       17.27 kB │ gzip:   6.25 kB
+dist/assets/SystemMasterDataView-Bxzi1ZHD.js                                                     17.32 kB │ gzip:   6.64 kB
+dist/assets/PlatformControlOverview-DkdVNodU.js                                                  17.48 kB │ gzip:   6.46 kB
+dist/assets/ArchiveManageView-D2p4VRly.js                                                        17.48 kB │ gzip:   5.87 kB
+dist/assets/SystemAcademicCalendarView-D_LH8FWg.js                                               17.49 kB │ gzip:   6.22 kB
+dist/assets/MessageComposeView-Lo7lqOM7.js                                                       17.51 kB │ gzip:   6.28 kB
+dist/assets/OrientationExceptionView-DArLJ1my.js                                                 17.55 kB │ gzip:   6.03 kB
+dist/assets/AaLevelExamView-DlJUeom4.js                                                          17.57 kB │ gzip:   5.99 kB
+dist/assets/StudentListView-DO5htRQ8.js                                                          17.65 kB │ gzip:   6.32 kB
+dist/assets/OrientationQualificationView-DztRQSms.js                                             17.66 kB │ gzip:   6.20 kB
+dist/assets/PlatformServiceCatalogView-DMmPaKLp.js                                               17.72 kB │ gzip:   6.51 kB
+dist/assets/AaMakeupStudentView-By0DFqCd.js                                                      17.78 kB │ gzip:   6.24 kB
+dist/assets/ActivityWorkbenchView-DTjXQy_2.js                                                    17.82 kB │ gzip:   6.10 kB
+dist/assets/AaEquipmentListView-CV6Ny4th.js                                                      17.86 kB │ gzip:   6.14 kB
+dist/assets/SystemDataScopeView-CLk31v2s.js                                                      17.92 kB │ gzip:   6.55 kB
+dist/assets/ClassProfileView-I6DGSfl9.js                                                         18.19 kB │ gzip:   6.18 kB
+dist/assets/ArchiveExportView-BA_6oG92.js                                                        18.27 kB │ gzip:   6.22 kB
+dist/assets/AaOverviewWorkspace-BVFctaVf.js                                                      18.30 kB │ gzip:   6.92 kB
+dist/assets/GraduationDashboardView-CuCuUPac.js                                                  18.39 kB │ gzip:   6.61 kB
+dist/assets/AcademicFlowOverview-Dbpz_50T.js                                                     18.48 kB │ gzip:   6.19 kB
+dist/assets/FundingBatchView-B8ZjXX11.js                                                         18.53 kB │ gzip:   6.65 kB
+dist/assets/GraduationProcessActionView-Ddoj8QFC.js                                              18.54 kB │ gzip:   6.23 kB
+dist/assets/StudentAffairsWallView-CmVmvSbn.js                                                   18.62 kB │ gzip:   6.70 kB
+dist/assets/OrientationBatchListView-CIf__RnI.js                                                 18.76 kB │ gzip:   6.58 kB
+dist/assets/AaCourseFormView-B__bLnRq.js                                                         18.82 kB │ gzip:   6.48 kB
+dist/assets/DisciplineAppealView-Dk6sDKjP.js                                                     19.01 kB │ gzip:   6.59 kB
+dist/assets/GraduationMentorListView-qKIPHIEi.js                                                 19.06 kB │ gzip:   6.14 kB
+dist/assets/AaGraduationResultView-CIHcBLmV.js                                                   19.14 kB │ gzip:   6.86 kB
+dist/assets/AaAttendanceStatsView-CV-IkZVx.js                                                    19.37 kB │ gzip:   6.56 kB
+dist/assets/AgreementView-BBAUVuC5.js                                                            19.41 kB │ gzip:   6.53 kB
+dist/assets/AaResourceRepairView-CfO3tnmv.js                                                     19.41 kB │ gzip:   6.57 kB
+dist/assets/AaRosterImportExportView-B_Cpt0IE.js                                                 19.47 kB │ gzip:   7.14 kB
+dist/assets/LoginView-BBjcnqYg.js                                                                19.60 kB │ gzip:   7.38 kB
+dist/assets/EnterpriseEvalView-DustMQW_.js                                                       19.61 kB │ gzip:   6.85 kB
+dist/assets/SystemImplementationWorkspaceView-DMlMwBbd.js                                        19.64 kB │ gzip:   7.21 kB
+dist/assets/AaTeachingWeekConfigView-DPtSnCjU.js                                                 20.03 kB │ gzip:   6.70 kB
+dist/assets/AaGraduationBatchView-X87PleCt.js                                                    20.12 kB │ gzip:   6.73 kB
+dist/assets/PaymentGreenChannelView-CFVW-kxT.js                                                  20.12 kB │ gzip:   6.63 kB
+dist/assets/RecruitmentCampaignFormView-DHEUg0fV.js                                              20.30 kB │ gzip:   7.10 kB
+dist/assets/ChangeRequestListView-LiqwrYxz.js                                                    20.31 kB │ gzip:   7.23 kB
+dist/assets/EmploymentStudentListView-CZJP9pMa.js                                                20.34 kB │ gzip:   7.45 kB
+dist/assets/TopicRoundListView-yLZORBPC.js                                                       20.38 kB │ gzip:   6.63 kB
+dist/assets/SystemFileStorageGovernanceView-KqwwE_Nv.js                                          20.48 kB │ gzip:   7.34 kB
+dist/assets/AaTeacherTaskConfirmView-BSe6BVEP.js                                                 20.71 kB │ gzip:   7.13 kB
+dist/assets/ProposalReviewCard-216n-Dt9.js                                                       20.73 kB │ gzip:   6.80 kB
+dist/assets/aa-wall-presentation-DiRWbmpr.js                                                     20.73 kB │ gzip:   8.18 kB
+dist/assets/InternshipApplicationReviewView-ChXsQA2e.js                                          20.74 kB │ gzip:   7.17 kB
+dist/assets/InternshipMaterialCenterView-BD1THx0g.js                                             20.89 kB │ gzip:   7.07 kB
+dist/assets/AaDashboardPanelWorkspace-CVyc2nQ0.js                                                21.15 kB │ gzip:   7.65 kB
+dist/assets/AaCertificateView-DP_JXKkB.js                                                        21.27 kB │ gzip:   7.09 kB
+dist/assets/DefenseGroupFormView-SC7bMekz.js                                                     21.47 kB │ gzip:   7.40 kB
+dist/assets/AaGradePublishView-BZNIq7Cu.js                                                       21.48 kB │ gzip:   7.46 kB
+dist/assets/AaAuthoritativeImportDrawer-Bjw-OJwr.js                                              21.49 kB │ gzip:   7.35 kB
+dist/assets/ProposalListView-hmotTmzn.js                                                         21.54 kB │ gzip:   7.60 kB
+dist/assets/DefenseScheduleView-CRjv2SS9.js                                                      21.63 kB │ gzip:   7.49 kB
+dist/assets/InternshipVolunteerReviewView-DerlJeYQ.js                                            21.93 kB │ gzip:   8.00 kB
+dist/assets/ApprovalDetailView-B6A8lvq4.js                                                       21.94 kB │ gzip:   7.83 kB
+dist/assets/LeaveExtensionCancelView-FaNj2dr-.js                                                 22.10 kB │ gzip:   7.48 kB
+dist/assets/FeeReductionView-BnAWmtOP.js                                                         22.26 kB │ gzip:   7.39 kB
+dist/assets/AdminAcademicAffairsLayout-C1LdOeKn.js                                               22.44 kB │ gzip:   7.53 kB
+dist/assets/StudentIdentityCapabilityView-CG4KOVSg.js                                            22.58 kB │ gzip:   7.73 kB
+dist/assets/AaGradeRecheckView-DDYuPdQb.js                                                       23.04 kB │ gzip:   7.78 kB
+dist/assets/PlatformBusinessFormsView-GhDlFa7s.js                                                23.05 kB │ gzip:   8.27 kB
+dist/assets/FundingDisbursementView-BSqHiRc7.js                                                  23.20 kB │ gzip:   8.06 kB
+dist/assets/AaExemptionArchiveView-BkM-HQAw.js                                                   23.20 kB │ gzip:   8.02 kB
+dist/assets/GraduationStudentDetailView-BFyP6ept.js                                              23.23 kB │ gzip:   6.98 kB
+dist/assets/GraduationDefenseGradeFormView-DcrZHuHM.js                                           23.50 kB │ gzip:   8.16 kB
+dist/assets/AaRosterCorrectionListView-DpLgpN8a.js                                               23.59 kB │ gzip:   8.31 kB
+dist/assets/TalkWorkbenchView-EVyAgW95.js                                                        23.63 kB │ gzip:   8.00 kB
+dist/assets/OrientationStudentDetailView-Bfz74NvJ.js                                             23.76 kB │ gzip:   7.37 kB
+dist/assets/StudentDetailView-6duoiPtE.js                                                        23.78 kB │ gzip:   7.83 kB
+dist/assets/StudentAffairsRiskListView-Bojrdl5t.js                                               23.84 kB │ gzip:   8.13 kB
+dist/assets/LeaveReviewView-C_-ZugFe.js                                                          23.98 kB │ gzip:   8.50 kB
+dist/assets/orientation.api-D0f_lg7r.js                                                          24.16 kB │ gzip:   7.09 kB
+dist/assets/PositionFormView-B9E2FOA2.js                                                         24.66 kB │ gzip:   7.47 kB
+dist/assets/AttendanceView-D_atw2Hl.js                                                           24.73 kB │ gzip:   8.55 kB
+dist/assets/OrientationStudentListView-CCdFY9Xb.js                                               24.78 kB │ gzip:   8.66 kB
+dist/assets/GraduationMaterialCenterView-4bVMLZcK.js                                             25.00 kB │ gzip:   8.99 kB
+dist/assets/student.api-CXDoS2iA.js                                                              25.04 kB │ gzip:   8.68 kB
+dist/assets/AaLabResourceListView-DldQ_LkZ.js                                                    25.18 kB │ gzip:   8.61 kB
+dist/assets/DisciplineWorkbenchView-C6FsKAJk.js                                                  25.19 kB │ gzip:   8.50 kB
+dist/assets/SystemAccessGovernanceView-DuRZgF3k.js                                               25.85 kB │ gzip:   7.99 kB
+dist/assets/DormTransferView-CPrMC8_d.js                                                         25.86 kB │ gzip:   8.32 kB
+dist/assets/PlatformProductIamView-DwnrYS6b.js                                                   25.89 kB │ gzip:   7.86 kB
+dist/assets/InternshipStudentListView-DbnzJTd5.js                                                25.90 kB │ gzip:   8.40 kB
+dist/assets/workflow.provider-X23St8h5.js                                                        26.02 kB │ gzip:   7.82 kB
+dist/assets/vendor-vue-router-CHAHc89j.js                                                        26.03 kB │ gzip:  10.22 kB
+dist/assets/IdentityImportWorkspace-DE2hg9Bv.js                                                  26.19 kB │ gzip:   9.77 kB
+dist/assets/AgreementDetailView-BHq7qyxo.js                                                      26.87 kB │ gzip:   8.25 kB
+dist/assets/StudentEvalView-BWBum1kV.js                                                          27.08 kB │ gzip:   8.80 kB
+dist/assets/AaScheduleChangeApplyView-lfvwfU4E.js                                                27.21 kB │ gzip:   8.20 kB
+dist/assets/SystemRoleAssignmentView-DYc_lq0e.js                                                 27.27 kB │ gzip:   9.69 kB
+dist/assets/AaRegistrationDetailView-Cqrk7HtI.js                                                 27.31 kB │ gzip:   8.98 kB
+dist/assets/InternshipPlanView-COFJqJzb.js                                                       27.33 kB │ gzip:   8.68 kB
+dist/assets/AdminSystemLayout-jUjRZ1Hp.js                                                        27.33 kB │ gzip:   9.81 kB
+dist/assets/AaRegistrationBatchListView-DcEObT26.js                                              27.40 kB │ gzip:   8.67 kB
+dist/assets/DormResourceView-BczGyR_j.js                                                         27.57 kB │ gzip:   8.33 kB
+dist/assets/AdminHelpView-UXGw6Kfv.js                                                            27.59 kB │ gzip:   9.12 kB
+dist/assets/StudentLoanView-kbdMnLcA.js                                                          28.10 kB │ gzip:   8.44 kB
+dist/assets/FinalSubmissionListView-CTTJ1jrR.js                                                  28.47 kB │ gzip:   9.45 kB
+dist/assets/workspaceContract-BBR5COdj.js                                                        28.48 kB │ gzip:   6.84 kB
+dist/assets/InternshipStudentDetailView-CZiMX3V5.js                                              28.57 kB │ gzip:   9.76 kB
+dist/assets/GraduationProcessView-BI7BZeRI.js                                                    28.61 kB │ gzip:   8.26 kB
+dist/assets/TopicLibListView-C_HQICYm.js                                                         28.97 kB │ gzip:   8.87 kB
+dist/assets/permissionLabels-BLmsZCxZ.js                                                         29.01 kB │ gzip:   6.21 kB
+dist/assets/DormCheckinView-BmXyJw0u.js                                                          29.08 kB │ gzip:   9.28 kB
+dist/assets/AaCourseConsoleView-BO2RBZ7o.js                                                      29.32 kB │ gzip:   8.49 kB
+dist/assets/PlatformAccessView-DolxSr78.js                                                       29.46 kB │ gzip:   8.69 kB
+dist/assets/AaSchedulePublishView-CnfpkwfB.js                                                    29.63 kB │ gzip:   9.17 kB
+dist/assets/AaTaskDetailView-BHcsC4gm.js                                                         29.90 kB │ gzip:  10.00 kB
+dist/assets/GraduationStudentListView-zC6zpzf1.js                                                30.10 kB │ gzip:   9.76 kB
+dist/assets/AdminGraduationLayout-B8W2kDk6.js                                                    30.29 kB │ gzip:  10.23 kB
+dist/assets/DormCheckView-CKUVBujR.js                                                            30.34 kB │ gzip:   9.40 kB
+dist/assets/AaTermDetailView-C3TUmqm9.js                                                         30.34 kB │ gzip:   9.61 kB
+dist/assets/InternshipMatchListView-DT2NsI8w.js                                                  30.53 kB │ gzip:   9.06 kB
+dist/assets/BatchDetailView-BHu0JKFe.js                                                          30.55 kB │ gzip:  10.40 kB
+dist/assets/DormAllocationView-DOkyugJT.js                                                       30.69 kB │ gzip:   9.58 kB
+dist/assets/WorkStudyView-CGr2gmkZ.js                                                            30.99 kB │ gzip:   9.29 kB
+dist/assets/RiskDisposalView-BhGr56PU.js                                                         31.18 kB │ gzip:   9.81 kB
+dist/assets/BatchFormView-CCbbDC-Z.js                                                            31.53 kB │ gzip:   9.62 kB
+dist/assets/AaMajorSplitView-CtpdnOgL.js                                                         32.14 kB │ gzip:   9.50 kB
+dist/assets/AaGradeCollegeReviewView-yG6YWKdX.js                                                 32.32 kB │ gzip:  10.30 kB
+dist/assets/FundingWorkbenchView-DnukDEeH.js                                                     32.57 kB │ gzip:  10.99 kB
+dist/assets/MaterialOperationsView-DKeNcV_q.js                                                   32.63 kB │ gzip:  10.43 kB
+dist/assets/GraduationReviewCenterView-Cec7RRvj.js                                               32.97 kB │ gzip:  10.11 kB
+dist/assets/AaScheduleMaintainView-BayU_XQ6.js                                                   33.95 kB │ gzip:  10.16 kB
+dist/assets/RecruitmentCampaignDetailView-RKRbi2_9.js                                            34.09 kB │ gzip:  11.18 kB
+dist/assets/AaStatusChangeFormView-DpMzgvWn.js                                                   34.14 kB │ gzip:  10.69 kB
+dist/assets/studentAffairs.api-DAWVq6FQ.js                                                       34.19 kB │ gzip:   6.64 kB
+dist/assets/AdminWorkbenchView-hrCVegwY.js                                                       34.49 kB │ gzip:  11.26 kB
+dist/assets/PlatformControlOrders-DnEJkw0J.js                                                    35.31 kB │ gzip:  11.68 kB
+dist/assets/AaProgramEditorView-D2X-epxr.js                                                      35.87 kB │ gzip:  11.80 kB
+dist/assets/SystemOrgView-B_GxrLGg.js                                                            36.20 kB │ gzip:  12.26 kB
+dist/assets/GuidanceVisitView-Bt-nWyDW.js                                                        36.72 kB │ gzip:  10.81 kB
+dist/assets/AaGradeRecognitionView-DC_R22ek.js                                                   37.60 kB │ gzip:  10.87 kB
+dist/assets/SystemDataExchangeView-CluqZTyO.js                                                   38.30 kB │ gzip:  12.86 kB
+dist/assets/ResourceBookingWorkspace-CH8fCgvF.js                                                 38.57 kB │ gzip:  12.21 kB
+dist/assets/AidWorkbenchView-C_pHFJ0d.js                                                         39.65 kB │ gzip:  12.23 kB
+dist/assets/ArchiveView-YEshg5jH.js                                                              39.92 kB │ gzip:  12.03 kB
+dist/assets/AaWarningConsoleView-Dma9y92i.js                                                     42.85 kB │ gzip:  12.38 kB
+dist/assets/InternshipEnterpriseDetailView-XCt5qonK.js                                           43.38 kB │ gzip:  13.43 kB
+dist/assets/SystemImplementationView-C9VlcE0p.js                                                 43.81 kB │ gzip:  12.92 kB
+dist/assets/GraduationDefenseGradeView-BfR6qkMl.js                                               44.49 kB │ gzip:  12.57 kB
+dist/assets/AaTimeSlotView-D7JHfH96.js                                                           45.21 kB │ gzip:  12.69 kB
+dist/assets/SystemUserListView-Pp9oi0ih.js                                                       45.51 kB │ gzip:  14.29 kB
+dist/assets/system.api-CjHZ3nHw.js                                                               50.34 kB │ gzip:  11.51 kB
+dist/assets/academic-affairs.api-kpoHaQ-w.js                                                     51.57 kB │ gzip:   9.30 kB
+dist/assets/helpMetrics-K4ULVYNf.js                                                              53.23 kB │ gzip:  17.09 kB
+dist/assets/AaEvaluationConsoleView-7-SL8SNA.js                                                  55.80 kB │ gzip:  16.01 kB
+dist/assets/InternshipCommandScreenView-E8XHhk0O.js                                              56.50 kB │ gzip:  21.36 kB
+dist/assets/AaGraduationAuditConsoleView-F0tMH-Ij.js                                             56.75 kB │ gzip:  16.46 kB
+dist/assets/AaCalendarView-CJPKAKPI.js                                                           57.22 kB │ gzip:  17.05 kB
+dist/assets/AaTaskBatchListView-DtBPKBqT.js                                                      58.09 kB │ gzip:  16.56 kB
+dist/assets/AaGradeChangeView-0DT-tYKx.js                                                        58.44 kB │ gzip:  16.82 kB
+dist/assets/AaTextbookConsoleView-B9bGpVHS.js                                                    59.14 kB │ gzip:  17.55 kB
+dist/assets/GraduationRiskArchiveView-Ov3QW4mr.js                                                61.03 kB │ gzip:  17.24 kB
+dist/assets/ScoreView-D_X44tty.js                                                                62.50 kB │ gzip:  18.63 kB
+dist/assets/AaSelectionConsoleView-DH25O2zQ.js                                                   66.08 kB │ gzip:  18.98 kB
+dist/assets/AaProgramConsoleView-URhWeYvx.js                                                     66.61 kB │ gzip:  16.57 kB
+dist/assets/AaLeadershipWallView-CDBL_D0j.js                                                     67.14 kB │ gzip:  24.25 kB
+dist/assets/AaClassroomListView-jtW07_bo.js                                                      67.53 kB │ gzip:  19.89 kB
+dist/assets/AaArchiveConsoleView-lt36JvmA.js                                                     68.62 kB │ gzip:  19.44 kB
+dist/assets/AaMakeupConsoleView-DMld9TgW.js                                                      69.14 kB │ gzip:  18.63 kB
+dist/assets/AaStatsOverviewView-HyxYYIcd.js                                                      70.83 kB │ gzip:  21.03 kB
+dist/assets/AaGradeEntryView-DEpBfc_d.js                                                         74.24 kB │ gzip:  20.73 kB
+dist/assets/UiPreview-Cf9uuG8F.js                                                                77.54 kB │ gzip:  21.20 kB
+dist/assets/AaRegistrationWorkbenchView-CAa2Y4Mq.js                                              81.51 kB │ gzip:  21.23 kB
+dist/assets/AaQualityDashboardView-Cj4V4pg8.js                                                   83.32 kB │ gzip:  21.85 kB
+dist/assets/vendor-vue-Dp0qS50m.js                                                               86.20 kB │ gzip:  34.10 kB
+dist/assets/PlannedPlaceholderView-Bjg4UuSK.js                                                   87.78 kB │ gzip:   9.12 kB
+dist/assets/InternshipComplianceView-BqnDtjBG.js                                                 88.09 kB │ gzip:  23.26 kB
+dist/assets/ComponentDevPreview-XfNZVI0X.js                                                      88.71 kB │ gzip:  26.89 kB
+dist/assets/PlatformControlTenantDetail-cidd40wi.js                                              89.59 kB │ gzip:  27.32 kB
+dist/assets/AaExamConsoleView-sB-Nj1IR.js                                                        91.07 kB │ gzip:  25.22 kB
+dist/assets/AaOrgConsole-B6A-_B_3.js                                                             97.15 kB │ gzip:  25.33 kB
+dist/assets/AppQRCode.vue_vue_type_style_index_0_scoped_d9f5d57f_lang-DcG4fqoj.js                98.18 kB │ gzip:  36.06 kB
+dist/assets/PlatformCommercialControlView-BouwjhTA.js                                           104.63 kB │ gzip:  32.19 kB
+dist/assets/BasePortalLayout-Ba26LxGK.js                                                        107.16 kB │ gzip:  36.09 kB
+dist/assets/AaSchedulingConsoleView-BkRyIrn1.js                                                 117.10 kB │ gzip:  36.07 kB
+dist/assets/SystemIamWorkspaceView-CA-uqlJM.js                                                  129.92 kB │ gzip:  36.77 kB
+dist/assets/fileSdk-CBPT3iYg.js                                                                 178.59 kB │ gzip:  53.29 kB
+dist/assets/helpCenterRuntime-BXJgU4qe.js                                                       394.39 kB │ gzip: 124.30 kB
+dist/assets/index-KEP5AEvG.js                                                                   449.96 kB │ gzip: 104.12 kB
+dist/assets/StudentAffairsCockpitView-eHW5H0FE.js                                               537.52 kB │ gzip: 185.71 kB
+dist/assets/AppDocumentViewer-Dzbu6srM.js                                                       568.66 kB │ gzip: 174.15 kB
+dist/assets/vendor-element-DcHyhC0A.js                                                          945.94 kB │ gzip: 304.31 kB
+
+(!) Some chunks are larger than 500 kB after minification. Consider:
+- Using dynamic import() to code-split the application
+- Use build.rollupOptions.output.manualChunks to improve chunking: https://rollupjs.org/configuration-options/#output-manualchunks
+- Adjust chunk size limit for this warning via build.chunkSizeWarningLimit.
+✓ built in 40.72s

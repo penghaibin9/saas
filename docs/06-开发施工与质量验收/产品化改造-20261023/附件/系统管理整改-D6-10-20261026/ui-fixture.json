@@ -1,0 +1,11 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "tenantId": "1000000000000000007",
+  "studentId": "3",
+  "recordId": "3",
+  "batchId": "1",
+  "leaveId": "1",
+  "initialStatus": "PENDING",
+  "actorId": "1",
+  "existingBusinessModified": false
+}

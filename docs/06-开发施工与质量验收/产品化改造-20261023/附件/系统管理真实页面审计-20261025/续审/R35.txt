@@ -1,0 +1,238 @@
+http://127.0.0.1:5173/admin/system/dictionaries-fields
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:38":
+    - generic: 10/25周日 14:38
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:18:25":
+  - generic: 本次工作 02:18:25
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 学校配置
+  - navigation "三级菜单":
+    - button "学校信息与品牌":
+      - generic: 学校信息与品牌
+    - button "数据字典" [active]:
+      - generic: 数据字典
+    - button "模块授权与业务开关":
+      - generic: 模块授权与业务开关
+    - button "主数据责任与数据质量":
+      - generic: 主数据责任与数据质量
+    - button "合规与业务表单":
+      - generic: 合规与业务表单
+    - button "学年学期与业务日历":
+      - generic: 学年学期与业务日历
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "登录与安全策略":
+    - generic: 登录与安全策略
+  - button "关闭登录与安全策略":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "学院与部门":
+    - generic: 学院与部门
+  - button "关闭学院与部门":
+  - tab "专业管理":
+    - generic: 专业管理
+  - button "关闭专业管理":
+  - tab "年级与班级":
+    - generic: 年级与班级
+  - button "关闭年级与班级":
+  - tab "岗位管理":
+    - generic: 岗位管理
+  - button "关闭岗位管理":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心":
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+  - tab "变更版本":
+    - generic: 变更版本
+  - button "关闭变更版本":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "数据字典" [selected]:
+    - generic: 数据字典
+  - button "关闭数据字典":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:38
+  - heading "数据字典" [level=1]
+  - button "刷新"
+  - button "保存当前字典" [disabled]
+  - complementary "字典分类":
+    - generic: 12 类字典
+    - generic: 搜索字典
+    - textbox "搜索字典"
+    - button "学校类型 3 项 · 平台统一":
+      - generic: 学校类型
+      - generic: 3 项 · 平台统一
+    - button "学生状态 3 项 · 平台默认":
+      - generic: 学生状态
+      - generic: 3 项 · 平台默认
+    - button "风险等级 4 项 · 平台默认":
+      - generic: 风险等级
+      - generic: 4 项 · 平台默认
+    - button "审批状态 4 项 · 平台默认":
+      - generic: 审批状态
+      - generic: 4 项 · 平台默认
+    - button "文件类型 3 项 · 平台默认":
+      - generic: 文件类型
+      - generic: 3 项 · 平台默认
+    - button "在校服务类型 3 项 · 平台默认":
+      - generic: 在校服务类型
+      - generic: 3 项 · 平台默认
+    - button "实习状态 3 项 · 平台默认":
+      - generic: 实习状态
+      - generic: 3 项 · 平台默认
+    - button "毕设阶段 3 项 · 平台默认":
+      - generic: 毕设阶段
+      - generic: 3 项 · 平台默认
+    - button "就业状态 3 项 · 平台默认":
+      - generic: 就业状态
+      - generic: 3 项 · 平台默认
+    - button "公告类型 4 项 · 平台统一":
+      - generic: 公告类型
+      - generic: 4 项 · 平台统一
+    - button "租户状态 4 项 · 平台统一":
+      - generic: 租户状态
+      - generic: 4 项 · 平台统一
+    - button "套餐类型 5 项 · 平台统一":
+      - generic: 套餐类型
+      - generic: 5 项 · 平台统一
+  - heading "学校类型" [level=2]
+  - generic: 平台统一
+  - paragraph: 学校类型由平台统一维护
+  - paragraph: 尚未接入业务页面，当前配置仅作预留
+  - table:
+    - rowgroup:
+      - row "编码 显示名称 状态 操作":
+        - columnheader "编码"
+        - columnheader "显示名称"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "VOCATIONAL 高职院校 启用 平台统一":
+        - cell "VOCATIONAL":
+          - textbox [disabled]: VOCATIONAL
+        - cell "高职院校":
+          - textbox "请输入显示名称" [disabled]: 高职院校
+        - cell "启用":
+          - checkbox "启用" [checked] [disabled]
+          - text: 启用
+        - cell "平台统一"
+      - row "UNDERGRAD 本科院校 启用 平台统一":
+        - cell "UNDERGRAD":
+          - textbox [disabled]: UNDERGRAD
+        - cell "本科院校":
+          - textbox "请输入显示名称" [disabled]: 本科院校
+        - cell "启用":
+          - checkbox "启用" [checked] [disabled]
+          - text: 启用
+        - cell "平台统一"
+      - row "TECHNICIAN 技师学院 启用 平台统一":
+        - cell "TECHNICIAN":
+          - textbox [disabled]: TECHNICIAN
+        - cell "技师学院":
+          - textbox "请输入显示名称" [disabled]: 技师学院
+        - cell "启用":
+          - checkbox "启用" [checked] [disabled]
+          - text: 启用
+        - cell "平台统一"
+  - generic: 该类口径由平台统一维护，学校端只读。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

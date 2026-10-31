@@ -1,0 +1,269 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 身份与账号
+  - navigation "三级菜单":
+    - button "教职工账号":
+      - generic: 教职工账号
+    - button "学生账号":
+      - generic: 学生账号
+    - button "教职工导入":
+      - generic: 教职工导入
+    - button "学生导入与账号开通":
+      - generic: 学生导入与账号开通
+    - button "数据交换任务中心":
+      - generic: 数据交换任务中心
+    - button "账号异常排查":
+      - generic: 账号异常排查
+    - button "登录与安全策略":
+      - generic: 登录与安全策略
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "系统总览":
+    - generic: 系统总览
+  - button "关闭系统总览":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "教职工账号" [selected]:
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "安全审计证据与完整性":
+    - generic: 安全审计证据与完整性
+  - button "关闭安全审计证据与完整性":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口、凭证与 Webhook":
+    - generic: 接口、凭证与 Webhook
+  - button "关闭接口、凭证与 Webhook":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-25 22:23
+  - heading "教职工账号" [level=1]
+  - button "⇪ 教职工导入"
+  - button "⇩ 批量导出"
+  - button "手机号治理"
+  - generic: 操作均写入审计日志
+  - button "▥ 列设置"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 工号
+    - text: D603-T001
+  - generic: 角色
+  - combobox "角色":
+    - option "全部" [selected]
+    - option "整改验收教师"
+    - option "专业毕设负责人"
+    - option "任课教师"
+    - option "团委老师"
+    - option "学工处管理员"
+    - option "学工老师"
+    - option "学校管理员"
+    - option "学院毕设管理员"
+    - option "学院管理员"
+    - option "安全审计员"
+    - option "实习指导教师"
+    - option "宿管老师"
+    - option "就业老师"
+    - option "心理老师"
+    - option "教务处管理员"
+    - option "普通教职工"
+    - option "校领导"
+    - option "毕设成绩管理员"
+    - option "毕设指导教师"
+    - option "毕设管理员"
+    - option "毕设评阅教师"
+    - option "答辩专家"
+    - option "答辩秘书"
+    - option "系统管理员"
+    - option "组织人事"
+    - option "资助老师"
+    - option "辅导员"
+  - generic: 账号状态
+  - combobox "账号状态":
+    - option "全部" [selected]
+    - option "启用中"
+    - option "已停用"
+    - option "已锁定"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "教职工 业务归属 角色 手机号（脱敏） 状态 最近登录 操作":
+        - columnheader:
+          - checkbox
+        - columnheader "教职工"
+        - columnheader "业务归属"
+        - columnheader "角色"
+        - columnheader "手机号（脱敏）"
+        - columnheader "状态"
+        - columnheader "最近登录"
+        - columnheader "操作"
+    - rowgroup:
+      - row "整改验收教师甲 D603****01 未设置 任课教师 未登记 启用中 未记录登录时间 查看 编辑 重置密码 停用":
+        - cell:
+          - checkbox
+        - cell "整改验收教师甲 D603****01":
+          - generic: 整改验收教师甲
+          - generic: D603****01
+        - cell "未设置"
+        - cell "任课教师":
+          - generic: 任课教师
+        - cell "未登记"
+        - cell "启用中":
+          - generic: 启用中
+        - cell "未记录登录时间"
+        - cell "查看 编辑 重置密码 停用":
+          - button "查看" [active]
+          - button "编辑"
+          - button "重置密码"
+          - button "停用"
+  - generic: 共 1 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃
+- dialog "账号详情 · 整改验收教师甲":
+  - banner:
+    - heading "账号详情 · 整改验收教师甲" [level=3]
+    - button "关闭": ×
+  - generic: 工号 / 账号
+  - generic: D603****01
+  - generic: 业务归属
+  - generic: 未设置
+  - generic: 手机号
+  - generic: 未登记 （完整号码需审计授权）
+  - generic: 邮箱
+  - generic: 未登记
+  - generic: 状态
+  - generic: 启用中
+  - generic: 账号来源
+  - generic: 统一师生导入
+  - generic "手机号登录与绑定管理"
+  - heading "角色与数据范围" [level=4]
+  - generic: 任课教师
+  - generic: 按角色指派
+  - button "调整角色分配"
+  - heading "最近登录" [level=4]
+  - status:
+    - generic: ▢
+    - generic: 暂无可关联的登录记录
+    - generic: 历史记录缺少账号关联时不会显示，不能据此判断该账号从未登录。
+    - button "返回"
+  - heading "操作留痕" [level=4]
+  - table:
+    - rowgroup:
+      - row "操作人 动作 影响 时间":
+        - columnheader "操作人"
+        - columnheader "动作"
+        - columnheader "影响"
+        - columnheader "时间"
+    - rowgroup

@@ -78,7 +78,7 @@ relations:
     validity:
       kind: STATUS
       field: status
-      activeValues: [ONGOING, PENDING, APPROVED, NORMAL]
+      activeValues: [PREPARING, READY, ONBOARD, ASSESSING]
     resolver: app.services.data_scope_service._provider_intern_students
     scopeType: INTERN_STUDENTS
     test: backend/tests/test_business_relation_registry.py
@@ -88,21 +88,22 @@ relations:
     label: 任课教师-教学班
     ownerModule: academicAffairs
     sourceModel: app.models.academic_affairs_teaching_class.AaTeachingClassTeacher
-    subjectField: teacher_id
-    subjectKeyKind: USER_ID
+    subjectField: teacher_key
+    subjectKeyKind: ACCOUNT_KEY
     objectKind: TEACHING_CLASS
     validity:
       kind: STATUS
       field: status
       activeValues: [ACTIVE]
-    resolver: app.services.data_scope_service._provider_course
+    resolver: app.modules.academic_affairs.services.academic_affairs_teacher_relation_authority.relation_scope
     scopeType: COURSE
     test: backend/tests/test_business_relation_registry.py
     notes: >
       任课关系存在 t_aa_teaching_class_teacher 这张关联表上（不是教学班主表）。
       因此通用扫描只能查出"关联行里 teacher_id 为空/账号已停用"；
       "某个教学班一个任课教师都没有"这类缺口要由教务模块提供专门 resolver，暂未登记。
-      COURSE resolver 读的是登录上下文里的 courseIds，不直接查教学班表。
+      正式执行范围由教务现有 relation_scope 校验教学班、教学任务和教学周；
+      仅在未形成教学班投影时回退教学任务 teacher_key。此目录不改变鉴权规则。
 
   - relationType: DORM_MANAGER_BUILDING
     label: 宿管-楼栋

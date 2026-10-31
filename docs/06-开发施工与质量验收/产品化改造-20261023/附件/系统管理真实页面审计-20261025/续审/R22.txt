@@ -1,0 +1,6841 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/staff-affiliations".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/staff-affiliations
+	1 container app
+		2 container
+			244 text 高校学生全生命周期管理平台
+			3 image
+			4 text field (settable) 搜索学生、功能或帮助
+			5 text Ctrl K
+			245 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				246 image
+				247 text 北京 13° 阴
+			248 button (collapsed) 10/25周日 14:34, Secondary Actions: Expand
+				249 image
+				6788 text 10/25周日 14:34
+			6 button 帮助与引导
+			7 button 消息中心
+				8 image
+			9 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				10 text 胡
+				11 text 胡管理
+				12 text 系统管理员
+		13 container
+			14 container 一级菜单
+				15 button 学工中心
+				16 button 系统管理
+			17 button (collapsed) 当前范围, Secondary Actions: Expand
+				18 image
+				19 text 当前范围
+				20 image
+			251 button (collapsed) 本次工作 02:14:17, Secondary Actions: Expand
+				252 image
+				6797 text 本次工作 02:14:17
+		254 container 二级菜单
+			255 button 收窄二级菜单
+				256 text 系统管理
+			257 container 二级菜单
+				258 button 系统概览
+				259 button 身份与账号
+				260 button 组织主数据
+				261 button 角色与权限
+				262 button 学校配置
+				263 button 流程配置
+				264 button 安全与审计
+				265 button 接口与同步
+			266 checkbox Description: 取消固定二级菜单, Value: 1
+		21 container
+			23 tab group 已打开页面
+				155 container
+					156 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					157 button 关闭实施总览
+						158 image
+				282 container
+					283 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					284 button 关闭首次开局向导
+						285 image
+				527 container
+					528 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					529 button 关闭预设方案
+						530 image
+				549 container
+					550 tab (selectable, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 0
+职业教育国家标准库
+					551 button 关闭职业教育国家标准库
+						552 image
+				554 container
+					555 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					556 button 关闭数据导入与智能匹配
+						557 image
+				579 container
+					580 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					581 button 关闭已安装配置
+						582 image
+				594 container
+					595 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					596 button 关闭变更与升级
+						597 image
+				599 container
+					600 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					601 button 关闭上线检查与验收
+						602 image
+				629 container
+					630 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					631 button 关闭教职工账号
+						632 image
+				1001 container
+					1002 tab (selectable, settable, boolean) 学生账号, Help: 身份与账号 / 学生账号, Value: 0
+学生账号
+					1003 button 关闭学生账号
+						1004 image
+				1006 container
+					1007 tab (selectable, settable, boolean) 教职工导入, Help: 身份与账号 / 教职工导入, Value: 0
+教职工导入
+					1008 button 关闭教职工导入
+						1009 image
+				1011 container
+					1012 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					1013 button 关闭数据交换任务中心
+						1014 image
+				1016 container
+					1017 tab (selectable, settable, boolean) 账号异常排查, Help: 身份与账号 / 账号异常排查, Value: 0
+账号异常排查
+					1018 button 关闭账号异常排查
+						1019 image
+				1021 container
+					1022 tab (selectable, settable, boolean) 登录与安全策略, Help: 身份与账号 / 登录与安全策略, Value: 0
+登录与安全策略
+					1023 button 关闭登录与安全策略
+						1024 image
+				1026 container
+					1027 tab (selectable, settable, boolean) 树形定位工作台, Help: 组织主数据 / 树形定位工作台, Value: 0
+树形定位工作台
+					1028 button 关闭树形定位工作台
+						1029 image
+				1267 container
+					1268 tab (selectable, settable, boolean) 学院与部门, Help: 组织主数据 / 学院与部门, Value: 0
+学院与部门
+					1269 button 关闭学院与部门
+						1270 image
+				1272 container
+					1273 tab (selectable, settable, boolean) 专业管理, Help: 组织主数据 / 专业管理, Value: 0
+专业管理
+					1274 button 关闭专业管理
+						1275 image
+				1277 container
+					1278 tab (selectable, settable, boolean) 年级与班级, Help: 组织主数据 / 年级与班级, Value: 0
+年级与班级
+					1279 button 关闭年级与班级
+						1280 image
+				1282 container
+					1283 tab (selectable, settable, boolean) 岗位管理, Help: 组织主数据 / 岗位管理, Value: 0
+岗位管理
+					1284 button 关闭岗位管理
+						1285 image
+				6790 container
+					6791 tab (selected, settable, boolean) 教职工任职归属查询, Help: 组织主数据 / 教职工任职归属查询, Value: 1
+教职工任职归属查询
+					6792 button 关闭教职工任职归属查询
+						6793 image
+			32 button 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			1030 container 组织主数据
+				1031 button 树形定位工作台
+				1032 button 学院与部门
+				1033 button 专业管理
+				1034 button 年级与班级
+				1035 button 岗位管理
+				1036 button 教职工任职归属查询
+				1037 button 业务关系中心
+				1038 button 变更版本
+			6794 container
+				6795 heading 教职工任职, Value: 1
+					6796 text 教职工任职
+				6798 container
+					6799 text 正式任职
+					6800 checkbox (settable, integer) Description: 显示已过期/已撤销, Value: 0
+					6801 button 新增任职
+				6802 table
+					6803 row
+						6804 cell
+							6805 text 岗位
+						6806 cell
+							6807 text 组织
+						6808 cell
+							6809 text 人员
+						6810 cell
+							6811 text 生效期间
+						6812 cell
+							6813 text 来源
+						6814 cell
+							6815 text 当前状态
+						6816 cell
+							6817 text 操作
+					6818 row
+						6819 cell
+							6820 text 辅导员  主任职
+						6821 cell
+							6822 text 信息工程学院 / 软件技术 / 软件技术2401班
+						6823 cell
+							6824 text 110
+						6825 cell
+							6826 text 2026-03-01 10:30 ~ 长期
+						6827 cell
+							6828 text 旧字段回填
+						6829 cell
+							6830 text 生效中
+						6831 cell
+							6832 button 撤销
+					6833 row
+						6834 cell
+							6835 text 校级教务终审负责人  主任职
+						6836 cell
+							6837 text 本校教务处
+						6838 cell
+							6839 text 109
+						6840 cell
+							6841 text 2026-08-01 00:00 ~ 长期
+						6842 cell
+							6843 text 旧字段回填
+						6844 cell
+							6845 text 生效中
+						6846 cell
+							6847 button 撤销
+					6848 row
+						6849 cell
+							6850 text 教学秘书  主任职
+						6851 cell
+							6852 text 艺术设计学院
+						6853 cell
+							6854 text 235231
+						6855 cell
+							6856 text 2026-08-01 00:00 ~ 长期
+						6857 cell
+							6858 text 旧字段回填
+						6859 cell
+							6860 text 生效中
+						6861 cell
+							6862 button 撤销
+					6863 row
+						6864 cell
+							6865 text 教学秘书  主任职
+						6866 cell
+							6867 text 医药健康学院
+						6868 cell
+							6869 text 235228
+						6870 cell
+							6871 text 2026-08-01 00:00 ~ 长期
+						6872 cell
+							6873 text 旧字段回填
+						6874 cell
+							6875 text 生效中
+						6876 cell
+							6877 button 撤销
+					6878 row
+						6879 cell
+							6880 text 教学秘书  主任职
+						6881 cell
+							6882 text 建筑工程学院
+						6883 cell
+							6884 text 235225
+						6885 cell
+							6886 text 2026-08-01 00:00 ~ 长期
+						6887 cell
+							6888 text 旧字段回填
+						6889 cell
+							6890 text 生效中
+						6891 cell
+							6892 button 撤销
+					6893 row
+						6894 cell
+							6895 text 教学秘书  主任职
+						6896 cell
+							6897 text 文化旅游学院
+						6898 cell
+							6899 text 235222
+						6900 cell
+							6901 text 2026-08-01 00:00 ~ 长期
+						6902 cell
+							6903 text 旧字段回填
+						6904 cell
+							6905 text 生效中
+						6906 cell
+							6907 button 撤销
+					6908 row
+						6909 cell
+							6910 text 教学秘书  主任职
+						6911 cell
+							6912 text 经济管理学院
+						6913 cell
+							6914 text 235219
+						6915 cell
+							6916 text 2026-08-01 00:00 ~ 长期
+						6917 cell
+							6918 text 旧字段回填
+						6919 cell
+							6920 text 生效中
+						6921 cell
+							6922 button 撤销
+					6923 row
+						6924 cell
+							6925 text 教学秘书  主任职
+						6926 cell
+							6927 text 汽车工程学院
+						6928 cell
+							6929 text 235216
+						6930 cell
+							6931 text 2026-08-01 00:00 ~ 长期
+						6932 cell
+							6933 text 旧字段回填
+						6934 cell
+							6935 text 生效中
+						6936 cell
+							6937 button 撤销
+					6938 row
+						6939 cell
+							6940 text 教学秘书  主任职
+						6941 cell
+							6942 text 智能制造学院
+						6943 cell
+							6944 text 235213
+						6945 cell
+							6946 text 2026-08-01 00:00 ~ 长期
+						6947 cell
+							6948 text 旧字段回填
+						6949 cell
+							6950 text 生效中
+						6951 cell
+							6952 button 撤销
+					6953 row
+						6954 cell
+							6955 text 教学秘书  主任职
+						6956 cell
+							6957 text 信息工程学院
+						6958 cell
+							6959 text 235210
+						6960 cell
+							6961 text 2026-08-01 00:00 ~ 长期
+						6962 cell
+							6963 text 旧字段回填
+						6964 cell
+							6965 text 生效中
+						6966 cell
+							6967 button 撤销
+				6968 container
+					6969 text 旧归属记录（只读对账） 来自班级辅导员/班主任、学院教学秘书和教师范围字段，退役前保留
+				6970 table (showing 0-500 of 980 items)
+					6971 row
+						6972 cell
+							6973 text 岗位
+						6974 cell
+							6975 text 组织
+						6976 cell
+							6977 text 组织类型
+						6978 cell
+							6979 text 人员
+						6980 cell
+							6981 text 人员标识
+						6982 cell
+							6983 text 状态
+					6984 row
+						6985 cell
+							6986 text 辅导员
+						6987 cell
+							6988 text 软件技术2401班
+						6989 cell
+							6990 text CLASS
+						6991 cell
+							6992 text —
+						6993 cell
+							6994 text 235114
+						6995 cell
+							6996 text 生效中
+					6997 row
+						6998 cell
+							6999 text 班主任
+						7000 cell
+							7001 text 软件技术2401班
+						7002 cell
+							7003 text CLASS
+						7004 cell
+							7005 text —
+						7006 cell
+							7007 text 234202
+						7008 cell
+							7009 text 生效中
+					7010 row
+						7011 cell
+							7012 text 辅导员
+						7013 cell
+							7014 text 软件技术2402班
+						7015 cell
+							7016 text CLASS
+						7017 cell
+							7018 text —
+						7019 cell
+							7020 text 235114
+						7021 cell
+							7022 text 生效中
+					7023 row
+						7024 cell
+							7025 text 班主任
+						7026 cell
+							7027 text 软件技术2402班
+						7028 cell
+							7029 text CLASS
+						7030 cell
+							7031 text —
+						7032 cell
+							7033 text 234203
+						7034 cell
+							7035 text 生效中
+					7036 row
+						7037 cell
+							7038 text 辅导员
+						7039 cell
+							7040 text 软件技术2403班
+						7041 cell
+							7042 text CLASS
+						7043 cell
+							7044 text —
+						7045 cell
+							7046 text 235114
+						7047 cell
+							7048 text 生效中
+					7049 row
+						7050 cell
+							7051 text 班主任
+						7052 cell
+							7053 text 软件技术2403班
+						7054 cell
+							7055 text CLASS
+						7056 cell
+							7057 text —
+						7058 cell
+							7059 text 234204
+						7060 cell
+							7061 text 生效中
+					7062 row
+						7063 cell
+							7064 text 辅导员
+						7065 cell
+							7066 text 软件技术2404班
+						7067 cell
+							7068 text CLASS
+						7069 cell
+							7070 text —
+						7071 cell
+							7072 text 235114
+						7073 cell
+							7074 text 生效中
+					7075 row
+						7076 cell
+							7077 text 班主任
+						7078 cell
+							7079 text 软件技术2404班
+						7080 cell
+							7081 text CLASS
+						7082 cell
+							7083 text —
+						7084 cell
+							7085 text 234205
+						7086 cell
+							7087 text 生效中
+					7088 row
+						7089 cell
+							7090 text 辅导员
+						7091 cell
+							7092 text 软件技术2405班
+						7093 cell
+							7094 text CLASS
+						7095 cell
+							7096 text —
+						7097 cell
+							7098 text 235115
+						7099 cell
+							7100 text 生效中
+					7101 row
+						7102 cell
+							7103 text 班主任
+						7104 cell
+							7105 text 软件技术2405班
+						7106 cell
+							7107 text CLASS
+						7108 cell
+							7109 text —
+						7110 cell
+							7111 text 234206
+						7112 cell
+							7113 text 生效中
+					7114 row
+						7115 cell
+							7116 text 辅导员
+						7117 cell
+							7118 text 软件技术2406班
+						7119 cell
+							7120 text CLASS
+						7121 cell
+							7122 text —
+						7123 cell
+							7124 text 235115
+						7125 cell
+							7126 text 生效中
+					7127 row
+						7128 cell
+							7129 text 班主任
+						7130 cell
+							7131 text 软件技术2406班
+						7132 cell
+							7133 text CLASS
+						7134 cell
+							7135 text —
+						7136 cell
+							7137 text 234207
+						7138 cell
+							7139 text 生效中
+					7140 row
+						7141 cell
+							7142 text 辅导员
+						7143 cell
+							7144 text 大数据技术2401班
+						7145 cell
+							7146 text CLASS
+						7147 cell
+							7148 text —
+						7149 cell
+							7150 text 235115
+						7151 cell
+							7152 text 生效中
+					7153 row
+						7154 cell
+							7155 text 班主任
+						7156 cell
+							7157 text 大数据技术2401班
+						7158 cell
+							7159 text CLASS
+						7160 cell
+							7161 text —
+						7162 cell
+							7163 text 234208
+						7164 cell
+							7165 text 生效中
+					7166 row
+						7167 cell
+							7168 text 辅导员
+						7169 cell
+							7170 text 大数据技术2402班
+						7171 cell
+							7172 text CLASS
+						7173 cell
+							7174 text —
+						7175 cell
+							7176 text 235115
+						7177 cell
+							7178 text 生效中
+					7179 row
+						7180 cell
+							7181 text 班主任
+						7182 cell
+							7183 text 大数据技术2402班
+						7184 cell
+							7185 text CLASS
+						7186 cell
+							7187 text —
+						7188 cell
+							7189 text 234209
+						7190 cell
+							7191 text 生效中
+					7192 row
+						7193 cell
+							7194 text 辅导员
+						7195 cell
+							7196 text 大数据技术2403班
+						7197 cell
+							7198 text CLASS
+						7199 cell
+							7200 text —
+						7201 cell
+							7202 text 235116
+						7203 cell
+							7204 text 生效中
+					7205 row
+						7206 cell
+							7207 text 班主任
+						7208 cell
+							7209 text 大数据技术2403班
+						7210 cell
+							7211 text CLASS
+						7212 cell
+							7213 text —
+						7214 cell
+							7215 text 234210
+						7216 cell
+							7217 text 生效中
+					7218 row
+						7219 cell
+							7220 text 辅导员
+						7221 cell
+							7222 text 大数据技术2404班
+						7223 cell
+							7224 text CLASS
+						7225 cell
+							7226 text —
+						7227 cell
+							7228 text 235116
+						7229 cell
+							7230 text 生效中
+					7231 row
+						7232 cell
+							7233 text 班主任
+						7234 cell
+							7235 text 大数据技术2404班
+						7236 cell
+							7237 text CLASS
+						7238 cell
+							7239 text —
+						7240 cell
+							7241 text 234211
+						7242 cell
+							7243 text 生效中
+					7244 row
+						7245 cell
+							7246 text 辅导员
+						7247 cell
+							7248 text 大数据技术2405班
+						7249 cell
+							7250 text CLASS
+						7251 cell
+							7252 text —
+						7253 cell
+							7254 text 235116
+						7255 cell
+							7256 text 生效中
+					7257 row
+						7258 cell
+							7259 text 班主任
+						7260 cell
+							7261 text 大数据技术2405班
+						7262 cell
+							7263 text CLASS
+						7264 cell
+							7265 text —
+						7266 cell
+							7267 text 234212
+						7268 cell
+							7269 text 生效中
+					7270 row
+						7271 cell
+							7272 text 辅导员
+						7273 cell
+							7274 text 计算机网络技术2401班
+						7275 cell
+							7276 text CLASS
+						7277 cell
+							7278 text —
+						7279 cell
+							7280 text 235116
+						7281 cell
+							7282 text 生效中
+					7283 row
+						7284 cell
+							7285 text 班主任
+						7286 cell
+							7287 text 计算机网络技术2401班
+						7288 cell
+							7289 text CLASS
+						7290 cell
+							7291 text —
+						7292 cell
+							7293 text 234213
+						7294 cell
+							7295 text 生效中
+					7296 row
+						7297 cell
+							7298 text 辅导员
+						7299 cell
+							7300 text 计算机网络技术2402班
+						7301 cell
+							7302 text CLASS
+						7303 cell
+							7304 text —
+						7305 cell
+							7306 text 235117
+						7307 cell
+							7308 text 生效中
+					7309 row
+						7310 cell
+							7311 text 班主任
+						7312 cell
+							7313 text 计算机网络技术2402班
+						7314 cell
+							7315 text CLASS
+						7316 cell
+							7317 text —
+						7318 cell
+							7319 text 234214
+						7320 cell
+							7321 text 生效中
+					7322 row
+						7323 cell
+							7324 text 辅导员
+						7325 cell
+							7326 text 计算机网络技术2403班
+						7327 cell
+							7328 text CLASS
+						7329 cell
+							7330 text —
+						7331 cell
+							7332 text 235117
+						7333 cell
+							7334 text 生效中
+					7335 row
+						7336 cell
+							7337 text 班主任
+						7338 cell
+							7339 text 计算机网络技术2403班
+						7340 cell
+							7341 text CLASS
+						7342 cell
+							7343 text —
+						7344 cell
+							7345 text 234215
+						7346 cell
+							7347 text 生效中
+					7348 row
+						7349 cell
+							7350 text 辅导员
+						7351 cell
+							7352 text 计算机网络技术2404班
+						7353 cell
+							7354 text CLASS
+						7355 cell
+							7356 text —
+						7357 cell
+							7358 text 235117
+						7359 cell
+							7360 text 生效中
+					7361 row
+						7362 cell
+							7363 text 班主任
+						7364 cell
+							7365 text 计算机网络技术2404班
+						7366 cell
+							7367 text CLASS
+						7368 cell
+							7369 text —
+						7370 cell
+							7371 text 234216
+						7372 cell
+							7373 text 生效中
+					7374 row
+						7375 cell
+							7376 text 辅导员
+						7377 cell
+							7378 text 人工智能技术应用2401班
+						7379 cell
+							7380 text CLASS
+						7381 cell
+							7382 text —
+						7383 cell
+							7384 text 235117
+						7385 cell
+							7386 text 生效中
+					7387 row
+						7388 cell
+							7389 text 班主任
+						7390 cell
+							7391 text 人工智能技术应用2401班
+						7392 cell
+							7393 text CLASS
+						7394 cell
+							7395 text —
+						7396 cell
+							7397 text 234217
+						7398 cell
+							7399 text 生效中
+					7400 row
+						7401 cell
+							7402 text 辅导员
+						7403 cell
+							7404 text 人工智能技术应用2402班
+						7405 cell
+							7406 text CLASS
+						7407 cell
+							7408 text —
+						7409 cell
+							7410 text 235118
+						7411 cell
+							7412 text 生效中
+					7413 row
+						7414 cell
+							7415 text 班主任
+						7416 cell
+							7417 text 人工智能技术应用2402班
+						7418 cell
+							7419 text CLASS
+						7420 cell
+							7421 text —
+						7422 cell
+							7423 text 234218
+						7424 cell
+							7425 text 生效中
+					7426 row
+						7427 cell
+							7428 text 辅导员
+						7429 cell
+							7430 text 人工智能技术应用2403班
+						7431 cell
+							7432 text CLASS
+						7433 cell
+							7434 text —
+						7435 cell
+							7436 text 235118
+						7437 cell
+							7438 text 生效中
+					7439 row
+						7440 cell
+							7441 text 班主任
+						7442 cell
+							7443 text 人工智能技术应用2403班
+						7444 cell
+							7445 text CLASS
+						7446 cell
+							7447 text —
+						7448 cell
+							7449 text 234219
+						7450 cell
+							7451 text 生效中
+					7452 row
+						7453 cell
+							7454 text 辅导员
+						7455 cell
+							7456 text 人工智能技术应用2404班
+						7457 cell
+							7458 text CLASS
+						7459 cell
+							7460 text —
+						7461 cell
+							7462 text 235118
+						7463 cell
+							7464 text 生效中
+					7465 row
+						7466 cell
+							7467 text 班主任
+						7468 cell
+							7469 text 人工智能技术应用2404班
+						7470 cell
+							7471 text CLASS
+						7472 cell
+							7473 text —
+						7474 cell
+							7475 text 234220
+						7476 cell
+							7477 text 生效中
+					7478 row
+						7479 cell
+							7480 text 辅导员
+						7481 cell
+							7482 text 机电一体化技术2401班
+						7483 cell
+							7484 text CLASS
+						7485 cell
+							7486 text —
+						7487 cell
+							7488 text 235118
+						7489 cell
+							7490 text 生效中
+					7491 row
+						7492 cell
+							7493 text 班主任
+						7494 cell
+							7495 text 机电一体化技术2401班
+						7496 cell
+							7497 text CLASS
+						7498 cell
+							7499 text —
+						7500 cell
+							7501 text 234221
+						7502 cell
+							7503 text 生效中
+					7504 row
+						7505 cell
+							7506 text 辅导员
+						7507 cell
+							7508 text 机电一体化技术2402班
+						7509 cell
+							7510 text CLASS
+						7511 cell
+							7512 text —
+						7513 cell
+							7514 text 235119
+						7515 cell
+							7516 text 生效中
+					7517 row
+						7518 cell
+							7519 text 班主任
+						7520 cell
+							7521 text 机电一体化技术2402班
+						7522 cell
+							7523 text CLASS
+						7524 cell
+							7525 text —
+						7526 cell
+							7527 text 234222
+						7528 cell
+							7529 text 生效中
+					7530 row
+						7531 cell
+							7532 text 辅导员
+						7533 cell
+							7534 text 机电一体化技术2403班
+						7535 cell
+							7536 text CLASS
+						7537 cell
+							7538 text —
+						7539 cell
+							7540 text 235119
+						7541 cell
+							7542 text 生效中
+					7543 row
+						7544 cell
+							7545 text 班主任
+						7546 cell
+							7547 text 机电一体化技术2403班
+						7548 cell
+							7549 text CLASS
+						7550 cell
+							7551 text —
+						7552 cell
+							7553 text 234223
+						7554 cell
+							7555 text 生效中
+					7556 row
+						7557 cell
+							7558 text 辅导员
+						7559 cell
+							7560 text 机电一体化技术2404班
+						7561 cell
+							7562 text CLASS
+						7563 cell
+							7564 text —
+						7565 cell
+							7566 text 235119
+						7567 cell
+							7568 text 生效中
+					7569 row
+						7570 cell
+							7571 text 班主任
+						7572 cell
+							7573 text 机电一体化技术2404班
+						7574 cell
+							7575 text CLASS
+						7576 cell
+							7577 text —
+						7578 cell
+							7579 text 234224
+						7580 cell
+							7581 text 生效中
+					7582 row
+						7583 cell
+							7584 text 辅导员
+						7585 cell
+							7586 text 机电一体化技术2405班
+						7587 cell
+							7588 text CLASS
+						7589 cell
+							7590 text —
+						7591 cell
+							7592 text 235119
+						7593 cell
+							7594 text 生效中
+					7595 row
+						7596 cell
+							7597 text 班主任
+						7598 cell
+							7599 text 机电一体化技术2405班
+						7600 cell
+							7601 text CLASS
+						7602 cell
+							7603 text —
+						7604 cell
+							7605 text 234225
+						7606 cell
+							7607 text 生效中
+					7608 row
+						7609 cell
+							7610 text 辅导员
+						7611 cell
+							7612 text 工业机器人技术2401班
+						7613 cell
+							7614 text CLASS
+						7615 cell
+							7616 text —
+						7617 cell
+							7618 text 235120
+						7619 cell
+							7620 text 生效中
+					7621 row
+						7622 cell
+							7623 text 班主任
+						7624 cell
+							7625 text 工业机器人技术2401班
+						7626 cell
+							7627 text CLASS
+						7628 cell
+							7629 text —
+						7630 cell
+							7631 text 234226
+						7632 cell
+							7633 text 生效中
+					7634 row
+						7635 cell
+							7636 text 辅导员
+						7637 cell
+							7638 text 工业机器人技术2402班
+						7639 cell
+							7640 text CLASS
+						7641 cell
+							7642 text —
+						7643 cell
+							7644 text 235120
+						7645 cell
+							7646 text 生效中
+					7647 row
+						7648 cell
+							7649 text 班主任
+						7650 cell
+							7651 text 工业机器人技术2402班
+						7652 cell
+							7653 text CLASS
+						7654 cell
+							7655 text —
+						7656 cell
+							7657 text 234227
+						7658 cell
+							7659 text 生效中
+					7660 row
+						7661 cell
+							7662 text 辅导员
+						7663 cell
+							7664 text 工业机器人技术2403班
+						7665 cell
+							7666 text CLASS
+						7667 cell
+							7668 text —
+						7669 cell
+							7670 text 235120
+						7671 cell
+							7672 text 生效中
+					7673 row
+						7674 cell
+							7675 text 班主任
+						7676 cell
+							7677 text 工业机器人技术2403班
+						7678 cell
+							7679 text CLASS
+						7680 cell
+							7681 text —
+						7682 cell
+							7683 text 234228
+						7684 cell
+							7685 text 生效中
+					7686 row
+						7687 cell
+							7688 text 辅导员
+						7689 cell
+							7690 text 工业机器人技术2404班
+						7691 cell
+							7692 text CLASS
+						7693 cell
+							7694 text —
+						7695 cell
+							7696 text 235120
+						7697 cell
+							7698 text 生效中
+					7699 row
+						7700 cell
+							7701 text 班主任
+						7702 cell
+							7703 text 工业机器人技术2404班
+						7704 cell
+							7705 text CLASS
+						7706 cell
+							7707 text —
+						7708 cell
+							7709 text 234229
+						7710 cell
+							7711 text 生效中
+					7712 row
+						7713 cell
+							7714 text 辅导员
+						7715 cell
+							7716 text 数控技术2401班
+						7717 cell
+							7718 text CLASS
+						7719 cell
+							7720 text —
+						7721 cell
+							7722 text 235121
+						7723 cell
+							7724 text 生效中
+					7725 row
+						7726 cell
+							7727 text 班主任
+						7728 cell
+							7729 text 数控技术2401班
+						7730 cell
+							7731 text CLASS
+						7732 cell
+							7733 text —
+						7734 cell
+							7735 text 234230
+						7736 cell
+							7737 text 生效中
+					7738 row
+						7739 cell
+							7740 text 辅导员
+						7741 cell
+							7742 text 数控技术2402班
+						7743 cell
+							7744 text CLASS
+						7745 cell
+							7746 text —
+						7747 cell
+							7748 text 235121
+						7749 cell
+							7750 text 生效中
+					7751 row
+						7752 cell
+							7753 text 班主任
+						7754 cell
+							7755 text 数控技术2402班
+						7756 cell
+							7757 text CLASS
+						7758 cell
+							7759 text —
+						7760 cell
+							7761 text 234231
+						7762 cell
+							7763 text 生效中
+					7764 row
+						7765 cell
+							7766 text 辅导员
+						7767 cell
+							7768 text 数控技术2403班
+						7769 cell
+							7770 text CLASS
+						7771 cell
+							7772 text —
+						7773 cell
+							7774 text 235121
+						7775 cell
+							7776 text 生效中
+					7777 row
+						7778 cell
+							7779 text 班主任
+						7780 cell
+							7781 text 数控技术2403班
+						7782 cell
+							7783 text CLASS
+						7784 cell
+							7785 text —
+						7786 cell
+							7787 text 234232
+						7788 cell
+							7789 text 生效中
+					7790 row
+						7791 cell
+							7792 text 辅导员
+						7793 cell
+							7794 text 数控技术2404班
+						7795 cell
+							7796 text CLASS
+						7797 cell
+							7798 text —
+						7799 cell
+							7800 text 235121
+						7801 cell
+							7802 text 生效中
+					7803 row
+						7804 cell
+							7805 text 班主任
+						7806 cell
+							7807 text 数控技术2404班
+						7808 cell
+							7809 text CLASS
+						7810 cell
+							7811 text —
+						7812 cell
+							7813 text 234233
+						7814 cell
+							7815 text 生效中
+					7816 row
+						7817 cell
+							7818 text 辅导员
+						7819 cell
+							7820 text 电气自动化技术2401班
+						7821 cell
+							7822 text CLASS
+						7823 cell
+							7824 text —
+						7825 cell
+							7826 text 235122
+						7827 cell
+							7828 text 生效中
+					7829 row
+						7830 cell
+							7831 text 班主任
+						7832 cell
+							7833 text 电气自动化技术2401班
+						7834 cell
+							7835 text CLASS
+						7836 cell
+							7837 text —
+						7838 cell
+							7839 text 234234
+						7840 cell
+							7841 text 生效中
+					7842 row
+						7843 cell
+							7844 text 辅导员
+						7845 cell
+							7846 text 电气自动化技术2402班
+						7847 cell
+							7848 text CLASS
+						7849 cell
+							7850 text —
+						7851 cell
+							7852 text 235122
+						7853 cell
+							7854 text 生效中
+					7855 row
+						7856 cell
+							7857 text 班主任
+						7858 cell
+							7859 text 电气自动化技术2402班
+						7860 cell
+							7861 text CLASS
+						7862 cell
+							7863 text —
+						7864 cell
+							7865 text 234235
+						7866 cell
+							7867 text 生效中
+					7868 row
+						7869 cell
+							7870 text 辅导员
+						7871 cell
+							7872 text 电气自动化技术2403班
+						7873 cell
+							7874 text CLASS
+						7875 cell
+							7876 text —
+						7877 cell
+							7878 text 235122
+						7879 cell
+							7880 text 生效中
+					7881 row
+						7882 cell
+							7883 text 班主任
+						7884 cell
+							7885 text 电气自动化技术2403班
+						7886 cell
+							7887 text CLASS
+						7888 cell
+							7889 text —
+						7890 cell
+							7891 text 234236
+						7892 cell
+							7893 text 生效中
+					7894 row
+						7895 cell
+							7896 text 辅导员
+						7897 cell
+							7898 text 电气自动化技术2404班
+						7899 cell
+							7900 text CLASS
+						7901 cell
+							7902 text —
+						7903 cell
+							7904 text 235122
+						7905 cell
+							7906 text 生效中
+					7907 row
+						7908 cell
+							7909 text 班主任
+						7910 cell
+							7911 text 电气自动化技术2404班
+						7912 cell
+							7913 text CLASS
+						7914 cell
+							7915 text —
+						7916 cell
+							7917 text 234237
+						7918 cell
+							7919 text 生效中
+					7920 row
+						7921 cell
+							7922 text 辅导员
+						7923 cell
+							7924 text 新能源汽车技术2401班
+						7925 cell
+							7926 text CLASS
+						7927 cell
+							7928 text —
+						7929 cell
+							7930 text 235123
+						7931 cell
+							7932 text 生效中
+					7933 row
+						7934 cell
+							7935 text 班主任
+						7936 cell
+							7937 text 新能源汽车技术2401班
+						7938 cell
+							7939 text CLASS
+						7940 cell
+							7941 text —
+						7942 cell
+							7943 text 234238
+						7944 cell
+							7945 text 生效中
+					7946 row
+						7947 cell
+							7948 text 辅导员
+						7949 cell
+							7950 text 新能源汽车技术2402班
+						7951 cell
+							7952 text CLASS
+						7953 cell
+							7954 text —
+						7955 cell
+							7956 text 235123
+						7957 cell
+							7958 text 生效中
+					7959 row
+						7960 cell
+							7961 text 班主任
+						7962 cell
+							7963 text 新能源汽车技术2402班
+						7964 cell
+							7965 text CLASS
+						7966 cell
+							7967 text —
+						7968 cell
+							7969 text 234239
+						7970 cell
+							7971 text 生效中
+					7972 row
+						7973 cell
+							7974 text 辅导员
+						7975 cell
+							7976 text 新能源汽车技术2403班
+						7977 cell
+							7978 text CLASS
+						7979 cell
+							7980 text —
+						7981 cell
+							7982 text 235123
+						7983 cell
+							7984 text 生效中
+					7985 row
+						7986 cell
+							7987 text 班主任
+						7988 cell
+							7989 text 新能源汽车技术2403班
+						7990 cell
+							7991 text CLASS
+						7992 cell
+							7993 text —
+						7994 cell
+							7995 text 234240
+						7996 cell
+							7997 text 生效中
+					7998 row
+						7999 cell
+							8000 text 辅导员
+						8001 cell
+							8002 text 新能源汽车技术2404班
+						8003 cell
+							8004 text CLASS
+						8005 cell
+							8006 text —
+						8007 cell
+							8008 text 235123
+						8009 cell
+							8010 text 生效中
+					8011 row
+						8012 cell
+							8013 text 班主任
+						8014 cell
+							8015 text 新能源汽车技术2404班
+						8016 cell
+							8017 text CLASS
+						8018 cell
+							8019 text —
+						8020 cell
+							8021 text 234241
+						8022 cell
+							8023 text 生效中
+					8024 row
+						8025 cell
+							8026 text 辅导员
+						8027 cell
+							8028 text 新能源汽车技术2405班
+						8029 cell
+							8030 text CLASS
+						8031 cell
+							8032 text —
+						8033 cell
+							8034 text 235124
+						8035 cell
+							8036 text 生效中
+					8037 row
+						8038 cell
+							8039 text 班主任
+						8040 cell
+							8041 text 新能源汽车技术2405班
+						8042 cell
+							8043 text CLASS
+						8044 cell
+							8045 text —
+						8046 cell
+							8047 text 234242
+						8048 cell
+							8049 text 生效中
+					8050 row
+						8051 cell
+							8052 text 辅导员
+						8053 cell
+							8054 text 汽车检测与维修技术2401班
+						8055 cell
+							8056 text CLASS
+						8057 cell
+							8058 text —
+						8059 cell
+							8060 text 235124
+						8061 cell
+							8062 text 生效中
+					8063 row
+						8064 cell
+							8065 text 班主任
+						8066 cell
+							8067 text 汽车检测与维修技术2401班
+						8068 cell
+							8069 text CLASS
+						8070 cell
+							8071 text —
+						8072 cell
+							8073 text 234243
+						8074 cell
+							8075 text 生效中
+					8076 row
+						8077 cell
+							8078 text 辅导员
+						8079 cell
+							8080 text 汽车检测与维修技术2402班
+						8081 cell
+							8082 text CLASS
+						8083 cell
+							8084 text —
+						8085 cell
+							8086 text 235124
+						8087 cell
+							8088 text 生效中
+					8089 row
+						8090 cell
+							8091 text 班主任
+						8092 cell
+							8093 text 汽车检测与维修技术2402班
+						8094 cell
+							8095 text CLASS
+						8096 cell
+							8097 text —
+						8098 cell
+							8099 text 234244
+						8100 cell
+							8101 text 生效中
+					8102 row
+						8103 cell
+							8104 text 辅导员
+						8105 cell
+							8106 text 汽车检测与维修技术2403班
+						8107 cell
+							8108 text CLASS
+						8109 cell
+							8110 text —
+						8111 cell
+							8112 text 235124
+						8113 cell
+							8114 text 生效中
+					8115 row
+						8116 cell
+							8117 text 班主任
+						8118 cell
+							8119 text 汽车检测与维修技术2403班
+						8120 cell
+							8121 text CLASS
+						8122 cell
+							8123 text —
+						8124 cell
+							8125 text 234245
+						8126 cell
+							8127 text 生效中
+					8128 row
+						8129 cell
+							8130 text 辅导员
+						8131 cell
+							8132 text 汽车检测与维修技术2404班
+						8133 cell
+							8134 text CLASS
+						8135 cell
+							8136 text —
+						8137 cell
+							8138 text 235125
+						8139 cell
+							8140 text 生效中
+					8141 row
+						8142 cell
+							8143 text 班主任
+						8144 cell
+							8145 text 汽车检测与维修技术2404班
+						8146 cell
+							8147 text CLASS
+						8148 cell
+							8149 text —
+						8150 cell
+							8151 text 234246
+						8152 cell
+							8153 text 生效中
+					8154 row
+						8155 cell
+							8156 text 辅导员
+						8157 cell
+							8158 text 智能网联汽车技术2401班
+						8159 cell
+							8160 text CLASS
+						8161 cell
+							8162 text —
+						8163 cell
+							8164 text 235125
+						8165 cell
+							8166 text 生效中
+					8167 row
+						8168 cell
+							8169 text 班主任
+						8170 cell
+							8171 text 智能网联汽车技术2401班
+						8172 cell
+							8173 text CLASS
+						8174 cell
+							8175 text —
+						8176 cell
+							8177 text 234247
+						8178 cell
+							8179 text 生效中
+					8180 row
+						8181 cell
+							8182 text 辅导员
+						8183 cell
+							8184 text 智能网联汽车技术2402班
+						8185 cell
+							8186 text CLASS
+						8187 cell
+							8188 text —
+						8189 cell
+							8190 text 235125
+						8191 cell
+							8192 text 生效中
+					8193 row
+						8194 cell
+							8195 text 班主任
+						8196 cell
+							8197 text 智能网联汽车技术2402班
+						8198 cell
+							8199 text CLASS
+						8200 cell
+							8201 text —
+						8202 cell
+							8203 text 234248
+						8204 cell
+							8205 text 生效中
+					8206 row
+						8207 cell
+							8208 text 辅导员
+						8209 cell
+							8210 text 智能网联汽车技术2403班
+						8211 cell
+							8212 text CLASS
+						8213 cell
+							8214 text —
+						8215 cell
+							8216 text 235125
+						8217 cell
+							8218 text 生效中
+					8219 row
+						8220 cell
+							8221 text 班主任
+						8222 cell
+							8223 text 智能网联汽车技术2403班
+						8224 cell
+							8225 text CLASS
+						8226 cell
+							8227 text —
+						8228 cell
+							8229 text 234249
+						8230 cell
+							8231 text 生效中
+					8232 row
+						8233 cell
+							8234 text 辅导员
+						8235 cell
+							8236 text 智能网联汽车技术2404班
+						8237 cell
+							8238 text CLASS
+						8239 cell
+							8240 text —
+						8241 cell
+							8242 text 235126
+						8243 cell
+							8244 text 生效中
+					8245 row
+						8246 cell
+							8247 text 班主任
+						8248 cell
+							8249 text 智能网联汽车技术2404班
+						8250 cell
+							8251 text CLASS
+						8252 cell
+							8253 text —
+						8254 cell
+							8255 text 234250
+						8256 cell
+							8257 text 生效中
+					8258 row
+						8259 cell
+							8260 text 辅导员
+						8261 cell
+							8262 text 汽车制造与试验技术2401班
+						8263 cell
+							8264 text CLASS
+						8265 cell
+							8266 text —
+						8267 cell
+							8268 text 235126
+						8269 cell
+							8270 text 生效中
+					8271 row
+						8272 cell
+							8273 text 班主任
+						8274 cell
+							8275 text 汽车制造与试验技术2401班
+						8276 cell
+							8277 text CLASS
+						8278 cell
+							8279 text —
+						8280 cell
+							8281 text 234251
+						8282 cell
+							8283 text 生效中
+					8284 row
+						8285 cell
+							8286 text 辅导员
+						8287 cell
+							8288 text 汽车制造与试验技术2402班
+						8289 cell
+							8290 text CLASS
+						8291 cell
+							8292 text —
+						8293 cell
+							8294 text 235126
+						8295 cell
+							8296 text 生效中
+					8297 row
+						8298 cell
+							8299 text 班主任
+						8300 cell
+							8301 text 汽车制造与试验技术2402班
+						8302 cell
+							8303 text CLASS
+						8304 cell
+							8305 text —
+						8306 cell
+							8307 text 234252
+						8308 cell
+							8309 text 生效中
+					8310 row
+						8311 cell
+							8312 text 辅导员
+						8313 cell
+							8314 text 汽车制造与试验技术2403班
+						8315 cell
+							8316 text CLASS
+						8317 cell
+							8318 text —
+						8319 cell
+							8320 text 235126
+						8321 cell
+							8322 text 生效中
+					8323 row
+						8324 cell
+							8325 text 班主任
+						8326 cell
+							8327 text 汽车制造与试验技术2403班
+						8328 cell
+							8329 text CLASS
+						8330 cell
+							8331 text —
+						8332 cell
+							8333 text 234253
+						8334 cell
+							8335 text 生效中
+					8336 row
+						8337 cell
+							8338 text 辅导员
+						8339 cell
+							8340 text 电子商务2401班
+						8341 cell
+							8342 text CLASS
+						8343 cell
+							8344 text —
+						8345 cell
+							8346 text 235127
+						8347 cell
+							8348 text 生效中
+					8349 row
+						8350 cell
+							8351 text 班主任
+						8352 cell
+							8353 text 电子商务2401班
+						8354 cell
+							8355 text CLASS
+						8356 cell
+							8357 text —
+						8358 cell
+							8359 text 234254
+						8360 cell
+							8361 text 生效中
+					8362 row
+						8363 cell
+							8364 text 辅导员
+						8365 cell
+							8366 text 电子商务2402班
+						8367 cell
+							8368 text CLASS
+						8369 cell
+							8370 text —
+						8371 cell
+							8372 text 235127
+						8373 cell
+							8374 text 生效中
+					8375 row
+						8376 cell
+							8377 text 班主任
+						8378 cell
+							8379 text 电子商务2402班
+						8380 cell
+							8381 text CLASS
+						8382 cell
+							8383 text —
+						8384 cell
+							8385 text 234255
+						8386 cell
+							8387 text 生效中
+					8388 row
+						8389 cell
+							8390 text 辅导员
+						8391 cell
+							8392 text 电子商务2403班
+						8393 cell
+							8394 text CLASS
+						8395 cell
+							8396 text —
+						8397 cell
+							8398 text 235127
+						8399 cell
+							8400 text 生效中
+					8401 row
+						8402 cell
+							8403 text 班主任
+						8404 cell
+							8405 text 电子商务2403班
+						8406 cell
+							8407 text CLASS
+						8408 cell
+							8409 text —
+						8410 cell
+							8411 text 234256
+						8412 cell
+							8413 text 生效中
+					8414 row
+						8415 cell
+							8416 text 辅导员
+						8417 cell
+							8418 text 电子商务2404班
+						8419 cell
+							8420 text CLASS
+						8421 cell
+							8422 text —
+						8423 cell
+							8424 text 235127
+						8425 cell
+							8426 text 生效中
+					8427 row
+						8428 cell
+							8429 text 班主任
+						8430 cell
+							8431 text 电子商务2404班
+						8432 cell
+							8433 text CLASS
+						8434 cell
+							8435 text —
+						8436 cell
+							8437 text 234257
+						8438 cell
+							8439 text 生效中
+					8440 row
+						8441 cell
+							8442 text 辅导员
+						8443 cell
+							8444 text 电子商务2405班
+						8445 cell
+							8446 text CLASS
+						8447 cell
+							8448 text —
+						8449 cell
+							8450 text 235128
+						8451 cell
+							8452 text 生效中
+					8453 row
+						8454 cell
+							8455 text 班主任
+						8456 cell
+							8457 text 电子商务2405班
+						8458 cell
+							8459 text CLASS
+						8460 cell
+							8461 text —
+						8462 cell
+							8463 text 234258
+						8464 cell
+							8465 text 生效中
+					8466 row
+						8467 cell
+							8468 text 辅导员
+						8469 cell
+							8470 text 大数据与会计2401班
+						8471 cell
+							8472 text CLASS
+						8473 cell
+							8474 text —
+						8475 cell
+							8476 text 235128
+						8477 cell
+							8478 text 生效中
+					8479 row
+						8480 cell
+							8481 text 班主任
+						8482 cell
+							8483 text 大数据与会计2401班
+						8484 cell
+							8485 text CLASS
+						8486 cell
+							8487 text —
+						8488 cell
+							8489 text 234259
+						8490 cell
+							8491 text 生效中
+					8492 row
+						8493 cell
+							8494 text 辅导员
+						8495 cell
+							8496 text 大数据与会计2402班
+						8497 cell
+							8498 text CLASS
+						8499 cell
+							8500 text —
+						8501 cell
+							8502 text 235128
+						8503 cell
+							8504 text 生效中
+					8505 row
+						8506 cell
+							8507 text 班主任
+						8508 cell
+							8509 text 大数据与会计2402班
+						8510 cell
+							8511 text CLASS
+						8512 cell
+							8513 text —
+						8514 cell
+							8515 text 234260
+						8516 cell
+							8517 text 生效中
+					8518 row
+						8519 cell
+							8520 text 辅导员
+						8521 cell
+							8522 text 大数据与会计2403班
+						8523 cell
+							8524 text CLASS
+						8525 cell
+							8526 text —
+						8527 cell
+							8528 text 235128
+						8529 cell
+							8530 text 生效中
+					8531 row
+						8532 cell
+							8533 text 班主任
+						8534 cell
+							8535 text 大数据与会计2403班
+						8536 cell
+							8537 text CLASS
+						8538 cell
+							8539 text —
+						8540 cell
+							8541 text 234261
+						8542 cell
+							8543 text 生效中
+					8544 row
+						8545 cell
+							8546 text 辅导员
+						8547 cell
+							8548 text 大数据与会计2404班
+						8549 cell
+							8550 text CLASS
+						8551 cell
+							8552 text —
+						8553 cell
+							8554 text 235129
+						8555 cell
+							8556 text 生效中
+					8557 row
+						8558 cell
+							8559 text 班主任
+						8560 cell
+							8561 text 大数据与会计2404班
+						8562 cell
+							8563 text CLASS
+						8564 cell
+							8565 text —
+						8566 cell
+							8567 text 234262
+						8568 cell
+							8569 text 生效中
+					8570 row
+						8571 cell
+							8572 text 辅导员
+						8573 cell
+							8574 text 大数据与会计2405班
+						8575 cell
+							8576 text CLASS
+						8577 cell
+							8578 text —
+						8579 cell
+							8580 text 235129
+						8581 cell
+							8582 text 生效中
+					8583 row
+						8584 cell
+							8585 text 班主任
+						8586 cell
+							8587 text 大数据与会计2405班
+						8588 cell
+							8589 text CLASS
+						8590 cell
+							8591 text —
+						8592 cell
+							8593 text 234263
+						8594 cell
+							8595 text 生效中
+					8596 row
+						8597 cell
+							8598 text 辅导员
+						8599 cell
+							8600 text 市场营销2401班
+						8601 cell
+							8602 text CLASS
+						8603 cell
+							8604 text —
+						8605 cell
+							8606 text 235129
+						8607 cell
+							8608 text 生效中
+					8609 row
+						8610 cell
+							8611 text 班主任
+						8612 cell
+							8613 text 市场营销2401班
+						8614 cell
+							8615 text CLASS
+						8616 cell
+							8617 text —
+						8618 cell
+							8619 text 234264
+						8620 cell
+							8621 text 生效中
+					8622 row
+						8623 cell
+							8624 text 辅导员
+						8625 cell
+							8626 text 市场营销2402班
+						8627 cell
+							8628 text CLASS
+						8629 cell
+							8630 text —
+						8631 cell
+							8632 text 235129
+						8633 cell
+							8634 text 生效中
+					8635 row
+						8636 cell
+							8637 text 班主任
+						8638 cell
+							8639 text 市场营销2402班
+						8640 cell
+							8641 text CLASS
+						8642 cell
+							8643 text —
+						8644 cell
+							8645 text 234265
+						8646 cell
+							8647 text 生效中
+					8648 row
+						8649 cell
+							8650 text 辅导员
+						8651 cell
+							8652 text 市场营销2403班
+						8653 cell
+							8654 text CLASS
+						8655 cell
+							8656 text —
+						8657 cell
+							8658 text 235130
+						8659 cell
+							8660 text 生效中
+					8661 row
+						8662 cell
+							8663 text 班主任
+						8664 cell
+							8665 text 市场营销2403班
+						8666 cell
+							8667 text CLASS
+						8668 cell
+							8669 text —
+						8670 cell
+							8671 text 234266
+						8672 cell
+							8673 text 生效中
+					8674 row
+						8675 cell
+							8676 text 辅导员
+						8677 cell
+							8678 text 市场营销2404班
+						8679 cell
+							8680 text CLASS
+						8681 cell
+							8682 text —
+						8683 cell
+							8684 text 235130
+						8685 cell
+							8686 text 生效中
+					8687 row
+						8688 cell
+							8689 text 班主任
+						8690 cell
+							8691 text 市场营销2404班
+						8692 cell
+							8693 text CLASS
+						8694 cell
+							8695 text —
+						8696 cell
+							8697 text 234267
+						8698 cell
+							8699 text 生效中
+					8700 row
+						8701 cell
+							8702 text 辅导员
+						8703 cell
+							8704 text 现代物流管理2401班
+						8705 cell
+							8706 text CLASS
+						8707 cell
+							8708 text —
+						8709 cell
+							8710 text 235130
+						8711 cell
+							8712 text 生效中
+					8713 row
+						8714 cell
+							8715 text 班主任
+						8716 cell
+							8717 text 现代物流管理2401班
+						8718 cell
+							8719 text CLASS
+						8720 cell
+							8721 text —
+						8722 cell
+							8723 text 234268
+						8724 cell
+							8725 text 生效中
+					8726 row
+						8727 cell
+							8728 text 辅导员
+						8729 cell
+							8730 text 现代物流管理2402班
+						8731 cell
+							8732 text CLASS
+						8733 cell
+							8734 text —
+						8735 cell
+							8736 text 235130
+						8737 cell
+							8738 text 生效中
+					8739 row
+						8740 cell
+							8741 text 班主任
+						8742 cell
+							8743 text 现代物流管理2402班
+						8744 cell
+							8745 text CLASS
+						8746 cell
+							8747 text —
+						8748 cell
+							8749 text 234269
+						8750 cell
+							8751 text 生效中
+					8752 row
+						8753 cell
+							8754 text 辅导员
+						8755 cell
+							8756 text 现代物流管理2403班
+						8757 cell
+							8758 text CLASS
+						8759 cell
+							8760 text —
+						8761 cell
+							8762 text 235131
+						8763 cell
+							8764 text 生效中
+					8765 row
+						8766 cell
+							8767 text 班主任
+						8768 cell
+							8769 text 现代物流管理2403班
+						8770 cell
+							8771 text CLASS
+						8772 cell
+							8773 text —
+						8774 cell
+							8775 text 234270
+						8776 cell
+							8777 text 生效中
+					8778 row
+						8779 cell
+							8780 text 辅导员
+						8781 cell
+							8782 text 现代物流管理2404班
+						8783 cell
+							8784 text CLASS
+						8785 cell
+							8786 text —
+						8787 cell
+							8788 text 235131
+						8789 cell
+							8790 text 生效中
+					8791 row
+						8792 cell
+							8793 text 班主任
+						8794 cell
+							8795 text 现代物流管理2404班
+						8796 cell
+							8797 text CLASS
+						8798 cell
+							8799 text —
+						8800 cell
+							8801 text 234271
+						8802 cell
+							8803 text 生效中
+					8804 row
+						8805 cell
+							8806 text 辅导员
+						8807 cell
+							8808 text 旅游管理2401班
+						8809 cell
+							8810 text CLASS
+						8811 cell
+							8812 text —
+						8813 cell
+							8814 text 235131
+						8815 cell
+							8816 text 生效中
+					8817 row
+						8818 cell
+							8819 text 班主任
+						8820 cell
+							8821 text 旅游管理2401班
+						8822 cell
+							8823 text CLASS
+						8824 cell
+							8825 text —
+						8826 cell
+							8827 text 234272
+						8828 cell
+							8829 text 生效中
+					8830 row
+						8831 cell
+							8832 text 辅导员
+						8833 cell
+							8834 text 旅游管理2402班
+						8835 cell
+							8836 text CLASS
+						8837 cell
+							8838 text —
+						8839 cell
+							8840 text 235131
+						8841 cell
+							8842 text 生效中
+					8843 row
+						8844 cell
+							8845 text 班主任
+						8846 cell
+							8847 text 旅游管理2402班
+						8848 cell
+							8849 text CLASS
+						8850 cell
+							8851 text —
+						8852 cell
+							8853 text 234273
+						8854 cell
+							8855 text 生效中
+					8856 row
+						8857 cell
+							8858 text 辅导员
+						8859 cell
+							8860 text 旅游管理2403班
+						8861 cell
+							8862 text CLASS
+						8863 cell
+							8864 text —
+						8865 cell
+							8866 text 235132
+						8867 cell
+							8868 text 生效中
+					8869 row
+						8870 cell
+							8871 text 班主任
+						8872 cell
+							8873 text 旅游管理2403班
+						8874 cell
+							8875 text CLASS
+						8876 cell
+							8877 text —
+						8878 cell
+							8879 text 234274
+						8880 cell
+							8881 text 生效中
+					8882 row
+						8883 cell
+							8884 text 辅导员
+						8885 cell
+							8886 text 酒店管理与数字化运营2401班
+						8887 cell
+							8888 text CLASS
+						8889 cell
+							8890 text —
+						8891 cell
+							8892 text 235132
+						8893 cell
+							8894 text 生效中
+					8895 row
+						8896 cell
+							8897 text 班主任
+						8898 cell
+							8899 text 酒店管理与数字化运营2401班
+						8900 cell
+							8901 text CLASS
+						8902 cell
+							8903 text —
+						8904 cell
+							8905 text 234275
+						8906 cell
+							8907 text 生效中
+					8908 row
+						8909 cell
+							8910 text 辅导员
+						8911 cell
+							8912 text 酒店管理与数字化运营2402班
+						8913 cell
+							8914 text CLASS
+						8915 cell
+							8916 text —
+						8917 cell
+							8918 text 235132
+						8919 cell
+							8920 text 生效中
+					8921 row
+						8922 cell
+							8923 text 班主任
+						8924 cell
+							8925 text 酒店管理与数字化运营2402班
+						8926 cell
+							8927 text CLASS
+						8928 cell
+							8929 text —
+						8930 cell
+							8931 text 234276
+						8932 cell
+							8933 text 生效中
+					8934 row
+						8935 cell
+							8936 text 辅导员
+						8937 cell
+							8938 text 酒店管理与数字化运营2403班
+						8939 cell
+							8940 text CLASS
+						8941 cell
+							8942 text —
+						8943 cell
+							8944 text 235132
+						8945 cell
+							8946 text 生效中
+					8947 row
+						8948 cell
+							8949 text 班主任
+						8950 cell
+							8951 text 酒店管理与数字化运营2403班
+						8952 cell
+							8953 text CLASS
+						8954 cell
+							8955 text —
+						8956 cell
+							8957 text 234277
+						8958 cell
+							8959 text 生效中
+					8960 row
+						8961 cell
+							8962 text 辅导员
+						8963 cell
+							8964 text 烹饪工艺与营养2401班
+						8965 cell
+							8966 text CLASS
+						8967 cell
+							8968 text —
+						8969 cell
+							8970 text 235133
+						8971 cell
+							8972 text 生效中
+					8973 row
+						8974 cell
+							8975 text 班主任
+						8976 cell
+							8977 text 烹饪工艺与营养2401班
+						8978 cell
+							8979 text CLASS
+						8980 cell
+							8981 text —
+						8982 cell
+							8983 text 234278
+						8984 cell
+							8985 text 生效中
+					8986 row
+						8987 cell
+							8988 text 辅导员
+						8989 cell
+							8990 text 烹饪工艺与营养2402班
+						8991 cell
+							8992 text CLASS
+						8993 cell
+							8994 text —
+						8995 cell
+							8996 text 235133
+						8997 cell
+							8998 text 生效中
+					8999 row
+						9000 cell
+							9001 text 班主任
+						9002 cell
+							9003 text 烹饪工艺与营养2402班
+						9004 cell
+							9005 text CLASS
+						9006 cell
+							9007 text —
+						9008 cell
+							9009 text 234279
+						9010 cell
+							9011 text 生效中
+					9012 row
+						9013 cell
+							9014 text 辅导员
+						9015 cell
+							9016 text 烹饪工艺与营养2403班
+						9017 cell
+							9018 text CLASS
+						9019 cell
+							9020 text —
+						9021 cell
+							9022 text 235133
+						9023 cell
+							9024 text 生效中
+					9025 row
+						9026 cell
+							9027 text 班主任
+						9028 cell
+							9029 text 烹饪工艺与营养2403班
+						9030 cell
+							9031 text CLASS
+						9032 cell
+							9033 text —
+						9034 cell
+							9035 text 234280
+						9036 cell
+							9037 text 生效中
+					9038 row
+						9039 cell
+							9040 text 辅导员
+						9041 cell
+							9042 text 烹饪工艺与营养2404班
+						9043 cell
+							9044 text CLASS
+						9045 cell
+							9046 text —
+						9047 cell
+							9048 text 235133
+						9049 cell
+							9050 text 生效中
+					9051 row
+						9052 cell
+							9053 text 班主任
+						9054 cell
+							9055 text 烹饪工艺与营养2404班
+						9056 cell
+							9057 text CLASS
+						9058 cell
+							9059 text —
+						9060 cell
+							9061 text 234281
+						9062 cell
+							9063 text 生效中
+					9064 row
+						9065 cell
+							9066 text 辅导员
+						9067 cell
+							9068 text 空中乘务2401班
+						9069 cell
+							9070 text CLASS
+						9071 cell
+							9072 text —
+						9073 cell
+							9074 text 235134
+						9075 cell
+							9076 text 生效中
+					9077 row
+						9078 cell
+							9079 text 班主任
+						9080 cell
+							9081 text 空中乘务2401班
+						9082 cell
+							9083 text CLASS
+						9084 cell
+							9085 text —
+						9086 cell
+							9087 text 234282
+						9088 cell
+							9089 text 生效中
+					9090 row
+						9091 cell
+							9092 text 辅导员
+						9093 cell
+							9094 text 空中乘务2402班
+						9095 cell
+							9096 text CLASS
+						9097 cell
+							9098 text —
+						9099 cell
+							9100 text 235134
+						9101 cell
+							9102 text 生效中
+					9103 row
+						9104 cell
+							9105 text 班主任
+						9106 cell
+							9107 text 空中乘务2402班
+						9108 cell
+							9109 text CLASS
+						9110 cell
+							9111 text —
+						9112 cell
+							9113 text 234283
+						9114 cell
+							9115 text 生效中
+					9116 row
+						9117 cell
+							9118 text 辅导员
+						9119 cell
+							9120 text 空中乘务2403班
+						9121 cell
+							9122 text CLASS
+						9123 cell
+							9124 text —
+						9125 cell
+							9126 text 235134
+						9127 cell
+							9128 text 生效中
+					9129 row
+						9130 cell
+							9131 text 班主任
+						9132 cell
+							9133 text 空中乘务2403班
+						9134 cell
+							9135 text CLASS
+						9136 cell
+							9137 text —
+						9138 cell
+							9139 text 234284
+						9140 cell
+							9141 text 生效中
+					9142 row
+						9143 cell
+							9144 text 辅导员
+						9145 cell
+							9146 text 建筑工程技术2401班
+						9147 cell
+							9148 text CLASS
+						9149 cell
+							9150 text —
+						9151 cell
+							9152 text 235134
+						9153 cell
+							9154 text 生效中
+					9155 row
+						9156 cell
+							9157 text 班主任
+						9158 cell
+							9159 text 建筑工程技术2401班
+						9160 cell
+							9161 text CLASS
+						9162 cell
+							9163 text —
+						9164 cell
+							9165 text 234285
+						9166 cell
+							9167 text 生效中
+					9168 row
+						9169 cell
+							9170 text 辅导员
+						9171 cell
+							9172 text 建筑工程技术2402班
+						9173 cell
+							9174 text CLASS
+						9175 cell
+							9176 text —
+						9177 cell
+							9178 text 235135
+						9179 cell
+							9180 text 生效中
+					9181 row
+						9182 cell
+							9183 text 班主任
+						9184 cell
+							9185 text 建筑工程技术2402班
+						9186 cell
+							9187 text CLASS
+						9188 cell
+							9189 text —
+						9190 cell
+							9191 text 234286
+						9192 cell
+							9193 text 生效中
+					9194 row
+						9195 cell
+							9196 text 辅导员
+						9197 cell
+							9198 text 建筑工程技术2403班
+						9199 cell
+							9200 text CLASS
+						9201 cell
+							9202 text —
+						9203 cell
+							9204 text 235135
+						9205 cell
+							9206 text 生效中
+					9207 row
+						9208 cell
+							9209 text 班主任
+						9210 cell
+							9211 text 建筑工程技术2403班
+						9212 cell
+							9213 text CLASS
+						9214 cell
+							9215 text —
+						9216 cell
+							9217 text 234287
+						9218 cell
+							9219 text 生效中
+					9220 row
+						9221 cell
+							9222 text 辅导员
+						9223 cell
+							9224 text 建筑工程技术2404班
+						9225 cell
+							9226 text CLASS
+						9227 cell
+							9228 text —
+						9229 cell
+							9230 text 235135
+						9231 cell
+							9232 text 生效中
+					9233 row
+						9234 cell
+							9235 text 班主任
+						9236 cell
+							9237 text 建筑工程技术2404班
+						9238 cell
+							9239 text CLASS
+						9240 cell
+							9241 text —
+						9242 cell
+							9243 text 234288
+						9244 cell
+							9245 text 生效中
+					9246 row
+						9247 cell
+							9248 text 辅导员
+						9249 cell
+							9250 text 工程造价2401班
+						9251 cell
+							9252 text CLASS
+						9253 cell
+							9254 text —
+						9255 cell
+							9256 text 235135
+						9257 cell
+							9258 text 生效中
+					9259 row
+						9260 cell
+							9261 text 班主任
+						9262 cell
+							9263 text 工程造价2401班
+						9264 cell
+							9265 text CLASS
+						9266 cell
+							9267 text —
+						9268 cell
+							9269 text 234289
+						9270 cell
+							9271 text 生效中
+					9272 row
+						9273 cell
+							9274 text 辅导员
+						9275 cell
+							9276 text 工程造价2402班
+						9277 cell
+							9278 text CLASS
+						9279 cell
+							9280 text —
+						9281 cell
+							9282 text 235136
+						9283 cell
+							9284 text 生效中
+					9285 row
+						9286 cell
+							9287 text 班主任
+						9288 cell
+							9289 text 工程造价2402班
+						9290 cell
+							9291 text CLASS
+						9292 cell
+							9293 text —
+						9294 cell
+							9295 text 234290
+						9296 cell
+							9297 text 生效中
+					9298 row
+						9299 cell
+							9300 text 辅导员
+						9301 cell
+							9302 text 工程造价2403班
+						9303 cell
+							9304 text CLASS
+						9305 cell
+							9306 text —
+						9307 cell
+							9308 text 235136
+						9309 cell
+							9310 text 生效中
+					9311 row
+						9312 cell
+							9313 text 班主任
+						9314 cell
+							9315 text 工程造价2403班
+						9316 cell
+							9317 text CLASS
+						9318 cell
+							9319 text —
+						9320 cell
+							9321 text 234291
+						9322 cell
+							9323 text 生效中
+					9324 row
+						9325 cell
+							9326 text 辅导员
+						9327 cell
+							9328 text 工程造价2404班
+						9329 cell
+							9330 text CLASS
+						9331 cell
+							9332 text —
+						9333 cell
+							9334 text 235136
+						9335 cell
+							9336 text 生效中
+					9337 row
+						9338 cell
+							9339 text 班主任
+						9340 cell
+							9341 text 工程造价2404班
+						9342 cell
+							9343 text CLASS
+						9344 cell
+							9345 text —
+						9346 cell
+							9347 text 234292
+						9348 cell
+							9349 text 生效中
+					9350 row
+						9351 cell
+							9352 text 辅导员
+						9353 cell
+							9354 text 建筑室内设计2401班
+						9355 cell
+							9356 text CLASS
+						9357 cell
+							9358 text —
+						9359 cell
+							9360 text 235136
+						9361 cell
+							9362 text 生效中
+					9363 row
+						9364 cell
+							9365 text 班主任
+						9366 cell
+							9367 text 建筑室内设计2401班
+						9368 cell
+							9369 text CLASS
+						9370 cell
+							9371 text —
+						9372 cell
+							9373 text 234293
+						9374 cell
+							9375 text 生效中
+					9376 row
+						9377 cell
+							9378 text 辅导员
+						9379 cell
+							9380 text 建筑室内设计2402班
+						9381 cell
+							9382 text CLASS
+						9383 cell
+							9384 text —
+						9385 cell
+							9386 text 235137
+						9387 cell
+							9388 text 生效中
+					9389 row
+						9390 cell
+							9391 text 班主任
+						9392 cell
+							9393 text 建筑室内设计2402班
+						9394 cell
+							9395 text CLASS
+						9396 cell
+							9397 text —
+						9398 cell
+							9399 text 234294
+						9400 cell
+							9401 text 生效中
+					9402 row
+						9403 cell
+							9404 text 辅导员
+						9405 cell
+							9406 text 建筑室内设计2403班
+						9407 cell
+							9408 text CLASS
+						9409 cell
+							9410 text —
+						9411 cell
+							9412 text 235137
+						9413 cell
+							9414 text 生效中
+					9415 row
+						9416 cell
+							9417 text 班主任
+						9418 cell
+							9419 text 建筑室内设计2403班
+						9420 cell
+							9421 text CLASS
+						9422 cell
+							9423 text —
+						9424 cell
+							9425 text 234295
+						9426 cell
+							9427 text 生效中
+					9428 row
+						9429 cell
+							9430 text 辅导员
+						9431 cell
+							9432 text 建筑室内设计2404班
+						9433 cell
+							9434 text CLASS
+						9435 cell
+							9436 text —
+						9437 cell
+							9438 text 235137
+						9439 cell
+							9440 text 生效中
+					9441 row
+						9442 cell
+							9443 text 班主任
+						9444 cell
+							9445 text 建筑室内设计2404班
+						9446 cell
+							9447 text CLASS
+						9448 cell
+							9449 text —
+						9450 cell
+							9451 text 234296
+						9452 cell
+							9453 text 生效中
+					9454 row
+						9455 cell
+							9456 text 辅导员
+						9457 cell
+							9458 text 建设工程管理2401班
+						9459 cell
+							9460 text CLASS
+						9461 cell
+							9462 text —
+						9463 cell
+							9464 text 235137
+						9465 cell
+							9466 text 生效中
+					9467 row
+						9468 cell
+							9469 text 班主任
+						9470 cell
+							9471 text 建设工程管理2401班
+						9472 cell
+							9473 text CLASS
+						9474 cell
+							9475 text —
+						9476 cell
+							9477 text 234297
+						9478 cell
+							9479 text 生效中
+					9480 row
+						9481 cell
+							9482 text 辅导员
+						9483 cell
+							9484 text 建设工程管理2402班
+						9485 cell
+							9486 text CLASS
+						9487 cell
+							9488 text —
+						9489 cell
+							9490 text 235138
+						9491 cell
+							9492 text 生效中
+					9493 row
+						9494 cell
+							9495 text 班主任
+						9496 cell
+							9497 text 建设工程管理2402班
+						9498 cell
+							9499 text CLASS
+						9500 cell
+							9501 text —
+						9502 cell
+							9503 text 234298
+						9504 cell
+							9505 text 生效中
+					9506 row
+						9507 cell
+							9508 text 辅导员
+						9509 cell
+							9510 text 建设工程管理2403班
+						9511 cell
+							9512 text CLASS
+						9513 cell
+							9514 text —
+						9515 cell
+							9516 text 235138
+						9517 cell
+							9518 text 生效中
+					9519 row
+						9520 cell
+							9521 text 班主任
+						9522 cell
+							9523 text 建设工程管理2403班
+						9524 cell
+							9525 text CLASS
+						9526 cell
+							9527 text —
+						9528 cell
+							9529 text 234299
+						9530 cell
+							9531 text 生效中
+					9532 row
+						9533 cell
+							9534 text 辅导员
+						9535 cell
+							9536 text 护理2401班
+						9537 cell
+							9538 text CLASS
+						9539 cell
+							9540 text —
+						9541 cell
+							9542 text 235138
+						9543 cell
+							9544 text 生效中
+					9545 row
+						9546 cell
+							9547 text 班主任
+						9548 cell
+							9549 text 护理2401班
+						9550 cell
+							9551 text CLASS
+						9552 cell
+							9553 text —
+						9554 cell
+							9555 text 234300
+						9556 cell
+							9557 text 生效中
+					9558 row
+						9559 cell
+							9560 text 辅导员
+						9561 cell
+							9562 text 护理2402班
+						9563 cell
+							9564 text CLASS
+						9565 cell
+							9566 text —
+						9567 cell
+							9568 text 235138
+						9569 cell
+							9570 text 生效中
+					9571 row
+						9572 cell
+							9573 text 班主任
+						9574 cell
+							9575 text 护理2402班
+						9576 cell
+							9577 text CLASS
+						9578 cell
+							9579 text —
+						9580 cell
+							9581 text 234301
+						9582 cell
+							9583 text 生效中
+					9584 row
+						9585 cell
+							9586 text 辅导员
+						9587 cell
+							9588 text 护理2403班
+						9589 cell
+							9590 text CLASS
+						9591 cell
+							9592 text —
+						9593 cell
+							9594 text 235139
+						9595 cell
+							9596 text 生效中
+					9597 row
+						9598 cell
+							9599 text 班主任
+						9600 cell
+							9601 text 护理2403班
+						9602 cell
+							9603 text CLASS
+						9604 cell
+							9605 text —
+						9606 cell
+							9607 text 234302
+						9608 cell
+							9609 text 生效中
+					9610 row
+						9611 cell
+							9612 text 辅导员
+						9613 cell
+							9614 text 护理2404班
+						9615 cell
+							9616 text CLASS
+						9617 cell
+							9618 text —
+						9619 cell
+							9620 text 235139
+						9621 cell
+							9622 text 生效中
+					9623 row
+						9624 cell
+							9625 text 班主任
+						9626 cell
+							9627 text 护理2404班
+						9628 cell
+							9629 text CLASS
+						9630 cell
+							9631 text —
+						9632 cell
+							9633 text 234303
+						9634 cell
+							9635 text 生效中
+					9636 row
+						9637 cell
+							9638 text 辅导员
+						9639 cell
+							9640 text 护理2405班
+						9641 cell
+							9642 text CLASS
+						9643 cell
+							9644 text —
+						9645 cell
+							9646 text 235139
+						9647 cell
+							9648 text 生效中
+					9649 row
+						9650 cell
+							9651 text 班主任
+						9652 cell
+							9653 text 护理2405班
+						9654 cell
+							9655 text CLASS
+						9656 cell
+							9657 text —
+						9658 cell
+							9659 text 234304
+						9660 cell
+							9661 text 生效中
+					9662 row
+						9663 cell
+							9664 text 辅导员
+						9665 cell
+							9666 text 护理2406班
+						9667 cell
+							9668 text CLASS
+						9669 cell
+							9670 text —
+						9671 cell
+							9672 text 235139
+						9673 cell
+							9674 text 生效中
+					9675 row
+						9676 cell
+							9677 text 班主任
+						9678 cell
+							9679 text 护理2406班
+						9680 cell
+							9681 text CLASS
+						9682 cell
+							9683 text —
+						9684 cell
+							9685 text 234305
+						9686 cell
+							9687 text 生效中
+					9688 row
+						9689 cell
+							9690 text 辅导员
+						9691 cell
+							9692 text 护理2407班
+						9693 cell
+							9694 text CLASS
+						9695 cell
+							9696 text —
+						9697 cell
+							9698 text 235140
+						9699 cell
+							9700 text 生效中
+					9701 row
+						9702 cell
+							9703 text 班主任
+						9704 cell
+							9705 text 护理2407班
+						9706 cell
+							9707 text CLASS
+						9708 cell
+							9709 text —
+						9710 cell
+							9711 text 234306
+						9712 cell
+							9713 text 生效中
+					9714 row
+						9715 cell
+							9716 text 辅导员
+						9717 cell
+							9718 text 护理2408班
+						9719 cell
+							9720 text CLASS
+						9721 cell
+							9722 text —
+						9723 cell
+							9724 text 235140
+						9725 cell
+							9726 text 生效中
+					9727 row
+						9728 cell
+							9729 text 班主任
+						9730 cell
+							9731 text 护理2408班
+						9732 cell
+							9733 text CLASS
+						9734 cell
+							9735 text —
+						9736 cell
+							9737 text 234307
+						9738 cell
+							9739 text 生效中
+					9740 row
+						9741 cell
+							9742 text 辅导员
+						9743 cell
+							9744 text 康复治疗技术2401班
+						9745 cell
+							9746 text CLASS
+						9747 cell
+							9748 text —
+						9749 cell
+							9750 text 235140
+						9751 cell
+							9752 text 生效中
+					9753 row
+						9754 cell
+							9755 text 班主任
+						9756 cell
+							9757 text 康复治疗技术2401班
+						9758 cell
+							9759 text CLASS
+						9760 cell
+							9761 text —
+						9762 cell
+							9763 text 234308
+						9764 cell
+							9765 text 生效中
+					9766 row
+						9767 cell
+							9768 text 辅导员
+						9769 cell
+							9770 text 康复治疗技术2402班
+						9771 cell
+							9772 text CLASS
+						9773 cell
+							9774 text —
+						9775 cell
+							9776 text 235140
+						9777 cell
+							9778 text 生效中
+					9779 row
+						9780 cell
+							9781 text 班主任
+						9782 cell
+							9783 text 康复治疗技术2402班
+						9784 cell
+							9785 text CLASS
+						9786 cell
+							9787 text —
+						9788 cell
+							9789 text 234309
+						9790 cell
+							9791 text 生效中
+					9792 row
+						9793 cell
+							9794 text 辅导员
+						9795 cell
+							9796 text 康复治疗技术2403班
+						9797 cell
+							9798 text CLASS
+						9799 cell
+							9800 text —
+						9801 cell
+							9802 text 235141
+						9803 cell
+							9804 text 生效中
+					9805 row
+						9806 cell
+							9807 text 班主任
+						9808 cell
+							9809 text 康复治疗技术2403班
+						9810 cell
+							9811 text CLASS
+						9812 cell
+							9813 text —
+						9814 cell
+							9815 text 234310
+						9816 cell
+							9817 text 生效中
+					9818 row
+						9819 cell
+							9820 text 辅导员
+						9821 cell
+							9822 text 康复治疗技术2404班
+						9823 cell
+							9824 text CLASS
+						9825 cell
+							9826 text —
+						9827 cell
+							9828 text 235141
+						9829 cell
+							9830 text 生效中
+					9831 row
+						9832 cell
+							9833 text 班主任
+						9834 cell
+							9835 text 康复治疗技术2404班
+						9836 cell
+							9837 text CLASS
+						9838 cell
+							9839 text —
+						9840 cell
+							9841 text 234311
+						9842 cell
+							9843 text 生效中
+					9844 row
+						9845 cell
+							9846 text 辅导员
+						9847 cell
+							9848 text 婴幼儿托育服务与管理2401班
+						9849 cell
+							9850 text CLASS
+						9851 cell
+							9852 text —
+						9853 cell
+							9854 text 235141
+						9855 cell
+							9856 text 生效中
+					9857 row
+						9858 cell
+							9859 text 班主任
+						9860 cell
+							9861 text 婴幼儿托育服务与管理2401班
+						9862 cell
+							9863 text CLASS
+						9864 cell
+							9865 text —
+						9866 cell
+							9867 text 234312
+						9868 cell
+							9869 text 生效中
+					9870 row
+						9871 cell
+							9872 text 辅导员
+						9873 cell
+							9874 text 婴幼儿托育服务与管理2402班
+						9875 cell
+							9876 text CLASS
+						9877 cell
+							9878 text —
+						9879 cell
+							9880 text 235141
+						9881 cell
+							9882 text 生效中
+					9883 row
+						9884 cell
+							9885 text 班主任
+						9886 cell
+							9887 text 婴幼儿托育服务与管理2402班
+						9888 cell
+							9889 text CLASS
+						9890 cell
+							9891 text —
+						9892 cell
+							9893 text 234313
+						9894 cell
+							9895 text 生效中
+					9896 row
+						9897 cell
+							9898 text 辅导员
+						9899 cell
+							9900 text 婴幼儿托育服务与管理2403班
+						9901 cell
+							9902 text CLASS
+						9903 cell
+							9904 text —
+						9905 cell
+							9906 text 235142
+						9907 cell
+							9908 text 生效中
+					9909 row
+						9910 cell
+							9911 text 班主任
+						9912 cell
+							9913 text 婴幼儿托育服务与管理2403班
+						9914 cell
+							9915 text CLASS
+						9916 cell
+							9917 text —
+						9918 cell
+							9919 text 234314
+						9920 cell
+							9921 text 生效中
+					9922 row
+						9923 cell
+							9924 text 辅导员
+						9925 cell
+							9926 text 健康管理2401班
+						9927 cell
+							9928 text CLASS
+						9929 cell
+							9930 text —
+						9931 cell
+							9932 text 235142
+						9933 cell
+							9934 text 生效中
+					9935 row
+						9936 cell
+							9937 text 班主任
+						9938 cell
+							9939 text 健康管理2401班
+						9940 cell
+							9941 text CLASS
+						9942 cell
+							9943 text —
+						9944 cell
+							9945 text 234315
+						9946 cell
+							9947 text 生效中
+					9948 row
+						9949 cell
+							9950 text 辅导员
+						9951 cell
+							9952 text 健康管理2402班
+						9953 cell
+							9954 text CLASS
+						9955 cell
+							9956 text —
+						9957 cell
+							9958 text 235142
+						9959 cell
+							9960 text 生效中
+					9961 row
+						9962 cell
+							9963 text 班主任
+						9964 cell
+							9965 text 健康管理2402班
+						9966 cell
+							9967 text CLASS
+						9968 cell
+							9969 text —
+						9970 cell
+							9971 text 234316
+						9972 cell
+							9973 text 生效中
+					9974 row
+						9975 cell
+							9976 text 辅导员
+						9977 cell
+							9978 text 健康管理2403班
+						9979 cell
+							9980 text CLASS
+						9981 cell
+							9982 text —
+						9983 cell
+							9984 text 235142
+						9985 cell
+							9986 text 生效中
+					9987 row
+						9988 cell
+							9989 text 班主任
+						9990 cell
+							9991 text 健康管理2403班
+						9992 cell
+							9993 text CLASS
+						9994 cell
+							9995 text —
+						9996 cell
+							9997 text 234317
+						9998 cell
+							9999 text 生效中
+					10000 row
+						10001 cell
+							10002 text 辅导员
+						10003 cell
+							10004 text 数字媒体艺术设计2401班
+						10005 cell
+							10006 text CLASS
+						10007 cell
+							10008 text —
+						10009 cell
+							10010 text 235143
+						10011 cell
+							10012 text 生效中
+					10013 row
+						10014 cell
+							10015 text 班主任
+						10016 cell
+							10017 text 数字媒体艺术设计2401班
+						10018 cell
+							10019 text CLASS
+						10020 cell
+							10021 text —
+						10022 cell
+							10023 text 234318
+						10024 cell
+							10025 text 生效中
+					10026 row
+						10027 cell
+							10028 text 辅导员
+						10029 cell
+							10030 text 数字媒体艺术设计2402班
+						10031 cell
+							10032 text CLASS
+						10033 cell
+							10034 text —
+						10035 cell
+							10036 text 235143
+						10037 cell
+							10038 text 生效中
+					10039 row
+						10040 cell
+							10041 text 班主任
+						10042 cell
+							10043 text 数字媒体艺术设计2402班
+						10044 cell
+							10045 text CLASS
+						10046 cell
+							10047 text —
+						10048 cell
+							10049 text 234319
+						10050 cell
+							10051 text 生效中
+					10052 row
+						10053 cell
+							10054 text 辅导员
+						10055 cell
+							10056 text 数字媒体艺术设计2403班
+						10057 cell
+							10058 text CLASS
+						10059 cell
+							10060 text —
+						10061 cell
+							10062 text 235143
+						10063 cell
+							10064 text 生效中
+					10065 row
+						10066 cell
+							10067 text 班主任
+						10068 cell
+							10069 text 数字媒体艺术设计2403班
+						10070 cell
+							10071 text CLASS
+						10072 cell
+							10073 text —
+						10074 cell
+							10075 text 234320
+						10076 cell
+							10077 text 生效中
+					10078 row
+						10079 cell
+							10080 text 辅导员
+						10081 cell
+							10082 text 数字媒体艺术设计2404班
+						10083 cell
+							10084 text CLASS
+						10085 cell
+							10086 text —
+						10087 cell
+							10088 text 235143
+						10089 cell
+							10090 text 生效中
+					10091 row
+						10092 cell
+							10093 text 班主任
+						10094 cell
+							10095 text 数字媒体艺术设计2404班
+						10096 cell
+							10097 text CLASS
+						10098 cell
+							10099 text —
+						10100 cell
+							10101 text 234321
+						10102 cell
+							10103 text 生效中
+					10104 row
+						10105 cell
+							10106 text 辅导员
+						10107 cell
+							10108 text 广告艺术设计2401班
+						10109 cell
+							10110 text CLASS
+						10111 cell
+							10112 text —
+						10113 cell
+							10114 text 235144
+						10115 cell
+							10116 text 生效中
+					10117 row
+						10118 cell
+							10119 text 班主任
+						10120 cell
+							10121 text 广告艺术设计2401班
+						10122 cell
+							10123 text CLASS
+						10124 cell
+							10125 text —
+						10126 cell
+							10127 text 234322
+						10128 cell
+							10129 text 生效中
+					10130 row
+						10131 cell
+							10132 text 辅导员
+						10133 cell
+							10134 text 广告艺术设计2402班
+						10135 cell
+							10136 text CLASS
+						10137 cell
+							10138 text —
+						10139 cell
+							10140 text 235144
+						10141 cell
+							10142 text 生效中
+					10143 row
+						10144 cell
+							10145 text 班主任
+						10146 cell
+							10147 text 广告艺术设计2402班
+						10148 cell
+							10149 text CLASS
+						10150 cell
+							10151 text —
+						10152 cell
+							10153 text 234323
+						10154 cell
+							10155 text 生效中
+					10156 row
+						10157 cell
+							10158 text 辅导员
+						10159 cell
+							10160 text 广告艺术设计2403班
+						10161 cell
+							10162 text CLASS
+						10163 cell
+							10164 text —
+						10165 cell
+							10166 text 235144
+						10167 cell
+							10168 text 生效中
+					10169 row
+						10170 cell
+							10171 text 班主任
+						10172 cell
+							10173 text 广告艺术设计2403班
+						10174 cell
+							10175 text CLASS
+						10176 cell
+							10177 text —
+						10178 cell
+							10179 text 234324
+						10180 cell
+							10181 text 生效中
+					10182 row
+						10183 cell
+							10184 text 辅导员
+						10185 cell
+							10186 text 动漫设计2401班
+						10187 cell
+							10188 text CLASS
+						10189 cell
+							10190 text —
+						10191 cell
+							10192 text 235144
+						10193 cell
+							10194 text 生效中
+					10195 row
+						10196 cell
+							10197 text 班主任
+						10198 cell
+							10199 text 动漫设计2401班
+						10200 cell
+							10201 text CLASS
+						10202 cell
+							10203 text —
+						10204 cell
+							10205 text 234325
+						10206 cell
+							10207 text 生效中
+					10208 row
+						10209 cell
+							10210 text 辅导员
+						10211 cell
+							10212 text 动漫设计2402班
+						10213 cell
+							10214 text CLASS
+						10215 cell
+							10216 text —
+						10217 cell
+							10218 text 235145
+						10219 cell
+							10220 text 生效中
+					10221 row
+						10222 cell
+							10223 text 班主任
+						10224 cell
+							10225 text 动漫设计2402班
+						10226 cell
+							10227 text CLASS
+						10228 cell
+							10229 text —
+						10230 cell
+							10231 text 234326
+						10232 cell
+							10233 text 生效中
+					10234 row
+						10235 cell
+							10236 text 辅导员
+						10237 cell
+							10238 text 动漫设计2403班
+						10239 cell
+							10240 text CLASS
+						10241 cell
+							10242 text —
+						10243 cell
+							10244 text 235145
+						10245 cell
+							10246 text 生效中
+					10247 row
+						10248 cell
+							10249 text 班主任
+						10250 cell
+							10251 text 动漫设计2403班
+						10252 cell
+							10253 text CLASS
+						10254 cell
+							10255 text —
+						10256 cell
+							10257 text 234327
+						10258 cell
+							10259 text 生效中
+					10260 row
+						10261 cell
+							10262 text 辅导员
+						10263 cell
+							10264 text 视觉传达设计2401班
+						10265 cell
+							10266 text CLASS
+						10267 cell
+							10268 text —
+						10269 cell
+							10270 text 235145
+						10271 cell
+							10272 text 生效中
+					10273 row
+						10274 cell
+							10275 text 班主任
+						10276 cell
+							10277 text 视觉传达设计2401班
+						10278 cell
+							10279 text CLASS
+						10280 cell
+							10281 text —
+						10282 cell
+							10283 text 234328
+						10284 cell
+							10285 text 生效中
+					10286 row
+						10287 cell
+							10288 text 辅导员
+						10289 cell
+							10290 text 视觉传达设计2402班
+						10291 cell
+							10292 text CLASS
+						10293 cell
+							10294 text —
+						10295 cell
+							10296 text 235145
+						10297 cell
+							10298 text 生效中
+					10299 row
+						10300 cell
+							10301 text 班主任
+						10302 cell
+							10303 text 视觉传达设计2402班
+						10304 cell
+							10305 text CLASS
+						10306 cell
+							10307 text —
+						10308 cell
+							10309 text 234329
+						10310 cell
+							10311 text 生效中
+					10312 row
+						10313 cell
+							10314 text 辅导员
+						10315 cell
+							10316 text 软件技术2501班
+						10317 cell
+							10318 text CLASS
+						10319 cell
+							10320 text —
+						10321 cell
+							10322 text 235146
+						10323 cell
+							10324 text 生效中
+					10325 row
+						10326 cell
+							10327 text 班主任
+						10328 cell
+							10329 text 软件技术2501班
+						10330 cell
+							10331 text CLASS
+						10332 cell
+							10333 text —
+						10334 cell
+							10335 text 234330
+						10336 cell
+							10337 text 生效中
+					10338 row
+						10339 cell
+							10340 text 辅导员
+						10341 cell
+							10342 text 软件技术2502班
+						10343 cell
+							10344 text CLASS
+						10345 cell
+							10346 text —
+						10347 cell
+							10348 text 235146
+						10349 cell
+							10350 text 生效中
+					10351 row
+						10352 cell
+							10353 text 班主任
+						10354 cell
+							10355 text 软件技术2502班
+						10356 cell
+							10357 text CLASS
+						10358 cell
+							10359 text —
+						10360 cell
+							10361 text 234331
+						10362 cell
+							10363 text 生效中
+					10364 row
+						10365 cell
+							10366 text 辅导员
+						10367 cell
+							10368 text 软件技术2503班
+						10369 cell
+							10370 text CLASS
+						10371 cell
+							10372 text —
+						10373 cell
+							10374 text 235146
+						10375 cell
+							10376 text 生效中
+					10377 row
+						10378 cell
+							10379 text 班主任
+						10380 cell
+							10381 text 软件技术2503班
+						10382 cell
+							10383 text CLASS
+						10384 cell
+							10385 text —
+						10386 cell
+							10387 text 234332
+						10388 cell
+							10389 text 生效中
+					10390 row
+						10391 cell
+							10392 text 辅导员
+						10393 cell
+							10394 text 软件技术2504班
+						10395 cell
+							10396 text CLASS
+						10397 cell
+							10398 text —
+						10399 cell
+							10400 text 235146
+						10401 cell
+							10402 text 生效中
+					10403 row
+						10404 cell
+							10405 text 班主任
+						10406 cell
+							10407 text 软件技术2504班
+						10408 cell
+							10409 text CLASS
+						10410 cell
+							10411 text —
+						10412 cell
+							10413 text 234333
+						10414 cell
+							10415 text 生效中
+					10416 row
+						10417 cell
+							10418 text 辅导员
+						10419 cell
+							10420 text 软件技术2505班
+						10421 cell
+							10422 text CLASS
+						10423 cell
+							10424 text —
+						10425 cell
+							10426 text 235147
+						10427 cell
+							10428 text 生效中
+					10429 row
+						10430 cell
+							10431 text 班主任
+						10432 cell
+							10433 text 软件技术2505班
+						10434 cell
+							10435 text CLASS
+						10436 cell
+							10437 text —
+						10438 cell
+							10439 text 234334
+						10440 cell
+							10441 text 生效中
+					10442 row
+						10443 cell
+							10444 text 辅导员
+						10445 cell
+							10446 text 软件技术2506班
+						10447 cell
+							10448 text CLASS
+						10449 cell
+							10450 text —
+						10451 cell
+							10452 text 235147
+						10453 cell
+							10454 text 生效中
+					10455 row
+						10456 cell
+							10457 text 班主任
+						10458 cell
+							10459 text 软件技术2506班
+						10460 cell
+							10461 text CLASS
+						10462 cell
+							10463 text —
+						10464 cell
+							10465 text 234335
+						10466 cell
+							10467 text 生效中
+					10468 row
+						10469 cell
+							10470 text 辅导员
+						10471 cell
+							10472 text 大数据技术2501班
+						10473 cell
+							10474 text CLASS
+						10475 cell
+							10476 text —
+						10477 cell
+							10478 text 235147
+						10479 cell
+							10480 text 生效中
+					10481 row
+						10482 cell
+							10483 text 班主任
+						10484 cell
+							10485 text 大数据技术2501班
+						10486 cell
+							10487 text CLASS
+						10488 cell
+							10489 text —
+						10490 cell
+							10491 text 234336
+						10492 cell
+							10493 text 生效中
+					10494 row
+						10495 cell
+							10496 text 辅导员
+						10497 cell
+							10498 text 大数据技术2502班
+						10499 cell
+							10500 text CLASS
+						10501 cell
+							10502 text —
+						10503 cell
+							10504 text 235147
+						10505 cell
+							10506 text 生效中
+					10507 row
+						10508 cell
+							10509 text 班主任
+						10510 cell
+							10511 text 大数据技术2502班
+						10512 cell
+							10513 text CLASS
+						10514 cell
+							10515 text —
+						10516 cell
+							10517 text 234337
+						10518 cell
+							10519 text 生效中
+					10520 row
+						10521 cell
+							10522 text 辅导员
+						10523 cell
+							10524 text 大数据技术2503班
+						10525 cell
+							10526 text CLASS
+						10527 cell
+							10528 text —
+						10529 cell
+							10530 text 235148
+						10531 cell
+							10532 text 生效中
+					10533 row
+						10534 cell
+							10535 text 班主任
+						10536 cell
+							10537 text 大数据技术2503班
+						10538 cell
+							10539 text CLASS
+						10540 cell
+							10541 text —
+						10542 cell
+							10543 text 234338
+						10544 cell
+							10545 text 生效中
+					10546 row
+						10547 cell
+							10548 text 辅导员
+						10549 cell
+							10550 text 大数据技术2504班
+						10551 cell
+							10552 text CLASS
+						10553 cell
+							10554 text —
+						10555 cell
+							10556 text 235148
+						10557 cell
+							10558 text 生效中
+					10559 row
+						10560 cell
+							10561 text 班主任
+						10562 cell
+							10563 text 大数据技术2504班
+						10564 cell
+							10565 text CLASS
+						10566 cell
+							10567 text —
+						10568 cell
+							10569 text 234339
+						10570 cell
+							10571 text 生效中
+					10572 row
+						10573 cell
+							10574 text 辅导员
+						10575 cell
+							10576 text 大数据技术2505班
+						10577 cell
+							10578 text CLASS
+						10579 cell
+							10580 text —
+						10581 cell
+							10582 text 235148
+						10583 cell
+							10584 text 生效中
+					10585 row
+						10586 cell
+							10587 text 班主任
+						10588 cell
+							10589 text 大数据技术2505班
+						10590 cell
+							10591 text CLASS
+						10592 cell
+							10593 text —
+						10594 cell
+							10595 text 234340
+						10596 cell
+							10597 text 生效中
+					10598 row
+						10599 cell
+							10600 text 辅导员
+						10601 cell
+							10602 text 计算机网络技术2501班
+						10603 cell
+							10604 text CLASS
+						10605 cell
+							10606 text —
+						10607 cell
+							10608 text 235148
+						10609 cell
+							10610 text 生效中
+					10611 row
+						10612 cell
+							10613 text 班主任
+						10614 cell
+							10615 text 计算机网络技术2501班
+						10616 cell
+							10617 text CLASS
+						10618 cell
+							10619 text —
+						10620 cell
+							10621 text 234341
+						10622 cell
+							10623 text 生效中
+					10624 row
+						10625 cell
+							10626 text 辅导员
+						10627 cell
+							10628 text 计算机网络技术2502班
+						10629 cell
+							10630 text CLASS
+						10631 cell
+							10632 text —
+						10633 cell
+							10634 text 235149
+						10635 cell
+							10636 text 生效中
+					10637 row
+						10638 cell
+							10639 text 班主任
+						10640 cell
+							10641 text 计算机网络技术2502班
+						10642 cell
+							10643 text CLASS
+						10644 cell
+							10645 text —
+						10646 cell
+							10647 text 234342
+						10648 cell
+							10649 text 生效中
+					10650 row
+						10651 cell
+							10652 text 辅导员
+						10653 cell
+							10654 text 计算机网络技术2503班
+						10655 cell
+							10656 text CLASS
+						10657 cell
+							10658 text —
+						10659 cell
+							10660 text 235149
+						10661 cell
+							10662 text 生效中
+					10663 row
+						10664 cell
+							10665 text 班主任
+						10666 cell
+							10667 text 计算机网络技术2503班
+						10668 cell
+							10669 text CLASS
+						10670 cell
+							10671 text —
+						10672 cell
+							10673 text 234343
+						10674 cell
+							10675 text 生效中
+					10676 row
+						10677 cell
+							10678 text 辅导员
+						10679 cell
+							10680 text 计算机网络技术2504班
+						10681 cell
+							10682 text CLASS
+						10683 cell
+							10684 text —
+						10685 cell
+							10686 text 235149
+						10687 cell
+							10688 text 生效中
+					10689 row
+						10690 cell
+							10691 text 班主任
+						10692 cell
+							10693 text 计算机网络技术2504班
+						10694 cell
+							10695 text CLASS
+						10696 cell
+							10697 text —
+						10698 cell
+							10699 text 234344
+						10700 cell
+							10701 text 生效中
+					10702 row
+						10703 cell
+							10704 text 辅导员
+						10705 cell
+							10706 text 人工智能技术应用2501班
+						10707 cell
+							10708 text CLASS
+						10709 cell
+							10710 text —
+						10711 cell
+							10712 text 235149
+						10713 cell
+							10714 text 生效中
+					10715 row
+						10716 cell
+							10717 text 班主任
+						10718 cell
+							10719 text 人工智能技术应用2501班
+						10720 cell
+							10721 text CLASS
+						10722 cell
+							10723 text —
+						10724 cell
+							10725 text 234345
+						10726 cell
+							10727 text 生效中
+					10728 row
+						10729 cell
+							10730 text 辅导员
+						10731 cell
+							10732 text 人工智能技术应用2502班
+						10733 cell
+							10734 text CLASS
+						10735 cell
+							10736 text —
+						10737 cell
+							10738 text 235150
+						10739 cell
+							10740 text 生效中
+					10741 row
+						10742 cell
+							10743 text 班主任
+						10744 cell
+							10745 text 人工智能技术应用2502班
+						10746 cell
+							10747 text CLASS
+						10748 cell
+							10749 text —
+						10750 cell
+							10751 text 234346
+						10752 cell
+							10753 text 生效中
+					10754 row
+						10755 cell
+							10756 text 辅导员
+						10757 cell
+							10758 text 人工智能技术应用2503班
+						10759 cell
+							10760 text CLASS
+						10761 cell
+							10762 text —
+						10763 cell
+							10764 text 235150
+						10765 cell
+							10766 text 生效中
+					10767 row
+						10768 cell
+							10769 text 班主任
+						10770 cell
+							10771 text 人工智能技术应用2503班
+						10772 cell
+							10773 text CLASS
+						10774 cell
+							10775 text —
+						10776 cell
+							10777 text 234347
+						10778 cell
+							10779 text 生效中
+					10780 row
+						10781 cell
+							10782 text 辅导员
+						10783 cell
+							10784 text 人工智能技术应用2504班
+						10785 cell
+							10786 text CLASS
+						10787 cell
+							10788 text —
+						10789 cell
+							10790 text 235150
+						10791 cell
+							10792 text 生效中
+					10793 row
+						10794 cell
+							10795 text 班主任
+						10796 cell
+							10797 text 人工智能技术应用2504班
+						10798 cell
+							10799 text CLASS
+						10800 cell
+							10801 text —
+						10802 cell
+							10803 text 234348
+						10804 cell
+							10805 text 生效中
+					10806 row
+						10807 cell
+							10808 text 辅导员
+						10809 cell
+							10810 text 机电一体化技术2501班
+						10811 cell
+							10812 text CLASS
+						10813 cell
+							10814 text —
+						10815 cell
+							10816 text 235150
+						10817 cell
+							10818 text 生效中
+					10819 row
+						10820 cell
+							10821 text 班主任
+						10822 cell
+							10823 text 机电一体化技术2501班
+						10824 cell
+							10825 text CLASS
+						10826 cell
+							10827 text —
+						10828 cell
+							10829 text 234349
+						10830 cell
+							10831 text 生效中
+					10832 row
+						10833 cell
+							10834 text 辅导员
+						10835 cell
+							10836 text 机电一体化技术2502班
+						10837 cell
+							10838 text CLASS
+						10839 cell
+							10840 text —
+						10841 cell
+							10842 text 235151
+						10843 cell
+							10844 text 生效中
+					10845 row
+						10846 cell
+							10847 text 班主任
+						10848 cell
+							10849 text 机电一体化技术2502班
+						10850 cell
+							10851 text CLASS
+						10852 cell
+							10853 text —
+						10854 cell
+							10855 text 234350
+						10856 cell
+							10857 text 生效中
+					10858 row
+						10859 cell
+							10860 text 辅导员
+						10861 cell
+							10862 text 机电一体化技术2503班
+						10863 cell
+							10864 text CLASS
+						10865 cell
+							10866 text —
+						10867 cell
+							10868 text 235151
+						10869 cell
+							10870 text 生效中
+					10871 row
+						10872 cell
+							10873 text 班主任
+						10874 cell
+							10875 text 机电一体化技术2503班
+						10876 cell
+							10877 text CLASS
+						10878 cell
+							10879 text —
+						10880 cell
+							10881 text 234351
+						10882 cell
+							10883 text 生效中
+					10884 row
+						10885 cell
+							10886 text 辅导员
+						10887 cell
+							10888 text 机电一体化技术2504班
+						10889 cell
+							10890 text CLASS
+						10891 cell
+							10892 text —
+						10893 cell
+							10894 text 235151
+						10895 cell
+							10896 text 生效中
+					10897 row
+						10898 cell
+							10899 text 班主任
+						10900 cell
+							10901 text 机电一体化技术2504班
+						10902 cell
+							10903 text CLASS
+						10904 cell
+							10905 text —
+						10906 cell
+							10907 text 234352
+						10908 cell
+							10909 text 生效中
+					10910 row
+						10911 cell
+							10912 text 辅导员
+						10913 cell
+							10914 text 机电一体化技术2505班
+						10915 cell
+							10916 text CLASS
+						10917 cell
+							10918 text —
+						10919 cell
+							10920 text 235151
+						10921 cell
+							10922 text 生效中
+					10923 row
+						10924 cell
+							10925 text 班主任
+						10926 cell
+							10927 text 机电一体化技术2505班
+						10928 cell
+							10929 text CLASS
+						10930 cell
+							10931 text —
+						10932 cell
+							10933 text 234353
+						10934 cell
+							10935 text 生效中
+					10936 row
+						10937 cell
+							10938 text 辅导员
+						10939 cell
+							10940 text 工业机器人技术2501班
+						10941 cell
+							10942 text CLASS
+						10943 cell
+							10944 text —
+						10945 cell
+							10946 text 235152
+						10947 cell
+							10948 text 生效中
+					10949 row
+						10950 cell
+							10951 text 班主任
+						10952 cell
+							10953 text 工业机器人技术2501班
+						10954 cell
+							10955 text CLASS
+						10956 cell
+							10957 text —
+						10958 cell
+							10959 text 234354
+						10960 cell
+							10961 text 生效中
+					10962 row
+						10963 cell
+							10964 text 辅导员
+						10965 cell
+							10966 text 工业机器人技术2502班
+						10967 cell
+							10968 text CLASS
+						10969 cell
+							10970 text —
+						10971 cell
+							10972 text 235152
+						10973 cell
+							10974 text 生效中
+					10975 row
+						10976 cell
+							10977 text 班主任
+						10978 cell
+							10979 text 工业机器人技术2502班
+						10980 cell
+							10981 text CLASS
+						10982 cell
+							10983 text —
+						10984 cell
+							10985 text 234355
+						10986 cell
+							10987 text 生效中
+					10988 row
+						10989 cell
+							10990 text 辅导员
+						10991 cell
+							10992 text 工业机器人技术2503班
+						10993 cell
+							10994 text CLASS
+						10995 cell
+							10996 text —
+						10997 cell
+							10998 text 235152
+						10999 cell
+							11000 text 生效中
+					11001 row
+						11002 cell
+							11003 text 班主任
+						11004 cell
+							11005 text 工业机器人技术2503班
+						11006 cell
+							11007 text CLASS
+						11008 cell
+							11009 text —
+						11010 cell
+							11011 text 234356
+						11012 cell
+							11013 text 生效中
+					11014 row
+						11015 cell
+							11016 text 辅导员
+						11017 cell
+							11018 text 工业机器人技术2504班
+						11019 cell
+							11020 text CLASS
+						11021 cell
+							11022 text —
+						11023 cell
+							11024 text 235152
+						11025 cell
+							11026 text 生效中
+					11027 row
+						11028 cell
+							11029 text 班主任
+						11030 cell
+							11031 text 工业机器人技术2504班
+						11032 cell
+							11033 text CLASS
+						11034 cell
+							11035 text —
+						11036 cell
+							11037 text 234357
+						11038 cell
+							11039 text 生效中
+					11040 row
+						11041 cell
+							11042 text 辅导员
+						11043 cell
+							11044 text 数控技术2501班
+						11045 cell
+							11046 text CLASS
+						11047 cell
+							11048 text —
+						11049 cell
+							11050 text 235153
+						11051 cell
+							11052 text 生效中
+					11053 row
+						11054 cell
+							11055 text 班主任
+						11056 cell
+							11057 text 数控技术2501班
+						11058 cell
+							11059 text CLASS
+						11060 cell
+							11061 text —
+						11062 cell
+							11063 text 234358
+						11064 cell
+							11065 text 生效中
+					11066 row
+						11067 cell
+							11068 text 辅导员
+						11069 cell
+							11070 text 数控技术2502班
+						11071 cell
+							11072 text CLASS
+						11073 cell
+							11074 text —
+						11075 cell
+							11076 text 235153
+						11077 cell
+							11078 text 生效中
+					11079 row
+						11080 cell
+							11081 text 班主任
+						11082 cell
+							11083 text 数控技术2502班
+						11084 cell
+							11085 text CLASS
+						11086 cell
+							11087 text —
+						11088 cell
+							11089 text 234359
+						11090 cell
+							11091 text 生效中
+					11092 row
+						11093 cell
+							11094 text 辅导员
+						11095 cell
+							11096 text 数控技术2503班
+						11097 cell
+							11098 text CLASS
+						11099 cell
+							11100 text —
+						11101 cell
+							11102 text 235153
+						11103 cell
+							11104 text 生效中
+					11105 row
+						11106 cell
+							11107 text 班主任
+						11108 cell
+							11109 text 数控技术2503班
+						11110 cell
+							11111 text CLASS
+						11112 cell
+							11113 text —
+						11114 cell
+							11115 text 234360
+						11116 cell
+							11117 text 生效中
+					11118 row
+						11119 cell
+							11120 text 辅导员
+						11121 cell
+							11122 text 数控技术2504班
+						11123 cell
+							11124 text CLASS
+						11125 cell
+							11126 text —
+						11127 cell
+							11128 text 235153
+						11129 cell
+							11130 text 生效中
+					11131 row
+						11132 cell
+							11133 text 班主任
+						11134 cell
+							11135 text 数控技术2504班
+						11136 cell
+							11137 text CLASS
+						11138 cell
+							11139 text —
+						11140 cell
+							11141 text 234361
+						11142 cell
+							11143 text 生效中
+					11144 row
+						11145 cell
+							11146 text 辅导员
+						11147 cell
+							11148 text 电气自动化技术2501班
+						11149 cell
+							11150 text CLASS
+						11151 cell
+							11152 text —
+						11153 cell
+							11154 text 235154
+						11155 cell
+							11156 text 生效中
+					11157 row
+						11158 cell
+							11159 text 班主任
+						11160 cell
+							11161 text 电气自动化技术2501班
+						11162 cell
+							11163 text CLASS
+						11164 cell
+							11165 text —
+						11166 cell
+							11167 text 234362
+						11168 cell
+							11169 text 生效中
+					11170 row
+						11171 cell
+							11172 text 辅导员
+						11173 cell
+							11174 text 电气自动化技术2502班
+						11175 cell
+							11176 text CLASS
+						11177 cell
+							11178 text —
+						11179 cell
+							11180 text 235154
+						11181 cell
+							11182 text 生效中
+					11183 row
+						11184 cell
+							11185 text 班主任
+						11186 cell
+							11187 text 电气自动化技术2502班
+						11188 cell
+							11189 text CLASS
+						11190 cell
+							11191 text —
+						11192 cell
+							11193 text 234363
+						11194 cell
+							11195 text 生效中
+					11196 row
+						11197 cell
+							11198 text 辅导员
+						11199 cell
+							11200 text 电气自动化技术2503班
+						11201 cell
+							11202 text CLASS
+						11203 cell
+							11204 text —
+						11205 cell
+							11206 text 235154
+						11207 cell
+							11208 text 生效中
+					11209 row
+						11210 cell
+							11211 text 班主任
+						11212 cell
+							11213 text 电气自动化技术2503班
+						11214 cell
+							11215 text CLASS
+						11216 cell
+							11217 text —
+						11218 cell
+							11219 text 234364
+						11220 cell
+							11221 text 生效中
+					11222 row
+						11223 cell
+							11224 text 辅导员
+						11225 cell
+							11226 text 电气自动化技术2504班
+						11227 cell
+							11228 text CLASS
+						11229 cell
+							11230 text —
+						11231 cell
+							11232 text 235154
+						11233 cell
+							11234 text 生效中
+					11235 row
+						11236 cell
+							11237 text 班主任
+						11238 cell
+							11239 text 电气自动化技术2504班
+						11240 cell
+							11241 text CLASS
+						11242 cell
+							11243 text —
+						11244 cell
+							11245 text 234365
+						11246 cell
+							11247 text 生效中
+					11248 row
+						11249 cell
+							11250 text 辅导员
+						11251 cell
+							11252 text 新能源汽车技术2501班
+						11253 cell
+							11254 text CLASS
+						11255 cell
+							11256 text —
+						11257 cell
+							11258 text 235155
+						11259 cell
+							11260 text 生效中
+					11261 row
+						11262 cell
+							11263 text 班主任
+						11264 cell
+							11265 text 新能源汽车技术2501班
+						11266 cell
+							11267 text CLASS
+						11268 cell
+							11269 text —
+						11270 cell
+							11271 text 234366
+						11272 cell
+							11273 text 生效中
+					11274 row
+						11275 cell
+							11276 text 辅导员
+						11277 cell
+							11278 text 新能源汽车技术2502班
+						11279 cell
+							11280 text CLASS
+						11281 cell
+							11282 text —
+						11283 cell
+							11284 text 235155
+						11285 cell
+							11286 text 生效中
+					11287 row
+						11288 cell
+							11289 text 班主任
+						11290 cell
+							11291 text 新能源汽车技术2502班
+						11292 cell
+							11293 text CLASS
+						11294 cell
+							11295 text —
+						11296 cell
+							11297 text 234367
+						11298 cell
+							11299 text 生效中
+					11300 row
+						11301 cell
+							11302 text 辅导员
+						11303 cell
+							11304 text 新能源汽车技术2503班
+						11305 cell
+							11306 text CLASS
+						11307 cell
+							11308 text —
+						11309 cell
+							11310 text 235155
+						11311 cell
+							11312 text 生效中
+					11313 row
+						11314 cell
+							11315 text 班主任
+						11316 cell
+							11317 text 新能源汽车技术2503班
+						11318 cell
+							11319 text CLASS
+						11320 cell
+							11321 text —
+						11322 cell
+							11323 text 234368
+						11324 cell
+							11325 text 生效中
+					11326 row
+						11327 cell
+							11328 text 辅导员
+						11329 cell
+							11330 text 新能源汽车技术2504班
+						11331 cell
+							11332 text CLASS
+						11333 cell
+							11334 text —
+						11335 cell
+							11336 text 235155
+						11337 cell
+							11338 text 生效中
+					11339 row
+						11340 cell
+							11341 text 班主任
+						11342 cell
+							11343 text 新能源汽车技术2504班
+						11344 cell
+							11345 text CLASS
+						11346 cell
+							11347 text —
+						11348 cell
+							11349 text 234369
+						11350 cell
+							11351 text 生效中
+					11352 row
+						11353 cell
+							11354 text 辅导员
+						11355 cell
+							11356 text 新能源汽车技术2505班
+						11357 cell
+							11358 text CLASS
+						11359 cell
+							11360 text —
+						11361 cell
+							11362 text 235156
+						11363 cell
+							11364 text 生效中
+					11365 row
+						11366 cell
+							11367 text 班主任
+						11368 cell
+							11369 text 新能源汽车技术2505班
+						11370 cell
+							11371 text CLASS
+						11372 cell
+							11373 text —
+						11374 cell
+							11375 text 234370
+						11376 cell
+							11377 text 生效中
+					11378 row
+						11379 cell
+							11380 text 辅导员
+						11381 cell
+							11382 text 汽车检测与维修技术2501班
+						11383 cell
+							11384 text CLASS
+						11385 cell
+							11386 text —
+						11387 cell
+							11388 text 235156
+						11389 cell
+							11390 text 生效中
+					11391 row
+						11392 cell
+							11393 text 班主任
+						11394 cell
+							11395 text 汽车检测与维修技术2501班
+						11396 cell
+							11397 text CLASS
+						11398 cell
+							11399 text —
+						11400 cell
+							11401 text 234371
+						11402 cell
+							11403 text 生效中
+					11404 row
+						11405 cell
+							11406 text 辅导员
+						11407 cell
+							11408 text 汽车检测与维修技术2502班
+						11409 cell
+							11410 text CLASS
+						11411 cell
+							11412 text —
+						11413 cell
+							11414 text 235156
+						11415 cell
+							11416 text 生效中
+					11417 row
+						11418 cell
+							11419 text 班主任
+						11420 cell
+							11421 text 汽车检测与维修技术2502班
+						11422 cell
+							11423 text CLASS
+						11424 cell
+							11425 text —
+						11426 cell
+							11427 text 234372
+						11428 cell
+							11429 text 生效中
+					11430 row
+						11431 cell
+							11432 text 辅导员
+						11433 cell
+							11434 text 汽车检测与维修技术2503班
+						11435 cell
+							11436 text CLASS
+						11437 cell
+							11438 text —
+						11439 cell
+							11440 text 235156
+						11441 cell
+							11442 text 生效中
+					11443 row
+						11444 cell
+							11445 text 班主任
+						11446 cell
+							11447 text 汽车检测与维修技术2503班
+						11448 cell
+							11449 text CLASS
+						11450 cell
+							11451 text —
+						11452 cell
+							11453 text 234373
+						11454 cell
+							11455 text 生效中
+					11456 row
+						11457 cell
+							11458 text 辅导员
+						11459 cell
+							11460 text 汽车检测与维修技术2504班
+						11461 cell
+							11462 text CLASS
+						11463 cell
+							11464 text —
+						11465 cell
+							11466 text 235157
+						11467 cell
+							11468 text 生效中
+					11469 row
+						11470 cell
+							11471 text 班主任
+						11472 cell
+							11473 text 汽车检测与维修技术2504班
+						11474 cell
+							11475 text CLASS
+						11476 cell
+							11477 text —
+						11478 cell
+							11479 text 234374
+						11480 cell
+							11481 text 生效中
+					11482 row
+						11483 cell
+							11484 text 辅导员
+						11485 cell
+							11486 text 智能网联汽车技术2501班
+						11487 cell
+							11488 text CLASS
+						11489 cell
+							11490 text —
+						11491 cell
+							11492 text 235157
+						11493 cell
+							11494 text 生效中
+					11495 row
+						11496 cell
+							11497 text 班主任
+						11498 cell
+							11499 text 智能网联汽车技术2501班
+						11500 cell
+							11501 text CLASS
+						11502 cell
+							11503 text —
+						11504 cell
+							11505 text 234375
+						11506 cell
+							11507 text 生效中
+					11508 row
+						11509 cell
+							11510 text 辅导员
+						11511 cell
+							11512 text 智能网联汽车技术2502班
+						11513 cell
+							11514 text CLASS
+						11515 cell
+							11516 text —
+						11517 cell
+							11518 text 235157
+						11519 cell
+							11520 text 生效中
+					11521 row
+						11522 cell
+							11523 text 班主任
+						11524 cell
+							11525 text 智能网联汽车技术2502班
+						11526 cell
+							11527 text CLASS
+						11528 cell
+							11529 text —
+						11530 cell
+							11531 text 234376
+						11532 cell
+							11533 text 生效中
+					11534 row
+						11535 cell
+							11536 text 辅导员
+						11537 cell
+							11538 text 智能网联汽车技术2503班
+						11539 cell
+							11540 text CLASS
+						11541 cell
+							11542 text —
+						11543 cell
+							11544 text 235157
+						11545 cell
+							11546 text 生效中
+					11547 row
+						11548 cell
+							11549 text 班主任
+						11550 cell
+							11551 text 智能网联汽车技术2503班
+						11552 cell
+							11553 text CLASS
+						11554 cell
+							11555 text —
+						11556 cell
+							11557 text 234377
+						11558 cell
+							11559 text 生效中
+					11560 row
+						11561 cell
+							11562 text 辅导员
+						11563 cell
+							11564 text 智能网联汽车技术2504班
+						11565 cell
+							11566 text CLASS
+						11567 cell
+							11568 text —
+						11569 cell
+							11570 text 235158
+						11571 cell
+							11572 text 生效中
+					11573 row
+						11574 cell
+							11575 text 班主任
+						11576 cell
+							11577 text 智能网联汽车技术2504班
+						11578 cell
+							11579 text CLASS
+						11580 cell
+							11581 text —
+						11582 cell
+							11583 text 234378
+						11584 cell
+							11585 text 生效中
+					11586 row
+						11587 cell
+							11588 text 辅导员
+						11589 cell
+							11590 text 汽车制造与试验技术2501班
+						11591 cell
+							11592 text CLASS
+						11593 cell
+							11594 text —
+						11595 cell
+							11596 text 235158
+						11597 cell
+							11598 text 生效中
+					11599 row
+						11600 cell
+							11601 text 班主任
+						11602 cell
+							11603 text 汽车制造与试验技术2501班
+						11604 cell
+							11605 text CLASS
+						11606 cell
+							11607 text —
+						11608 cell
+							11609 text 234379
+						11610 cell
+							11611 text 生效中
+					11612 row
+						11613 cell
+							11614 text 辅导员
+						11615 cell
+							11616 text 汽车制造与试验技术2502班
+						11617 cell
+							11618 text CLASS
+						11619 cell
+							11620 text —
+						11621 cell
+							11622 text 235158
+						11623 cell
+							11624 text 生效中
+					11625 row
+						11626 cell
+							11627 text 班主任
+						11628 cell
+							11629 text 汽车制造与试验技术2502班
+						11630 cell
+							11631 text CLASS
+						11632 cell
+							11633 text —
+						11634 cell
+							11635 text 234380
+						11636 cell
+							11637 text 生效中
+					11638 row
+						11639 cell
+							11640 text 辅导员
+						11641 cell
+							11642 text 汽车制造与试验技术2503班
+						11643 cell
+							11644 text CLASS
+						11645 cell
+							11646 text —
+						11647 cell
+							11648 text 235158
+						11649 cell
+							11650 text 生效中
+					11651 row
+						11652 cell
+							11653 text 班主任
+						11654 cell
+							11655 text 汽车制造与试验技术2503班
+						11656 cell
+							11657 text CLASS
+						11658 cell
+							11659 text —
+						11660 cell
+							11661 text 234381
+						11662 cell
+							11663 text 生效中
+					11664 row
+						11665 cell
+							11666 text 辅导员
+						11667 cell
+							11668 text 电子商务2501班
+						11669 cell
+							11670 text CLASS
+						11671 cell
+							11672 text —
+						11673 cell
+							11674 text 235159
+						11675 cell
+							11676 text 生效中
+					11677 row
+						11678 cell
+							11679 text 班主任
+						11680 cell
+							11681 text 电子商务2501班
+						11682 cell
+							11683 text CLASS
+						11684 cell
+							11685 text —
+						11686 cell
+							11687 text 234382
+						11688 cell
+							11689 text 生效中
+					11690 row
+						11691 cell
+							11692 text 辅导员
+						11693 cell
+							11694 text 电子商务2502班
+						11695 cell
+							11696 text CLASS
+						11697 cell
+							11698 text —
+						11699 cell
+							11700 text 235159
+						11701 cell
+							11702 text 生效中
+					11703 row
+						11704 cell
+							11705 text 班主任
+						11706 cell
+							11707 text 电子商务2502班
+						11708 cell
+							11709 text CLASS
+						11710 cell
+							11711 text —
+						11712 cell
+							11713 text 234383
+						11714 cell
+							11715 text 生效中
+					11716 row
+						11717 cell
+							11718 text 辅导员
+						11719 cell
+							11720 text 电子商务2503班
+						11721 cell
+							11722 text CLASS
+						11723 cell
+							11724 text —
+						11725 cell
+							11726 text 235159
+						11727 cell
+							11728 text 生效中
+					11729 row
+						11730 cell
+							11731 text 班主任
+						11732 cell
+							11733 text 电子商务2503班
+						11734 cell
+							11735 text CLASS
+						11736 cell
+							11737 text —
+						11738 cell
+							11739 text 234384
+						11740 cell
+							11741 text 生效中
+					11742 row
+						11743 cell
+							11744 text 辅导员
+						11745 cell
+							11746 text 电子商务2504班
+						11747 cell
+							11748 text CLASS
+						11749 cell
+							11750 text —
+						11751 cell
+							11752 text 235159
+						11753 cell
+							11754 text 生效中
+					11755 row
+						11756 cell
+							11757 text 班主任
+						11758 cell
+							11759 text 电子商务2504班
+						11760 cell
+							11761 text CLASS
+						11762 cell
+							11763 text —
+						11764 cell
+							11765 text 234385
+						11766 cell
+							11767 text 生效中
+					11768 row
+						11769 cell
+							11770 text 辅导员
+						11771 cell
+							11772 text 电子商务2505班
+						11773 cell
+							11774 text CLASS
+						11775 cell
+							11776 text —
+						11777 cell
+							11778 text 235160
+						11779 cell
+							11780 text 生效中
+					11781 row
+						11782 cell
+							11783 text 班主任
+						11784 cell
+							11785 text 电子商务2505班
+						11786 cell
+							11787 text CLASS
+						11788 cell
+							11789 text —
+						11790 cell
+							11791 text 234386
+						11792 cell
+							11793 text 生效中
+					11794 row
+						11795 cell
+							11796 text 辅导员
+						11797 cell
+							11798 text 大数据与会计2501班
+						11799 cell
+							11800 text CLASS
+						11801 cell
+							11802 text —
+						11803 cell
+							11804 text 235160
+						11805 cell
+							11806 text 生效中
+					11807 row
+						11808 cell
+							11809 text 班主任
+						11810 cell
+							11811 text 大数据与会计2501班
+						11812 cell
+							11813 text CLASS
+						11814 cell
+							11815 text —
+						11816 cell
+							11817 text 234387
+						11818 cell
+							11819 text 生效中
+					11820 row
+						11821 cell
+							11822 text 辅导员
+						11823 cell
+							11824 text 大数据与会计2502班
+						11825 cell
+							11826 text CLASS
+						11827 cell
+							11828 text —
+						11829 cell
+							11830 text 235160
+						11831 cell
+							11832 text 生效中
+					11833 row
+						11834 cell
+							11835 text 班主任
+						11836 cell
+							11837 text 大数据与会计2502班
+						11838 cell
+							11839 text CLASS
+						11840 cell
+							11841 text —
+						11842 cell
+							11843 text 234388
+						11844 cell
+							11845 text 生效中
+					11846 row
+						11847 cell
+							11848 text 辅导员
+						11849 cell
+							11850 text 大数据与会计2503班
+						11851 cell
+							11852 text CLASS
+						11853 cell
+							11854 text —
+						11855 cell
+							11856 text 235160
+						11857 cell
+							11858 text 生效中
+					11859 row
+						11860 cell
+							11861 text 班主任
+						11862 cell
+							11863 text 大数据与会计2503班
+						11864 cell
+							11865 text CLASS
+						11866 cell
+							11867 text —
+						11868 cell
+							11869 text 234389
+						11870 cell
+							11871 text 生效中
+					11872 row
+						11873 cell
+							11874 text 辅导员
+						11875 cell
+							11876 text 大数据与会计2504班
+						11877 cell
+							11878 text CLASS
+						11879 cell
+							11880 text —
+						11881 cell
+							11882 text 235161
+						11883 cell
+							11884 text 生效中
+					11885 row
+						11886 cell
+							11887 text 班主任
+						11888 cell
+							11889 text 大数据与会计2504班
+						11890 cell
+							11891 text CLASS
+						11892 cell
+							11893 text —
+						11894 cell
+							11895 text 234390
+						11896 cell
+							11897 text 生效中
+					11898 row
+						11899 cell
+							11900 text 辅导员
+						11901 cell
+							11902 text 大数据与会计2505班
+						11903 cell
+							11904 text CLASS
+						11905 cell
+							11906 text —
+						11907 cell
+							11908 text 235161
+						11909 cell
+							11910 text 生效中
+					11911 row
+						11912 cell
+							11913 text 班主任
+						11914 cell
+							11915 text 大数据与会计2505班
+						11916 cell
+							11917 text CLASS
+						11918 cell
+							11919 text —
+						11920 cell
+							11921 text 234391
+						11922 cell
+							11923 text 生效中
+					11924 row
+						11925 cell
+							11926 text 辅导员
+						11927 cell
+							11928 text 市场营销2501班
+						11929 cell
+							11930 text CLASS
+						11931 cell
+							11932 text —
+						11933 cell
+							11934 text 235161
+						11935 cell
+							11936 text 生效中
+					11937 row
+						11938 cell
+							11939 text 班主任
+						11940 cell
+							11941 text 市场营销2501班
+						11942 cell
+							11943 text CLASS
+						11944 cell
+							11945 text —
+						11946 cell
+							11947 text 234392
+						11948 cell
+							11949 text 生效中
+					11950 row
+						11951 cell
+							11952 text 辅导员
+						11953 cell
+							11954 text 市场营销2502班
+						11955 cell
+							11956 text CLASS
+						11957 cell
+							11958 text —
+						11959 cell
+							11960 text 235161
+						11961 cell
+							11962 text 生效中
+					11963 row
+						11964 cell
+							11965 text 班主任
+						11966 cell
+							11967 text 市场营销2502班
+						11968 cell
+							11969 text CLASS
+						11970 cell
+							11971 text —
+						11972 cell
+							11973 text 234393
+						11974 cell
+							11975 text 生效中
+					11976 row
+						11977 cell
+							11978 text 辅导员
+						11979 cell
+							11980 text 市场营销2503班
+						11981 cell
+							11982 text CLASS
+						11983 cell
+							11984 text —
+						11985 cell
+							11986 text 235162
+						11987 cell
+							11988 text 生效中
+					11989 row
+						11990 cell
+							11991 text 班主任
+						11992 cell
+							11993 text 市场营销2503班
+						11994 cell
+							11995 text CLASS
+						11996 cell
+							11997 text —
+						11998 cell
+							11999 text 234394
+						12000 cell
+							12001 text 生效中
+					12002 row
+						12003 cell
+							12004 text 辅导员
+						12005 cell
+							12006 text 市场营销2504班
+						12007 cell
+							12008 text CLASS
+						12009 cell
+							12010 text —
+						12011 cell
+							12012 text 235162
+						12013 cell
+							12014 text 生效中
+					12015 row
+						12016 cell
+							12017 text 班主任
+						12018 cell
+							12019 text 市场营销2504班
+						12020 cell
+							12021 text CLASS
+						12022 cell
+							12023 text —
+						12024 cell
+							12025 text 234395
+						12026 cell
+							12027 text 生效中
+					12028 row
+						12029 cell
+							12030 text 辅导员
+						12031 cell
+							12032 text 现代物流管理2501班
+						12033 cell
+							12034 text CLASS
+						12035 cell
+							12036 text —
+						12037 cell
+							12038 text 235162
+						12039 cell
+							12040 text 生效中
+					12041 row
+						12042 cell
+							12043 text 班主任
+						12044 cell
+							12045 text 现代物流管理2501班
+						12046 cell
+							12047 text CLASS
+						12048 cell
+							12049 text —
+						12050 cell
+							12051 text 234396
+						12052 cell
+							12053 text 生效中
+					12054 row
+						12055 cell
+							12056 text 辅导员
+						12057 cell
+							12058 text 现代物流管理2502班
+						12059 cell
+							12060 text CLASS
+						12061 cell
+							12062 text —
+						12063 cell
+							12064 text 235162
+						12065 cell
+							12066 text 生效中
+					12067 row
+						12068 cell
+							12069 text 班主任
+						12070 cell
+							12071 text 现代物流管理2502班
+						12072 cell
+							12073 text CLASS
+						12074 cell
+							12075 text —
+						12076 cell
+							12077 text 234397
+						12078 cell
+							12079 text 生效中
+					12080 row
+						12081 cell
+							12082 text 辅导员
+						12083 cell
+							12084 text 现代物流管理2503班
+						12085 cell
+							12086 text CLASS
+						12087 cell
+							12088 text —
+						12089 cell
+							12090 text 235163
+						12091 cell
+							12092 text 生效中
+					12093 row
+						12094 cell
+							12095 text 班主任
+						12096 cell
+							12097 text 现代物流管理2503班
+						12098 cell
+							12099 text CLASS
+						12100 cell
+							12101 text —
+						12102 cell
+							12103 text 234398
+						12104 cell
+							12105 text 生效中
+					12106 row
+						12107 cell
+							12108 text 辅导员
+						12109 cell
+							12110 text 现代物流管理2504班
+						12111 cell
+							12112 text CLASS
+						12113 cell
+							12114 text —
+						12115 cell
+							12116 text 235163
+						12117 cell
+							12118 text 生效中
+					12119 row
+						12120 cell
+							12121 text 班主任
+						12122 cell
+							12123 text 现代物流管理2504班
+						12124 cell
+							12125 text CLASS
+						12126 cell
+							12127 text —
+						12128 cell
+							12129 text 234399
+						12130 cell
+							12131 text 生效中
+					12132 row
+						12133 cell
+							12134 text 辅导员
+						12135 cell
+							12136 text 旅游管理2501班
+						12137 cell
+							12138 text CLASS
+						12139 cell
+							12140 text —
+						12141 cell
+							12142 text 235163
+						12143 cell
+							12144 text 生效中
+					12145 row
+						12146 cell
+							12147 text 班主任
+						12148 cell
+							12149 text 旅游管理2501班
+						12150 cell
+							12151 text CLASS
+						12152 cell
+							12153 text —
+						12154 cell
+							12155 text 234400
+						12156 cell
+							12157 text 生效中
+					12158 row
+						12159 cell
+							12160 text 辅导员
+						12161 cell
+							12162 text 旅游管理2502班
+						12163 cell
+							12164 text CLASS
+						12165 cell
+							12166 text —
+						12167 cell
+							12168 text 235163
+						12169 cell
+							12170 text 生效中
+					12171 row
+						12172 cell
+							12173 text 班主任
+						12174 cell
+							12175 text 旅游管理2502班
+						12176 cell
+							12177 text CLASS
+						12178 cell
+							12179 text —
+						12180 cell
+							12181 text 234401
+						12182 cell
+							12183 text 生效中
+					12184 row
+						12185 cell
+							12186 text 辅导员
+						12187 cell
+							12188 text 旅游管理2503班
+						12189 cell
+							12190 text CLASS
+						12191 cell
+							12192 text —
+						12193 cell
+							12194 text 235164
+						12195 cell
+							12196 text 生效中
+					12197 row
+						12198 cell
+							12199 text 班主任
+						12200 cell
+							12201 text 旅游管理2503班
+						12202 cell
+							12203 text CLASS
+						12204 cell
+							12205 text —
+						12206 cell
+							12207 text 234402
+						12208 cell
+							12209 text 生效中
+					12210 row
+						12211 cell
+							12212 text 辅导员
+						12213 cell
+							12214 text 酒店管理与数字化运营2501班
+						12215 cell
+							12216 text CLASS
+						12217 cell
+							12218 text —
+						12219 cell
+							12220 text 235164
+						12221 cell
+							12222 text 生效中
+					12223 row
+						12224 cell
+							12225 text 班主任
+						12226 cell
+							12227 text 酒店管理与数字化运营2501班
+						12228 cell
+							12229 text CLASS
+						12230 cell
+							12231 text —
+						12232 cell
+							12233 text 234403
+						12234 cell
+							12235 text 生效中
+					12236 row
+						12237 cell
+							12238 text 辅导员
+						12239 cell
+							12240 text 酒店管理与数字化运营2502班
+						12241 cell
+							12242 text CLASS
+						12243 cell
+							12244 text —
+						12245 cell
+							12246 text 235164
+						12247 cell
+							12248 text 生效中
+					12249 row
+						12250 cell
+							12251 text 班主任
+						12252 cell
+							12253 text 酒店管理与数字化运营2502班
+						12254 cell
+							12255 text CLASS
+						12256 cell
+							12257 text —
+						12258 cell
+							12259 text 234404
+						12260 cell
+							12261 text 生效中
+					12262 row
+						12263 cell
+							12264 text 辅导员
+						12265 cell
+							12266 text 酒店管理与数字化运营2503班
+						12267 cell
+							12268 text CLASS
+						12269 cell
+							12270 text —
+						12271 cell
+							12272 text 235164
+						12273 cell
+							12274 text 生效中
+					12275 row
+						12276 cell
+							12277 text 班主任
+						12278 cell
+							12279 text 酒店管理与数字化运营2503班
+						12280 cell
+							12281 text CLASS
+						12282 cell
+							12283 text —
+						12284 cell
+							12285 text 234405
+						12286 cell
+							12287 text 生效中
+					12288 row
+						12289 cell
+							12290 text 辅导员
+						12291 cell
+							12292 text 烹饪工艺与营养2501班
+						12293 cell
+							12294 text CLASS
+						12295 cell
+							12296 text —
+						12297 cell
+							12298 text 235165
+						12299 cell
+							12300 text 生效中
+					12301 row
+						12302 cell
+							12303 text 班主任
+						12304 cell
+							12305 text 烹饪工艺与营养2501班
+						12306 cell
+							12307 text CLASS
+						12308 cell
+							12309 text —
+						12310 cell
+							12311 text 234406
+						12312 cell
+							12313 text 生效中
+					12314 row
+						12315 cell
+							12316 text 辅导员
+						12317 cell
+							12318 text 烹饪工艺与营养2502班
+						12319 cell
+							12320 text CLASS
+						12321 cell
+							12322 text —
+						12323 cell
+							12324 text 235165
+						12325 cell
+							12326 text 生效中
+					12327 row
+						12328 cell
+							12329 text 班主任
+						12330 cell
+							12331 text 烹饪工艺与营养2502班
+						12332 cell
+							12333 text CLASS
+						12334 cell
+							12335 text —
+						12336 cell
+							12337 text 234407
+						12338 cell
+							12339 text 生效中
+					12340 row
+						12341 cell
+							12342 text 辅导员
+						12343 cell
+							12344 text 烹饪工艺与营养2503班
+						12345 cell
+							12346 text CLASS
+						12347 cell
+							12348 text —
+						12349 cell
+							12350 text 235165
+						12351 cell
+							12352 text 生效中
+					12353 row
+						12354 cell
+							12355 text 班主任
+						12356 cell
+							12357 text 烹饪工艺与营养2503班
+						12358 cell
+							12359 text CLASS
+						12360 cell
+							12361 text —
+						12362 cell
+							12363 text 234408
+						12364 cell
+							12365 text 生效中
+					12366 row
+						12367 cell
+							12368 text 辅导员
+						12369 cell
+							12370 text 烹饪工艺与营养2504班
+						12371 cell
+							12372 text CLASS
+						12373 cell
+							12374 text —
+						12375 cell
+							12376 text 235165
+						12377 cell
+							12378 text 生效中
+					12379 row
+						12380 cell
+							12381 text 班主任
+						12382 cell
+							12383 text 烹饪工艺与营养2504班
+						12384 cell
+							12385 text CLASS
+						12386 cell
+							12387 text —
+						12388 cell
+							12389 text 234409
+						12390 cell
+							12391 text 生效中
+					12392 row
+						12393 cell
+							12394 text 辅导员
+						12395 cell
+							12396 text 空中乘务2501班
+						12397 cell
+							12398 text CLASS
+						12399 cell
+							12400 text —
+						12401 cell
+							12402 text 235166
+						12403 cell
+							12404 text 生效中
+					12405 row
+						12406 cell
+							12407 text 班主任
+						12408 cell
+							12409 text 空中乘务2501班
+						12410 cell
+							12411 text CLASS
+						12412 cell
+							12413 text —
+						12414 cell
+							12415 text 234410
+						12416 cell
+							12417 text 生效中
+					12418 row
+						12419 cell
+							12420 text 辅导员
+						12421 cell
+							12422 text 空中乘务2502班
+						12423 cell
+							12424 text CLASS
+						12425 cell
+							12426 text —
+						12427 cell
+							12428 text 235166
+						12429 cell
+							12430 text 生效中
+					12431 row
+						12432 cell
+							12433 text 班主任
+						12434 cell
+							12435 text 空中乘务2502班
+						12436 cell
+							12437 text CLASS
+						12438 cell
+							12439 text —
+						12440 cell
+							12441 text 234411
+						12442 cell
+							12443 text 生效中
+					12444 row
+						12445 cell
+							12446 text 辅导员
+						12447 cell
+							12448 text 空中乘务2503班
+						12449 cell
+							12450 text CLASS
+						12451 cell
+							12452 text —
+						12453 cell
+							12454 text 235166
+						12455 cell
+							12456 text 生效中
+					12457 row
+						12458 cell
+							12459 text 班主任
+						12460 cell
+							12461 text 空中乘务2503班
+						12462 cell
+							12463 text CLASS
+						12464 cell
+							12465 text —
+						12466 cell
+							12467 text 234412
+						12468 cell
+							12469 text 生效中
+					12470 row
+						12471 cell
+							12472 text 辅导员
+						12473 cell
+							12474 text 建筑工程技术2501班
+						12475 cell
+							12476 text CLASS
+						12477 cell
+							12478 text —
+						12479 cell
+							12480 text 235166
+						12481 cell
+							12482 text 生效中
+					12483 row
+						12484 cell
+							12485 text 班主任
+						12486 cell
+							12487 text 建筑工程技术2501班
+						12488 cell
+							12489 text CLASS
+						12490 cell
+							12491 text —
+						12492 cell
+							12493 text 234413
+						12494 cell
+							12495 text 生效中
+					12496 row
+						12497 cell
+							12498 text 辅导员
+						12499 cell
+							12500 text 建筑工程技术2502班
+						12501 cell
+							12502 text CLASS
+						12503 cell
+							12504 text —
+						12505 cell
+							12506 text 235167
+						12507 cell
+							12508 text 生效中
+					12509 row
+						12510 cell
+							12511 text 班主任
+						12512 cell
+							12513 text 建筑工程技术2502班
+						12514 cell
+							12515 text CLASS
+						12516 cell
+							12517 text —
+						12518 cell
+							12519 text 234414
+						12520 cell
+							12521 text 生效中
+					12522 row
+						12523 cell
+							12524 text 辅导员
+						12525 cell
+							12526 text 建筑工程技术2503班
+						12527 cell
+							12528 text CLASS
+						12529 cell
+							12530 text —
+						12531 cell
+							12532 text 235167
+						12533 cell
+							12534 text 生效中
+					12535 row
+						12536 cell
+							12537 text 班主任
+						12538 cell
+							12539 text 建筑工程技术2503班
+						12540 cell
+							12541 text CLASS
+						12542 cell
+							12543 text —
+						12544 cell
+							12545 text 234415
+						12546 cell
+							12547 text 生效中
+					12548 row
+						12549 cell
+							12550 text 辅导员
+						12551 cell
+							12552 text 建筑工程技术2504班
+						12553 cell
+							12554 text CLASS
+						12555 cell
+							12556 text —
+						12557 cell
+							12558 text 235167
+						12559 cell
+							12560 text 生效中
+					12561 row
+						12562 cell
+							12563 text 班主任
+						12564 cell
+							12565 text 建筑工程技术2504班
+						12566 cell
+							12567 text CLASS
+						12568 cell
+							12569 text —
+						12570 cell
+							12571 text 234416
+						12572 cell
+							12573 text 生效中
+					12574 row
+						12575 cell
+							12576 text 辅导员
+						12577 cell
+							12578 text 工程造价2501班
+						12579 cell
+							12580 text CLASS
+						12581 cell
+							12582 text —
+						12583 cell
+							12584 text 235167
+						12585 cell
+							12586 text 生效中
+					12587 row
+						12588 cell
+							12589 text 班主任
+						12590 cell
+							12591 text 工程造价2501班
+						12592 cell
+							12593 text CLASS
+						12594 cell
+							12595 text —
+						12596 cell
+							12597 text 234417
+						12598 cell
+							12599 text 生效中
+					12600 row
+						12601 cell
+							12602 text 辅导员
+						12603 cell
+							12604 text 工程造价2502班
+						12605 cell
+							12606 text CLASS
+						12607 cell
+							12608 text —
+						12609 cell
+							12610 text 235168
+						12611 cell
+							12612 text 生效中
+					12613 row
+						12614 cell
+							12615 text 班主任
+						12616 cell
+							12617 text 工程造价2502班
+						12618 cell
+							12619 text CLASS
+						12620 cell
+							12621 text —
+						12622 cell
+							12623 text 234418
+						12624 cell
+							12625 text 生效中
+					12626 row
+						12627 cell
+							12628 text 辅导员
+						12629 cell
+							12630 text 工程造价2503班
+						12631 cell
+							12632 text CLASS
+						12633 cell
+							12634 text —
+						12635 cell
+							12636 text 235168
+						12637 cell
+							12638 text 生效中
+					12639 row
+						12640 cell
+							12641 text 班主任
+						12642 cell
+							12643 text 工程造价2503班
+						12644 cell
+							12645 text CLASS
+						12646 cell
+							12647 text —
+						12648 cell
+							12649 text 234419
+						12650 cell
+							12651 text 生效中
+					12652 row
+						12653 cell
+							12654 text 辅导员
+						12655 cell
+							12656 text 工程造价2504班
+						12657 cell
+							12658 text CLASS
+						12659 cell
+							12660 text —
+						12661 cell
+							12662 text 235168
+						12663 cell
+							12664 text 生效中
+					12665 row
+						12666 cell
+							12667 text 班主任
+						12668 cell
+							12669 text 工程造价2504班
+						12670 cell
+							12671 text CLASS
+						12672 cell
+							12673 text —
+						12674 cell
+							12675 text 234420
+						12676 cell
+							12677 text 生效中
+					12678 row
+						12679 cell
+							12680 text 辅导员
+						12681 cell
+							12682 text 建筑室内设计2501班
+						12683 cell
+							12684 text CLASS
+						12685 cell
+							12686 text —
+						12687 cell
+							12688 text 235168
+						12689 cell
+							12690 text 生效中
+					12691 row
+						12692 cell
+							12693 text 班主任
+						12694 cell
+							12695 text 建筑室内设计2501班
+						12696 cell
+							12697 text CLASS
+						12698 cell
+							12699 text —
+						12700 cell
+							12701 text 234421
+						12702 cell
+							12703 text 生效中
+					12704 row
+						12705 cell
+							12706 text 辅导员
+						12707 cell
+							12708 text 建筑室内设计2502班
+						12709 cell
+							12710 text CLASS
+						12711 cell
+							12712 text —
+						12713 cell
+							12714 text 235169
+						12715 cell
+							12716 text 生效中
+					12717 row
+						12718 cell
+							12719 text 班主任
+						12720 cell
+							12721 text 建筑室内设计2502班
+						12722 cell
+							12723 text CLASS
+						12724 cell
+							12725 text —
+						12726 cell
+							12727 text 234422
+						12728 cell
+							12729 text 生效中
+					12730 row
+						12731 cell
+							12732 text 辅导员
+						12733 cell
+							12734 text 建筑室内设计2503班
+						12735 cell
+							12736 text CLASS
+						12737 cell
+							12738 text —
+						12739 cell
+							12740 text 235169
+						12741 cell
+							12742 text 生效中
+					12743 row
+						12744 cell
+							12745 text 班主任
+						12746 cell
+							12747 text 建筑室内设计2503班
+						12748 cell
+							12749 text CLASS
+						12750 cell
+							12751 text —
+						12752 cell
+							12753 text 234423
+						12754 cell
+							12755 text 生效中
+					12756 row
+						12757 cell
+							12758 text 辅导员
+						12759 cell
+							12760 text 建筑室内设计2504班
+						12761 cell
+							12762 text CLASS
+						12763 cell
+							12764 text —
+						12765 cell
+							12766 text 235169
+						12767 cell
+							12768 text 生效中
+					12769 row
+						12770 cell
+							12771 text 班主任
+						12772 cell
+							12773 text 建筑室内设计2504班
+						12774 cell
+							12775 text CLASS
+						12776 cell
+							12777 text —
+						12778 cell
+							12779 text 234424
+						12780 cell
+							12781 text 生效中
+					12782 row
+						12783 cell
+							12784 text 辅导员
+						12785 cell
+							12786 text 建设工程管理2501班
+						12787 cell
+							12788 text CLASS
+						12789 cell
+							12790 text —
+						12791 cell
+							12792 text 235169
+						12793 cell
+							12794 text 生效中
+					12795 row
+						12796 cell
+							12797 text 班主任
+						12798 cell
+							12799 text 建设工程管理2501班
+						12800 cell
+							12801 text CLASS
+						12802 cell
+							12803 text —
+						12804 cell
+							12805 text 234425
+						12806 cell
+							12807 text 生效中
+					12808 row
+						12809 cell
+							12810 text 辅导员
+						12811 cell
+							12812 text 建设工程管理2502班
+						12813 cell
+							12814 text CLASS
+						12815 cell
+							12816 text —
+						12817 cell
+							12818 text 235170
+						12819 cell
+							12820 text 生效中
+					12821 row
+						12822 cell
+							12823 text 班主任
+						12824 cell
+							12825 text 建设工程管理2502班
+						12826 cell
+							12827 text CLASS
+						12828 cell
+							12829 text —
+						12830 cell
+							12831 text 234426
+						12832 cell
+							12833 text 生效中
+					12834 row
+						12835 cell
+							12836 text 辅导员
+						12837 cell
+							12838 text 建设工程管理2503班
+						12839 cell
+							12840 text CLASS
+						12841 cell
+							12842 text —
+						12843 cell
+							12844 text 235170
+						12845 cell
+							12846 text 生效中
+					12847 row
+						12848 cell
+							12849 text 班主任
+						12850 cell
+							12851 text 建设工程管理2503班
+						12852 cell
+							12853 text CLASS
+						12854 cell
+							12855 text —
+						12856 cell
+							12857 text 234427
+						12858 cell
+							12859 text 生效中
+					12860 row
+						12861 cell
+							12862 text 辅导员
+						12863 cell
+							12864 text 护理2501班
+						12865 cell
+							12866 text CLASS
+						12867 cell
+							12868 text —
+						12869 cell
+							12870 text 235170
+						12871 cell
+							12872 text 生效中
+					12873 row
+						12874 cell
+							12875 text 班主任
+						12876 cell
+							12877 text 护理2501班
+						12878 cell
+							12879 text CLASS
+						12880 cell
+							12881 text —
+						12882 cell
+							12883 text 234428
+						12884 cell
+							12885 text 生效中
+					12886 row
+						12887 cell
+							12888 text 辅导员
+						12889 cell
+							12890 text 护理2502班
+						12891 cell
+							12892 text CLASS
+						12893 cell
+							12894 text —
+						12895 cell
+							12896 text 235170
+						12897 cell
+							12898 text 生效中
+					12899 row
+						12900 cell
+							12901 text 班主任
+						12902 cell
+							12903 text 护理2502班
+						12904 cell
+							12905 text CLASS
+						12906 cell
+							12907 text —
+						12908 cell
+							12909 text 234429
+						12910 cell
+							12911 text 生效中
+					12912 row
+						12913 cell
+							12914 text 辅导员
+						12915 cell
+							12916 text 护理2503班
+						12917 cell
+							12918 text CLASS
+						12919 cell
+							12920 text —
+						12921 cell
+							12922 text 235171
+						12923 cell
+							12924 text 生效中
+					12925 row
+						12926 cell
+							12927 text 班主任
+						12928 cell
+							12929 text 护理2503班
+						12930 cell
+							12931 text CLASS
+						12932 cell
+							12933 text —
+						12934 cell
+							12935 text 234430
+						12936 cell
+							12937 text 生效中
+					12938 row
+						12939 cell
+							12940 text 辅导员
+						12941 cell
+							12942 text 护理2504班
+						12943 cell
+							12944 text CLASS
+						12945 cell
+							12946 text —
+						12947 cell
+							12948 text 235171
+						12949 cell
+							12950 text 生效中
+					12951 row
+						12952 cell
+							12953 text 班主任
+						12954 cell
+							12955 text 护理2504班
+						12956 cell
+							12957 text CLASS
+						12958 cell
+							12959 text —
+						12960 cell
+							12961 text 234431
+						12962 cell
+							12963 text 生效中
+					12964 row
+						12965 cell
+							12966 text 辅导员
+						12967 cell
+							12968 text 护理2505班
+						12969 cell
+							12970 text CLASS
+						12971 cell
+							12972 text —
+						12973 cell
+							12974 text 235171
+						12975 cell
+							12976 text 生效中
+					12977 row
+						12978 cell
+							12979 text 班主任
+						12980 cell
+							12981 text 护理2505班
+						12982 cell
+							12983 text CLASS
+						12984 cell
+							12985 text —
+						12986 cell
+							12987 text 234432
+						12988 cell
+							12989 text 生效中
+					12990 row
+						12991 cell
+							12992 text 辅导员
+						12993 cell
+							12994 text 护理2506班
+						12995 cell
+							12996 text CLASS
+						12997 cell
+							12998 text —
+						12999 cell
+							13000 text 235171
+						13001 cell
+							13002 text 生效中
+					13003 row
+						13004 cell
+							13005 text 班主任
+						13006 cell
+							13007 text 护理2506班
+						13008 cell
+							13009 text CLASS
+						13010 cell
+							13011 text —
+						13012 cell
+							13013 text 234433
+						13014 cell
+							13015 text 生效中
+					13016 row
+						13017 cell
+							13018 text 辅导员
+						13019 cell
+							13020 text 护理2507班
+						13021 cell
+							13022 text CLASS
+						13023 cell
+							13024 text —
+						13025 cell
+							13026 text 235172
+						13027 cell
+							13028 text 生效中
+					13029 row
+						13030 cell
+							13031 text 班主任
+						13032 cell
+							13033 text 护理2507班
+						13034 cell
+							13035 text CLASS
+						13036 cell
+							13037 text —
+						13038 cell
+							13039 text 234434
+						13040 cell
+							13041 text 生效中
+					13042 row
+						13043 cell
+							13044 text 辅导员
+						13045 cell
+							13046 text 护理2508班
+						13047 cell
+							13048 text CLASS
+						13049 cell
+							13050 text —
+						13051 cell
+							13052 text 235172
+						13053 cell
+							13054 text 生效中
+					13055 row
+						13056 cell
+							13057 text 班主任
+						13058 cell
+							13059 text 护理2508班
+						13060 cell
+							13061 text CLASS
+						13062 cell
+							13063 text —
+						13064 cell
+							13065 text 234435
+						13066 cell
+							13067 text 生效中
+					13068 row
+						13069 cell
+							13070 text 辅导员
+						13071 cell
+							13072 text 康复治疗技术2501班
+						13073 cell
+							13074 text CLASS
+						13075 cell
+							13076 text —
+						13077 cell
+							13078 text 235172
+						13079 cell
+							13080 text 生效中
+					13081 row
+						13082 cell
+							13083 text 班主任
+						13084 cell
+							13085 text 康复治疗技术2501班
+						13086 cell
+							13087 text CLASS
+						13088 cell
+							13089 text —
+						13090 cell
+							13091 text 234436
+						13092 cell
+							13093 text 生效中
+					13094 row
+						13095 cell
+							13096 text 辅导员
+						13097 cell
+							13098 text 康复治疗技术2502班
+						13099 cell
+							13100 text CLASS
+						13101 cell
+							13102 text —
+						13103 cell
+							13104 text 235172
+						13105 cell
+							13106 text 生效中
+					13107 row
+						13108 cell
+							13109 text 班主任
+						13110 cell
+							13111 text 康复治疗技术2502班
+						13112 cell
+							13113 text CLASS
+						13114 cell
+							13115 text —
+						13116 cell
+							13117 text 234437
+						13118 cell
+							13119 text 生效中
+					13120 row
+						13121 cell
+							13122 text 辅导员
+						13123 cell
+							13124 text 康复治疗技术2503班
+						13125 cell
+							13126 text CLASS
+						13127 cell
+							13128 text —
+						13129 cell
+							13130 text 235173
+						13131 cell
+							13132 text 生效中
+					13133 row
+						13134 cell
+							13135 text 班主任
+						13136 cell
+							13137 text 康复治疗技术2503班
+						13138 cell
+							13139 text CLASS
+						13140 cell
+							13141 text —
+						13142 cell
+							13143 text 234438
+						13144 cell
+							13145 text 生效中
+					13146 row
+						13147 cell
+							13148 text 辅导员
+						13149 cell
+							13150 text 康复治疗技术2504班
+						13151 cell
+							13152 text CLASS
+						13153 cell
+							13154 text —
+						13155 cell
+							13156 text 235173
+						13157 cell
+							13158 text 生效中
+					13159 row
+						13160 cell
+							13161 text 班主任
+						13162 cell
+							13163 text 康复治疗技术2504班
+						13164 cell
+							13165 text CLASS
+						13166 cell
+							13167 text —
+						13168 cell
+							13169 text 234439
+						13170 cell
+							13171 text 生效中
+					13172 row
+						13173 cell
+							13174 text 辅导员
+						13175 cell
+							13176 text 婴幼儿托育服务与管理2501班
+						13177 cell
+							13178 text CLASS
+						13179 cell
+							13180 text —
+						13181 cell
+							13182 text 235173
+						13183 cell
+							13184 text 生效中
+					13185 row
+						13186 cell
+							13187 text 班主任
+						13188 cell
+							13189 text 婴幼儿托育服务与管理2501班
+						13190 cell
+							13191 text CLASS
+						13192 cell
+							13193 text —
+						13194 cell
+							13195 text 234440
+						13196 cell
+							13197 text 生效中
+					13198 row
+						13199 cell
+							13200 text 辅导员
+						13201 cell
+							13202 text 婴幼儿托育服务与管理2502班
+						13203 cell
+							13204 text CLASS
+						13205 cell
+							13206 text —
+						13207 cell
+							13208 text 235173
+						13209 cell
+							13210 text 生效中
+					13211 row
+						13212 cell
+							13213 text 班主任
+						13214 cell
+							13215 text 婴幼儿托育服务与管理2502班
+						13216 cell
+							13217 text CLASS
+						13218 cell
+							13219 text —
+						13220 cell
+							13221 text 234441
+						13222 cell
+							13223 text 生效中
+					13224 row
+						13225 cell
+							13226 text 辅导员
+						13227 cell
+							13228 text 婴幼儿托育服务与管理2503班
+						13229 cell
+							13230 text CLASS
+						13231 cell
+							13232 text —
+						13233 cell
+							13234 text 235174
+						13235 cell
+							13236 text 生效中
+					13237 row
+						13238 cell
+							13239 text 班主任
+						13240 cell
+							13241 text 婴幼儿托育服务与管理2503班
+						13242 cell
+							13243 text CLASS
+						13244 cell
+							13245 text —
+						13246 cell
+							13247 text 234442
+						13248 cell
+							13249 text 生效中
+					13250 row
+						13251 cell
+							13252 text 辅导员
+						13253 cell
+							13254 text 健康管理2501班
+						13255 cell
+							13256 text CLASS
+						13257 cell
+							13258 text —
+						13259 cell
+							13260 text 235174
+						13261 cell
+							13262 text 生效中
+					13263 row
+						13264 cell
+							13265 text 班主任
+						13266 cell
+							13267 text 健康管理2501班
+						13268 cell
+							13269 text CLASS
+						13270 cell
+							13271 text —
+						13272 cell
+							13273 text 234443
+						13274 cell
+							13275 text 生效中
+					13276 row
+						13277 cell
+							13278 text 辅导员
+						13279 cell
+							13280 text 健康管理2502班
+						13281 cell
+							13282 text CLASS
+						13283 cell
+							13284 text —
+						13285 cell
+							13286 text 235174
+						13287 cell
+							13288 text 生效中
+					13289 row
+						13290 cell
+							13291 text 班主任
+						13292 cell
+							13293 text 健康管理2502班
+						13294 cell
+							13295 text CLASS
+						13296 cell
+							13297 text —
+						13298 cell
+							13299 text 234444
+						13300 cell
+							13301 text 生效中
+					13302 row
+						13303 cell
+							13304 text 辅导员
+						13305 cell
+							13306 text 健康管理2503班
+						13307 cell
+							13308 text CLASS
+						13309 cell
+							13310 text —
+						13311 cell
+							13312 text 235174
+						13313 cell
+							13314 text 生效中
+					13315 row
+						13316 cell
+							13317 text 班主任
+						13318 cell
+							13319 text 健康管理2503班
+						13320 cell
+							13321 text CLASS
+						13322 cell
+							13323 text —
+						13324 cell
+							13325 text 234445
+						13326 cell
+							13327 text 生效中
+					13328 row
+						13329 cell
+							13330 text 辅导员
+						13331 cell
+							13332 text 数字媒体艺术设计2501班
+						13333 cell
+							13334 text CLASS
+						13335 cell
+							13336 text —
+						13337 cell
+							13338 text 235175
+						13339 cell
+							13340 text 生效中
+					13341 row
+						13342 cell
+							13343 text 班主任
+						13344 cell
+							13345 text 数字媒体艺术设计2501班
+						13346 cell
+							13347 text CLASS
+						13348 cell
+							13349 text —
+						13350 cell
+							13351 text 234446
+						13352 cell
+							13353 text 生效中
+					13354 row
+						13355 cell
+							13356 text 辅导员
+						13357 cell
+							13358 text 数字媒体艺术设计2502班
+						13359 cell
+							13360 text CLASS
+						13361 cell
+							13362 text —
+						13363 cell
+							13364 text 235175
+						13365 cell
+							13366 text 生效中
+					13367 row
+						13368 cell
+							13369 text 班主任
+						13370 cell
+							13371 text 数字媒体艺术设计2502班
+						13372 cell
+							13373 text CLASS
+						13374 cell
+							13375 text —
+						13376 cell
+							13377 text 234447
+						13378 cell
+							13379 text 生效中
+					13380 row
+						13381 cell
+							13382 text 辅导员
+						13383 cell
+							13384 text 数字媒体艺术设计2503班
+						13385 cell
+							13386 text CLASS
+						13387 cell
+							13388 text —
+						13389 cell
+							13390 text 235175
+						13391 cell
+							13392 text 生效中
+					13393 row
+						13394 cell
+							13395 text 班主任
+						13396 cell
+							13397 text 数字媒体艺术设计2503班
+						13398 cell
+							13399 text CLASS
+						13400 cell
+							13401 text —
+						13402 cell
+							13403 text 234448
+						13404 cell
+							13405 text 生效中
+					13406 row
+						13407 cell
+							13408 text 辅导员
+						13409 cell
+							13410 text 数字媒体艺术设计2504班
+						13411 cell
+							13412 text CLASS
+						13413 cell
+							13414 text —
+						13415 cell
+							13416 text 235175
+						13417 cell
+							13418 text 生效中
+					13419 row
+						13420 cell
+							13421 text 班主任
+						13422 cell
+							13423 text 数字媒体艺术设计2504班
+						13424 cell
+							13425 text CLASS
+						13426 cell
+							13427 text —
+						13428 cell
+							13429 text 234449
+						13430 cell
+							13431 text 生效中
+					13432 row
+						13433 cell
+							13434 text 辅导员
+						13435 cell
+							13436 text 广告艺术设计2501班
+						13437 cell
+							13438 text CLASS
+						13439 cell
+							13440 text —
+						13441 cell
+							13442 text 235176
+						13443 cell
+							13444 text 生效中
+					13445 row
+						13446 cell
+							13447 text 班主任
+						13448 cell
+							13449 text 广告艺术设计2501班
+						13450 cell
+							13451 text CLASS
+						13452 cell
+							13453 text —
+						13454 cell
+							13455 text 234450
+						13456 cell
+							13457 text 生效中
+					13458 row
+						13459 cell
+							13460 text 辅导员
+						13461 cell
+							13462 text 广告艺术设计2502班
+						13463 cell
+							13464 text CLASS
+						13465 cell
+							13466 text —
+						13467 cell
+							13468 text 235176
+						13469 cell
+							13470 text 生效中
+			154 button 我的常用
+
+The focused UI element is 1036 button 教职工任职归属查询

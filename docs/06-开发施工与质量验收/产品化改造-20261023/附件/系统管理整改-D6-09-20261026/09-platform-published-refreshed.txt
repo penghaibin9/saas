@@ -1,0 +1,106 @@
+Browser tab: 5, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/admin/platform/business-forms".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/platform/business-forms
+	2 container app
+		3 container
+			4 text 平台运营中心
+			5 image
+			6 text field (settable) 搜索平台功能与帮助
+			7 text Ctrl K
+			8 button (collapsed) 北京 12° 晴间多云, Secondary Actions: Expand
+				9 image
+				10 text 北京 12° 晴间多云
+			11 button (collapsed) 10/26周一 10:12, Secondary Actions: Expand
+				12 image
+				107 text 10/26周一 10:12
+			14 button 帮助与引导
+			15 button (collapsed) 独 独立表单验收员 其他业务角色, Help: 查看账号与切换身份, Secondary Actions: Expand
+				16 text 独
+				17 text 独立表单验收员
+				18 text 其他业务角色
+		19 container
+			20 container 一级菜单
+				21 button 平台运营
+			22 button (collapsed) 当前范围, Secondary Actions: Expand
+				23 image
+				24 text 当前范围
+				25 image
+			26 button (collapsed) 本次工作 00:08:28, Secondary Actions: Expand
+				27 image
+				108 text 本次工作 00:08:28
+		29 container 二级菜单
+			30 button 展开二级菜单
+			31 container 二级菜单
+				32 button 全局标准与发布
+			33 checkbox Description: 取消固定二级菜单, Value: 1
+		34 container 三级菜单
+			35 button 展开三级菜单
+			36 container 三级菜单
+				37 button 学校表单配置与版本
+			38 checkbox Description: 取消固定三级菜单, Value: 1
+		39 container
+			40 tab group 已打开页面
+				41 container
+					42 tab (selected, settable, boolean) 学校表单配置与版本, Help: 全局标准与发布 / 学校表单配置与版本, Value: 1
+学校表单配置与版本
+					43 button 关闭学校表单配置与版本
+						44 image
+			45 button (disabled) 恢复最近关闭的页签
+				46 image
+			47 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				48 image
+			49 checkbox Description: 专注模式, Value: 0
+				50 image
+			51 container
+				52 heading 学校表单配置与版本, Value: 1
+					53 text 学校表单配置与版本
+				54 text 明确选择目标学校后维护配置；此处不代办学生业务，也不读取业务表单提交内容。 已授权表单维护 数据范围：当前所选学校的表单配置
+				55 container
+					56 text 搜索学校
+					57 text field (settable) 搜索学校
+				58 button 查询学校
+				59 container
+					60 text 目标学校
+					61 pop up button (collapsed, settable) 目标学校, Value: 系统管理整改独立验收学校 · sandbox-school, Secondary Actions: Expand
+						62 menu
+							63 请选择学校
+							64 (selected) 系统管理整改独立验收学校 · sandbox-school
+				70 text 当前学校：系统管理整改独立验收学校。发布或停用前需要核对版本、影响和原因。
+				71 heading 表单定义, Value: 2
+					72 text 表单定义
+				73 button 独立验收表单（不接入既有业务）
+				74 container
+					75 heading 表单定义与版本, Value: 3
+						76 text 表单定义与版本
+					77 text D609_AUDIT_ONLY
+				78 table
+					79 row
+						80 cell
+							81 text 版本
+						82 cell
+							83 text 结构摘要
+						84 cell
+							85 text 支持端
+						86 cell
+							87 text 状态
+						88 cell
+							89 text 操作
+					90 row
+						91 cell
+							92 text 第 1 版
+						93 cell
+							94 text 3b23985e148d63d9a3222f7bbf5d54c4df13789e517e1227fb571318ec544d0e
+						95 cell
+							96 text 教职工电脑端
+						97 cell
+							98 text 已发布
+						99 cell
+							100 button 预览
+							101 button 校验
+							102 button 停用
+							103 button 影响分析
+				104 text 共 1 个历史版本 · 第 1 页
+				105 button (disabled) 上一页
+				106 button (disabled) 下一页
+			68 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/platform/business-forms

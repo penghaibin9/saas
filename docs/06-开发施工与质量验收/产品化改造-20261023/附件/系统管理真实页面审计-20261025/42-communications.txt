@@ -1,0 +1,367 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/communications".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/communications
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				17 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:13, Secondary Actions: Expand
+				11 image
+				12 text 10/25周日 12:13
+			18 button 帮助与引导
+			19 button 消息中心
+				20 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:07:25, Secondary Actions: Expand
+				33 image
+				149 text 本次工作 00:07:25
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				50 button 流程模板与运行
+				51 button 流程安全与运行治理
+				52 button 统一消息、待办与通知治理
+				53 button 批处理与后台任务
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				57 container
+					58 tab (selectable, settable, boolean) 教职工任职归属查询, Help: 组织主数据 / 教职工任职归属查询, Value: 0
+教职工任职归属查询
+					59 button 关闭教职工任职归属查询
+						60 image
+				61 container
+					62 tab (selectable, settable, boolean) 业务关系中心, Help: 组织主数据 / 业务关系中心, Value: 0
+业务关系中心
+					63 button 关闭业务关系中心
+						64 image
+				65 container
+					66 tab (selectable, settable, boolean) 变更版本, Help: 组织主数据 / 变更版本, Value: 0
+变更版本
+					67 button 关闭变更版本
+						68 image
+				69 container
+					70 tab (selectable, settable, boolean) 身份权限总览, Help: 角色与权限 / 身份权限总览, Value: 0
+身份权限总览
+					71 button 关闭身份权限总览
+						72 image
+				73 container
+					74 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					75 button 关闭预设角色模板
+						76 image
+				77 container
+					78 tab (selectable, settable, boolean) 学校角色与成员, Help: 角色与权限 / 学校角色与成员, Value: 0
+学校角色与成员
+					79 button 关闭学校角色与成员
+						80 image
+				81 container
+					82 tab (selectable, settable, boolean) 角色成员与业务身份, Help: 角色与权限 / 角色成员与业务身份, Value: 0
+角色成员与业务身份
+					83 button 关闭角色成员与业务身份
+						84 image
+				85 container
+					86 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					87 button 关闭菜单与操作权限
+						88 image
+				89 container
+					90 tab (selectable, settable, boolean) 数据范围规则, Help: 角色与权限 / 数据范围规则, Value: 0
+数据范围规则
+					91 button 关闭数据范围规则
+						92 image
+				93 container
+					94 tab (selectable, settable, boolean) 临时授权与工作移交, Help: 角色与权限 / 临时授权与工作移交, Value: 0
+临时授权与工作移交
+					95 button 关闭临时授权与工作移交
+						96 image
+				97 container
+					98 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					99 button 关闭安全变更
+						100 image
+				101 container
+					102 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					103 button 关闭访问治理
+						104 image
+				105 container
+					106 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					107 button 关闭学校信息与品牌
+						108 image
+				109 container
+					110 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					111 button 关闭数据字典
+						112 image
+				113 container
+					114 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					115 button 关闭模块授权与业务开关
+						116 image
+				117 container
+					118 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					119 button 关闭主数据责任与数据质量
+						120 image
+				121 container
+					122 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					123 button 关闭合规与业务表单
+						124 image
+				125 container
+					126 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					127 button 关闭学年学期与业务日历
+						128 image
+				129 container
+					130 tab (selectable, settable, boolean) 流程安全与运行治理, Help: 流程配置 / 流程安全与运行治理, Value: 0
+流程安全与运行治理
+					131 button 关闭流程安全与运行治理
+						132 image
+				133 container
+					134 tab (selected, settable, boolean) 统一消息、待办与通知治理, Help: 流程配置 / 统一消息、待办与通知治理, Value: 1
+统一消息、待办与通知治理
+					135 button 关闭统一消息、待办与通知治理
+						136 image
+			137 button (disabled) 恢复最近关闭的页签
+				138 image
+			139 checkbox Description: 收藏当前页面, Value: 0
+				140 image
+			141 checkbox Description: 专注模式, Value: 0
+				142 image
+			143 container
+				144 heading 统一消息、待办与通知治理, Value: 1
+					145 text 统一消息、待办与通知治理
+				146 button 刷新
+				150 text 首屏结论
+				151 text 0 死信事件 0 近7天通知失败 7906 积压待办 4584 逾期待办 0 重复模板 SMS：无启用模板 WECHAT：无启用模板
+				152 text 无责任人的待办类型（未登记所属模块）：AA_GRADE_ENTRY、AA_SCHEDULE_CHANGE_APPROVAL、AA_STATUS_APPROVAL、ACADEMIC_REVIEW、ACAD_WARNING_HANDLE、EMPLOYMENT_FOLLOWUP、FEE_REDUCTION_FULFILL、FUNDING_APPROVAL、INTERNSHIP_WEEKLY、INTERN_WEEKLY_REVIEW、LEAVE_APPROVAL、LEAVE_CANCEL、LEAVE_STUDENT_RESUBMIT、ORIENTATION_PREP
+				153 text 系统已支持但治理登记表未登记的事件：AID.NOTICE、AID_OBJECTION.RESULT、AUTH.PASSWORD_RESET、AUTH.PHONE_CHANGED、AUTH.PHONE_VERIFY_REMINDER、CAMPUS_SERVICE.WORKORDER_UPDATED、COURSE.SCHEDULE_CHANGED、COURSE.SCHEDULE_PUBLISHED、DISCIPLINE.NOTICE、DISCIPLINE_APPEAL.RESULT、DORM.CHECKOUT.CONFIRMED、DORM.RECTIFICATION.CLOSED、DORM.RECTIFICATION.CREATED、DORM.RECTIFICATION.ESCALATED、DORM.RECTIFICATION.RETURNED、DORM.TRANSFER.EXECUTED、DORM.TRANSFER.REJECTED、EMPLOYMENT_DESTINATION.APPROVED、EMPLOYMENT_DESTINATION.REJECTED、EXAM.ARRANGED、FUNDING.NOTICE、FUNDING_APPEAL.RESULT、GRADE.CORRECTED、GRADE.ENTRY_DEADLINE_REMINDER、GRADE.ENTRY_OVERDUE_DIGEST、GRADE.ENTRY_REMINDED、GRADE.RECHECK_RESULT、GRADUATION_DESIGN.DEFENSE_ARRANGED、GRADUATION_DESIGN.GRADE_APPEAL_REVIEWED、GRADUATION_DESIGN.PLAGIARISM_DISPUTE_REVIEWED、GRADUATION_DESIGN.PROPOSAL_SUBMITTED、GRADUATION_DESIGN.REVIEW_APPROVED、INTERNSHIP.COUNSELOR_NOTICE、INTERNSHIP.POSITION.PUBLISHED、INTERNSHIP.POSITION.RETURNED、INTERNSHIP.POSITION.STATUS_CHANGED、INTERNSHIP.RISK_CREATED、INTERNSHIP.RISK_REMINDED、INTERNSHIP.VOLUNTEER.SCHOOL_RESULT、INTERNSHIP.WEEKLY_APPROVED、INTERNSHIP.WEEKLY_REMIND、INTERNSHIP.WEEKLY_RETURNED、LEAVE.CLOSED、LEAVE.EXTEND_APPROVED、LEAVE.EXTEND_REJECTED、LEAVE.RETURN_DONE、LEAVE.RETURN_REJECTED、MATERIAL.ACCEPTED、MATERIAL.REMINDED、MATERIAL.REQUIRED、MATERIAL.RETURNED、MATERIAL.WAIVED、MESSAGE.ACK_NUDGE、RISK.ALERT、RISK.STATUS、SCHEDULE_CHANGE.RESULT、SCHEDULE_CHANGE.RETURNED、SECOND_CLASS_APPEAL.RESULT、STATUS_CHANGE.RESULT、STATUS_CHANGE.RETURNED、WARNING.CREATED、WARNING.REMINDED
+				154 container
+					155 text 积压待办 关闭须填写完成证据，写入审计
+				156 table
+					157 row
+						158 cell
+							159 text 待办
+						160 cell
+							161 text 期限
+						162 cell
+							163 text 操作
+					164 row
+						165 cell
+							166 text 提交本周岗位实习周报
+							167 text internship · INTERNSHIP_WEEKLY
+						168 cell
+							169 text 2026-08-16T22:00:00
+						170 cell
+							171 button 关闭（须填证据）
+					172 row
+						173 cell
+							174 text 提交本周岗位实习周报
+							175 text internship · INTERNSHIP_WEEKLY
+						176 cell
+							177 text 2026-08-16T22:00:00
+						178 cell
+							179 button 关闭（须填证据）
+					180 row
+						181 cell
+							182 text 提交本周岗位实习周报
+							183 text internship · INTERNSHIP_WEEKLY
+						184 cell
+							185 text 2026-08-16T22:00:00
+						186 cell
+							187 button 关闭（须填证据）
+					188 row
+						189 cell
+							190 text 提交本周岗位实习周报
+							191 text internship · INTERNSHIP_WEEKLY
+						192 cell
+							193 text 2026-08-16T22:00:00
+						194 cell
+							195 button 关闭（须填证据）
+					196 row
+						197 cell
+							198 text 提交本周岗位实习周报
+							199 text internship · INTERNSHIP_WEEKLY
+						200 cell
+							201 text 2026-08-16T22:00:00
+						202 cell
+							203 button 关闭（须填证据）
+					204 row
+						205 cell
+							206 text 提交本周岗位实习周报
+							207 text internship · INTERNSHIP_WEEKLY
+						208 cell
+							209 text 2026-08-16T22:00:00
+						210 cell
+							211 button 关闭（须填证据）
+					212 row
+						213 cell
+							214 text 提交本周岗位实习周报
+							215 text internship · INTERNSHIP_WEEKLY
+						216 cell
+							217 text 2026-08-16T22:00:00
+						218 cell
+							219 button 关闭（须填证据）
+					220 row
+						221 cell
+							222 text 提交本周岗位实习周报
+							223 text internship · INTERNSHIP_WEEKLY
+						224 cell
+							225 text 2026-08-16T22:00:00
+						226 cell
+							227 button 关闭（须填证据）
+					228 row
+						229 cell
+							230 text 提交本周岗位实习周报
+							231 text internship · INTERNSHIP_WEEKLY
+						232 cell
+							233 text 2026-08-16T22:00:00
+						234 cell
+							235 button 关闭（须填证据）
+					236 row
+						237 cell
+							238 text 提交本周岗位实习周报
+							239 text internship · INTERNSHIP_WEEKLY
+						240 cell
+							241 text 2026-08-16T22:00:00
+						242 cell
+							243 button 关闭（须填证据）
+					244 row
+						245 cell
+							246 text 提交本周岗位实习周报
+							247 text internship · INTERNSHIP_WEEKLY
+						248 cell
+							249 text 2026-08-16T22:00:00
+						250 cell
+							251 button 关闭（须填证据）
+					252 row
+						253 cell
+							254 text 提交本周岗位实习周报
+							255 text internship · INTERNSHIP_WEEKLY
+						256 cell
+							257 text 2026-08-16T22:00:00
+						258 cell
+							259 button 关闭（须填证据）
+					260 row
+						261 cell
+							262 text 提交本周岗位实习周报
+							263 text internship · INTERNSHIP_WEEKLY
+						264 cell
+							265 text 2026-08-16T22:00:00
+						266 cell
+							267 button 关闭（须填证据）
+					268 row
+						269 cell
+							270 text 提交本周岗位实习周报
+							271 text internship · INTERNSHIP_WEEKLY
+						272 cell
+							273 text 2026-08-16T22:00:00
+						274 cell
+							275 button 关闭（须填证据）
+					276 row
+						277 cell
+							278 text 提交本周岗位实习周报
+							279 text internship · INTERNSHIP_WEEKLY
+						280 cell
+							281 text 2026-08-16T22:00:00
+						282 cell
+							283 button 关闭（须填证据）
+					284 row
+						285 cell
+							286 text 提交本周岗位实习周报
+							287 text internship · INTERNSHIP_WEEKLY
+						288 cell
+							289 text 2026-08-16T22:00:00
+						290 cell
+							291 button 关闭（须填证据）
+					292 row
+						293 cell
+							294 text 提交本周岗位实习周报
+							295 text internship · INTERNSHIP_WEEKLY
+						296 cell
+							297 text 2026-08-16T22:00:00
+						298 cell
+							299 button 关闭（须填证据）
+					300 row
+						301 cell
+							302 text 提交本周岗位实习周报
+							303 text internship · INTERNSHIP_WEEKLY
+						304 cell
+							305 text 2026-08-16T22:00:00
+						306 cell
+							307 button 关闭（须填证据）
+					308 row
+						309 cell
+							310 text 提交本周岗位实习周报
+							311 text internship · INTERNSHIP_WEEKLY
+						312 cell
+							313 text 2026-08-16T22:00:00
+						314 cell
+							315 button 关闭（须填证据）
+					316 row
+						317 cell
+							318 text 提交本周岗位实习周报
+							319 text internship · INTERNSHIP_WEEKLY
+						320 cell
+							321 text 2026-08-16T22:00:00
+						322 cell
+							323 button 关闭（须填证据）
+				324 container
+					325 text 死信事件 重试只重新排队，不会重复触发业务操作
+				326 container
+					327 text ▢ 暂无死信事件 当前条件下没有可展示的内容，可尝试调整筛选或创建新数据
+					328 button 返回
+				329 text 登记表（事件 / 待办类型 / 渠道）
+				330 text 事件是否合法以系统为准；本登记表只登记谁负责与治理信息。
+				331 content list
+					332 container
+						333 AXListMarker • 
+						334 text LEAVE.APPROVED — studentAffairs（请假审批通过通知）
+					335 container
+						336 AXListMarker • 
+						337 text LEAVE.REJECTED — studentAffairs（请假审批驳回通知）
+					338 container
+						339 AXListMarker • 
+						340 text LEAVE.RETURNED — studentAffairs（请假被退回通知）
+					341 container
+						342 AXListMarker • 
+						343 text LEAVE.OVERDUE — studentAffairs（请假逾期提醒）
+					344 container
+						345 AXListMarker • 
+						346 text GRADUATION_DESIGN.REVIEW_REJECTED — graduation（毕业设计开题/成果批阅退回学生整改通知）
+			148 button 我的常用
+
+The focused UI element is 52 button 统一消息、待办与通知治理

@@ -1,0 +1,901 @@
+{
+  "说明": "112项为交接候选，不是全仓变更统计；99项有本轮差异，13项保留主目录。不是浏览器或发布验收。",
+  "候选": [
+    {
+      "文件": "backend/app/core/permissions.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "c12d3b43c5e827d59e98970cc32d854f4263be7afda228c9774dbbdf0e4f2cdc",
+      "本轮主目录摘要": "62e4b7fa3ca27c3767ffca925a00d63efde5879a7c28d784a4ee65e5bb634b91"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/routers/course_program_task_router.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "a15059341f80bb9b51fb8931ecca4a22b3d219f87bf0ee2fd841b232492fb887",
+      "本轮主目录摘要": "7f90bca67f54c5afaeb4dbab7f60f062633095cd9f358cdd4fc8a479b78f360d"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/routers/dynamic_grade_router.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "388648285f7109c968eb70ec13aa264a52fbcd4b549d360fb1310a5707bfda42",
+      "本轮主目录摘要": "87c7e12b00b15e4d3f8bd8cde2f558c76acff0c9f95b9353d6dc3961116cf4da"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/routers/roster_registration_router.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "209a2930cf53947d665b817fa494f877a11cc3e40e7c2ba97c3c437e4ca1cfff",
+      "本轮主目录摘要": "5c16c45387ce1b7c7ce5aeaf3847ddf62d0714d203166aa7e579925ebf5a2f67"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_course_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "7fab9e19f38cae952bebf36a0c74d9baf7a6409b609ea5de37aff3b32c1bccc4",
+      "本轮主目录摘要": "2bfc9d6500acfe7650552c04ade0315e7cf9b2ee31f1a2c3c65cf8c6a07c21c5"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_dynamic_grade_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "eb3518ad8794217e9140b5feba7231eae5e5735b2e898b8060b83efd31b832bb",
+      "本轮主目录摘要": "94e5670e3145bb9430ea5aa7853ae2d38fb20161bebce9f20be27116d41c0968"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_exam_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "2007c17eb11352468c3334ae2ef6207b464016f5c2aebe9dfb19c1d933929ed1",
+      "本轮主目录摘要": "218d10cfbaea60a70717789d24d25bfd167aa467292244c3f3bd9e8d4e598be9"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_grade_audit_scope_guard.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "8c01fc00acb0d60876975303ca2a01bc101c4b4a3c0662070dd6e6dfe3371afc",
+      "本轮主目录摘要": "dd854ce32a31e1c5e243dff06fde9d0d9b67c18eb25453256c9cb88f2f8dafb3"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_grade_change_read_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "b7be7f0d32d57120d1e3563ff466e8e3babb3734e3f16ea50c39b2f4f557aa8b",
+      "本轮主目录摘要": "61b91e3e53651cf3a13136156d269f6e2c6cbf1dd6b89f65353a28ae33245e56"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_grade_core_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "78cd5019fd0f21d7943822ad46a9bfeb4fbd8b0f329f2f92517a21e6a4052382",
+      "本轮主目录摘要": "ed66f72c7f3b2aa19f401c5ea84da1a2b9938e7ab0841431c25c7dff0eb5f0ba"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_grade_correction_command.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "eb7ba47203dc2fc0c6f65e2734e343296cf028dd341b0633b90ceeb5ef47fef3",
+      "本轮主目录摘要": "ed6f9e108b9fe0eb3726b54ffb94e433e4f734e695ec4182e84ee93aa7f7dc5d"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_grade_execution_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "e3655edfb1988fb58460ce89770b84f22c29a4e84405c1786f8a18d41d5f6a85",
+      "本轮主目录摘要": "c829f2f3c748633a343c5d596daf36e5ab5ac010bb03367f34d4263fb1ed0f07"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_grade_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "3e33960ee7972cc9e2ed3c6826a95bb02f6440226d5a360e0358e904812ac2fa",
+      "本轮主目录摘要": "5406e8d73da7d36067c325d5724c255c59dc7f9f4f1ce85f33a22cf321eb6fa7"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_program_core_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "168572ba47fdc7ebacfffaea2fa32826ef6cf5b01841786c9e671e18e2a0bccc",
+      "本轮主目录摘要": "8a69041efb9cf00f1aca62fc9943406d5cf0aa480f10b9056d64d4367fc39ff2"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_registration_read_guard.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "3b7a4ec7cfaadc272cc764dc931a09227c87f50794a60ecd5f4af9874c9767e4",
+      "本轮主目录摘要": "a5cf5a8e3652a68cc1a6c2c3057f53056302b12841f4a5b453a06d6889bb28e1"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_change_r3_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "3877512488d7e3ec9357e138aa14b017c0266635b2b2450c60c3850a29f17235",
+      "本轮主目录摘要": "5021acc0f222feec5a52d5369021d7b1e1549e0d9caa01d194ac85b6f37864e1"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_change_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "e3101f7621398060405329991b044ce668069eb4b8daae6fd370356c03839b10",
+      "本轮主目录摘要": "d162ad8dbb76140951ec24fa1f206eaf4ddbca8afa1504de5b8c925df702425b"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "cf3a7bd4d073b93de742d5f31f425923179d39d9331a97aba94f2565324d0a09",
+      "本轮主目录摘要": "42c9c235241f9f4f0e304f9d063c55034049e843ceb95535260a9260d25c6f5f"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_schedule_teacher_relation_guard.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "6b9754e19961fe193bb2540c965d66be6d84e4c41e908fa36b767fb053d55cea",
+      "本轮主目录摘要": "776704bd0e589053027b832240db306b95c5a913e7c47dd88a7c3df98c8d6e38"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_school_setup_course_preflight_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "20c1cfadad6a84cd3f70ad54c4388ff2cb85cbb245be574e7c6439245717771d",
+      "本轮主目录摘要": "68d65fc9618a1e3e928cf1288827c101f0c7606e895bdef86ecff43720a56169"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "42cb818032bdba50cee9043969f0d1df4deff7bc3e21c917de421211b3128964",
+      "本轮主目录摘要": "4f06d8e67abf6ae2559e6ce92b45b36b10059210e19df215b46d4bfe51742e02"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_stats_snapshot_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "d5c2c762bb6a0226810fe9f706d3041d869889904eebce3add73358173483014",
+      "本轮主目录摘要": "a917b3c783ab761ba82ddca73eebc42f3f1080dd6c0ebe0e8b0a124286e3227e"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_task_core_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "8e5605e695bdbdbb6a2ed65bfc0db35204074626dbc0101d09fe11fc0da6d511",
+      "本轮主目录摘要": "eaba450792c454ff3ce6cae680a59fc4f072a4f26e73ff26c5e6654d6bd1bdc8"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_task_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "00540a27a3d53c965fc6e993b93e562cec8f86561232283370967af39c080a4e",
+      "本轮主目录摘要": "633f40d6a0790b2904d1a9efbaf579ee458b9f19e33cfe9db7d485bacbaa7bfc"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_teaching_class_query_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "cbc72358d696071429fa7ed6cc286981fee7c88ec7655458ffc4890ae411a7e5",
+      "本轮主目录摘要": "c115ce163569653935f0d3bba4c6eb8acda9b440e4e6e64046d5a8762aba1f07"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/mobile_academic_affairs_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "191e4b51cd2ce96e5c6ee0c71e4032da587316dcf453117284b89454f833138b",
+      "本轮主目录摘要": "bd4119229a664dac9dd38052e169dce0689319f0017255e0fe7fdc914f6fd07e"
+    },
+    {
+      "文件": "backend/app/modules/system_admin/services/role_template_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "118ccde27942b9da64df683a5f75d6af022fa88d24c9f6740da2890017f39740",
+      "本轮主目录摘要": "e9b7c924ab182ec3eb07b3c26d7ef813dc4466044940e15d36ffbdb65867c04c"
+    },
+    {
+      "文件": "backend/app/services/auth_service_db.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "cd6667dd37ff7040cc97bff86645a674b097ff7894d3c02cf9f58d29c495c46f",
+      "本轮主目录摘要": "44352d7c3e33e2570806d22e7c6aad6a570ea4dd4c170dfd8d3f524648e0f6f6"
+    },
+    {
+      "文件": "backend/app/services/data_center_service.py",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "3dda4e42eb666b774873d722b8f0b7a028c78a8e9a77ee03f93e01393c70e208",
+      "本轮主目录摘要": "7e9adc54215a2b8a3a1ad75cb49750b7b175e9868e578ec5013a21849d0e7739"
+    },
+    {
+      "文件": "backend/app/services/mock_rbac_service.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "a46ad19c5390f1a07ea21f6c733f2ed3a7db001c61d75487de828ef53af1498f",
+      "本轮主目录摘要": "bf3f6214d5879fd4cf0a917976ffa6fb8364cf4889df93a2b0f2cf88a9409786"
+    },
+    {
+      "文件": "backend/app/services/saas_role_templates.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "8bd8221449ca6f45e3b47f505339641cc4819328c093aef682cc690153a66ee4",
+      "本轮主目录摘要": "a4f49edfdba70b8d132b3810b25ae45cb61201a2186675b4d6100bc7f978057b"
+    },
+    {
+      "文件": "backend/tests/test_aa_program_review_authority_r3.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "6b21241167f9d1394dc93a9d3b7e201dc05815a3525907b0c425fa0d490cf0e5",
+      "本轮主目录摘要": "7426b7e3dc3650699f79a6dc0c86deb65e626f3f0fdf3b3bb91dcdc527449d91"
+    },
+    {
+      "文件": "backend/tests/test_aa_schedule_change.py",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "0ef28b2dd0c5d91bb9d2175e755763cdaf29148eeb8a249c1184243d679f6175",
+      "本轮主目录摘要": "dc601b658d38c3d435a98375cc1e7b7c4e0d0d09d332224270c079a9b121abe0"
+    },
+    {
+      "文件": "frontend/src/components/common/AppUserChip.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "f869691a4430f2d18a7ed887c92ab0bdcb656b051af8df6f614950f1bc175365",
+      "本轮主目录摘要": "cef8fb3323d39baa605386bb13541a3fecc60fcc62b9fb253671d403a6dd9698"
+    },
+    {
+      "文件": "frontend/src/config/adminMenu.js",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "a88bb3d8bcf5c96ac927e91176317bff238e84e795f8bc5688a131b8b871f587",
+      "本轮主目录摘要": "5c3168fc6d126a758d7b806f4655cae1f8785c8aab24098d21473f2b9f7784bf"
+    },
+    {
+      "文件": "frontend/src/layouts/BasePortalLayout.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "0b08aa626d76abc931e92ce2a1ee1968f9d4c0250a368f32eb6a9f22acf0101d",
+      "本轮主目录摘要": "7366b3001d1053e95ecaa4037d781c29a012d77c82f230675f4a9fa8db987ff9"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/academic-affairs.routes.js",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "1984a1bf433043cfcad85d2ca93aab4ad4fc458b78959125d0b5d8023efce9e3",
+      "本轮主目录摘要": "342f76abbd9f0bd42a86cd7093f8dd7cc8d3cfae6263ad59a0751b5b7221cd2e"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/components/AaOverviewWorkspace.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "主目录已有待办、失败状态和导航预检改进，保留当前文案与布局。",
+      "开工主目录摘要": "db4615f3952f20053acb697a4422fb4639fb97fd66e20bde456e9cefe0475177",
+      "本轮主目录摘要": "db4615f3952f20053acb697a4422fb4639fb97fd66e20bde456e9cefe0475177"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/components/AaRegistrationBulkPanel.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "51190179e3e6c20410524624906dd0dfa2bb8d8e62edbc93f7b832f602b86da2",
+      "本轮主目录摘要": "73f60d14c8efced3ded778099284f7182355f6bf8a6b1083f92b122e739d84bd"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/components/AaStatsSnapshotWorkspace.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "统计以主目录为准，快照组件逐字节保留。",
+      "开工主目录摘要": "523c0e0e9df7135a6be3fd70abf20e15867e67461115f42f6f1e2b1e599db0ea",
+      "本轮主目录摘要": "523c0e0e9df7135a6be3fd70abf20e15867e67461115f42f6f1e2b1e599db0ea"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/components/AcademicFlowOverview.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "旧差异为教学进度文案，保留主目录当前版本。",
+      "开工主目录摘要": "e5445932fe8af2fd6d2e5cb6e4dec8cac8f03de53cea1a2a8519a83f80b1e6c7",
+      "本轮主目录摘要": "e5445932fe8af2fd6d2e5cb6e4dec8cac8f03de53cea1a2a8519a83f80b1e6c7"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/components/teaching-tasks/AaTeachingTaskStageRail.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "保留主目录阶段名称；仅在不应预设阶段的消费者移除固定阶段条。",
+      "开工主目录摘要": "5a4abec403454601a054ba1823c6785aee6ff0a6cc3ee04fa64a069684536a85",
+      "本轮主目录摘要": "5a4abec403454601a054ba1823c6785aee6ff0a6cc3ee04fa64a069684536a85"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/styles/business-workspace.css",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "b397a0d67f25e4705f4aeadf2d218dc61e0ba0d597e8b638ad2e6f8080ff5a0c",
+      "本轮主目录摘要": "042191288f62661b81ff309ba0c398e81949c03329ca3a57dcaf01f5641b17f3"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaCourseConsoleView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "dba7f63d1c3e3348522316c3b25eca35d4e6007a233ca895c2cb0e2e6d1f87b5",
+      "本轮主目录摘要": "3f81303cbff7b17e406b6d0571f11b7d28d0ad685631e0b06ffeb1b491038c57"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaCourseDetailView.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "旧差异为标题和说明精简，保留主目录当前课程档案。",
+      "开工主目录摘要": "dc62de22624ba27b62e84cd0a2636decc8e056a11702728d814e49aa4b4b3feb",
+      "本轮主目录摘要": "dc62de22624ba27b62e84cd0a2636decc8e056a11702728d814e49aa4b4b3feb"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaCourseFormView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "12f5256220a5438704564519a6690a02c4958be6485a3306fb5a887e2ca4ff12",
+      "本轮主目录摘要": "864f8f3ec4c5b66593c595285209b90455ce7c40757786e5046c135f430cb468"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaCourseListView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "ddcc6bb6063c0c383f2162a9decbd98ca608afba6934a006bd301804456b6e40",
+      "本轮主目录摘要": "6d30aeb428ef660f342c48841eaf6e7146db3b1e1753674da8eef33d47f285a4"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaGradeChangeView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "db8d4f4b4d43691236ab6015df9d16a9182bdbadc301aacfb61a313e9f911269",
+      "本轮主目录摘要": "33ee578ca6f5c6715c9caae1d78ecb81b09eae69f9d1b7a6cc76aee46b43bde9"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaGradeCollegeReviewView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "3793af0795e0c83678e32dacadb3e160448d66dd186f7c2676e07b5754bc96f5",
+      "本轮主目录摘要": "6523e7a716418340e9aa86f04dee91dc74894d12162476cab68111995a3fca42"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaGradeEntryView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "f2d771b98ad274633890d4b2a46feb3a96a6f91be3b3966cea96964bd8b020c3",
+      "本轮主目录摘要": "af3ccf8a0d56807a09f58f2a5e30553e0028d0815ae4b0ea84e5674226a4e23e"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaGradeOverviewView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "e5aa38b6065ab980841b00dcd9e5f53421fce0dac19aa1f03f4b388ccbab9e5a",
+      "本轮主目录摘要": "89283b7c7ab71e6efddb0c94759c3b7f7a233749131f8bbd09cb5d97c2b4ea0d"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaGradePublishView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "f2bb38219fbf3fbb1bb293d3b04d1a8db990602c7dd3abb1ba29733a6a891cff",
+      "本轮主目录摘要": "31987302eefda4dece493ad3dedf0e6b2021b300efa4135f2488a600998e68ae"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaProgramConsoleView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "837a37129d691f78a01a2484546ca43ad8cab64cd6f6b2127ec2ed2c5462afd9",
+      "本轮主目录摘要": "6aae720e2b73329fb697db32664eff5d707b708fb0bf54745d3a5717ea255d70"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaProgramEditorView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "3f3433e1af56326dff91fd33f0835552f565d375d697dbd68578dcf9edfe63ec",
+      "本轮主目录摘要": "566422eb291bd7293dc222cb12449a1af30beda1b1ad2840e568e0121e1d75e9"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaProgramListView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "386929469f1342ead64ca04c7cb308816a3f68ca67700aeb2cb16d4f2b4cdfd3",
+      "本轮主目录摘要": "e4048edacb26a677eff83944d1098fe2725f2da15495fb1c5f9ce445f7890136"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaRegistrationBatchListView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "806e8f94c5f0fb8011a8ab7c79cf9d8a1e2454e764be8df624e83e442ba25b0c",
+      "本轮主目录摘要": "449b90716078056672f9bab2468e94f4e6723a7a5183e0c1befd40ee56acf386"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaRegistrationDetailView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "56a0380cb474715c21636e01929302a5bd244a547c12a82145e9dce57a99cf67",
+      "本轮主目录摘要": "57d85c43e2ac909b17a34c8af6cc3ad33110e02eb68254dc96a7d8874cef5949"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaRegistrationWorkbenchView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "1241922eaeb7122a39944fa287d504c292014480cba36cac7209d3895dbcb684",
+      "本轮主目录摘要": "915abaa1906e24e05f40be203afc7a45c86aaf59b4147ea03f12065e76a1f9bb"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaRosterListView.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "主目录保留；已复用名册精确对象跳转行为测试。",
+      "开工主目录摘要": "b287ecb8998e459f4c56c4cfdc6c06293cfe14f674b8286cec46f9009a4be56d",
+      "本轮主目录摘要": "b287ecb8998e459f4c56c4cfdc6c06293cfe14f674b8286cec46f9009a4be56d"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaScheduleChangeApplyView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "070967786dc63b48655b192ec0e9a46ac1962e46ff7d117d27375201fd54fe6e",
+      "本轮主目录摘要": "19a730580f2c220cea9890f41f1706c750f8a88677a5359f6de0ed84f80a19d6"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaStatsOverviewView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "只补岗位页签权限，保留统计七专题、超时、空明细和中文状态修复。",
+      "开工主目录摘要": "84ed0f82d567141918905f64f98bc63a560f08d582bb26df0469c3b57fe1001e",
+      "本轮主目录摘要": "22a82b47ede5baba833f321ba71ca0b3729693aa3e49b5c67e3b4e252bda6796"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaStatusChangeListView.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "旧差异为文案，保留主目录及现有按钮合同。",
+      "开工主目录摘要": "7b200fb4311fd6b595fce82505904802a1a68e9133f51c74b0f0708ef883c691",
+      "本轮主目录摘要": "7b200fb4311fd6b595fce82505904802a1a68e9133f51c74b0f0708ef883c691"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaTaskAdjustView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "531c4a7f8c5fb326969f99378499139e656b95a5a7eae8ae82bfbb502979b6fe",
+      "本轮主目录摘要": "f7172cc4d997c9b1835ecfca1e546b465312474d268440264dc93043ee85743d"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaTaskBatchListView.vue",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "保留主目录布局；窄屏冲突修复仅改共享样式选择器。",
+      "开工主目录摘要": "9ed88993308aa8513f33f3fe67b0f351d20a4d85abe36c6d4630e0c33a605c30",
+      "本轮主目录摘要": "9ed88993308aa8513f33f3fe67b0f351d20a4d85abe36c6d4630e0c33a605c30"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaTaskConfirmView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "5bb8605032a84c0ad390a7aa5489e65940889929b013c681ff893e842f49ec76",
+      "本轮主目录摘要": "09a3ae80fe0e0c6eef5a57a6f0c0c0aabda75844ee0205659e9f94a158b4ee74"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaTaskDetailView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "bf024851268e647ff6877de49077340852074a05b37d6641f58c6696d6966374",
+      "本轮主目录摘要": "59fc0657bd8eb96b964404703c0d0edd56defd60aa7f0423bfa14a06fde4166c"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaTaskMergeSplitView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "da342d7989ea82addfc800bd8258945f61292224b8d76dfbb303b9f8f0b694bf",
+      "本轮主目录摘要": "e769d5b1eebda4b807ec2acf3e3858e30a4c745abe19725d0bdb2e99e5b1fdfb"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaTeacherAssignConsoleView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "10d5a234ef05ba427a8c8ba79d91ded05333b50f4cf728ef1add833a2cc5b9f4",
+      "本轮主目录摘要": "374e630704e33ff9e06752c87a541fb6f7844ce386a48e2b0f9e667ca3ba018c"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaTeacherScheduleView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "7e37ad95d7b796617fb83105b1929b3af44ae991f6c21c93e6ef1eb5401911bb",
+      "本轮主目录摘要": "8c618283d12df5c7baf481177c482613aaa2f2aedc409262b380c702e5933090"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/views/AaWarningConsoleView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "49042fbb7a3986d304813e78b4be4618964d608fe17dd41e7948ee7f479eff18",
+      "本轮主目录摘要": "951f64498ae740737c4a6290a831b3dbaddb291a2598c1821f7b3d7609355765"
+    },
+    {
+      "文件": "frontend/src/modules/system/utils/permissionLabels.js",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "531a1cdf69442cd841e88d6ed88a9bca518715c413121b65ebcd2de8428608b8",
+      "本轮主目录摘要": "9d05c5fe756a0154c616b57a78901e79154de5ca8899394456ac53a04f4e300b"
+    },
+    {
+      "文件": "frontend/src/modules/workbench/views/WorkbenchView.vue",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "e56177a9c70bd09f920cc449d55cf123eb43933c4589025e89844faad7b98d0c",
+      "本轮主目录摘要": "0eac60b20807b20571fea096d4d826dbb24c09aeeb8f7f9792e741b7ebc1fc1c"
+    },
+    {
+      "文件": "frontend/src/router/index.js",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "008b5a930c6059f9d7782bfe31dd29781c2e7bdcc776d1d25880453940525d43",
+      "本轮主目录摘要": "5f7c824a6b76f0c39764ec2f2484549697ab50b9ea3a2bebda8faea71563bdd0"
+    },
+    {
+      "文件": "frontend/src/utils/presentationSafety.js",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "eb7346884be1ce92b685a8e2f3b275a0613f5474839b1a5a14663ebcd6b4ee5d",
+      "本轮主目录摘要": "859adfecb9e60563efc645c08524d8e647bdab04205f36d86d22fd3b613e3958"
+    },
+    {
+      "文件": "frontend/tests/academic-a-program-binding-course-version.contract.test.mjs",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "deecd85b273c856010336f51c30e4b84de925bc0cea09b4ed0c5a20dac2ac219",
+      "本轮主目录摘要": "18dfb0473366d255ad677689a3249aa81e0aaefed20fa67e2743a5d2d106cb36"
+    },
+    {
+      "文件": "frontend/tests/academic-native-command-button-contract.test.mjs",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "对应异动文案未替换，保留原测试。",
+      "开工主目录摘要": "94ed9e2c0f748e009fa246290314721b0820644cdcf8992e724670980552f63d",
+      "本轮主目录摘要": "94ed9e2c0f748e009fa246290314721b0820644cdcf8992e724670980552f63d"
+    },
+    {
+      "文件": "frontend/tests/academic-pc-parallel-a-t07.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "565d7e03f44513cdb2630b18afdb0e7c2bc45636224f28bbf741fa74a5897eb7",
+      "本轮主目录摘要": "72e0c0b0549c8484a420d2b888fd0e793e36ace6623235161bca8524738a7b0c"
+    },
+    {
+      "文件": "frontend/tests/academic-pc-parallel-a-t08.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "449594a5456bda3228031c021e5774723b71f4a9125396de711fa4e812c06012",
+      "本轮主目录摘要": "0369ac491142afe93a6a60f6ab81e1d6b99ce04d5e814ac7f0a42e6d0ac7a77b"
+    },
+    {
+      "文件": "frontend/tests/academic-pc-parallel-c-entry.test.mjs",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "e756675b912cba7300fd18d667ba6451518e74cd3c7db84e022fc17660e6cd22",
+      "本轮主目录摘要": "a1b5f331236d86f2a938874b4f7783d5a759028098e6966a64b1407a76c12f16"
+    },
+    {
+      "文件": "frontend/tests/academic-registration-batch-layout.test.mjs",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "d6a6680b9045320c9698795463f9539a77788a2a72f49191ea7195ca034f345a",
+      "本轮主目录摘要": "439bff26c6744053436c06165fee40ebb5121bb78b7e1bc694e487ce7be3718d"
+    },
+    {
+      "文件": "frontend/tests/academic-registration-detail-state.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "59f5e0c041a83ee991c3761caddd2b22e0527a2c4f26f126f0f4212eec78869e",
+      "本轮主目录摘要": "e963d0618ea61714820194277a13fcc6beb35e67b3c9720062ecce191f02aef8"
+    },
+    {
+      "文件": "frontend/tests/academic-registration-eligibility-runtime.test.mjs",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "3c2dac24e095b28a9384dc3f08d161e945909c0cdac546d0baba59c23de0e42c",
+      "本轮主目录摘要": "a95e9f5980c0ec1f5ab3f0506f5aac408895fbf2ec22ff0c260e0973177014a2"
+    },
+    {
+      "文件": "frontend/tests/academic-registration-other-queues.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "37968b62d14f47d984bdb6ae5551942ec5539e08abb8c624af13b09b093c6ffb",
+      "本轮主目录摘要": "dc989265581edb5b8db223879dcdbc750fc4c08f6fcc99e18d8f26f92f5a80a8"
+    },
+    {
+      "文件": "frontend/tests/academic-registration-unregistered-reason.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "31700cfb8913850ac6e48dc487d614820e01265b8dff159a757cd45d53a85989",
+      "本轮主目录摘要": "626afc52a9264831f734e8c0411b19ccf0a20922115c8f7629c0b39ee74de211"
+    },
+    {
+      "文件": "frontend/tests/academic-stats-design-workspace-contract.test.mjs",
+      "开工差异": "same",
+      "处理": "保留主目录",
+      "说明": "统计现有测试已在主目录，逐字节保留。",
+      "开工主目录摘要": "53aa04bb88a075207fea5af674628cdf2e48d3c255750489ddb99aeacf75fe52",
+      "本轮主目录摘要": "53aa04bb88a075207fea5af674628cdf2e48d3c255750489ddb99aeacf75fe52"
+    },
+    {
+      "文件": "frontend/tests/academic-stats-snapshot-behavior.test.mjs",
+      "开工差异": "same",
+      "处理": "保留主目录",
+      "说明": "统计现有测试已在主目录，逐字节保留。",
+      "开工主目录摘要": "93fee10f4a94a939904d36bacfb7ca964b43e7913489ed9a6cca51a2e249e7c8",
+      "本轮主目录摘要": "93fee10f4a94a939904d36bacfb7ca964b43e7913489ed9a6cca51a2e249e7c8"
+    },
+    {
+      "文件": "frontend/tests/academic-stats-snapshot-w3-contract.test.mjs",
+      "开工差异": "same",
+      "处理": "保留主目录",
+      "说明": "统计现有测试已在主目录，逐字节保留。",
+      "开工主目录摘要": "1d5e6179c4537ba0b351db5defb6e554089b4519b30d34d3bb2a41c9802f8562",
+      "本轮主目录摘要": "1d5e6179c4537ba0b351db5defb6e554089b4519b30d34d3bb2a41c9802f8562"
+    },
+    {
+      "文件": "frontend/tests/academic-stats-workspace-behavior.test.mjs",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "8cee7c67ba99b1e160d9127a0b03c27606fba9fbce1c30580155d4df362597cd",
+      "本轮主目录摘要": "9fcca40b61f8e8fecee8afef74cc01d8b2cbf9763cdfdea552378c7187b47c41"
+    },
+    {
+      "文件": "frontend/tests/academic-teacher-flow-closure-v2.test.mjs",
+      "开工差异": "diverged",
+      "处理": "保留主目录",
+      "说明": "对应课程/培养方案主目录文案保留，原断言保持。",
+      "开工主目录摘要": "84ef45ed15b59357de81c993565b789cd604285d5701b964c547d01ccd30fec6",
+      "本轮主目录摘要": "84ef45ed15b59357de81c993565b789cd604285d5701b964c547d01ccd30fec6"
+    },
+    {
+      "文件": "frontend/tests/admin-menu-custom-role-projection.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "414b8b9728234fc9cdc2f88a5db8570d52163ccf597255462a7ecc60aabb3a5a",
+      "本轮主目录摘要": "fd9f7e29b7b64eee37cf2659a0d1c60483f6597520165cde47d2f7934b3b5835"
+    },
+    {
+      "文件": "frontend/tests/graduation.teacher-menu.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "f0acbcceddac9b5e0efd2441d8cd1608f984e317191e5cded42b8feaf82b24b3",
+      "本轮主目录摘要": "7ff740ca0c1de6fd0352471a1e19fea14e7cd8089dfc079a357c4009ce40bd3b"
+    },
+    {
+      "文件": "frontend/tests/workbench-progressive-loading.behavior.test.mjs",
+      "开工差异": "base",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "549950cf3428f40eab3f02250d99922da965a7d8f4f73ae6162edbf46c390f7f",
+      "本轮主目录摘要": "4e5c6b60dd17f26ee354dd2cb26dd812fa974e99ac8cc917477f23baba865e9f"
+    },
+    {
+      "文件": "shared/contracts/permission-catalog.json",
+      "开工差异": "diverged",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": "0d1c8216cb5204938ddb06d4277251a8da882de439fa1512a6c1ede79341bb4b",
+      "本轮主目录摘要": "c8ec555ddb1b8a7561ced98701794bb56eefd8ed384246ceb59e21847e2a11fa"
+    },
+    {
+      "文件": "backend/app/modules/academic_affairs/services/academic_affairs_college_roles.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "68ab51797e4c6c0e98bb279ca0dd8678ae79a0048c6ea682ad8834ce9fc2ff55"
+    },
+    {
+      "文件": "backend/tests/test_aa_registration_batch_search_mysql.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "c14410acccda3b372912337bda133b3a0889731dbebde53286b50f4f7d6baf71"
+    },
+    {
+      "文件": "backend/tests/test_aa_registration_unregistered_search_mysql.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "8b9580ace8ef2a1c7393572510a60eca83af03b12f2df2845351aee19fc70d1b"
+    },
+    {
+      "文件": "backend/tests/test_role_r0_college_academic_actions_mysql.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "c6e84de9ace1267f06a5432fbe95cb9ca29a064e08ad75b0424fbe06229dc006"
+    },
+    {
+      "文件": "backend/tests/test_role_r0_college_academic_leader.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "c0ae5527e58abc9371fd486b53964577347b87f5dc393dd4a5818586e389b17e"
+    },
+    {
+      "文件": "backend/tests/test_role_r0_college_schedule_change_assist_mysql.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "8a1158fb35815cf34a2fb15793099f5e7b48cb5d615f9dff82136f925da8d981"
+    },
+    {
+      "文件": "backend/tests/test_role_r0_forbidden_delete_mysql.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "5229054ae999866a6e41a9e91f9e9edcdc3258628395291b58c64c7d1c1ee35a"
+    },
+    {
+      "文件": "backend/tests/test_role_r0_template_publish_mysql.py",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "078522031169fd903950c6693b19a65a504cfe65188a5d3219745361d4d53cc8"
+    },
+    {
+      "文件": "frontend/src/modules/academicAffairs/config/academicRoleNavigation.js",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "d48a887c605fc2fa7c11e6da21e55a00a01f83a1e79c39c931258d4ba1f3a5b2"
+    },
+    {
+      "文件": "frontend/tests/academic-college-delete-boundary.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "873a6be59e80796c47ed79a45aade08239afcdbfab53aec04fe4c4dd7ccd4e90"
+    },
+    {
+      "文件": "frontend/tests/academic-college-grade-scheme-actions.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "55c4d2c412b4b058e69e2350cf7838bc0afb794a30bf66111888d98d00a14113"
+    },
+    {
+      "文件": "frontend/tests/academic-college-schedule-assist.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "97d5319325e45105144e55a43f99b36454f21524544af73ade9e480fe7622cbf"
+    },
+    {
+      "文件": "frontend/tests/academic-copy-round1.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "d808df4cd0be01973eab359ad76af1899698e2f535c7d7445a948039f01a8a5a"
+    },
+    {
+      "文件": "frontend/tests/academic-copy-round3.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "5d92204e397bdd3772dbd33cd375605dc755649b0462fa4a3e5e10ff3557db24"
+    },
+    {
+      "文件": "frontend/tests/academic-copy-round4.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "9226356f25500d17ddeb2db1e4631c4879141e2088b561add459f52540c5d920"
+    },
+    {
+      "文件": "frontend/tests/academic-copy-round5.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "03c7013cacfde8648979a3f12181d98b14cd1ed8065f3f0ba04c703dbcd005d7"
+    },
+    {
+      "文件": "frontend/tests/academic-copy-round7.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "17b95076152aef62a76eadf3abba292b7a7e2f954d53d41825e6c64bea40828a"
+    },
+    {
+      "文件": "frontend/tests/academic-role-menu-contract.test.mjs",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "19658fee77727178eb0c90446e040a9d4404b8a4e43df64c92b799723806cc3c"
+    },
+    {
+      "文件": "shared/contracts/role-menus/academic.json",
+      "开工差异": "missing",
+      "处理": "按功能复用或适配",
+      "说明": "复用已核对的功能差异；冲突处保留主目录后续实现，相关测试按当前行为适配。",
+      "开工主目录摘要": null,
+      "本轮主目录摘要": "60514578dc606473afd403b1b096f76a3c9ff54ca460de1afff1c0223fda04e2"
+    }
+  ]
+}

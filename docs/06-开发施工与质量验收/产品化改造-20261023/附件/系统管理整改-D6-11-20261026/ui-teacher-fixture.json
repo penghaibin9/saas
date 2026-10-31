@@ -1,0 +1,12 @@
+{
+  "tenantId": "1000000000000000007",
+  "userId": "1",
+  "existingStandardRoleId": "3",
+  "newMembershipId": "6",
+  "newTeachingTaskId": "2",
+  "newGradeTaskId": "2",
+  "newTodoId": "3",
+  "scope": "同一虚构学校管理员账号增加标准任课教师收窄身份；仅验证待办投影，不执行成绩保存或教学任务审批",
+  "defaultPermissionChanged": false,
+  "existingBusinessRowsModified": false
+}

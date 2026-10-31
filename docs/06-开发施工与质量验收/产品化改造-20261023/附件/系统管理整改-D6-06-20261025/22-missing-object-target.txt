@@ -1,0 +1,105 @@
+http://127.0.0.1:5196/admin/graduation/students/99999999?batchId=1&returnTo=%2Fadmin%2Fsystem%2Frole-assignments%3Fview%3Drelations%26relationUserId%3D2
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 毕业设计中心
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ① 准备
+    - button "② 选题":
+      - generic: ② 选题
+    - button "③ 过程与中期":
+      - generic: ③ 过程与中期
+    - button "④ 论文与评阅":
+      - generic: ④ 论文与评阅
+    - button "⑤ 答辩":
+      - generic: ⑤ 答辩
+    - button "⑥ 成绩与归档":
+      - generic: ⑥ 成绩与归档
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: ① 准备
+  - navigation "三级菜单":
+    - button "批次与时间节点":
+      - generic: 批次与时间节点
+    - button "学生与进度":
+      - generic: 学生与进度
+    - button "导师与分配":
+      - generic: 导师与分配
+    - button "材料规则":
+      - generic: 材料规则
+    - button "分配冲突检测":
+      - generic: 分配冲突检测
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学生与进度" [selected]:
+    - generic: 学生与进度
+  - button "关闭学生与进度":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 01:40
+  - heading "毕设详情" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "D606毕设批次" [selected]
+  - generic: 草稿
+  - button "返回系统管理"
+  - status:
+    - generic: "!"
+    - generic: 加载失败
+    - generic: 毕设学生记录不存在或不在当前数据范围内
+    - button "重试"
+    - button "返回"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

@@ -1,0 +1,172 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:14":
+    - generic: 10/27周二 09:14
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:11:12":
+  - generic: 本次工作 00:11:12
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "变更版本" [selected]:
+    - generic: 变更版本
+  - button "关闭变更版本":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- navigation "组织与任职":
+  - button "树形定位工作台"
+  - button "学院与部门"
+  - button "专业管理"
+  - button "年级与班级"
+  - button "岗位管理"
+  - button "教职工任职归属查询"
+  - button "业务关系中心"
+  - button "变更版本"
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:14
+  - heading "组织与任职" [level=1]
+  - button "⇪ 数据导入与匹配"
+  - button "⇩ 导出组织结构"
+  - generic: 组织变更版本
+  - button "新建变更版本"
+  - table:
+    - rowgroup:
+      - row "版本 状态 计划生效 实际激活 操作":
+        - columnheader "版本"
+        - columnheader "状态"
+        - columnheader "计划生效"
+        - columnheader "实际激活"
+        - columnheader "操作"
+    - rowgroup
+  - status:
+    - generic: ▢
+    - generic: 暂无组织变更版本
+    - generic: 学院改名、专业调整院系、班级停用等成批调整可在这里排期，激活前不影响当前组织
+    - button "返回"
+  - paragraph: 草稿与排期状态下变更不会写入组织树；激活后可回滚到变更前的名称与归属。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

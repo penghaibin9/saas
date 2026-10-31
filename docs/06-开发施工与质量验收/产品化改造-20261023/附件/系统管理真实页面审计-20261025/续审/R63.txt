@@ -1,0 +1,275 @@
+http://127.0.0.1:5173/admin/graduation/mentors?panel=list&batchId=51
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:49":
+    - generic: 10/25周日 14:49
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:43:28":
+  - generic: 本次工作 02:43:28
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ①
+    - button "② 选题":
+      - generic: ②
+    - button "③ 过程与中期":
+      - generic: ③
+    - button "④ 论文与评阅":
+      - generic: ④
+    - button "⑤ 答辩":
+      - generic: ⑤
+    - button "⑥ 成绩与归档":
+      - generic: ⑥
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "批次与时间节点":
+      - generic: 批次
+    - button "学生与进度":
+      - generic: 学生
+    - button "导师与分配":
+      - generic: 导师
+    - button "材料规则":
+      - generic: 材料
+    - button "分配冲突检测":
+      - generic: 分配
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "导师与分配" [selected]:
+    - generic: 导师与分配
+  - button "关闭导师与分配":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:49
+  - heading "导师管理" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "2026 届毕业设计历史归档批次 · 2026届"
+    - option "2027届毕业设计（论文）（进行中） · 2027届" [selected]
+  - generic: 进行中
+  - button "＋ 申报导师"
+  - button "分配冲突检测"
+  - button "批量归档"
+  - button "导入 Excel"
+  - button "导出台账"
+  - button "导师名单"
+  - button "导师分配"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 工号 / 方向
+  - generic: 资格状态
+  - combobox "资格状态":
+    - option "全部" [selected]
+    - option "待审核"
+    - option "已认证"
+    - option "已驳回"
+    - option "已停用"
+    - option "已归档"
+  - generic: 导师类型
+  - combobox "导师类型":
+    - option "全部" [selected]
+    - option "校内导师"
+    - option "企业导师"
+    - option "双导师"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "导师 / 工号 学院 / 专业 工作量 资格状态 操作":
+        - columnheader "导师 / 工号"
+        - columnheader "学院 / 专业"
+        - columnheader "工作量"
+        - columnheader "资格状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "王老师 teacher2 · 校内导师 · — — / — 2/8 已认证 详情 评价 编辑 停用":
+        - cell "王老师 teacher2 · 校内导师 · —":
+          - generic: 王老师
+          - generic: teacher2 · 校内导师 · —
+        - cell "— / —"
+        - cell "2/8"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "郭睿哲 sbx_t0288 · 校内导师 · 副教授 艺术设计学院 / 视觉传达设计 15/20 已认证 详情 评价 编辑 停用":
+        - cell "郭睿哲 sbx_t0288 · 校内导师 · 副教授":
+          - generic: 郭睿哲
+          - generic: sbx_t0288 · 校内导师 · 副教授
+        - cell "艺术设计学院 / 视觉传达设计"
+        - cell "15/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "何睿哲 sbx_t0287 · 校内导师 · 讲师 艺术设计学院 / 视觉传达设计 17/20 已认证 详情 评价 编辑 停用":
+        - cell "何睿哲 sbx_t0287 · 校内导师 · 讲师":
+          - generic: 何睿哲
+          - generic: sbx_t0287 · 校内导师 · 讲师
+        - cell "艺术设计学院 / 视觉传达设计"
+        - cell "17/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "林睿哲 sbx_t0286 · 校内导师 · 讲师 艺术设计学院 / 视觉传达设计 17/20 已认证 详情 评价 编辑 停用":
+        - cell "林睿哲 sbx_t0286 · 校内导师 · 讲师":
+          - generic: 林睿哲
+          - generic: sbx_t0286 · 校内导师 · 讲师
+        - cell "艺术设计学院 / 视觉传达设计"
+        - cell "17/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "高睿哲 sbx_t0285 · 校内导师 · 讲师 艺术设计学院 / 视觉传达设计 17/20 已认证 详情 评价 编辑 停用":
+        - cell "高睿哲 sbx_t0285 · 校内导师 · 讲师":
+          - generic: 高睿哲
+          - generic: sbx_t0285 · 校内导师 · 讲师
+        - cell "艺术设计学院 / 视觉传达设计"
+        - cell "17/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "朱睿哲 sbx_t0284 · 校内导师 · 副教授 艺术设计学院 / 视觉传达设计 17/20 已认证 详情 评价 编辑 停用":
+        - cell "朱睿哲 sbx_t0284 · 校内导师 · 副教授":
+          - generic: 朱睿哲
+          - generic: sbx_t0284 · 校内导师 · 副教授
+        - cell "艺术设计学院 / 视觉传达设计"
+        - cell "17/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "胡睿哲 sbx_t0283 · 校内导师 · 讲师 艺术设计学院 / 视觉传达设计 17/20 已认证 详情 评价 编辑 停用":
+        - cell "胡睿哲 sbx_t0283 · 校内导师 · 讲师":
+          - generic: 胡睿哲
+          - generic: sbx_t0283 · 校内导师 · 讲师
+        - cell "艺术设计学院 / 视觉传达设计"
+        - cell "17/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "孙睿哲 sbx_t0282 · 校内导师 · 讲师 艺术设计学院 / 动漫设计 14/20 已认证 详情 评价 编辑 停用":
+        - cell "孙睿哲 sbx_t0282 · 校内导师 · 讲师":
+          - generic: 孙睿哲
+          - generic: sbx_t0282 · 校内导师 · 讲师
+        - cell "艺术设计学院 / 动漫设计"
+        - cell "14/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "徐睿哲 sbx_t0281 · 校内导师 · 讲师 艺术设计学院 / 动漫设计 17/20 已认证 详情 评价 编辑 停用":
+        - cell "徐睿哲 sbx_t0281 · 校内导师 · 讲师":
+          - generic: 徐睿哲
+          - generic: sbx_t0281 · 校内导师 · 讲师
+        - cell "艺术设计学院 / 动漫设计"
+        - cell "17/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+      - row "吴睿哲 sbx_t0280 · 校内导师 · 副教授 艺术设计学院 / 动漫设计 17/20 已认证 详情 评价 编辑 停用":
+        - cell "吴睿哲 sbx_t0280 · 校内导师 · 副教授":
+          - generic: 吴睿哲
+          - generic: sbx_t0280 · 校内导师 · 副教授
+        - cell "艺术设计学院 / 动漫设计"
+        - cell "17/20"
+        - cell "已认证":
+          - generic: 已认证
+        - cell "详情 评价 编辑 停用":
+          - button "详情"
+          - button "评价"
+          - button "编辑"
+          - button "停用"
+  - generic: 共 385 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "39"
+  - button "下一页": ›
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

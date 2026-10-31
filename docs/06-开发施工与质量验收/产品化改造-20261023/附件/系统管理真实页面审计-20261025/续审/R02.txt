@@ -1,0 +1,170 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/implementation/overview".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/implementation/overview
+	1 container app
+		2 container
+			244 text 高校学生全生命周期管理平台
+			3 image
+			4 text field (settable) 搜索学生、功能或帮助
+			5 text Ctrl K
+			245 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				246 image
+				247 text 北京 13° 阴
+			248 button (collapsed) 10/25周日 14:31, Secondary Actions: Expand
+				249 image
+				250 text 10/25周日 14:31
+			6 button 帮助与引导
+			7 button 消息中心
+				8 image
+			9 button (collapsed) 胡 胡管理 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				10 text 胡
+				11 text 胡管理
+				12 text 系统管理员
+		13 container
+			14 container 一级菜单
+				15 button 学工中心
+				16 button 系统管理
+			17 button (collapsed) 当前范围, Secondary Actions: Expand
+				18 image
+				19 text 当前范围
+				20 image
+			251 button (collapsed) 本次工作 02:11:13, Secondary Actions: Expand
+				252 image
+				253 text 本次工作 02:11:13
+		254 container 二级菜单
+			255 button 收窄二级菜单
+				256 text 系统管理
+			257 container 二级菜单
+				258 button 系统概览
+				259 button 身份与账号
+				260 button 组织主数据
+				261 button 角色与权限
+				262 button 学校配置
+				263 button 流程配置
+				264 button 安全与审计
+				265 button 接口与同步
+			266 checkbox Description: 取消固定二级菜单, Value: 1
+		267 container 三级菜单
+			268 button 收窄三级菜单
+				269 text 系统概览
+			270 container 三级菜单
+				271 button 系统总览
+				272 button 实施总览
+				273 button 首次开局向导
+				274 button 预设方案
+				275 button 职业教育国家标准库
+				276 button 数据导入与智能匹配
+				277 button 已安装配置
+				278 button 变更与升级
+				279 button 上线检查与验收
+			280 checkbox Description: 取消固定三级菜单, Value: 1
+		21 container
+			23 tab group 已打开页面
+				24 container
+					25 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					26 button 关闭学生导入与账号开通
+						27 image
+				28 container
+					29 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					30 button 关闭系统总览
+						31 image
+				155 container
+					156 tab (selected, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 1
+实施总览
+					157 button 关闭实施总览
+						158 image
+			32 button 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			159 container
+				160 heading 实施与上线验收, Value: 1
+					161 text 实施与上线验收
+				162 button 刷新
+				163 text IMPLEMENTATION PROJECT
+				164 heading 跃科职业技术学院 007 正式演示实施验收, Value: 2
+					165 text 跃科职业技术学院 007 正式演示实施验收
+				166 text 当前阶段 已验收封板；未取得证据的项目明确显示“待检查 / 待读取 / 待预览”。
+				167 text 已验收封板
+				168 container
+					169 text 本项目已经验收封板 后续配置调整必须通过新的变更项目继续留痕。
+				170 link Description: 进入上线检查, Value: 127.0.0.1:5173/admin/system/implementation/acceptance
+				171 link Description: 核对开局配置, Value: 127.0.0.1:5173/admin/system/implementation/wizard
+				172 container 实施项目关键结论
+					173 text 上线阻断
+					174 text 0
+					175 text 来自最近一次真实检查结果
+					176 text 未确认流程政策
+					177 text 0
+					178 text 来自运行时预设服务
+					179 text 待安装对象
+					180 text 待预览
+					181 text 生成预览后才有可靠数量
+					182 text 未授权模块
+					183 text 待预览
+					184 text 未预览时不猜测为 0
+					185 text 验收证据
+					186 text 已封板
+					187 text 存在不可变验收摘要
+				188 container
+					189 text 上线检查
+					190 text 只有真实运行检查后才显示 0 个阻断；未运行时保持“待检查”。
+					191 text 本次检查无阻断
+					192 table
+						193 row
+							194 cell
+								195 text 检查项
+							196 cell
+								197 text 结果
+							198 cell
+								199 text 级别
+							200 cell
+								201 text 责任角色
+						202 row
+							203 cell
+								204 text 组织架构已核验
+							205 cell
+								206 text PASS
+							207 cell
+								208 text BLOCKER
+							209 cell
+								210 text SCHOOL_ADMIN
+						211 row
+							212 cell
+								213 text 三角色权限已核验
+							214 cell
+								215 text PASS
+							216 cell
+								217 text BLOCKER
+							218 cell
+								219 text SCHOOL_ADMIN
+						220 row
+							221 cell
+								222 text 核心演示流程已核验
+							223 cell
+								224 text PASS
+							225 cell
+								226 text BLOCKER
+							227 cell
+								228 text SCHOOL_ADMIN
+				229 container
+					230 text 学校准备清单
+					231 link Description: 01 首次开局向导 学校基础配置与实施项目 →, Value: 127.0.0.1:5173/admin/system/implementation/wizard
+					232 link Description: 02 预设方案 核对将安装的流程与工作台 →, Value: 127.0.0.1:5173/admin/system/implementation/presets
+					233 link Description: 03 数据导入与智能匹配 主数据与关系映射 →, Value: 127.0.0.1:5173/admin/system/implementation/data-mapping
+					234 link Description: 04 已安装配置 核对实际安装版本 →, Value: 127.0.0.1:5173/admin/system/implementation/installed
+					235 link Description: 05 变更与升级 通过变更项目持续维护 →, Value: 127.0.0.1:5173/admin/system/implementation/changes
+					236 link Description: 06 上线检查与验收 真实检查、阻断与封板证据 →, Value: 127.0.0.1:5173/admin/system/implementation/acceptance
+					237 text 验收原则
+					238 text 先验核心业务，再看页面
+					239 text 账号、权限、数据范围拒绝、审计回执必须有真实的请求和保存记录作为依据。
+					240 text 不同角色分别验
+					241 text 管理员通过不能替代普通老师、只读角色与配置角色的验收。
+					242 text 错误状态必须能恢复
+					243 text 无权限、数据已变化、超时、扫描失败与缓存失效必须分开呈现。
+			154 button 我的常用
+
+The focused UI element is 0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/implementation/overview

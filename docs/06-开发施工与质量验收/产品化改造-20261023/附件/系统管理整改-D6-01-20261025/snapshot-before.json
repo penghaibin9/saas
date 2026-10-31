@@ -1,0 +1,49 @@
+{
+  "time": "2026-10-25T08:57:53.489328+00:00",
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "roleId": "4",
+  "roleVersion": 1,
+  "roleRemark": "SAAS_CUSTOM;authority=CONTROL_PLANE;permMode=DB;scopeSource=RULE",
+  "permissionCodes": [
+    "academicAffairs.attendance.view",
+    "academicAffairs.calendar.view",
+    "academicAffairs.classTimeBand.view",
+    "academicAffairs.classroom.view",
+    "academicAffairs.course.view",
+    "academicAffairs.dashboard.view",
+    "academicAffairs.deferredExam.review",
+    "academicAffairs.evaluation.view",
+    "academicAffairs.exam.recordAbnormal",
+    "academicAffairs.exam.view",
+    "academicAffairs.exemption.review",
+    "academicAffairs.grade.input",
+    "academicAffairs.grade.submit",
+    "academicAffairs.grade.view",
+    "academicAffairs.gradeChange.apply",
+    "academicAffairs.lab.view",
+    "academicAffairs.process.view",
+    "academicAffairs.program.view",
+    "academicAffairs.resourceOccupancy.view",
+    "academicAffairs.roster.view",
+    "academicAffairs.schedule.teacherConfirm",
+    "academicAffairs.schedule.view",
+    "academicAffairs.scheduleChange.apply",
+    "academicAffairs.scheduleChange.view",
+    "academicAffairs.selection.rosterView",
+    "academicAffairs.selection.view",
+    "academicAffairs.teachingTask.view",
+    "academicAffairs.term.view",
+    "academicAffairs.textbook.selection.manage",
+    "academicAffairs.textbook.view",
+    "academicAffairs.timeslot.view",
+    "approval.todo.view",
+    "workbench.home.view",
+    "workbench.message.view"
+  ],
+  "scopes": [
+    {
+      "type": "SELF",
+      "target": null
+    }
+  ]
+}

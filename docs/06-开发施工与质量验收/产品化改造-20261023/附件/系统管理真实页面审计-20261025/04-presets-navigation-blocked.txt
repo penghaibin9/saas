@@ -1,0 +1,339 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/implementation/wizard".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/implementation/wizard
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:08, Secondary Actions: Expand
+				11 image
+				206 text 10/25周日 12:08
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:01:43, Secondary Actions: Expand
+				32 image
+				443 text 本次工作 00:01:43
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		46 container 三级菜单
+			47 button 展开三级菜单
+			48 container 三级菜单
+				49 button 系统总览
+				50 button 实施总览
+				51 button 首次开局向导
+				52 button 预设方案
+				53 button 职业教育国家标准库
+				54 button 数据导入与智能匹配
+				55 button 已安装配置
+				56 button 变更与升级
+				57 button 上线检查与验收
+			58 checkbox Description: 取消固定三级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				61 container
+					62 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					63 button 关闭系统总览
+						64 image
+				65 container
+					66 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					67 button 关闭教职工账号
+						68 image
+				69 container
+					70 tab (selectable, settable, boolean) 教职工导入, Help: 身份与账号 / 教职工导入, Value: 0
+教职工导入
+					71 button 关闭教职工导入
+						72 image
+				73 container
+					74 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					75 button 关闭数据交换任务中心
+						76 image
+				202 container
+					203 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					204 button 关闭实施总览
+						205 image
+				208 container
+					209 tab (selected, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 1
+首次开局向导
+					210 button 关闭首次开局向导
+						211 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			212 container
+				213 heading 首次开局向导, Value: 1
+					214 text 首次开局向导
+				215 container
+					216 text 跃科职业技术学院 007 正式演示实施验收 007-GOV-2026 · 高职标准版
+				217 container
+					218 text 已验收 状态 42% 完成度 0 安装版本
+				219 container
+					220 text 12类引导式问答 推荐值已经填好，学校只需确认或选择；保存后仍可修改
+				221 text 学校开通
+				222 text 实施配置项
+				223 container
+					224 text 学校层次 *
+					225 pop up button (collapsed, settable) 学校层次*, Secondary Actions: Expand
+						226 menu
+							227 高职
+							228 中职
+							229 开户后确认
+				230 container
+					231 text 实施节奏 *
+					232 pop up button (collapsed, settable) 实施节奏*, Value: 标准一周, Secondary Actions: Expand
+						233 menu
+							234 (selected) 标准一周
+							235 两天试点
+							236 演示
+							237 私有化
+				238 container
+					239 text 计划交付天数 *
+					240 stepper (settable) 计划交付天数*
+				241 button 保存
+				242 text 角色与权限
+				243 text 实施配置项
+				244 container
+					245 text 角色模板策略 *
+					246 pop up button (collapsed, settable) 角色模板策略*, Value: 安装推荐角色, Secondary Actions: Expand
+						247 menu
+							248 (selected) 安装推荐角色
+							249 最小角色集
+				250 container
+					251 text 管理员与审计员职责分离 *
+					252 pop up button (collapsed, settable) 管理员与审计员职责分离*, Value: 是, Secondary Actions: Expand
+						253 menu
+							254 (selected) 是
+							255 否
+				256 button 保存
+				257 text 组织结构
+				258 text 实施配置项
+				259 container
+					260 text 教学组织模型 *
+					261 pop up button (collapsed, settable) 教学组织模型*, Value: 学校—学院—专业—班级, Secondary Actions: Expand
+						262 menu
+							263 (selected) 学校—学院—专业—班级
+							264 学校—部门—班级
+				265 container
+					266 text 从师生文件推导组织候选 *
+					267 pop up button (collapsed, settable) 从师生文件推导组织候选*, Value: 是, Secondary Actions: Expand
+						268 menu
+							269 (selected) 是
+							270 否
+				271 button 保存
+				272 text 师生导入
+				273 text 实施配置项
+				274 container
+					275 text 重复账号处理 *
+					276 pop up button (collapsed, settable) 重复账号处理*, Value: 阻断并回执, Secondary Actions: Expand
+						277 menu
+							278 (selected) 阻断并回执
+							279 跳过既有账号
+				280 container
+					281 text 初始密码策略 *
+					282 pop up button (collapsed, settable) 初始密码策略*, Value: 随机一次性密码, Secondary Actions: Expand
+						283 menu
+							284 (selected) 随机一次性密码
+							285 激活链接
+				286 button 保存
+				287 text 业务关系
+				288 text 实施配置项
+				289 container
+					290 text 业务关系来源 *
+					291 pop up button (collapsed, settable) 业务关系来源*, Value: 导入后人工确认, Secondary Actions: Expand
+						292 menu
+							293 (selected) 导入后人工确认
+							294 教务系统同步
+				295 container
+					296 text 禁止用角色名虚构业务关系 *
+					297 pop up button (collapsed, settable) 禁止用角色名虚构业务关系*, Value: 是, Secondary Actions: Expand
+						298 menu
+							299 (selected) 是
+							300 否
+				301 button 保存
+				302 text 流程
+				303 text 实施配置项
+				304 container
+					305 text 流程开局策略 *
+					306 pop up button (collapsed, settable) 流程开局策略*, Value: 安装推荐模板、确认后启用, Secondary Actions: Expand
+						307 menu
+							308 (selected) 安装推荐模板、确认后启用
+							309 学校自行配置
+				310 container
+					311 text 学校政策确认后才能启用 *
+					312 pop up button (collapsed, settable) 学校政策确认后才能启用*, Value: 是, Secondary Actions: Expand
+						313 menu
+							314 (selected) 是
+							315 否
+				316 button 保存
+				317 text 字典与编号
+				318 text 实施配置项
+				319 container
+					320 text 优先使用国家/行业标准代码 *
+					321 pop up button (collapsed, settable) 优先使用国家/行业标准代码*, Value: 是, Secondary Actions: Expand
+						322 menu
+							323 (selected) 是
+							324 否
+				325 container
+					326 text 校内编号规则责任部门 *
+					327 pop up button (collapsed, settable) 校内编号规则责任部门*, Value: 信息中心, Secondary Actions: Expand
+						328 menu
+							329 (selected) 信息中心
+							330 教务处
+							331 学校办公室
+				332 button 保存
+				333 text 安全与审计
+				334 text 实施配置项
+				335 container
+					336 text 首次登录必须改密 *
+					337 pop up button (collapsed, settable) 首次登录必须改密*, Value: 是, Secondary Actions: Expand
+						338 menu
+							339 (selected) 是
+							340 否
+				341 container
+					342 text 敏感导出添加水印 *
+					343 pop up button (collapsed, settable) 敏感导出添加水印*, Value: 是, Secondary Actions: Expand
+						344 menu
+							345 (selected) 是
+							346 否
+				347 container
+					348 text 会话有效分钟数 *
+					349 stepper (settable, integer) 会话有效分钟数*, Value: 120
+				350 button 保存
+				351 text 菜单与工作台
+				352 text 实施配置项
+				353 container
+					354 text 角色切换时同步菜单和工作台 *
+					355 pop up button (collapsed, settable) 角色切换时同步菜单和工作台*, Value: 是, Secondary Actions: Expand
+						356 menu
+							357 (selected) 是
+							358 否
+				359 container
+					360 text 首页策略 *
+					361 pop up button (collapsed, settable) 首页策略*, Value: 按角色推荐, Secondary Actions: Expand
+						362 menu
+							363 (selected) 按角色推荐
+							364 学校后期自定义
+				365 button 保存
+				366 text 消息与通知
+				367 text 实施配置项
+				368 container
+					369 text 默认通知渠道 *
+					370 pop up button (collapsed, settable) 默认通知渠道*, Value: 站内消息, Secondary Actions: Expand
+						371 menu
+							372 (selected) 站内消息
+							373 短信（需配置）
+							374 微信（需配置）
+				375 container
+					376 text 启用超时催办 *
+					377 pop up button (collapsed, settable) 启用超时催办*, Value: 是, Secondary Actions: Expand
+						378 menu
+							379 (selected) 是
+							380 否
+				381 button 保存
+				382 text 上线检查
+				383 text 实施配置项
+				384 container
+					385 text 阻断项全部通过才能验收 *
+					386 pop up button (collapsed, settable) 阻断项全部通过才能验收*, Value: 是, Secondary Actions: Expand
+						387 menu
+							388 (selected) 是
+							389 否
+				390 container
+					391 text 最终验收角色 *
+					392 pop up button (collapsed, settable) 最终验收角色*, Value: 学校管理员, Secondary Actions: Expand
+						393 menu
+							394 (selected) 学校管理员
+							395 校领导
+				396 button 保存
+				397 text 模块业务
+				398 text 实施配置项
+				399 container
+					400 text 首期开通模块 *
+					401 checkbox (settable, integer) 首期开通模块* 迎新 学工 教务 实习 毕设 就业, Value: 0
+					402 checkbox (settable, integer) Description: 学工, Value: 0
+					403 checkbox (settable, integer) Description: 教务, Value: 0
+					404 checkbox (settable, integer) Description: 实习, Value: 0
+					405 checkbox (settable, integer) Description: 毕设, Value: 0
+					406 checkbox (settable, integer) Description: 就业, Value: 0
+				407 container
+					408 text 启用专业目录与专业教学标准入口 *
+					409 pop up button (collapsed, settable) 启用专业目录与专业教学标准入口*, Value: 是, Secondary Actions: Expand
+						410 menu
+							411 (selected) 是
+							412 否
+				413 button 保存
+				414 button 生成安装预览
+				415 container
+					416 text 运行预设主表 流程默认待确认；工作台与站内通知模板已安装
+				417 text 流程 1 工作台 1 通知模板 1
+				418 checkbox (disabled, settable, integer) 0
+				419 text 学生请假审批（007 标准）
+				420 text 流程编号 CS_LEAVE_007 · 48小时 · 启用
+				421 stepper (settable, integer) Description: 流程时限（小时）, Value: 48
+				422 button 保存时限
+				423 heading 角色工作台（可后续修改）, Value: 4
+					424 text 角色工作台（可后续修改）
+				425 text 辅导员
+				426 text 辅导员工作台
+				427 text field (settable) Description: 工作台标题, Value: 辅导员工作台
+				428 text field (settable) Description: 工作台副标题, Value: 待办、风险、谈心与班级学情
+				429 pop up button (collapsed, settable) Description: 工作台状态, Value: 启用, Secondary Actions: Expand
+					430 menu
+						431 (selected) 启用
+						432 停用
+				433 button 保存
+				434 heading 消息与通知（学校可修改显示文案）, Value: 4
+					435 text 消息与通知（学校可修改显示文案）
+				436 text 待办提醒
+				437 text 站内消息 · 可用变量 2 个
+				438 text field (settable) Description: 通知标题, Value: 待办提醒
+				439 text entry area (settable) Description: 通知正文, Value: {name}，您有待审核事项：{title}
+				440 text field (settable) Description: 通知跳转地址, Value: /admin/approval
+				441 checkbox (settable, integer) Description: 启用, Value: 1
+				442 button 保存
+			199 button 我的常用
+		444 container 确认离开当前工作区
+			445 heading 确认离开当前工作区, Value: 2, ID: system-dialog-title
+				446 text 确认离开当前工作区
+			447 text 当前表单还有填写内容，继续离开会丢失未提交的内容。
+			448 container
+				449 button 取消
+				450 button 放弃内容并离开
+
+The focused UI element is 450 button 放弃内容并离开

@@ -1,0 +1,1406 @@
+http://127.0.0.1:5173/admin/system/iam
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:36":
+    - generic: 10/25周日 14:36
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:16:15":
+  - generic: 本次工作 02:16:15
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限" [active]:
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 角色与权限
+  - navigation "三级菜单":
+    - button "身份权限总览":
+      - generic: 身份权限总览
+    - button "预设角色模板":
+      - generic: 预设角色模板
+    - button "学校角色与成员":
+      - generic: 学校角色与成员
+    - button "角色成员与业务身份":
+      - generic: 角色成员与业务身份
+    - button "菜单与操作权限":
+      - generic: 菜单与操作权限
+    - button "数据范围规则":
+      - generic: 数据范围规则
+    - button "临时授权与工作移交":
+      - generic: 临时授权与工作移交
+    - button "安全变更":
+      - generic: 安全变更
+    - button "访问治理":
+      - generic: 访问治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "教职工账号":
+    - generic: 教职工账号
+  - button "关闭教职工账号":
+  - tab "学生账号":
+    - generic: 学生账号
+  - button "关闭学生账号":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "账号异常排查":
+    - generic: 账号异常排查
+  - button "关闭账号异常排查":
+  - tab "登录与安全策略":
+    - generic: 登录与安全策略
+  - button "关闭登录与安全策略":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "学院与部门":
+    - generic: 学院与部门
+  - button "关闭学院与部门":
+  - tab "专业管理":
+    - generic: 专业管理
+  - button "关闭专业管理":
+  - tab "年级与班级":
+    - generic: 年级与班级
+  - button "关闭年级与班级":
+  - tab "岗位管理":
+    - generic: 岗位管理
+  - button "关闭岗位管理":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "业务关系中心":
+    - generic: 业务关系中心
+  - button "关闭业务关系中心":
+  - tab "变更版本":
+    - generic: 变更版本
+  - button "关闭变更版本":
+  - tab "身份权限总览" [selected]:
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:34
+  - heading "权限总览" [level=1]
+  - button "刷新"
+  - article:
+    - generic: 学校角色
+    - strong: "29"
+  - article:
+    - generic: 学校成员
+    - strong: "21308"
+  - article:
+    - generic: 可分配权限
+    - strong: "657"
+  - strong: 学校权限与企业权限分开治理
+  - paragraph: 企业管理员、人力资源人员、企业导师及企业实习权限由“企业成员和访问授权”功能管理，不能在学校角色中分配；企业实习权限不会进入学校可分配权限目录。身份权限通过后，具体业务对象仍由业务守卫再次校验。
+  - button "角色":
+    - strong: 角色
+  - button "角色模板":
+    - strong: 角色模板
+  - button "成员与业务身份":
+    - strong: 成员与业务身份
+  - button "菜单与操作权限":
+    - strong: 菜单与操作权限
+  - button "数据范围":
+    - strong: 数据范围
+  - button "委托":
+    - strong: 委托
+  - button "安全变更":
+    - strong: 安全变更
+  - button "访问解释":
+    - strong: 访问解释
+  - heading "学校可分配权限目录" [level=3]
+  - paragraph: 按业务域和功能分组查找学校可分配的权限。
+  - generic: 搜索权限
+  - textbox "搜索权限":
+    - /placeholder: 搜索权限名称或功能
+  - generic "权限风险筛选":
+    - button "全部 140"
+    - button "高风险 72"
+    - button "中低风险 68"
+  - strong: 常用专题 · 招聘季学校侧权限
+  - generic: 查看招聘季
+  - generic: 管理招聘季
+  - generic: 邀请企业参与招聘季
+  - generic: 关闭招聘季
+  - navigation "权限业务域":
+    - heading "业务域导航" [level=4]
+    - button "全部权限 657":
+      - generic: 全部权限
+      - generic: "657"
+    - button "系统与身份 140":
+      - generic: 系统与身份
+      - generic: "140"
+    - button "学工管理 107":
+      - generic: 学工管理
+      - generic: "107"
+    - button "教务管理 169":
+      - generic: 教务管理
+      - generic: "169"
+    - button "岗位实习 136":
+      - generic: 岗位实习
+      - generic: "136"
+    - button "毕业设计 88":
+      - generic: 毕业设计
+      - generic: "88"
+    - button "就业管理 17":
+      - generic: 就业管理
+      - generic: "17"
+  - heading "系统与身份 （140 项）" [level=4]
+  - paragraph: 账号安全、身份核验、登录控制、角色权限与审计。
+  - button "展开全部"
+  - button "收起全部"
+  - button "手机号治理与认证 10 管理手机号登录凭据、本人验证和安全策略。 收起" [expanded]:
+    - strong: 手机号治理与认证
+    - generic: "10"
+    - generic: 管理手机号登录凭据、本人验证和安全策略。
+    - generic: 收起
+  - generic: 权限名称
+  - generic: 风险等级
+  - generic: 自定义角色
+  - strong: 查看脱敏号码治理
+  - generic: 业务模块
+  - generic: 中风险
+  - generic: 可分配
+  - strong: 精确核对手机号
+  - generic: 业务模块
+  - generic: 高风险
+  - generic: 可分配
+  - strong: 登记或清除待验证号码
+  - generic: 业务模块
+  - generic: 高风险
+  - generic: 可分配
+  - strong: 发送本人验证站内提醒
+  - generic: 业务模块
+  - generic: 中风险
+  - generic: 可分配
+  - strong: 撤销手机号凭据
+  - generic: 业务模块
+  - generic: 重大风险
+  - generic: 可分配
+  - strong: 导出脱敏号码台账
+  - generic: 业务模块
+  - generic: 高风险
+  - generic: 可分配
+  - strong: 申请账号恢复核验
+  - generic: 业务模块
+  - generic: 高风险
+  - generic: 可分配
+  - strong: 独立审批账号恢复
+  - generic: 业务模块
+  - generic: 重大风险
+  - generic: 可分配
+  - strong: 查看手机号安全策略
+  - generic: 业务模块
+  - generic: 低风险
+  - generic: 可分配
+  - strong: 管理手机号安全策略
+  - generic: 业务模块
+  - generic: 重大风险
+  - generic: 可分配
+  - button "完成 1 完成相关的查看、办理与管理权限。 展开":
+    - strong: 完成
+    - generic: "1"
+    - generic: 完成相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "业务办理权限 2 本业务域下的查看、办理与管理权限。 展开":
+    - strong: 业务办理权限
+    - generic: "2"
+    - generic: 本业务域下的查看、办理与管理权限。
+    - generic: 展开
+  - button "已退回 1 已退回相关的查看、办理与管理权限。 展开":
+    - strong: 已退回
+    - generic: "1"
+    - generic: 已退回相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "任务 2 任务相关的查看、办理与管理权限。 展开":
+    - strong: 任务
+    - generic: "2"
+    - generic: 任务相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "模板 1 模板相关的查看、办理与管理权限。 展开":
+    - strong: 模板
+    - generic: "1"
+    - generic: 模板相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "待办 1 待办相关的查看、办理与管理权限。 展开":
+    - strong: 待办
+    - generic: "1"
+    - generic: 待办相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "概览 3 概览相关的查看、办理与管理权限。 展开":
+    - strong: 概览
+    - generic: "3"
+    - generic: 概览相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "生命周期 1 生命周期相关的查看、办理与管理权限。 展开":
+    - strong: 生命周期
+    - generic: "1"
+    - generic: 生命周期相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "排名 1 排名相关的查看、办理与管理权限。 展开":
+    - strong: 排名
+    - generic: "1"
+    - generic: 排名相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "报告 4 报告相关的查看、办理与管理权限。 展开":
+    - strong: 报告
+    - generic: "4"
+    - generic: 报告相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "风险 1 风险相关的查看、办理与管理权限。 展开":
+    - strong: 风险
+    - generic: "1"
+    - generic: 风险相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "导入与数据交换 7 模板、导入任务、校验与结果查看相关权限。 展开":
+    - strong: 导入与数据交换
+    - generic: "7"
+    - generic: 模板、导入任务、校验与结果查看相关权限。
+    - generic: 展开
+  - button "个人档案 5 个人档案相关的查看、办理与管理权限。 展开":
+    - strong: 个人档案
+    - generic: "5"
+    - generic: 个人档案相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "审计与合规 11 登录日志、敏感操作和安全审计相关权限。 展开":
+    - strong: 审计与合规
+    - generic: "11"
+    - generic: 登录日志、敏感操作和安全审计相关权限。
+    - generic: 展开
+  - button "配置 · 学校品牌 2 配置 · 学校品牌相关的查看、办理与管理权限。 展开":
+    - strong: 配置 · 学校品牌
+    - generic: "2"
+    - generic: 配置 · 学校品牌相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "配置 · 功能开关 2 配置 · 功能开关相关的查看、办理与管理权限。 展开":
+    - strong: 配置 · 功能开关
+    - generic: "2"
+    - generic: 配置 · 功能开关相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "配置 3 配置相关的查看、办理与管理权限。 展开":
+    - strong: 配置
+    - generic: "3"
+    - generic: 配置相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "权限与角色管理 15 角色、成员、权限分配与回收相关权限。 展开":
+    - strong: 权限与角色管理
+    - generic: "15"
+    - generic: 角色、成员、权限分配与回收相关权限。
+    - generic: 展开
+  - button "系统集成 2 系统集成相关的查看、办理与管理权限。 展开":
+    - strong: 系统集成
+    - generic: "2"
+    - generic: 系统集成相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "数据迁移 2 数据迁移相关的查看、办理与管理权限。 展开":
+    - strong: 数据迁移
+    - generic: "2"
+    - generic: 数据迁移相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "组织 · 任职关系 2 组织 · 任职关系相关的查看、办理与管理权限。 展开":
+    - strong: 组织 · 任职关系
+    - generic: "2"
+    - generic: 组织 · 任职关系相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "组织 · 班级 2 组织 · 班级相关的查看、办理与管理权限。 展开":
+    - strong: 组织 · 班级
+    - generic: "2"
+    - generic: 组织 · 班级相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "组织 · 专业 2 组织 · 专业相关的查看、办理与管理权限。 展开":
+    - strong: 组织 · 专业
+    - generic: "2"
+    - generic: 组织 · 专业相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "组织 6 组织相关的查看、办理与管理权限。 展开":
+    - strong: 组织
+    - generic: "6"
+    - generic: 组织相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "身份核验 12 身份、账号与本人关系核验相关权限。 展开":
+    - strong: 身份核验
+    - generic: "12"
+    - generic: 身份、账号与本人关系核验相关权限。
+    - generic: 展开
+  - button "访问 1 访问相关的查看、办理与管理权限。 展开":
+    - strong: 访问
+    - generic: "1"
+    - generic: 访问相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "通信 2 通信相关的查看、办理与管理权限。 展开":
+    - strong: 通信
+    - generic: "2"
+    - generic: 通信相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "文件 1 文件相关的查看、办理与管理权限。 展开":
+    - strong: 文件
+    - generic: "1"
+    - generic: 文件相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "文件治理 1 文件治理相关的查看、办理与管理权限。 展开":
+    - strong: 文件治理
+    - generic: "1"
+    - generic: 文件治理相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "实施验收 6 实施验收相关的查看、办理与管理权限。 展开":
+    - strong: 实施验收
+    - generic: "6"
+    - generic: 实施验收相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "实施验收 · 变更 1 实施验收 · 变更相关的查看、办理与管理权限。 展开":
+    - strong: 实施验收 · 变更
+    - generic: "1"
+    - generic: 实施验收 · 变更相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "实施验收 · 检查 1 实施验收 · 检查相关的查看、办理与管理权限。 展开":
+    - strong: 实施验收 · 检查
+    - generic: "1"
+    - generic: 实施验收 · 检查相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "实施验收 · 已安装能力 1 实施验收 · 已安装能力相关的查看、办理与管理权限。 展开":
+    - strong: 实施验收 · 已安装能力
+    - generic: "1"
+    - generic: 实施验收 · 已安装能力相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "实施验收 · 映射 2 实施验收 · 映射相关的查看、办理与管理权限。 展开":
+    - strong: 实施验收 · 映射
+    - generic: "2"
+    - generic: 实施验收 · 映射相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "实施验收 · 预设 1 实施验收 · 预设相关的查看、办理与管理权限。 展开":
+    - strong: 实施验收 · 预设
+    - generic: "1"
+    - generic: 实施验收 · 预设相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "实施验收 · 关联关系 3 实施验收 · 关联关系相关的查看、办理与管理权限。 展开":
+    - strong: 实施验收 · 关联关系
+    - generic: "3"
+    - generic: 实施验收 · 关联关系相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "后台任务 2 后台任务相关的查看、办理与管理权限。 展开":
+    - strong: 后台任务
+    - generic: "2"
+    - generic: 后台任务相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "工作流 2 工作流相关的查看、办理与管理权限。 展开":
+    - strong: 工作流
+    - generic: "2"
+    - generic: 工作流相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 班级 1 消息 · 班级相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 班级
+    - generic: "1"
+    - generic: 消息 · 班级相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 学院 1 消息 · 学院相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 学院
+    - generic: "1"
+    - generic: 消息 · 学院相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 紧急事项 2 消息 · 紧急事项相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 紧急事项
+    - generic: "2"
+    - generic: 消息 · 紧急事项相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 3 消息相关的查看、办理与管理权限。 展开":
+    - strong: 消息
+    - generic: "3"
+    - generic: 消息相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 全校人员 1 消息 · 全校人员相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 全校人员
+    - generic: "1"
+    - generic: 消息 · 全校人员相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 全校教职工 1 消息 · 全校教职工相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 全校教职工
+    - generic: "1"
+    - generic: 消息 · 全校教职工相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 全校学生 1 消息 · 全校学生相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 全校学生
+    - generic: "1"
+    - generic: 消息 · 全校学生相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 统计 1 消息 · 统计相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 统计
+    - generic: "1"
+    - generic: 消息 · 统计相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "消息 · 模板 1 消息 · 模板相关的查看、办理与管理权限。 展开":
+    - strong: 消息 · 模板
+    - generic: "1"
+    - generic: 消息 · 模板相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "首页 2 首页相关的查看、办理与管理权限。 展开":
+    - strong: 首页
+    - generic: "2"
+    - generic: 首页相关的查看、办理与管理权限。
+    - generic: 展开
+  - button "流程 1 流程相关的查看、办理与管理权限。 展开":
+    - strong: 流程
+    - generic: "1"
+    - generic: 流程相关的查看、办理与管理权限。
+    - generic: 展开
+  - heading "学校角色模板" [level=3]
+  - paragraph: 已发布模板不可修改；自定义角色始终固定到来源版本，升级前需先查看本校影响。
+  - button "进入模板管理"
+  - article:
+    - strong: 教务管理员
+    - generic: 第 3 版
+    - button "查看教务管理员的模板权限": 权限 180 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 任课教师
+    - generic: 第 3 版
+    - button "查看任课教师的模板权限": 权限 34 项 · 查看
+    - generic: 绑定角色 3 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 学院管理员
+    - generic: 第 6 版
+    - button "查看学院管理员的模板权限": 权限 431 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 辅导员
+    - generic: 第 4 版
+    - button "查看辅导员的模板权限": 权限 59 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 宿管老师
+    - generic: 第 3 版
+    - button "查看宿管老师的模板权限": 权限 13 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 就业老师
+    - generic: 第 4 版
+    - button "查看就业老师的模板权限": 权限 29 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 资助老师
+    - generic: 第 3 版
+    - button "查看资助老师的模板权限": 权限 20 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 学院毕设管理员
+    - generic: 第 3 版
+    - button "查看学院毕设管理员的模板权限": 权限 84 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 答辩专家
+    - generic: 第 4 版
+    - button "查看答辩专家的模板权限": 权限 8 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 答辩秘书
+    - generic: 第 4 版
+    - button "查看答辩秘书的模板权限": 权限 10 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 毕设成绩管理员
+    - generic: 第 4 版
+    - button "查看毕设成绩管理员的模板权限": 权限 12 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 专业毕设管理员
+    - generic: 第 3 版
+    - button "查看专业毕设管理员的模板权限": 权限 41 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 毕设指导教师
+    - generic: 第 3 版
+    - button "查看毕设指导教师的模板权限": 权限 25 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 毕设评阅教师
+    - generic: 第 4 版
+    - button "查看毕设评阅教师的模板权限": 权限 9 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 毕业设计管理员
+    - generic: 第 3 版
+    - button "查看毕业设计管理员的模板权限": 权限 84 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 实习指导教师
+    - generic: 第 3 版
+    - button "查看实习指导教师的模板权限": 权限 71 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 校领导
+    - generic: 第 4 版
+    - button "查看校领导的模板权限": 权限 209 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 组织人事人员
+    - generic: 第 3 版
+    - button "查看组织人事人员的模板权限": 权限 7 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 心理老师
+    - generic: 第 3 版
+    - button "查看心理老师的模板权限": 权限 17 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 学校管理员
+    - generic: 第 5 版
+    - button "查看学校管理员的模板权限": 权限 656 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 安全审计员
+    - generic: 第 3 版
+    - button "查看安全审计员的模板权限": 权限 28 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 教职工
+    - generic: 第 1 版
+    - button "查看教职工的模板权限": 权限 0 项 · 查看
+    - generic: 绑定角色 1 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 学生
+    - generic: 第 1 版
+    - button "查看学生的模板权限": 权限 0 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 学工老师
+    - generic: 第 4 版
+    - button "查看学工老师的模板权限": 权限 109 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 学工管理员
+    - generic: 第 4 版
+    - button "查看学工管理员的模板权限": 权限 113 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 系统管理员
+    - generic: 第 4 版
+    - button "查看系统管理员的模板权限": 权限 82 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - article:
+    - strong: 团委老师
+    - generic: 第 3 版
+    - button "查看团委老师的模板权限": 权限 16 项 · 查看
+    - generic: 绑定角色 0 个
+    - button "查看影响"
+    - generic "版本与摘要"
+  - heading "访问解释" [level=3]
+  - paragraph: 解释“某个学校成员为什么能或不能访问具体对象”。身份权限通过不等于业务最终允许；数据范围目标与业务对象上下文会交给业务规则裁决，缺失上下文时将继续按拒绝处理。
+  - text: 学校成员编号
+  - textbox "学校成员编号":
+    - /placeholder: 例如 1024
+  - text: 模块
+  - textbox "模块": internship
+  - text: 权限
+  - combobox "权限":
+    - option "查看脱敏号码治理"
+    - option "精确核对手机号"
+    - option "登记或清除待验证号码"
+    - option "发送本人验证站内提醒"
+    - option "撤销手机号凭据"
+    - option "导出脱敏号码台账"
+    - option "申请账号恢复核验"
+    - option "独立审批账号恢复"
+    - option "查看手机号安全策略"
+    - option "管理手机号安全策略"
+    - option "查看招聘季"
+    - option "管理招聘季" [selected]
+    - option "邀请企业参与招聘季"
+    - option "关闭招聘季"
+    - option "导出宿舍台账"
+    - option "教务 · 档案 · 管理"
+    - option "教务 · 考勤 · 查看"
+    - option "教务 · 校历 · 管理"
+    - option "教务 · 校历 · 查看"
+    - option "教务 · 校历发布 · 管理"
+    - option "教务 · 上课时间段 · 管理"
+    - option "教务 · 上课时间段 · 查看"
+    - option "教务 · 教室 · 新增"
+    - option "教务 · 教室 · 删除"
+    - option "教务 · 教室 · 修改"
+    - option "教务 · 教室 · 查看"
+    - option "教务 · 课程 · 审批"
+    - option "教务 · 课程 · 管理"
+    - option "教务 · 课程 · 查看"
+    - option "教务 · 设备 · 新增"
+    - option "教务 · 设备 · 删除"
+    - option "教务 · 设备 · 修改"
+    - option "教务 · 设备 · 查看"
+    - option "教务 · 评价 · 查看"
+    - option "教务 · 考试 · 登记异常"
+    - option "教务 · 考试 · 查看"
+    - option "教务 · 成绩 · 档案"
+    - option "教务 · 成绩 · 学院审核"
+    - option "教务 · 成绩 · 导出"
+    - option "教务 · 成绩 · 导入"
+    - option "教务 · 成绩 · 录入"
+    - option "教务 · 成绩 · 策略 · 管理"
+    - option "教务 · 成绩 · 策略 · 查看"
+    - option "教务 · 成绩 · 发布"
+    - option "教务 · 成绩 · 退回"
+    - option "教务 · 成绩 · 提交"
+    - option "教务 · 成绩 · 查看"
+    - option "教务 · 成绩更正 · 应用"
+    - option "教务 · 成绩更正 · 审核"
+    - option "教务 · 成绩认定 · 管理"
+    - option "教务 · 成绩认定 · 查看"
+    - option "教务 · 毕业证书 · 管理"
+    - option "教务 · 毕业证书 · 查看"
+    - option "教务 · 实训室 · 新增"
+    - option "教务 · 实训室 · 删除"
+    - option "教务 · 实训室 · 修改"
+    - option "教务 · 实训室 · 查看"
+    - option "教务 · 等级考试 · 管理"
+    - option "教务 · 等级考试 · 查看"
+    - option "教务 · 补考 · 档案"
+    - option "教务 · 补考 · 管理"
+    - option "教务 · 组织 · 管理"
+    - option "教务 · 组织 · 查看"
+    - option "教务 · 培养方案 · 变更状态"
+    - option "教务 · 培养方案 · 管理"
+    - option "教务 · 培养方案 · 发布"
+    - option "教务 · 培养方案 · 审核"
+    - option "教务 · 培养方案 · 提交"
+    - option "教务 · 培养方案 · 查看"
+    - option "教务 · 注册 · 管理"
+    - option "教务 · 注册 · 查看"
+    - option "教务 · 资源冲突 · 查看"
+    - option "教务 · 资源占用 · 查看"
+    - option "教务 · 资源报修 · 管理"
+    - option "教务 · 资源报修 · 查看"
+    - option "教务 · 资源统计 · 查看"
+    - option "教务 · 名单 · 导出"
+    - option "教务 · 名单 · 导入"
+    - option "教务 · 名单 · 查看"
+    - option "教务 · 名单 · 查看敏感信息"
+    - option "教务 · 排期 · 档案"
+    - option "教务 · 排期 · 编辑"
+    - option "教务 · 排期 · 导入"
+    - option "教务 · 排期 · 规则 · 管理"
+    - option "教务 · 排期 · 教师确认"
+    - option "教务 · 排期 · 查看"
+    - option "教务 · 调停课 · 教务审核"
+    - option "教务 · 调停课 · 应用"
+    - option "教务 · 调停课 · 学院审核"
+    - option "教务 · 调停课 · 查看"
+    - option "教务 · 统计 · 快照 · 新增"
+    - option "教务 · 统计 · 快照 · 管理"
+    - option "教务 · 统计 · 快照 · 查看"
+    - option "教务 · 统计 · 查看"
+    - option "教务 · 状态变更 · 应用"
+    - option "教务 · 状态变更 · 查看"
+    - option "教务 · 教学任务 · 调整"
+    - option "教务 · 教学任务 · 确认"
+    - option "教务 · 教学任务 · 管理"
+    - option "教务 · 教学任务 · 合并"
+    - option "教务 · 教学任务 · 统计"
+    - option "教务 · 教学任务 · 查看"
+    - option "教务 · 教材 · 分配 · 管理"
+    - option "教务 · 教材 · 订单 · 管理"
+    - option "教务 · 教材 · 审核 · 管理"
+    - option "教务 · 作息时间 · 管理"
+    - option "教务 · 作息时间 · 查看"
+    - option "审批 · 完成 · 查看"
+    - option "审批 · 管理"
+    - option "审批 · 已退回 · 查看"
+    - option "审批 · 任务 · 处理"
+    - option "审批 · 模板 · 查看"
+    - option "审批 · 待办 · 查看"
+    - option "校区 · 记录 · 查看"
+    - option "校园服务 · 审计 · 查看"
+    - option "校园服务 · 概览 · 查看"
+    - option "校园服务 · 处分 · 新增"
+    - option "校园服务 · 处分 · 编辑"
+    - option "校园服务 · 处分 · 查看"
+    - option "校园服务 · 处分 · 作废"
+    - option "校园服务 · 宿舍 · 处理"
+    - option "校园服务 · 宿舍 · 查看"
+    - option "校园服务 · 授予 · 审批"
+    - option "校园服务 · 授予 · 查看"
+    - option "校园服务 · 学生 · 新增"
+    - option "校园服务 · 学生 · 编辑"
+    - option "校园服务 · 学生 · 查看"
+    - option "校园服务 · 学生 · 作废"
+    - option "校园服务 · 工单 · 分配"
+    - option "校园服务 · 工单 · 新增"
+    - option "校园服务 · 工单 · 处理"
+    - option "校园服务 · 工单 · 查看"
+    - option "数据中心 · 概览 · 查看"
+    - option "数据中心 · 生命周期 · 查看"
+    - option "数据中心 · 排名 · 查看"
+    - option "数据中心 · 报告 · 查看"
+    - option "数据中心 · 风险 · 查看"
+    - option "就业 · 审计 · 查看"
+    - option "就业 · 企业 · 管理"
+    - option "就业 · 企业 · 查看"
+    - option "就业 · 概览 · 查看"
+    - option "就业 · 跟进 · 管理"
+    - option "就业 · 跟进 · 查看"
+    - option "就业 · 后台任务 · 管理"
+    - option "就业 · 后台任务 · 查看"
+    - option "就业 · 材料 · 审批"
+    - option "就业 · 材料 · 查看"
+    - option "就业 · 学生 · 管理"
+    - option "就业 · 学生 · 查看"
+    - option "就业 · 未就业人员 · 分配"
+    - option "就业 · 未就业人员 · 管理"
+    - option "就业 · 未就业人员 · 查看"
+    - option "字段 · 查看完整信息"
+    - option "毕业设计 · 档案 · 导出"
+    - option "毕业设计 · 档案 · 文件"
+    - option "毕业设计 · 档案 · 提交"
+    - option "毕业设计 · 审计 · 查看"
+    - option "毕业设计 · 批次 · 新增"
+    - option "毕业设计 · 批次 · 修改"
+    - option "毕业设计 · 批次 · 查看"
+    - option "毕业设计 · 概览 · 查看"
+    - option "毕业设计 · 答辩 · 分组管理"
+    - option "毕业设计 · 答辩 · 发布"
+    - option "毕业设计 · 答辩 · 评分"
+    - option "毕业设计 · 答辩 · 成绩确认"
+    - option "毕业设计 · 答辩 · 查看"
+    - option "毕业设计 · 最终成果 · 导出"
+    - option "毕业设计 · 最终成果 · 审核"
+    - option "毕业设计 · 最终成果 · 查看"
+    - option "毕业设计 · 成绩 · 发布"
+    - option "毕业设计 · 成绩 · 审核"
+    - option "毕业设计 · 成绩 · 查看"
+    - option "毕业设计 · 指导 · 查看"
+    - option "毕业设计 · 导师 · 管理"
+    - option "毕业设计 · 扩展功能 · 管理"
+    - option "毕业设计 · 查重 · 查看"
+    - option "毕业设计 · 开题 · 导出"
+    - option "毕业设计 · 开题 · 审核"
+    - option "毕业设计 · 开题 · 查看"
+    - option "毕业设计 · 审核 · 查看"
+    - option "毕业设计 · 风险归档 · 管理"
+    - option "毕业设计 · 统计 · 查看"
+    - option "毕业设计 · 学生 · 导出"
+    - option "毕业设计 · 学生 · 管理"
+    - option "毕业设计 · 学生 · 查看"
+    - option "毕业设计 · 任务书 · 导出"
+    - option "毕业设计 · 模板 · 管理"
+    - option "毕业设计 · 课题 · 变更"
+    - option "毕业设计 · 课题 · 导出"
+    - option "毕业设计 · 课题 · 资源库"
+    - option "毕业设计 · 课题 · 管理"
+    - option "毕业设计 · 课题 · 审核"
+    - option "毕业设计 · 课题 · 轮次"
+    - option "毕业设计 · 课题 · 提交"
+    - option "岗位实习 · 协议 · 导出"
+    - option "岗位实习 · 协议 · 管理"
+    - option "岗位实习 · 协议 · 学校确认"
+    - option "岗位实习 · 协议 · 签署"
+    - option "岗位实习 · 协议 · 模板 · 管理"
+    - option "岗位实习 · 协议 · 查看"
+    - option "岗位实习 · 申请 · 审核"
+    - option "岗位实习 · 申请 · 查看"
+    - option "岗位实习 · 档案 · 强制"
+    - option "岗位实习 · 档案 · 管理"
+    - option "岗位实习 · 档案 · 资源包"
+    - option "岗位实习 · 档案 · 查看"
+    - option "岗位实习 · 考勤 · 导出"
+    - option "岗位实习 · 考勤 · 审核"
+    - option "岗位实习 · 考勤 · 查看"
+    - option "岗位实习 · 批次 · 导出"
+    - option "岗位实习 · 批次 · 管理"
+    - option "岗位实习 · 批次 · 查看"
+    - option "岗位实习 · 变更 · 查看"
+    - option "岗位实习 · 投诉 · 敏感信息"
+    - option "岗位实习 · 合规 · 免修 · 审批"
+    - option "岗位实习 · 合规 · 免修 · 申请"
+    - option "岗位实习 · 合规 · 管理"
+    - option "岗位实习 · 合规 · 审核"
+    - option "岗位实习 · 合规 · 查看"
+    - option "岗位实习 · 知情同意 · 管理"
+    - option "岗位实习 · 概览 · 查看"
+    - option "岗位实习 · 企业 · 导出"
+    - option "岗位实习 · 企业 · 检查 · 管理"
+    - option "岗位实习 · 企业 · 检查 · 查看"
+    - option "岗位实习 · 企业 · 管理"
+    - option "岗位实习 · 企业 · 查看"
+    - option "岗位实习 · 评价 · 指导教师 · 管理"
+    - option "岗位实习 · 评价 · 企业 · 导出"
+    - option "岗位实习 · 评价 · 企业 · 管理"
+    - option "岗位实习 · 评价 · 企业 · 审核"
+    - option "岗位实习 · 评价 · 企业 · 查看"
+    - option "岗位实习 · 评价 · 本人 · 导出"
+    - option "岗位实习 · 评价 · 本人 · 审核"
+    - option "岗位实习 · 评价 · 本人 · 查看"
+    - option "岗位实习 · 证明材料 · 导出"
+    - option "岗位实习 · 备案 · 审核"
+    - option "岗位实习 · 指导 · 导出"
+    - option "岗位实习 · 指导 · 管理"
+    - option "岗位实习 · 指导 · 查看"
+    - option "岗位实习 · 事件 · 关闭"
+    - option "岗位实习 · 事件 · 处理"
+    - option "岗位实习 · 事件 · 报告"
+    - option "岗位实习 · 保险 · 核验"
+    - option "岗位实习 · 保险 · 查看"
+    - option "岗位实习 · 请假 · 导出"
+    - option "岗位实习 · 请假 · 审核"
+    - option "岗位实习 · 请假 · 查看"
+    - option "岗位实习 · 补考 · 导出"
+    - option "岗位实习 · 补考 · 审核"
+    - option "岗位实习 · 补考 · 查看"
+    - option "岗位实习 · 匹配 · 意向 · 查看"
+    - option "岗位实习 · 匹配 · 日志 · 查看"
+    - option "岗位实习 · 计划 · 查看"
+    - option "岗位实习 · 岗位 · 管理"
+    - option "岗位实习 · 岗位 · 查看"
+    - option "岗位实习 · 报告 · 导出"
+    - option "岗位实习 · 报告 · 审核"
+    - option "岗位实习 · 报告 · 查看"
+    - option "岗位实习 · 风险 · 导出"
+    - option "岗位实习 · 风险 · 处理"
+    - option "岗位实习 · 风险 · 查看"
+    - option "岗位实习 · 安全 · 管理"
+    - option "岗位实习 · 安全 · 查看"
+    - option "岗位实习 · 评分 · 配置 · 管理"
+    - option "岗位实习 · 评分 · 导出"
+    - option "岗位实习 · 评分 · 管理"
+    - option "岗位实习 · 评分 · 发布"
+    - option "岗位实习 · 评分 · 查看"
+    - option "岗位实习 · 统计 · 查看"
+    - option "岗位实习 · 学生 · 查看"
+    - option "岗位实习 · 任务 · 审核"
+    - option "岗位实习 · 任务 · 查看"
+    - option "岗位实习 · 走访 · 导出"
+    - option "岗位实习 · 走访 · 管理"
+    - option "岗位实习 · 走访 · 查看"
+    - option "迎新 · 宿舍 · 确认"
+    - option "迎新 · 异常 · 处理"
+    - option "迎新 · 材料 · 审核"
+    - option "迎新 · 缴费 · 查看"
+    - option "迎新 · 学生 · 查看"
+    - option "学生 · 导出"
+    - option "学生 · 个人档案 · 新增"
+    - option "学生 · 个人档案 · 管理"
+    - option "学生 · 个人档案 · 恢复"
+    - option "学生 · 个人档案 · 修改"
+    - option "学生 · 个人档案 · 查看"
+    - option "学工 · 活动 · 确认"
+    - option "学工 · 活动 · 新增"
+    - option "学工 · 活动 · 发布"
+    - option "学工 · 活动 · 查看"
+    - option "学工 · 困难认定 · 调整"
+    - option "学工 · 困难认定 · 审批"
+    - option "学工 · 困难认定 · 批次 · 管理"
+    - option "学工 · 困难认定 · 辅导员审核"
+    - option "学工 · 困难认定 · 新增"
+    - option "学工 · 困难认定 · 查看"
+    - option "学工 · 档案 · 批次 · 管理"
+    - option "学工 · 档案 · 查看"
+    - option "学工 · 班级 · 班干部 · 管理"
+    - option "学工 · 班级 · 新增"
+    - option "学工 · 班级 · 查看"
+    - option "学工 · 社团 · 管理"
+    - option "学工 · 社团 · 查看"
+    - option "学工 · 配置 · 管理"
+    - option "学工 · 辅导员考核 · 申诉 · 新增"
+    - option "学工 · 辅导员考核 · 管理"
+    - option "学工 · 辅导员考核 · 查看"
+    - option "学工 · 概览 · 查看"
+    - option "学工 · 处分 · 申诉 · 新增"
+    - option "学工 · 处分 · 申诉 · 审核"
+    - option "学工 · 处分 · 审批"
+    - option "学工 · 处分 · 新增"
+    - option "学工 · 处分 · 送达"
+    - option "学工 · 处分 · 解除 · 审批"
+    - option "学工 · 处分 · 解除 · 新增"
+    - option "学工 · 处分 · 查看"
+    - option "学工 · 宿舍 · 分配 · 管理"
+    - option "学工 · 宿舍 · 异常 · 处理"
+    - option "学工 · 宿舍 · 检查 · 管理"
+    - option "学工 · 宿舍 · 资源 · 管理"
+    - option "学工 · 宿舍 · 转交 · 审批"
+    - option "学工 · 宿舍 · 转交 · 新增"
+    - option "学工 · 宿舍 · 查看"
+    - option "学工 · 奖助资助 · 审批"
+    - option "学工 · 奖助资助 · 新增"
+    - option "学工 · 奖助资助 · 发放 · 管理"
+    - option "学工 · 奖助资助 · 助学贷款 · 管理"
+    - option "学工 · 奖助资助 · 项目 · 管理"
+    - option "学工 · 奖助资助 · 公示 · 管理"
+    - option "学工 · 奖助资助 · 费用减免 · 管理"
+    - option "学工 · 奖助资助 · 查看"
+    - option "学工 · 奖助资助 · 勤工助学 · 管理"
+    - option "学工 · 家校沟通 · 记录 · 新增"
+    - option "学工 · 家校沟通 · 查看"
+    - option "学工 · 团学 · 管理"
+    - option "学工 · 团学 · 查看"
+    - option "学工 · 请假 · 审批"
+    - option "学工 · 请假 · 销假确认"
+    - option "学工 · 请假 · 新增"
+    - option "学工 · 请假 · 导出"
+    - option "学工 · 请假 · 延期 · 审批"
+    - option "学工 · 请假 · 逾期 · 处理"
+    - option "学工 · 请假 · 查看"
+    - option "学工 · 心理 · 管理"
+    - option "学工 · 组织 · 管理"
+    - option "学工 · 组织 · 查看"
+    - option "学工 · 风险 · 分配"
+    - option "学工 · 风险 · 关闭"
+    - option "学工 · 风险 · 新增"
+    - option "学工 · 风险 · 升级处理"
+    - option "学工 · 风险 · 处理"
+    - option "学工 · 风险 · 心理敏感详情 · 查看"
+    - option "学工 · 风险 · 重新开启"
+    - option "学工 · 风险 · 转交"
+    - option "学工 · 风险 · 查看"
+    - option "学工 · 统计 · 查看"
+    - option "学工 · 学生 · 查看"
+    - option "学工 · 谈心谈话 · 新增"
+    - option "学工 · 谈心谈话 · 查看"
+    - option "系统管理 · 审计 · 登录 · 查看"
+    - option "系统管理 · 审计 · 操作 · 查看"
+    - option "系统管理 · 审计 · 敏感信息 · 查看"
+    - option "系统管理 · 配置 · 学校品牌 · 管理"
+    - option "系统管理 · 配置 · 功能开关 · 查看"
+    - option "系统管理 · 配置 · 查看"
+    - option "系统管理 · 概览 · 查看"
+    - option "系统管理 · 临时授权 · 管理"
+    - option "系统管理 · 系统集成 · 管理"
+    - option "系统管理 · 系统集成 · 同步 · 查看"
+    - option "系统管理 · 数据迁移 · 查看"
+    - option "系统管理 · 组织 · 任职关系 · 管理"
+    - option "系统管理 · 组织 · 班级 · 管理"
+    - option "系统管理 · 组织 · 专业 · 管理"
+    - option "系统管理 · 组织 · 查看"
+    - option "系统管理 · 角色 · 权限 · 管理"
+    - option "系统管理 · 角色 · 模板 · 查看"
+    - option "系统管理 · 角色 · 查看"
+    - option "系统管理 · 数据范围 · 查看"
+    - option "系统管理 · 安全 · 策略 · 管理"
+    - option "系统管理 · 账号 · 异常 · 查看"
+    - option "系统管理 · 账号 · 导入"
+    - option "系统管理 · 账号 · 查看"
+    - option "系统管理 · 校历 · 管理"
+    - option "系统管理 · 校历 · 查看"
+    - option "系统管理 · 访问 · 解释"
+    - option "系统管理 · 审计 · 敏感信息 · 查看"
+    - option "系统管理 · 审计 · 查看"
+    - option "系统管理 · 通信 · 管理"
+    - option "系统管理 · 通信 · 查看"
+    - option "系统管理 · 配置 · 功能开关 · 查看"
+    - option "系统管理 · 配置 · 管理"
+    - option "系统管理 · 配置 · 查看"
+    - option "系统管理 · 概览 · 查看"
+    - option "系统管理 · 数据交换 · 查看本人数据"
+    - option "系统管理 · 数据交换 · 查看本校数据"
+    - option "系统管理 · 临时授权 · 管理"
+    - option "系统管理 · 文件 · 管理"
+    - option "系统管理 · 文件治理 · 查看"
+    - option "系统管理 · 实施验收 · 验收"
+    - option "系统管理 · 实施验收 · 应用"
+    - option "系统管理 · 实施验收 · 变更 · 管理"
+    - option "系统管理 · 实施验收 · 检查 · 执行"
+    - option "系统管理 · 实施验收 · 配置"
+    - option "系统管理 · 实施验收 · 新增"
+    - option "系统管理 · 实施验收 · 已安装能力 · 查看"
+    - option "系统管理 · 实施验收 · 映射 · 应用"
+    - option "系统管理 · 实施验收 · 映射 · 管理"
+    - option "系统管理 · 实施验收 · 预设 · 查看"
+    - option "系统管理 · 实施验收 · 预览"
+    - option "系统管理 · 实施验收 · 关联关系 · 应用"
+    - option "系统管理 · 实施验收 · 关联关系 · 管理"
+    - option "系统管理 · 实施验收 · 关联关系 · 回滚"
+    - option "系统管理 · 实施验收 · 查看"
+    - option "系统管理 · 系统集成 · 管理"
+    - option "系统管理 · 系统集成 · 同步 · 查看"
+    - option "系统管理 · 后台任务 · 管理"
+    - option "系统管理 · 后台任务 · 查看"
+    - option "系统管理 · 数据迁移 · 导入"
+    - option "系统管理 · 数据迁移 · 查看"
+    - option "系统管理 · 组织 · 启用"
+    - option "系统管理 · 组织 · 任职关系 · 管理"
+    - option "系统管理 · 组织 · 班级 · 管理"
+    - option "系统管理 · 组织 · 新增"
+    - option "系统管理 · 组织 · 专业 · 管理"
+    - option "系统管理 · 组织 · 管理"
+    - option "系统管理 · 组织 · 修改"
+    - option "系统管理 · 组织 · 查看"
+    - option "系统管理 · 角色 · 配置"
+    - option "系统管理 · 角色 · 新增"
+    - option "系统管理 · 角色 · 查看"
+    - option "系统管理 · 数据范围 · 管理"
+    - option "系统管理 · 数据范围 · 查看"
+    - option "系统管理 · 安全 · 管理"
+    - option "系统管理 · 安全 · 策略 · 管理"
+    - option "系统管理 · 安全 · 查看"
+    - option "系统管理 · 账号 · 分配"
+    - option "系统管理 · 账号 · 分配角色"
+    - option "系统管理 · 账号 · 绑定"
+    - option "系统管理 · 账号 · 异常 · 查看"
+    - option "系统管理 · 账号 · 导出"
+    - option "系统管理 · 账号 · 导入"
+    - option "系统管理 · 账号 · 管理"
+    - option "系统管理 · 账号 · 敏感信息 · 查看"
+    - option "系统管理 · 账号 · 查看"
+    - option "系统管理 · 工作流 · 管理"
+    - option "系统管理 · 工作流 · 查看"
+    - option "工作台 · 消息 · 班级 · 发布"
+    - option "工作台 · 消息 · 学院 · 发布"
+    - option "工作台 · 消息 · 紧急事项 · 审批"
+    - option "工作台 · 消息 · 紧急事项 · 提交"
+    - option "工作台 · 消息 · 发布"
+    - option "工作台 · 消息 · 排期"
+    - option "工作台 · 消息 · 全校人员 · 发布"
+    - option "工作台 · 消息 · 全校教职工 · 发布"
+    - option "工作台 · 消息 · 全校学生 · 发布"
+    - option "工作台 · 消息 · 统计 · 查看"
+    - option "工作台 · 消息 · 模板 · 管理"
+    - option "工作台 · 消息 · 查看"
+    - option "工作台 · 消息 · 撤回"
+    - option "工作流 · 首页 · 查看"
+    - option "工作流 · 权限 · 查看"
+    - option "工作流 · 流程 · 查看"
+    - option "工作流 · 角色 · 查看"
+    - option "工作流 · 任务 · 查看"
+    - option "教务 · 档案 · 导出"
+    - option "教务 · 档案 · 查看"
+    - option "教务 · 概览 · 查看"
+    - option "教务 · 缓考 · 辅导员审核"
+    - option "教务 · 缓考 · 审核"
+    - option "教务 · 评价 · 申诉 · 审核"
+    - option "教务 · 评价 · 批次 · 管理"
+    - option "教务 · 评价 · 导出"
+    - option "教务 · 考试 · 安排"
+    - option "教务 · 考试 · 管理"
+    - option "教务 · 考试 · 发布"
+    - option "教务 · 免修 · 审核"
+    - option "教务 · 毕业审核 · 学院审核"
+    - option "教务 · 毕业审核 · 最终成果"
+    - option "教务 · 毕业审核 · 管理"
+    - option "教务 · 毕业审核 · 查看"
+    - option "教务 · 专业分流 · 管理"
+    - option "教务 · 专业分流 · 查看"
+    - option "教务 · 补考 · 导出"
+    - option "教务 · 补考 · 查看"
+    - option "教务 · 教学质量 · 档案 · 导出"
+    - option "教务 · 教学质量 · 档案 · 查看"
+    - option "教务 · 教学质量 · 概览 · 查看"
+    - option "教务 · 教学质量 · 事件 · 管理"
+    - option "教务 · 教学质量 · 记录 · 管理"
+    - option "教务 · 教学质量 · 记录 · 查看"
+    - option "教务 · 教学质量 · 整改 · 管理"
+    - option "教务 · 教学质量 · 整改 · 查看"
+    - option "教务 · 教学质量 · 报告 · 导出"
+    - option "教务 · 注册 · 档案 · 导出"
+    - option "教务 · 注册 · 档案 · 管理"
+    - option "教务 · 注册 · 档案 · 查看"
+    - option "教务 · 注册 · 缓注册 · 应用"
+    - option "教务 · 注册 · 缓注册 · 审批"
+    - option "教务 · 注册 · 缓注册 · 查看"
+    - option "教务 · 注册 · 资格 · 核验"
+    - option "教务 · 注册 · 资格 · 查看"
+    - option "教务 · 注册 · 异常 · 新增"
+    - option "教务 · 注册 · 异常 · 解决"
+    - option "教务 · 注册 · 异常 · 查看"
+    - option "教务 · 注册 · 未注册学生 · 导出"
+    - option "教务 · 注册 · 未注册学生 · 扫描排查"
+    - option "教务 · 注册 · 未注册学生 · 查看"
+    - option "教务 · 重修 · 审核"
+    - option "教务 · 名单 · 更正 · 应用"
+    - option "教务 · 名单 · 更正 · 审核"
+    - option "教务 · 名单 · 更正 · 查看"
+    - option "教务 · 排期 · 可用时段 · 管理"
+    - option "教务 · 排期 · 导出"
+    - option "教务 · 选课 · 调整"
+    - option "教务 · 选课 · 锁定"
+    - option "教务 · 选课 · 管理"
+    - option "教务 · 选课 · 查看名单"
+    - option "教务 · 选课 · 规则 · 管理"
+    - option "教务 · 选课 · 查看"
+    - option "教务 · 统计 · 导出"
+    - option "教务 · 状态变更 · 学院审核"
+    - option "教务 · 状态变更 · 辅导员审核"
+    - option "教务 · 状态变更 · 教务处审核"
+    - option "教务 · 学期 · 管理"
+    - option "教务 · 学期 · 查看"
+    - option "教务 · 教材 · 目录 · 管理"
+    - option "教务 · 教材 · 费用 · 管理"
+    - option "教务 · 教材 · 选课 · 管理"
+    - option "教务 · 教材 · 查看"
+    - option "教务 · 预警 · 处理"
+    - option "教务 · 预警 · 规则 · 管理"
+    - option "教务 · 预警 · 查看"
+    - option "数据中心 · 报告 · 发布"
+    - option "数据中心 · 报告 · 作废"
+    - option "毕业设计 · 档案 · 预览"
+    - option "毕业设计 · 档案 · 查看"
+    - option "毕业设计 · 批次 · 档案"
+    - option "毕业设计 · 批次 · 关闭"
+    - option "毕业设计 · 批次 · 启动"
+    - option "毕业设计 · 答辩 · 管理"
+    - option "毕业设计 · 答辩 · 通知"
+    - option "毕业设计 · 答辩 · 二次答辩"
+    - option "毕业设计 · 最终成果 · 验证提醒"
+    - option "毕业设计 · 成绩 · 申诉审核"
+    - option "毕业设计 · 成绩 · 计算"
+    - option "毕业设计 · 成绩 · 撤回"
+    - option "毕业设计 · 成绩 · 导师评分"
+    - option "毕业设计 · 指导 · 新增"
+    - option "毕业设计 · 指导 · 修改"
+    - option "毕业设计 · 指导 · 管理"
+    - option "毕业设计 · 中期检查 · 审核"
+    - option "毕业设计 · 查重 · 异议审核"
+    - option "毕业设计 · 查重 · 结果"
+    - option "毕业设计 · 查重 · 启动"
+    - option "毕业设计 · 开题 · 答辩"
+    - option "毕业设计 · 开题 · 验证提醒"
+    - option "毕业设计 · 审核 · 分配"
+    - option "毕业设计 · 审核 · 退回"
+    - option "毕业设计 · 审核 · 提交"
+    - option "毕业设计 · 风险 · 验收"
+    - option "毕业设计 · 风险 · 关闭"
+    - option "毕业设计 · 风险 · 流程"
+    - option "毕业设计 · 风险 · 扫描排查"
+    - option "毕业设计 · 风险 · 查看"
+    - option "毕业设计 · 统计 · 导出"
+    - option "毕业设计 · 学生 · 导入"
+    - option "毕业设计 · 任务书 · 代为确认"
+    - option "毕业设计 · 任务书 · 下发"
+    - option "毕业设计 · 任务书 · 修改"
+    - option "毕业设计 · 任务书 · 查看"
+    - option "毕业设计 · 模板 · 查看"
+    - option "毕业设计 · 课题 · 分配"
+    - option "毕业设计 · 课题 · 新增"
+    - option "毕业设计 · 课题 · 匹配"
+    - option "毕业设计 · 课题 · 查看"
+    - option "岗位实习 · 档案 · 执行"
+    - option "岗位实习 · 档案 · 撤销"
+    - option "岗位实习 · 变更 · 审核"
+    - option "岗位实习 · 通信 · 管理"
+    - option "岗位实习 · 通信 · 查看"
+    - option "岗位实习 · 投诉 · 受理"
+    - option "岗位实习 · 投诉 · 查看"
+    - option "岗位实习 · 就业 · 查看"
+    - option "岗位实习 · 企业 · 导入"
+    - option "岗位实习 · 匹配 · 批次"
+    - option "岗位实习 · 匹配 · 冲突 · 查看"
+    - option "岗位实习 · 匹配 · 导出"
+    - option "岗位实习 · 匹配 · 意向 · 管理"
+    - option "岗位实习 · 匹配 · 人工办理"
+    - option "岗位实习 · 匹配 · 结果 · 查看"
+    - option "岗位实习 · 计划 · 管理"
+    - option "岗位实习 · 岗位 · 导出"
+    - option "岗位实习 · 岗位 · 发布"
+    - option "岗位实习 · 统计 · 导出"
+    - option "岗位实习 · 学生 · 资格 · 审核"
+    - option "岗位实习 · 学生 · 导出"
+    - option "岗位实习 · 学生 · 管理"
+    - option "岗位实习 · 走访 · 计划 · 管理"
+    - option "岗位实习 · 走访 · 计划 · 查看"
+    - option "学生 · 导入"
+    - option "教务 · 流程 · 导出"
+    - option "教务 · 流程 · 管理"
+    - option "教务 · 流程 · 查看"
+    - option "校园服务 · 导出"
+    - option "校园服务 · 导入"
+    - option "数据中心 · 报告 · 管理"
+    - option "就业 · 导出"
+    - option "就业 · 导入"
+    - option "迎新 · 导出"
+    - option "迎新 · 导入"
+    - option "学工 · 导出"
+    - option "学工 · 迎新 · 导出"
+    - option "学工 · 迎新 · 导入"
+    - option "学工 · 迎新 · 管理"
+    - option "学工 · 迎新 · 查看"
+    - option "教务 · 校历归档 · 管理"
+    - option "教务 · 评价 · 同行评价 · 提交"
+    - option "教务 · 评价 · 自我评价 · 提交"
+    - option "教务 · 评价 · 督导评价 · 提交"
+    - option "教务 · 重修 · 应用"
+    - option "教务 · 选课 · 选课报名"
+    - option "教务 · 教学任务 · 分配"
+    - option "教务 · 教学任务 · 生成"
+    - option "教务 · 教学任务 · 教师确认"
+    - option "岗位实习 · 协议 · 档案"
+    - option "岗位实习 · 协议 · 变更"
+    - option "岗位实习 · 协议 · 下发"
+    - option "岗位实习 · 协议 · 学校确认"
+    - option "岗位实习 · 考勤 · 异常 · 处理"
+    - option "岗位实习 · 企业 · 黑名单 · 管理"
+    - option "岗位实习 · 企业 · 联系人 · 查看"
+    - option "岗位实习 · 企业 · 导师 · 查看"
+    - option "岗位实习 · 企业 · 审核"
+    - option "岗位实习 · 评价 · 学生评价企业 · 查看"
+    - option "岗位实习 · 评价 · 学生评价岗位 · 查看"
+    - option "岗位实习 · 指导 · 指导不足 · 查看"
+    - option "岗位实习 · 指导 · 计划 · 管理"
+    - option "岗位实习 · 指导 · 记录 · 新增"
+    - option "岗位实习 · 匹配 · 指导教师 · 分配"
+    - option "岗位实习 · 匹配 · 推荐 · 查看"
+    - option "岗位实习 · 岗位 · 匹配 · 查看"
+    - option "岗位实习 · 风险 · 关闭"
+    - option "岗位实习 · 评分 · 复核"
+    - option "岗位实习 · 评分 · 审核"
+    - option "岗位实习 · 统计 · 企业 · 查看"
+    - option "岗位实习 · 统计 · 岗位 · 查看"
+    - option "岗位实习 · 统计 · 评分 · 查看"
+    - option "岗位实习 · 学生 · 材料 · 查看"
+    - option "岗位实习 · 走访 · 下发 · 处理"
+    - option "岗位实习 · 走访 · 记录 · 新增"
+    - option "岗位实习 · 走访 · 整改 · 处理"
+    - option "系统管理 · 审计 · 登录 · 查看"
+    - option "系统管理 · 审计 · 操作 · 查看"
+    - option "系统管理 · 配置 · 学校品牌 · 管理"
+    - option "系统管理 · 角色 · 权限 · 管理"
+    - option "系统管理 · 角色 · 模板 · 查看"
+    - option "工作台 · 首页 · 查看"
+  - text: 数据范围目标类型
+  - combobox "数据范围目标类型":
+    - option "学院" [selected]
+    - option "专业"
+    - option "班级"
+    - option "终端范围"
+  - text: 数据范围目标编号
+  - textbox "数据范围目标编号":
+    - /placeholder: 学院、专业或班级编号
+  - text: 业务对象类型
+  - combobox "业务对象类型":
+    - option "学生" [selected]
+    - option "实习学生"
+    - option "毕设学生"
+    - option "用户"
+    - option "班级"
+    - option "专业"
+    - option "学院"
+    - option "楼栋"
+    - option "宿舍楼"
+  - text: 业务对象编号
+  - textbox "业务对象编号":
+    - /placeholder: 被解释的具体对象编号
+  - button "解释访问"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

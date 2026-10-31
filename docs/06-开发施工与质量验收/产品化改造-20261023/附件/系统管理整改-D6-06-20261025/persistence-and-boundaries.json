@@ -1,0 +1,18 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "sameStudentId": 1,
+  "graduationMentorAccount": "D603-T001",
+  "internshipAdvisorUserId": "3",
+  "independentAdvisorRelationships": true,
+  "sourceClassRepaired": true,
+  "qualityIssueStatus": "VERIFIED",
+  "qualityIssueVersion": 2,
+  "qualityIssueId": "1",
+  "scannedRules": 5,
+  "scanCount": 2,
+  "closedIssueMutationHttp": 400,
+  "businessReadDenials": {
+    "graduation": 403,
+    "internship": 403
+  }
+}

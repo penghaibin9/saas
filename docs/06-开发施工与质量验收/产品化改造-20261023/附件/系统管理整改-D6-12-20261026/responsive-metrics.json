@@ -1,0 +1,287 @@
+[
+  {
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scroll": 390,
+    "width": 390
+  },
+  {
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scroll": 431,
+    "width": 431
+  },
+  {
+    "key": "sys-staff-accounts",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"教职工账号\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-org-tree",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700561523438,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"组织与任职\" [level=1]",
+      "    - heading \"全校组织\" [level=2]"
+    ]
+  },
+  {
+    "key": "sys-role-members",
+    "dockTop": 937.5,
+    "mainBottom": 937.499969482422,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"学校角色与成员\" [level=1]",
+      "    - heading \"整改验收教师\" [level=3]",
+      "    - heading \"教务处管理员\" [level=3]",
+      "    - heading \"任课教师\" [level=3]",
+      "    - heading \"学院管理员\" [level=3]",
+      "    - heading \"辅导员\" [level=3]",
+      "    - heading \"宿管老师\" [level=3]",
+      "    - heading \"就业老师\" [level=3]",
+      "    - heading \"资助老师\" [level=3]",
+      "    - heading \"学院毕设管理员\" [level=3]"
+    ]
+  },
+  {
+    "key": "sys-data-exchange",
+    "dockTop": 937.5,
+    "mainBottom": 937.499969482422,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"数据交换任务\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-school-brand",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"系统与品牌配置\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-workflow-governance",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"流程安全与运行治理\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-integration-connections",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"接口连接与同步\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-implementation-overview",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 375,
+    "width": 375,
+    "headings": [
+      "  - heading \"实施与上线验收\" [level=1]",
+      "  - heading \"D607独立实施验收项目\" [level=2]"
+    ]
+  },
+  {
+    "key": "sys-staff-accounts",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"教职工账号\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-org-tree",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700561523438,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"组织与任职\" [level=1]",
+      "    - heading \"全校组织\" [level=2]"
+    ]
+  },
+  {
+    "key": "sys-role-members",
+    "dockTop": 937.5,
+    "mainBottom": 937.499969482422,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"学校角色与成员\" [level=1]",
+      "    - heading \"整改验收教师\" [level=3]",
+      "    - heading \"教务处管理员\" [level=3]",
+      "    - heading \"任课教师\" [level=3]",
+      "    - heading \"学院管理员\" [level=3]",
+      "    - heading \"辅导员\" [level=3]",
+      "    - heading \"宿管老师\" [level=3]",
+      "    - heading \"就业老师\" [level=3]",
+      "    - heading \"资助老师\" [level=3]",
+      "    - heading \"学院毕设管理员\" [level=3]"
+    ]
+  },
+  {
+    "key": "sys-data-exchange",
+    "dockTop": 937.5,
+    "mainBottom": 937.499969482422,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"数据交换任务\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-school-brand",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"系统与品牌配置\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-workflow-governance",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"流程安全与运行治理\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-integration-connections",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"接口连接与同步\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-implementation-overview",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 390,
+    "width": 390,
+    "headings": [
+      "  - heading \"实施与上线验收\" [level=1]",
+      "  - heading \"D607独立实施验收项目\" [level=2]"
+    ]
+  },
+  {
+    "key": "sys-staff-accounts",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"教职工账号\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-org-tree",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700561523438,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"组织与任职\" [level=1]",
+      "    - heading \"全校组织\" [level=2]"
+    ]
+  },
+  {
+    "key": "sys-role-members",
+    "dockTop": 937.5,
+    "mainBottom": 937.499969482422,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"学校角色与成员\" [level=1]",
+      "    - heading \"整改验收教师\" [level=3]",
+      "    - heading \"教务处管理员\" [level=3]",
+      "    - heading \"任课教师\" [level=3]",
+      "    - heading \"学院管理员\" [level=3]",
+      "    - heading \"辅导员\" [level=3]",
+      "    - heading \"宿管老师\" [level=3]",
+      "    - heading \"就业老师\" [level=3]",
+      "    - heading \"资助老师\" [level=3]",
+      "    - heading \"学院毕设管理员\" [level=3]"
+    ]
+  },
+  {
+    "key": "sys-data-exchange",
+    "dockTop": 937.5,
+    "mainBottom": 937.499969482422,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"数据交换任务\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-school-brand",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"系统与品牌配置\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-workflow-governance",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"流程安全与运行治理\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-integration-connections",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"接口连接与同步\" [level=1]"
+    ]
+  },
+  {
+    "key": "sys-implementation-overview",
+    "dockTop": 937.8700561523438,
+    "mainBottom": 937.8700256347656,
+    "scrollWidth": 431,
+    "width": 431,
+    "headings": [
+      "  - heading \"实施与上线验收\" [level=1]",
+      "  - heading \"D607独立实施验收项目\" [level=2]"
+    ]
+  }
+]

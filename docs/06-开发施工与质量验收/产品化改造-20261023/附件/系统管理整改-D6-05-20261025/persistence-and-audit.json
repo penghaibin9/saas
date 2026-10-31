@@ -1,0 +1,14 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "temporaryStatus": "REVOKED",
+  "formalStatus": "REVOKED",
+  "formalId": "1",
+  "formalVersion": 1,
+  "auditActions": [
+    "DELEGATION_CREATE",
+    "DELEGATION_REVOKE",
+    "ROLE_ASSIGNMENT_GRANT",
+    "ROLE_ASSIGNMENT_REVOKE"
+  ],
+  "originalTeacherRoleRetained": true
+}

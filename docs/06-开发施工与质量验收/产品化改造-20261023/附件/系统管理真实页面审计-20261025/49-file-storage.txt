@@ -1,0 +1,374 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/file-storage-governance".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/file-storage-governance
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				17 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:14, Secondary Actions: Expand
+				11 image
+				198 text 10/25周日 12:14
+			18 button 帮助与引导
+			19 button 消息中心
+				20 image
+			13 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				14 text 胡
+				15 text 胡管理
+				16 text 学校管理员
+		21 container
+			22 container 一级菜单
+				23 button 学工中心
+				24 button 教务中心
+				25 button 毕业设计中心
+				26 button 岗位实习中心
+				27 button 系统管理
+			28 button (collapsed) 当前范围, Secondary Actions: Expand
+				29 image
+				30 text 当前范围
+				31 image
+			32 button (collapsed) 本次工作 00:08:10, Secondary Actions: Expand
+				33 image
+				294 text 本次工作 00:08:10
+		35 container 二级菜单
+			36 button 展开二级菜单
+			37 container 二级菜单
+				38 button 系统概览
+				39 button 身份与账号
+				40 button 组织主数据
+				41 button 角色与权限
+				42 button 学校配置
+				43 button 流程配置
+				44 button 安全与审计
+				45 button 接口与同步
+			46 checkbox Description: 取消固定二级菜单, Value: 1
+		47 container 三级菜单
+			48 button 展开三级菜单
+			49 container 三级菜单
+				155 button 操作与权限审计
+				156 button 登录与安全审计
+				157 button 敏感与导入导出审计
+				158 button 安全审计证据与完整性
+				159 button 完整性异常中心
+				160 button 文件存储治理
+			54 checkbox Description: 取消固定三级菜单, Value: 1
+		55 container
+			56 tab group 已打开页面
+				85 container
+					86 tab (selectable, settable, boolean) 菜单与操作权限, Help: 角色与权限 / 菜单与操作权限, Value: 0
+菜单与操作权限
+					87 button 关闭菜单与操作权限
+						88 image
+				89 container
+					90 tab (selectable, settable, boolean) 数据范围规则, Help: 角色与权限 / 数据范围规则, Value: 0
+数据范围规则
+					91 button 关闭数据范围规则
+						92 image
+				93 container
+					94 tab (selectable, settable, boolean) 临时授权与工作移交, Help: 角色与权限 / 临时授权与工作移交, Value: 0
+临时授权与工作移交
+					95 button 关闭临时授权与工作移交
+						96 image
+				97 container
+					98 tab (selectable, settable, boolean) 安全变更, Help: 角色与权限 / 安全变更, Value: 0
+安全变更
+					99 button 关闭安全变更
+						100 image
+				101 container
+					102 tab (selectable, settable, boolean) 访问治理, Help: 角色与权限 / 访问治理, Value: 0
+访问治理
+					103 button 关闭访问治理
+						104 image
+				105 container
+					106 tab (selectable, settable, boolean) 学校信息与品牌, Help: 学校配置 / 学校信息与品牌, Value: 0
+学校信息与品牌
+					107 button 关闭学校信息与品牌
+						108 image
+				109 container
+					110 tab (selectable, settable, boolean) 数据字典, Help: 学校配置 / 数据字典, Value: 0
+数据字典
+					111 button 关闭数据字典
+						112 image
+				113 container
+					114 tab (selectable, settable, boolean) 模块授权与业务开关, Help: 学校配置 / 模块授权与业务开关, Value: 0
+模块授权与业务开关
+					115 button 关闭模块授权与业务开关
+						116 image
+				117 container
+					118 tab (selectable, settable, boolean) 主数据责任与数据质量, Help: 学校配置 / 主数据责任与数据质量, Value: 0
+主数据责任与数据质量
+					119 button 关闭主数据责任与数据质量
+						120 image
+				121 container
+					122 tab (selectable, settable, boolean) 合规与业务表单, Help: 学校配置 / 合规与业务表单, Value: 0
+合规与业务表单
+					123 button 关闭合规与业务表单
+						124 image
+				125 container
+					126 tab (selectable, settable, boolean) 学年学期与业务日历, Help: 学校配置 / 学年学期与业务日历, Value: 0
+学年学期与业务日历
+					127 button 关闭学年学期与业务日历
+						128 image
+				129 container
+					130 tab (selectable, settable, boolean) 流程安全与运行治理, Help: 流程配置 / 流程安全与运行治理, Value: 0
+流程安全与运行治理
+					131 button 关闭流程安全与运行治理
+						132 image
+				133 container
+					134 tab (selectable, settable, boolean) 统一消息、待办与通知治理, Help: 流程配置 / 统一消息、待办与通知治理, Value: 0
+统一消息、待办与通知治理
+					135 button 关闭统一消息、待办与通知治理
+						136 image
+				150 container
+					151 tab (selectable, settable, boolean) 批处理与后台任务, Help: 流程配置 / 批处理与后台任务, Value: 0
+批处理与后台任务
+					152 button 关闭批处理与后台任务
+						153 image
+				161 container
+					162 tab (selectable, settable, boolean) 操作与权限审计, Help: 安全与审计 / 操作与权限审计, Value: 0
+操作与权限审计
+					163 button 关闭操作与权限审计
+						164 image
+				200 container
+					201 tab (selectable, settable, boolean) 登录与安全审计, Help: 安全与审计 / 登录与安全审计, Value: 0
+登录与安全审计
+					202 button 关闭登录与安全审计
+						203 image
+				205 container
+					206 tab (selectable, settable, boolean) 敏感与导入导出审计, Help: 安全与审计 / 敏感与导入导出审计, Value: 0
+敏感与导入导出审计
+					207 button 关闭敏感与导入导出审计
+						208 image
+				210 container
+					211 tab (selectable, settable, boolean) 安全审计证据与完整性, Help: 安全与审计 / 安全审计证据与完整性, Value: 0
+安全审计证据与完整性
+					212 button 关闭安全审计证据与完整性
+						213 image
+				215 container
+					216 tab (selectable, settable, boolean) 完整性异常中心, Help: 安全与审计 / 完整性异常中心, Value: 0
+完整性异常中心
+					217 button 关闭完整性异常中心
+						218 image
+				220 container
+					221 tab (selected, settable, boolean) 文件存储治理, Help: 安全与审计 / 文件存储治理, Value: 1
+文件存储治理
+					222 button 关闭文件存储治理
+						223 image
+			137 button (disabled) 恢复最近关闭的页签
+				138 image
+			139 checkbox Description: 收藏当前页面, Value: 0
+				140 image
+			141 checkbox Description: 专注模式, Value: 0
+				142 image
+			224 container
+				225 heading 文件存储治理, Value: 1
+					226 text 文件存储治理
+				227 heading 先看结论，再处理异常, Value: 3
+					228 text 先看结论，再处理异常
+				244 text 当前发现 11 项治理信号，优先处理扫描失败、长期隔离和未核验对象存储文件。
+				230 button 刷新治理数据
+				231 container
+					245 text 0.01 吉比字节 已用容量
+				233 container
+					246 text 50.00 吉比字节 平台商业上限
+				235 container
+					247 text 100.00 吉比字节 学校治理配额
+				237 container
+					248 text 0.01% 配额使用率
+				239 container
+					240 text 0.00 吉比字节 近 30 天增长
+				241 container
+					249 text 23 文件对象
+				243 container
+					250 text 11 待处理异常
+				251 container
+					252 heading 容量与配额, Value: 3
+						295 text 容量与配额
+					296 text 硬限额在所有物理写入和对象存储直传签发前统一执行。
+				253 container
+					297 text 总配额（吉比字节）
+					254 stepper (settable, integer) 总配额（吉比字节）, Value: 100
+				255 container
+					298 text 预警阈值（%）
+					256 stepper (settable, integer) 预警阈值（%）, Value: 80
+				257 checkbox (settable, integer) Description: 达到配额后拒绝新文件, Value: 1
+				258 container
+					299 text 说明
+					259 text field (settable) 说明
+				260 container
+					300 text 教务中心（吉比字节）
+					261 stepper (settable, integer) 教务中心（吉比字节）, Value: 0
+				262 container
+					301 text 毕业设计（吉比字节）
+					263 stepper (settable, integer) 毕业设计（吉比字节）, Value: 0
+				264 container
+					302 text 其他业务模块（吉比字节）
+					265 stepper (settable, integer) 其他业务模块（吉比字节）, Value: 0
+				266 container
+					303 text 学工中心（吉比字节）
+					267 stepper (settable, integer) 学工中心（吉比字节）, Value: 0
+				268 container
+					304 text 系统管理（吉比字节）
+					269 stepper (settable, integer) 系统管理（吉比字节）, Value: 0
+				270 container
+					305 text 其他业务模块（吉比字节）
+					271 stepper (settable, integer) 其他业务模块（吉比字节）, Value: 10
+				272 container
+					306 text 其他业务模块（吉比字节）
+					273 stepper (settable, integer) 其他业务模块（吉比字节）, Value: 30
+				274 button 保存配额
+				307 table
+					308 row
+						309 cell
+							310 text 业务类型
+						311 cell
+							312 text 文件数
+						313 cell
+							314 text 容量
+					315 row
+						316 cell
+							317 text 其他业务模块 · 其他业务文件
+						318 cell
+							319 text 1
+						320 cell
+							321 text 0.00 吉比字节
+					322 row
+						323 cell
+							324 text 教务中心 · 其他业务文件
+						325 cell
+							326 text 1
+						327 cell
+							328 text 0.00 吉比字节
+					329 row
+						330 cell
+							331 text 教务中心 · 其他业务文件
+						332 cell
+							333 text 1
+						334 cell
+							335 text 0.00 吉比字节
+					336 row
+						337 cell
+							338 text 系统管理 · 其他业务文件
+						339 cell
+							340 text 7
+						341 cell
+							342 text 0.00 吉比字节
+					343 row
+						344 cell
+							345 text 其他业务模块 · 其他业务文件
+						346 cell
+							347 text 4
+						348 cell
+							349 text 0.00 吉比字节
+					350 row
+						351 cell
+							352 text 毕业设计 · 其他业务文件
+						353 cell
+							354 text 2
+						355 cell
+							356 text 0.00 吉比字节
+					357 row
+						358 cell
+							359 text 毕业设计 · 其他业务文件
+						360 cell
+							361 text 2
+						362 cell
+							363 text 0.01 吉比字节
+					364 row
+						365 cell
+							366 text 学工中心 · 其他业务文件
+						367 cell
+							368 text 2
+						369 cell
+							370 text 0.00 吉比字节
+					371 row
+						372 cell
+							373 text 其他业务模块 · 其他业务文件
+						374 cell
+							375 text 1
+						376 cell
+							377 text 0.00 吉比字节
+					378 row
+						379 cell
+							380 text 其他业务模块 · 其他业务文件
+						381 cell
+							382 text 2
+						383 cell
+							384 text 0.00 吉比字节
+				275 container
+					276 heading 存储异常, Value: 3
+						385 text 存储异常
+					386 text 这里只显示数量与状态，不绕过业务授权读取学校敏感文档。
+				387 container
+					388 text 0 隔离超 1 小时 检查扫描服务与病毒检测服务
+				389 container
+					390 text 0 扫描失败 失败关闭，不允许业务提交
+				391 container
+					392 text 0 到期待清理 先预演再执行
+				393 container
+					394 text 0 对象存储未核验 执行对象存在性与文件摘要巡检
+				395 container
+					396 text 11 未绑定超 24 小时 可能是中断上传或孤儿对象
+				397 container
+					398 text 0 法律保留 自动清理不会触碰
+				277 container
+					278 heading 保留策略, Value: 3
+						399 text 保留策略
+					400 text 优先级越小越先匹配；法律保留始终覆盖自动清理。
+				279 text field (settable)
+				280 pop up button (collapsed, settable) Value: 全部分区, Secondary Actions: Expand
+					281 menu
+						282 (selected) 全部分区
+						401 安全隔离区
+						402 安全文件区
+						403 预览文件区
+						404 归档文件区
+						405 导出文件区
+						406 风险文件区
+						407 临时文件区
+				283 text field (settable)
+				284 stepper (settable, integer) 7
+				285 stepper (settable, integer) 100
+				286 button 保存策略
+				408 table
+					409 row
+						410 cell
+							411 text 策略
+						412 cell
+							413 text 匹配范围
+						414 cell
+							415 text 保留
+						416 cell
+							417 text 动作
+						418 cell
+							419 text 状态
+					420 row
+						421 cell
+							422 text 007-GOV-2026-APPROVAL
+							423 text 优先级 50
+						424 cell
+							425 text 其他业务模块 / 其他业务文件 / 其他存储分区
+						426 cell
+							427 text 1095 天
+						428 cell
+							429 text 按安全策略清理
+						430 cell
+							431 text 启用
+				287 container
+					288 heading 安全清理与法律保留, Value: 3
+						432 text 安全清理与法律保留
+					433 text 必须先预演；有当前版本、有效绑定、有效归档或法律保留的文件不会删除。
+				434 button (disabled) 补算历史保留期
+				435 button (disabled) 预演到期清理
+				436 button (disabled) 执行已预演清理
+				289 text field (settable)
+				290 stepper (settable, integer) 1
+				291 text field (settable)
+				292 button 设置法律保留
+				293 button 解除法律保留
+			148 button 我的常用
+
+The focused UI element is 160 button 文件存储治理

@@ -1,0 +1,14 @@
+{
+  "invalidPreviewConfirm": 409,
+  "expiredDownload": 404,
+  "expiredRetry": 422,
+  "expiredCancel": 409,
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "accountCountUnchanged": true,
+  "importVersionUnchanged": true,
+  "expiryVersionBefore": 1,
+  "expiryVersionAfter": 2,
+  "expiryUnchanged": true,
+  "confirmedRows": 0,
+  "downloadCount": 0
+}

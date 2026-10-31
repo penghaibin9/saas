@@ -1,0 +1,94 @@
+http://127.0.0.1:5173/admin/workflow/processes
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 12° 雨":
+    - generic: 北京 12° 雨
+  - button "10/25周日 14:45":
+    - generic: 10/25周日 14:45
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:39:01":
+  - generic: 本次工作 02:39:01
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统
+    - button "身份与账号":
+      - generic: 身份
+    - button "组织主数据":
+      - generic: 组织
+    - button "角色与权限":
+      - generic: 角色
+    - button "学校配置":
+      - generic: 学校
+    - button "流程配置":
+      - generic: 流程
+    - button "安全与审计":
+      - generic: 安全
+    - button "接口与同步":
+      - generic: 接口
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单":
+    - button "流程模板与运行" [active]:
+      - generic: 流程
+    - button "流程安全与运行治理":
+      - generic: 流程
+    - button "统一消息、待办与通知治理":
+      - generic: 统一
+    - button "批处理与后台任务":
+      - generic: 批处
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "流程模板与运行" [selected]:
+    - generic: 流程模板与运行
+  - button "关闭流程模板与运行":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - heading "流程模板管理" [level=2]
+  - paragraph: 学校管理员维护草稿；发布新版本只影响后续新提交的业务单据。
+  - combobox:
+    - option "全部状态" [selected]
+    - option "已发布"
+    - option "草稿"
+    - option "已停用"
+  - textbox "搜索模板名称 / 编码"
+  - button "查询"
+  - button "新建流程模板"
+  - generic: 学生请假审批（007 标准）
+  - generic: 第 2026.1 版
+  - generic: 已启用
+  - generic: 其他业务模块
+  - generic: 节点 2 个
+  - generic: 维护人：学校管理员
+  - generic: 更新：2026-08-31T00:17:20
+  - generic: 辅导员审核
+  - generic: →
+  - generic: 学院复核
+  - button "创建新版本"
+  - button "停用"
+  - button "详情"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

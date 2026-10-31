@@ -1,0 +1,18 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "roleId": "4",
+  "beforeCount": 34,
+  "afterCount": 33,
+  "preservedCount": 31,
+  "preservedUnchanged": true,
+  "scopeUnchanged": true,
+  "removed": [
+    "approval.todo.view"
+  ],
+  "versionBefore": 1,
+  "versionAfter": 2,
+  "deniedHttpStatus": 403,
+  "deniedMessage": "不能授予当前操作者基础权限之外的权限",
+  "deniedWriteChangedRole": false,
+  "evidenceKind": "真实页面保存 + 独立MySQL回读 + 正常登录HTTP拒绝验证"
+}

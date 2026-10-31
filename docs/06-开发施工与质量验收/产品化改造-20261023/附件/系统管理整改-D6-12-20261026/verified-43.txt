@@ -1,0 +1,380 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 9° 晴":
+    - generic: 北京 9° 晴
+  - button "10/27周二 09:16":
+    - generic: 10/27周二 09:16
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:13:08":
+  - generic: 本次工作 00:13:08
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "管理概览":
+      - generic: 管理概览
+    - button "账号管理":
+      - generic: 账号管理
+    - button "组织与任职":
+      - generic: 组织与任职
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "数据任务":
+      - generic: 数据任务
+    - button "学校设置":
+      - generic: 学校设置
+    - button "流程管理":
+      - generic: 流程管理
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "第三方对接":
+      - generic: 第三方对接
+    - button "实施与交付":
+      - generic: 实施与交付
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - button "全部业务与设置"
+  - navigation "三级菜单":
+    - button "日志中心":
+      - generic: 日志中心
+    - button "登录与安全策略":
+      - generic: 登录与安全策略
+    - button "敏感与导入导出审计":
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性":
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "数据交换任务中心":
+    - generic: 数据交换任务中心
+  - button "关闭数据交换任务中心":
+  - tab "教职工导入":
+    - generic: 教职工导入
+  - button "关闭教职工导入":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "树形定位工作台":
+    - generic: 树形定位工作台
+  - button "关闭树形定位工作台":
+  - tab "接口连接与凭证":
+    - generic: 接口连接与凭证
+  - button "关闭接口连接与凭证":
+  - tab "同步任务与失败中心":
+    - generic: 同步任务与失败中心
+  - button "关闭同步任务与失败中心":
+  - tab "老系统数据迁移":
+    - generic: 老系统数据迁移
+  - button "关闭老系统数据迁移":
+  - tab "教职工任职归属查询":
+    - generic: 教职工任职归属查询
+  - button "关闭教职工任职归属查询":
+  - tab "实施总览":
+    - generic: 实施总览
+  - button "关闭实施总览":
+  - tab "首次开局向导":
+    - generic: 首次开局向导
+  - button "关闭首次开局向导":
+  - tab "已安装配置":
+    - generic: 已安装配置
+  - button "关闭已安装配置":
+  - tab "变更与升级":
+    - generic: 变更与升级
+  - button "关闭变更与升级":
+  - tab "上线检查与验收":
+    - generic: 上线检查与验收
+  - button "关闭上线检查与验收":
+  - tab "预设方案":
+    - generic: 预设方案
+  - button "关闭预设方案":
+  - tab "职业教育国家标准库":
+    - generic: 职业教育国家标准库
+  - button "关闭职业教育国家标准库":
+  - tab "数据导入与智能匹配":
+    - generic: 数据导入与智能匹配
+  - button "关闭数据导入与智能匹配":
+  - tab "日志中心" [selected]:
+    - generic: 日志中心
+  - button "关闭日志中心":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:16
+  - heading "日志中心" [level=1]
+  - button "⇩ 导出日志"
+  - generic: 导出动作本身也会写入审计日志
+  - button "操作日志"
+  - button "登录日志"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 操作人 / 对象
+  - generic: 开始日期
+  - combobox "全部时间"
+  - generic: 结束日期
+  - combobox "全部时间"
+  - generic: 模块
+  - combobox "模块":
+    - option "全部" [selected]
+    - option "系统管理"
+    - option "学工中心"
+    - option "教务中心"
+    - option "毕业设计"
+    - option "岗位实习"
+    - option "就业"
+    - option "数字迎新"
+    - option "在校服务"
+    - option "工作台"
+    - option "平台运营"
+  - generic: 动作
+  - combobox "动作":
+    - option "全部" [selected]
+    - option "重试后台任务"
+    - option "取消后台任务"
+    - option "复制本校角色"
+    - option "转为本校维护"
+    - option "导出"
+    - option "导入"
+    - option "师生导入"
+    - option "授权变更"
+    - option "配置变更"
+    - option "品牌配置"
+    - option "停用/作废"
+    - option "启用"
+    - option "分配角色"
+    - option "重置密码"
+    - option "越权拦截"
+    - option "模块越权"
+    - option "敏感查看"
+    - option "文件上传"
+    - option "新建角色"
+    - option "编辑角色"
+    - option "保存角色权限"
+    - option "组织维护"
+  - generic: 结果
+  - combobox "结果":
+    - option "全部" [selected]
+    - option "成功"
+    - option "失败"
+    - option "越权拦截"
+    - option "已拦截"
+    - option "结果未确认"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "时间 操作人 模块 动作 对象 结果 网络地址（脱敏） 操作":
+        - columnheader "时间"
+        - columnheader "操作人"
+        - columnheader "模块"
+        - columnheader "动作"
+        - columnheader "对象"
+        - columnheader "结果"
+        - columnheader "网络地址（脱敏）"
+        - columnheader "操作"
+    - rowgroup:
+      - row "2026-10-26 20:02 整改验收经办人 系统管理员 系统管理 越权拦截 未识别的历史对象 越权拦截 127.0.*.* 详情":
+        - cell "2026-10-26 20:02"
+        - cell "整改验收经办人 系统管理员":
+          - generic: 整改验收经办人
+          - generic: 系统管理员
+        - cell "系统管理"
+        - cell "越权拦截":
+          - generic: 越权拦截
+        - cell "未识别的历史对象"
+        - cell "越权拦截":
+          - generic: 越权拦截
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 19:58 整改验收经办人 系统管理员 系统管理 越权拦截 未识别的历史对象 越权拦截 127.0.*.* 详情":
+        - cell "2026-10-26 19:58"
+        - cell "整改验收经办人 系统管理员":
+          - generic: 整改验收经办人
+          - generic: 系统管理员
+        - cell "系统管理"
+        - cell "越权拦截":
+          - generic: 越权拦截
+        - cell "未识别的历史对象"
+        - cell "越权拦截":
+          - generic: 越权拦截
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 19:54 整改验收经办人 系统管理员 系统管理 越权拦截 未识别的历史对象 越权拦截 127.0.*.* 详情":
+        - cell "2026-10-26 19:54"
+        - cell "整改验收经办人 系统管理员":
+          - generic: 整改验收经办人
+          - generic: 系统管理员
+        - cell "系统管理"
+        - cell "越权拦截":
+          - generic: 越权拦截
+        - cell "未识别的历史对象"
+        - cell "越权拦截":
+          - generic: 越权拦截
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 19:05 整改验收经办人 学校管理员 系统管理 切换身份 身份上下文 成功 127.0.*.* 详情":
+        - cell "2026-10-26 19:05"
+        - cell "整改验收经办人 学校管理员":
+          - generic: 整改验收经办人
+          - generic: 学校管理员
+        - cell "系统管理"
+        - cell "切换身份":
+          - generic: 切换身份
+        - cell "身份上下文"
+        - cell "成功":
+          - generic: 成功
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 19:01 整改验收经办人 学校管理员 系统管理 未识别的历史操作 未识别的历史对象 成功 127.0.*.* 详情":
+        - cell "2026-10-26 19:01"
+        - cell "整改验收经办人 学校管理员":
+          - generic: 整改验收经办人
+          - generic: 学校管理员
+        - cell "系统管理"
+        - cell "未识别的历史操作":
+          - generic: 未识别的历史操作
+        - cell "未识别的历史对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 18:59 整改验收经办人 任课教师 系统管理 切换身份 身份上下文 成功 127.0.*.* 详情":
+        - cell "2026-10-26 18:59"
+        - cell "整改验收经办人 任课教师":
+          - generic: 整改验收经办人
+          - generic: 任课教师
+        - cell "系统管理"
+        - cell "切换身份":
+          - generic: 切换身份
+        - cell "身份上下文"
+        - cell "成功":
+          - generic: 成功
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 18:55 整改验收经办人 任课教师 系统管理 未识别的历史操作 未识别的历史对象 成功 127.0.*.* 详情":
+        - cell "2026-10-26 18:55"
+        - cell "整改验收经办人 任课教师":
+          - generic: 整改验收经办人
+          - generic: 任课教师
+        - cell "系统管理"
+        - cell "未识别的历史操作":
+          - generic: 未识别的历史操作
+        - cell "未识别的历史对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 18:54 整改验收经办人 学校管理员 系统管理 切换身份 身份上下文 成功 127.0.*.* 详情":
+        - cell "2026-10-26 18:54"
+        - cell "整改验收经办人 学校管理员":
+          - generic: 整改验收经办人
+          - generic: 学校管理员
+        - cell "系统管理"
+        - cell "切换身份":
+          - generic: 切换身份
+        - cell "身份上下文"
+        - cell "成功":
+          - generic: 成功
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 18:30 整改验收经办人 学校管理员 系统管理 未识别的历史操作 未识别的历史对象 成功 127.0.*.* 详情":
+        - cell "2026-10-26 18:30"
+        - cell "整改验收经办人 学校管理员":
+          - generic: 整改验收经办人
+          - generic: 学校管理员
+        - cell "系统管理"
+        - cell "未识别的历史操作":
+          - generic: 未识别的历史操作
+        - cell "未识别的历史对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+      - row "2026-10-26 18:22 整改验收经办人 学校管理员 系统管理 未识别的历史操作 未识别的历史对象 成功 127.0.*.* 详情":
+        - cell "2026-10-26 18:22"
+        - cell "整改验收经办人 学校管理员":
+          - generic: 整改验收经办人
+          - generic: 学校管理员
+        - cell "系统管理"
+        - cell "未识别的历史操作":
+          - generic: 未识别的历史操作
+        - cell "未识别的历史对象"
+        - cell "成功":
+          - generic: 成功
+        - cell "127.0.*.*"
+        - cell "详情":
+          - button "详情"
+  - generic: 共 71 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "8"
+  - button "下一页": ›
+  - paragraph: 合规说明：审计日志不提供删除 / 修改入口（含系统管理员）；日志中的网络地址、账号已固定脱敏，明文仅存于安全存储并需专项审计流程调取。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

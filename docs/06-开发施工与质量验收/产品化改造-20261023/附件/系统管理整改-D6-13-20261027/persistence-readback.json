@@ -1,0 +1,46 @@
+{
+  "database": "student_lifecycle_d6_ui_test_20261025",
+  "transaction": "READ ONLY",
+  "grades": {
+    "reviewStatus": "SUBMITTED",
+    "entryStatus": "INPUTTING",
+    "savedRows": 0
+  },
+  "approval": {
+    "status": "PENDING",
+    "version": 0
+  },
+  "teacherTodo": {
+    "status": "PENDING",
+    "version": 0
+  },
+  "internshipLeaves": {
+    "1": "APPROVED",
+    "2": "PENDING"
+  },
+  "sameStudent": {
+    "studentId": "1",
+    "classId": "1",
+    "counselorId": "2",
+    "teachingTaskId": "1",
+    "teachingTeacherId": "2",
+    "graduationStudentId": "1",
+    "graduationMentorName": "整改验收教师甲",
+    "internshipRecordId": "1",
+    "internshipMentorName": "四域验收教师乙",
+    "graduationAssignmentHistoryCount": 0
+  },
+  "studentAccountLinks": [
+    {
+      "studentId": "1",
+      "userId": "5",
+      "status": "ACTIVE"
+    },
+    {
+      "studentId": "3",
+      "userId": "6",
+      "status": "ACTIVE"
+    }
+  ],
+  "limit": "来源关系夹具未完成正式毕业设计分配流程；原分配历史为0，不把身份准备当成业务流程完成。"
+}

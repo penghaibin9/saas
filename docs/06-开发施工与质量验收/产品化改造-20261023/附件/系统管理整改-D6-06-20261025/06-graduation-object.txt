@@ -1,0 +1,174 @@
+http://127.0.0.1:5196/admin/graduation/students/1?batchId=1&returnTo=/admin/system/role-assignments?view=relations%26relationUserId=2
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 毕业设计中心
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ① 准备
+    - button "② 选题":
+      - generic: ② 选题
+    - button "③ 过程与中期":
+      - generic: ③ 过程与中期
+    - button "④ 论文与评阅":
+      - generic: ④ 论文与评阅
+    - button "⑤ 答辩":
+      - generic: ⑤ 答辩
+    - button "⑥ 成绩与归档":
+      - generic: ⑥ 成绩与归档
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: ① 准备
+  - navigation "三级菜单":
+    - button "批次与时间节点":
+      - generic: 批次与时间节点
+    - button "学生与进度":
+      - generic: 学生与进度
+    - button "导师与分配":
+      - generic: 导师与分配
+    - button "材料规则":
+      - generic: 材料规则
+    - button "分配冲突检测":
+      - generic: 分配冲突检测
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学生与进度" [selected]:
+    - generic: 学生与进度
+  - button "关闭学生与进度":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:39
+  - heading "四域虚构学生甲 · 毕设详情" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "D606毕设批次" [selected]
+  - generic: 草稿
+  - button "返回系统管理"
+  - button "分配选题"
+  - button "推进节点"
+  - button "标记风险"
+  - region "毕设学生摘要":
+    - generic: 四
+    - strong: 四域虚构学生甲
+    - generic: D****1
+    - text: · D606关系验收班
+    - generic: 当前节点
+    - generic: 选题中
+    - generic: 指导教师
+    - generic: 整改验收教师甲
+    - generic: 风险状态
+    - generic: 无
+  - heading "课题信息" [level=3]
+  - generic: 选题中
+  - term: 学号
+  - definition:
+    - generic: D****1
+  - term: 毕设批次
+  - definition: D606毕设批次
+  - term: 课题名称
+  - definition: （未确认选题）
+  - term: 课题来源
+  - definition: —
+  - term: 指导教师
+  - definition: 整改验收教师甲
+  - term: 任务书
+  - definition: 尚未下达任务书
+  - term: 联系电话
+  - definition
+  - term: 中期检查
+  - definition: —
+  - term: 答辩安排
+  - definition: 待分组
+  - term: 风险等级
+  - definition: 无
+  - generic: 主状态进度
+  - list:
+    - generic: 选题确认
+    - generic: 当前
+    - generic: 任务书确认
+    - generic: 未到达
+    - generic: 开题指导
+    - generic: 未到达
+    - generic: 中期检查
+    - generic: 未到达
+    - generic: 成果检查
+    - generic: 未到达
+    - generic: 答辩与成绩
+    - generic: 未到达
+    - generic: 已完成
+    - generic: 未到达
+  - button "开题"
+  - button "任务书"
+  - button "指导记录"
+  - button "中期"
+  - button "成果"
+  - button "查重"
+  - button "评阅与成绩"
+  - button "风险"
+  - button "归档"
+  - table:
+    - rowgroup:
+      - row "材料 版本 提交时间 状态 批阅人":
+        - columnheader "材料"
+        - columnheader "版本"
+        - columnheader "提交时间"
+        - columnheader "状态"
+        - columnheader "批阅人"
+    - rowgroup:
+      - row "暂无开题记录":
+        - cell "暂无开题记录"
+  - heading "审计日志（本学生毕设档案）" [level=3]
+  - generic: 暂无审计记录
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

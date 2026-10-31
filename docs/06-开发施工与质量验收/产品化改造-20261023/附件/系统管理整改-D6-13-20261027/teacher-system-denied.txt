@@ -1,0 +1,47 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索功能与帮助":
+    - /placeholder: 搜索功能或帮助
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 10:09":
+    - generic: 10/27周二 10:09
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 任课教师":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 任课教师
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:02:04":
+  - generic: 本次工作 00:02:04
+- complementary "二级菜单":
+  - button "展开二级菜单":
+    - generic: »
+  - navigation "二级菜单"
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+    - generic: »
+  - navigation "三级菜单"
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面"
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面" [disabled]:
+- button "专注模式":
+- main:
+  - status:
+    - paragraph: 教职工账号
+    - heading "当前身份暂不能办理此业务" [level=1]
+    - paragraph: 当前身份缺少此页面所需权限。请在右上角切换已有的业务身份，或由有授权职责的管理员核对角色与数据范围。
+    - button "重新检查"
+    - button "返回工作台"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

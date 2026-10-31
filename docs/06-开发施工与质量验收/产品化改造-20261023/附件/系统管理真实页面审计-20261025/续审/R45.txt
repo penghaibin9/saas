@@ -1,0 +1,301 @@
+http://127.0.0.1:5173/admin/system/logs?tab=login
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 13° 阴":
+    - generic: 北京 13° 阴
+  - button "10/25周日 14:40":
+    - generic: 10/25周日 14:40
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 系统管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 系统管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:20:21":
+  - generic: 本次工作 02:20:21
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 系统管理
+  - navigation "二级菜单":
+    - button "系统概览":
+      - generic: 系统概览
+    - button "身份与账号":
+      - generic: 身份与账号
+    - button "组织主数据":
+      - generic: 组织主数据
+    - button "角色与权限":
+      - generic: 角色与权限
+    - button "学校配置":
+      - generic: 学校配置
+    - button "流程配置":
+      - generic: 流程配置
+    - button "安全与审计":
+      - generic: 安全与审计
+    - button "接口与同步":
+      - generic: 接口与同步
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 安全与审计
+  - navigation "三级菜单":
+    - button "操作与权限审计":
+      - generic: 操作与权限审计
+    - button "登录与安全审计" [active]:
+      - generic: 登录与安全审计
+    - button "敏感与导入导出审计":
+      - generic: 敏感与导入导出审计
+    - button "安全审计证据与完整性":
+      - generic: 安全审计证据与完整性
+    - button "完整性异常中心":
+      - generic: 完整性异常中心
+    - button "文件存储治理":
+      - generic: 文件存储治理
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "身份权限总览":
+    - generic: 身份权限总览
+  - button "关闭身份权限总览":
+  - tab "预设角色模板":
+    - generic: 预设角色模板
+  - button "关闭预设角色模板":
+  - tab "学校角色与成员":
+    - generic: 学校角色与成员
+  - button "关闭学校角色与成员":
+  - tab "角色成员与业务身份":
+    - generic: 角色成员与业务身份
+  - button "关闭角色成员与业务身份":
+  - tab "菜单与操作权限":
+    - generic: 菜单与操作权限
+  - button "关闭菜单与操作权限":
+  - tab "数据范围规则":
+    - generic: 数据范围规则
+  - button "关闭数据范围规则":
+  - tab "临时授权与工作移交":
+    - generic: 临时授权与工作移交
+  - button "关闭临时授权与工作移交":
+  - tab "安全变更":
+    - generic: 安全变更
+  - button "关闭安全变更":
+  - tab "访问治理":
+    - generic: 访问治理
+  - button "关闭访问治理":
+  - tab "学校信息与品牌":
+    - generic: 学校信息与品牌
+  - button "关闭学校信息与品牌":
+  - tab "数据字典":
+    - generic: 数据字典
+  - button "关闭数据字典":
+  - tab "模块授权与业务开关":
+    - generic: 模块授权与业务开关
+  - button "关闭模块授权与业务开关":
+  - tab "主数据责任与数据质量":
+    - generic: 主数据责任与数据质量
+  - button "关闭主数据责任与数据质量":
+  - tab "合规与业务表单":
+    - generic: 合规与业务表单
+  - button "关闭合规与业务表单":
+  - tab "学年学期与业务日历":
+    - generic: 学年学期与业务日历
+  - button "关闭学年学期与业务日历":
+  - tab "流程安全与运行治理":
+    - generic: 流程安全与运行治理
+  - button "关闭流程安全与运行治理":
+  - tab "统一消息、待办与通知治理":
+    - generic: 统一消息、待办与通知治理
+  - button "关闭统一消息、待办与通知治理":
+  - tab "批处理与后台任务":
+    - generic: 批处理与后台任务
+  - button "关闭批处理与后台任务":
+  - tab "操作与权限审计":
+    - generic: 操作与权限审计
+  - button "关闭操作与权限审计":
+  - tab "登录与安全审计" [selected]:
+    - generic: 登录与安全审计
+  - button "关闭登录与安全审计":
+- button "恢复最近关闭的页签":
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:40
+  - heading "日志中心" [level=1]
+  - button "⇩ 导出日志"
+  - generic: 导出动作本身也会写入审计日志
+  - button "操作日志"
+  - button "登录日志"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 姓名 / 工号
+  - generic: 开始日期
+  - combobox "全部时间"
+  - generic: 结束日期
+  - combobox "全部时间"
+  - generic: 结果
+  - combobox "结果":
+    - option "全部" [selected]
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "时间 账号 结果 说明 IP（脱敏） 地点 设备":
+        - columnheader "时间"
+        - columnheader "账号"
+        - columnheader "结果"
+        - columnheader "说明"
+        - columnheader "IP（脱敏）"
+        - columnheader "地点"
+        - columnheader "设备"
+    - rowgroup:
+      - row "2026-10-25 06:34 — · — 成功 — 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0":
+        - cell "2026-10-25 06:34"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Safari/537.36 Edg/152.0.0.0"
+      - row "2026-10-25 06:30 — · — 成功 — 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 06:30"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:24 — · — 成功 — 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:24"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:24 — · — 成功 — 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:24"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:22 — · — 成功 — 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:22"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:19 — · — 成功 — 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:19"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:14 — · — 失败 登录失败 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:14"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "失败":
+          - generic: 失败
+        - cell "登录失败"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:06 — · — 成功 — 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:06"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "成功":
+          - generic: 成功
+        - cell "—"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:04 — · — 失败 登录失败 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:04"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "失败":
+          - generic: 失败
+        - cell "登录失败"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+      - row "2026-10-25 04:03 — · — 失败 登录失败 127.0.*.* Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36":
+        - cell "2026-10-25 04:03"
+        - cell "— · —":
+          - generic: —
+          - generic: · —
+        - cell "失败":
+          - generic: 失败
+        - cell "登录失败"
+        - cell "127.0.*.*"
+        - cell
+        - cell "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/156.0.0.0 Safari/537.36"
+  - generic: 共 3870 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "2"
+  - button "…" [disabled]
+  - button "387"
+  - button "下一页": ›
+  - paragraph: 合规说明：审计日志不提供删除 / 修改入口（含系统管理员）；日志中的 IP、账号已固定脱敏，明文仅存于安全存储并需专项审计流程调取。
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

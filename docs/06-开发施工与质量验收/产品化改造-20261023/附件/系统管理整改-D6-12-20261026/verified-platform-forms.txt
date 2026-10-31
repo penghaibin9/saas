@@ -1,0 +1,141 @@
+- banner:
+  - generic: 平台运营中心
+  - textbox "搜索平台功能与帮助":
+    - /placeholder: 搜索平台功能或帮助
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:34":
+    - generic: 10/27周二 09:34
+  - button "帮助与引导": "?"
+  - button "独 独立表单验收员 其他业务角色":
+    - generic: 独
+    - generic: 独立表单验收员
+    - generic: 其他业务角色
+    - generic: ▾
+- navigation "一级菜单":
+  - button "平台运营"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:02:09":
+  - generic: 本次工作 00:02:09
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 平台运营
+  - navigation "二级菜单":
+    - button "全局标准与发布":
+      - generic: 全局标准与发布
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 全局标准与发布
+  - navigation "三级菜单":
+    - button "学校表单配置与版本":
+      - generic: 学校表单配置与版本
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "学校表单配置与版本" [selected]:
+    - generic: 学校表单配置与版本
+  - button "关闭学校表单配置与版本":
+- button "恢复最近关闭的页签" [disabled]:
+- button "取消收藏" [pressed]:
+- button "专注模式":
+- main:
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - generic: 独立平台验证域 · 独立表单验收员 · 2026-10-27 09:31
+  - heading "学校表单配置与版本" [level=1]
+  - paragraph: 明确选择目标学校后维护配置；此处不代办学生业务，也不读取业务表单提交内容。
+  - generic: 已授权表单维护
+  - generic: 数据范围：当前所选学校的表单配置
+  - text: 搜索学校
+  - textbox "搜索学校":
+    - /placeholder: 学校名称或编码
+  - button "查询学校"
+  - text: 目标学校
+  - combobox "目标学校":
+    - option "请选择学校"
+    - option "系统管理整改独立验收学校 · sandbox-school" [selected]
+  - status: 当前学校：系统管理整改独立验收学校。发布或停用前需要核对版本、影响和原因。
+  - heading "来源合规能力目录" [level=2]
+  - paragraph: 这里核对平台已登记的来源能力，不读取学生业务事实，也不生成当前学校“合规通过”的结论。具体评估仍由所属业务模块按原权限执行。
+  - table:
+    - rowgroup:
+      - row "业务域 已登记能力 技术来源":
+        - columnheader "业务域"
+        - columnheader "已登记能力"
+        - columnheader "技术来源"
+    - rowgroup:
+      - row "岗位实习 来源域原生规则引擎":
+        - cell "岗位实习"
+        - cell "来源域原生规则引擎"
+        - cell:
+          - generic "实施人员使用"
+      - row "毕业设计 来源域材料规则":
+        - cell "毕业设计"
+        - cell "来源域材料规则"
+        - cell:
+          - generic "实施人员使用"
+      - row "学工 仅有证据能力，不能判定合规通过":
+        - cell "学工"
+        - cell "仅有证据能力，不能判定合规通过"
+        - cell:
+          - generic "实施人员使用"
+      - row "教务 仅有证据能力，不能判定合规通过":
+        - cell "教务"
+        - cell "仅有证据能力，不能判定合规通过"
+        - cell:
+          - generic "实施人员使用"
+  - heading "表单定义" [level=2]
+  - button "独立验收表单（不接入既有业务）"
+  - heading "表单定义与版本" [level=3]
+  - generic "实施人员使用"
+  - region "表单版本列表，可横向滚动":
+    - table:
+      - rowgroup:
+        - row "版本 结构摘要 支持端 状态 操作":
+          - columnheader "版本"
+          - columnheader "结构摘要"
+          - columnheader "支持端"
+          - columnheader "状态"
+          - columnheader "操作"
+      - rowgroup:
+        - row "第 1 版 教职工电脑端 已停用 预览 校验 影响分析":
+          - cell "第 1 版"
+          - cell:
+            - generic "实施人员使用"
+          - cell "教职工电脑端"
+          - cell "已停用"
+          - cell "预览 校验 影响分析":
+            - button "预览"
+            - button "校验"
+            - button "影响分析"
+  - generic: 共 1 个历史版本 · 第 1 页
+  - button "上一页" [disabled]
+  - button "下一页" [disabled]
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

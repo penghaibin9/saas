@@ -1,0 +1,280 @@
+Browser tab: 2, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/admin/system/implementation/overview".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/system/implementation/overview
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) Description: 搜索功能与帮助, Value: 学生画像
+			7 text Ctrl K
+			276 text 未找到「学生画像」相关结果
+			14 button (collapsed) 北京 11° 晴, Secondary Actions: Expand
+				15 image
+				16 text 北京 11° 晴
+			17 button (collapsed) 10/26周一 22:07, Secondary Actions: Expand
+				18 image
+				277 text 10/26周一 22:07
+			20 button 帮助与引导
+			21 button 消息中心
+				22 image
+			23 button (collapsed) 整 整改验收经办人 系统管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				24 text 整
+				25 text 整改验收经办人
+				26 text 系统管理员
+		27 container
+			28 container 一级菜单
+				29 button 学工中心
+				30 button 系统管理
+			31 button (collapsed) 当前范围, Secondary Actions: Expand
+				32 image
+				33 text 当前范围
+				34 image
+			35 button (collapsed) 本次工作 04:52:38, Secondary Actions: Expand
+				36 image
+				278 text 本次工作 04:52:38
+		38 container 二级菜单
+			39 button 收窄二级菜单
+				40 text 系统管理
+			41 container 二级菜单
+				42 button 管理概览
+				43 button 账号管理
+				44 button 组织与任职
+				45 button 角色与权限
+				46 button 数据任务
+				47 button 学校设置
+				48 button 流程管理
+				49 button 安全与审计
+				50 button 第三方对接
+				51 button 实施与交付
+			52 checkbox Description: 取消固定二级菜单, Value: 1
+		53 container 三级菜单
+			54 button 收窄三级菜单
+				55 text 实施与交付
+			56 container 三级菜单
+				57 button 实施总览
+				58 button 首次开局向导
+				59 button 预设方案
+				60 button 职业教育国家标准库
+				61 button 数据导入与智能匹配
+				62 button 已安装配置
+				63 button 变更与升级
+				64 button 上线检查与验收
+				65 button 老系统数据迁移
+			66 checkbox Description: 取消固定三级菜单, Value: 1
+		67 container
+			68 tab group 已打开页面
+				69 container
+					70 tab (selectable, settable, boolean) 本校角色, Help: 角色与权限 / 本校角色, Value: 0
+本校角色
+					71 button 关闭本校角色
+						72 image
+				73 container
+					74 tab (selectable, settable, boolean) 日志中心, Help: 安全与审计 / 日志中心, Value: 0
+日志中心
+					75 button 关闭日志中心
+						76 image
+				77 container
+					78 tab (selectable, settable, boolean) 系统总览, Help: 管理概览 / 系统总览, Value: 0
+系统总览
+					79 button 关闭系统总览
+						80 image
+				81 container
+					82 tab (selectable, settable, boolean) 教职工导入, Help: 数据任务 / 教职工导入, Value: 0
+教职工导入
+					83 button 关闭教职工导入
+						84 image
+				85 container
+					86 tab (selectable, settable, boolean) 数据交换任务中心, Help: 数据任务 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					87 button 关闭数据交换任务中心
+						88 image
+				89 container
+					90 tab (selectable, settable, boolean) 预设角色模板, Help: 角色与权限 / 预设角色模板, Value: 0
+预设角色模板
+					91 button 关闭预设角色模板
+						92 image
+				93 container
+					94 tab (selected, settable, boolean) 实施总览, Help: 实施与交付 / 实施总览, Value: 1
+实施总览
+					95 button 关闭实施总览
+						96 image
+			97 button (disabled) 恢复最近关闭的页签
+				98 image
+			99 checkbox Description: 取消收藏, Help: 收藏当前页面, Value: 1
+				100 image
+			101 checkbox Description: 专注模式, Value: 0
+				102 image
+			103 container
+				104 heading 实施与上线验收, Value: 1
+					105 text 实施与上线验收
+				106 button 运行上线检查
+				107 button 刷新
+				108 container 实施项目统一摘要
+					109 text 项目：D607独立实施验收项目 · IMP-20261025180727540150
+					110 text 项目版本：3 · 配置覆盖：100%
+					111 text 配置覆盖仅表示配置段已加载，不代表安装、检查或验收完成。
+					112 text 验收尚未封板，仍需按真实检查结果推进。
+				113 text 实施项目
+				114 heading D607独立实施验收项目, Value: 2
+					115 text D607独立实施验收项目
+				116 text 当前阶段 检查中；未取得证据的项目明确显示“待检查 / 待读取 / 待预览”。
+				117 text 检查中
+				118 container
+					119 text 仍有 3 个上线阻断 按检查项的责任角色逐个处理，处理后重新运行检查，不要在页面上直接改成通过。
+				120 link Description: 进入上线检查, Value: 127.0.0.1:5196/admin/system/implementation/acceptance
+				121 link Description: 核对开局配置, Value: 127.0.0.1:5196/admin/system/implementation/wizard
+				122 container 实施项目关键结论
+					123 text 上线阻断
+					124 text 3
+					125 text 来自最近一次检查记录
+					126 text 未确认流程政策
+					127 text 25
+					128 text 来自运行时预设服务
+					129 text 待安装对象
+					130 text 待预览
+					131 text 生成预览后才有可靠数量
+					132 text 未授权模块
+					133 text 待预览
+					134 text 未预览时不猜测为 0
+					135 text 验收证据
+					136 text 未验收
+					137 text 没有证据就不标记通过
+				138 container
+					139 text 上线检查
+					140 text 已保存检查记录不代表当前四大模块已就绪；未取得记录时保持“待检查”。
+					141 text 3 个阻断
+					142 table
+						143 row
+							144 cell
+								145 text 检查项
+							146 cell
+								147 text 结果
+							148 cell
+								149 text 级别
+							150 cell
+								151 text 责任角色
+						152 row
+							153 cell
+								154 text 学校开通
+							155 cell
+								156 text 通过
+							157 cell
+								158 text 警告
+							159 cell
+								160 text 学校管理员
+						161 row
+							162 cell
+								163 text 角色与权限
+							164 cell
+								165 text 通过
+							166 cell
+								167 text 阻断项
+							168 cell
+								169 text 学校管理员
+						170 row
+							171 cell
+								172 text 组织结构
+							173 cell
+								174 text 通过
+							175 cell
+								176 text 阻断项
+							177 cell
+								178 text 学校管理员
+						179 row
+							180 cell
+								181 text 师生导入
+							182 cell
+								183 text 通过
+							184 cell
+								185 text 阻断项
+							186 cell
+								187 text 学校管理员
+						188 row
+							189 cell
+								190 text 业务关系
+							191 cell
+								192 text 不通过
+							193 cell
+								194 text 阻断项
+							195 cell
+								196 text 学校管理员
+						197 row
+							198 cell
+								199 text 流程
+							200 cell
+								201 text 不通过
+							202 cell
+								203 text 阻断项
+							204 cell
+								205 text 学校管理员
+						206 row
+							207 cell
+								208 text 字典与编号
+							209 cell
+								210 text 通过
+							211 cell
+								212 text 警告
+							213 cell
+								214 text 学校管理员
+						215 row
+							216 cell
+								217 text 安全与审计
+							218 cell
+								219 text 通过
+							220 cell
+								221 text 警告
+							222 cell
+								223 text 学校管理员
+						224 row
+							225 cell
+								226 text 菜单与工作台
+							227 cell
+								228 text 通过
+							229 cell
+								230 text 阻断项
+							231 cell
+								232 text 学校管理员
+						233 row
+							234 cell
+								235 text 消息与通知
+							236 cell
+								237 text 通过
+							238 cell
+								239 text 阻断项
+							240 cell
+								241 text 学校管理员
+						242 row
+							243 cell
+								244 text 上线检查
+							245 cell
+								246 text 不通过
+							247 cell
+								248 text 阻断项
+							249 cell
+								250 text 学校管理员
+						251 row
+							252 cell
+								253 text 模块业务
+							254 cell
+								255 text 通过
+							256 cell
+								257 text 警告
+							258 cell
+								259 text 学校管理员
+				260 container
+					261 text 学校准备清单
+					262 link Description: 01 首次开局向导 学校基础配置与实施项目 →, Value: 127.0.0.1:5196/admin/system/implementation/wizard
+					263 link Description: 02 预设方案 核对将安装的流程与工作台 →, Value: 127.0.0.1:5196/admin/system/implementation/presets
+					264 link Description: 03 数据导入与智能匹配 主数据与关系映射 →, Value: 127.0.0.1:5196/admin/system/implementation/data-mapping
+					265 link Description: 04 已安装配置 核对实际安装版本 →, Value: 127.0.0.1:5196/admin/system/implementation/installed
+					266 link Description: 05 变更与升级 通过变更项目持续维护 →, Value: 127.0.0.1:5196/admin/system/implementation/changes
+					267 link Description: 06 上线检查与验收 真实检查、阻断与封板证据 →, Value: 127.0.0.1:5196/admin/system/implementation/acceptance
+					268 text 验收原则
+					269 text 先验核心业务，再看页面
+					270 text 账号、权限、数据范围拒绝、审计回执必须有真实的请求和保存记录作为依据。
+					271 text 不同角色分别验
+					272 text 管理员通过不能替代普通老师、只读角色与配置角色的验收。
+					273 text 错误状态必须能恢复
+					274 text 无权限、数据已变化、超时、扫描失败与缓存失效必须分开呈现。
+			275 button 我的常用
+
+The focused UI element is 6 text field (settable) Description: 搜索功能与帮助, Value: 学生画像

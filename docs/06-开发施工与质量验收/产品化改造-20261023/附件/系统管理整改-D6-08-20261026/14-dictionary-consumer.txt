@@ -1,0 +1,201 @@
+Browser tab: 3, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5196/admin/student/list".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5196/admin/student/list
+	2 container app
+		3 container
+			4 text 高校学生全生命周期管理平台
+			5 image
+			6 text field (settable) 搜索学生、功能或帮助
+			7 text Ctrl K
+			8 button 帮助与引导
+			9 button 消息中心
+				10 image
+			11 button (collapsed) 整 整改验收经办人 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				12 text 整
+				13 text 整改验收经办人
+				14 text 学校管理员
+		15 container
+			16 container 一级菜单
+				17 button 学工中心
+				18 button 教务中心
+				19 button 毕业设计中心
+				20 button 岗位实习中心
+				21 button 系统管理
+			22 button (collapsed) 当前范围, Secondary Actions: Expand
+				23 image
+				24 text 当前范围
+				25 image
+		26 container 二级菜单
+			27 button 收窄二级菜单
+				28 text 学工中心
+			29 container 二级菜单
+				30 button 学工工作台
+				31 button 学生主档
+				32 button 班级与辅导员
+				33 button 数字迎新
+				34 button 请假销假
+				35 button 宿舍与公寓
+				36 button 风险预警与处置
+				37 button 困难认定
+				38 button 奖助勤贷补
+				39 button 违纪处分
+				40 button 谈心家校
+				41 button 心理关注
+				42 button 活动二课与社团
+				43 button 统计与档案
+			44 checkbox Description: 取消固定二级菜单, Value: 1
+		45 container 三级菜单
+			46 button 收窄三级菜单
+				47 text 学生主档
+			48 container 三级菜单
+				49 button 学生列表
+				50 button 学籍异动台账
+				51 button 风险标签
+				52 button 信息更正审核
+				53 button 身份核验
+				54 button 导入学生
+				55 button 数据导出
+			56 checkbox Description: 取消固定三级菜单, Value: 1
+		57 container
+			58 tab group 已打开页面
+				59 container
+					60 tab (selected, settable, boolean) 学生列表, Help: 学生主档 / 学生列表, Value: 1
+学生列表
+					61 button 关闭学生列表
+						62 image
+			63 button (disabled) 恢复最近关闭的页签
+				64 image
+			65 checkbox Description: 收藏当前页面, Value: 0
+				66 image
+			67 checkbox Description: 专注模式, Value: 0
+				68 image
+			69 container
+				70 heading 学生主档, Value: 1
+					71 text 学生主档
+				72 button 新增学生
+				73 button 批量导出
+				74 button 列设置
+				75 text 查询结果 
+				76 text 2
+				77 text 关键词
+				78 text field (settable) 关键词
+				79 text 学院
+				80 pop up button (collapsed, settable) 学院, Value: 全部, Secondary Actions: Expand
+					81 menu
+						82 (selected) 全部
+				83 text 班级
+				84 pop up button (collapsed, settable) 班级, Value: 全部, Secondary Actions: Expand
+					85 menu
+						86 (selected) 全部
+						87 D606关系验收班
+						88 D606待补辅导员班
+				164 text 年级
+				165 pop up button (collapsed, settable) 年级, Value: 全部, Secondary Actions: Expand
+					166 menu
+						167 (selected) 全部
+						168 2026
+				169 text 学籍状态
+				170 pop up button (collapsed, settable) 学籍状态, Value: 全部, Secondary Actions: Expand
+					171 menu
+						172 (selected) 全部
+						173 已录取
+						174 在读
+						175 休学/保留学籍
+						176 已毕业
+						177 退学
+						178 已作废
+						179 未知
+				180 text 身份核验
+				181 pop up button (collapsed, settable) 身份核验, Value: 全部, Secondary Actions: Expand
+					182 menu
+						183 (selected) 全部
+						184 核验服务未配置
+						185 未知
+						186 待核验
+						187 已核验
+						188 未通过
+						189 异常
+				190 text 风险等级
+				191 pop up button (collapsed, settable) 风险等级, Value: 高风险（独立验证）, Secondary Actions: Expand
+					192 menu
+						193 全部
+						194 无
+						195 低风险
+						196 中风险
+						197 (selected) 高风险（独立验证）
+				89 button (expanded) 收起筛选 · 1, Secondary Actions: Collapse
+				90 button 查询
+				91 button 重置
+				92 checkbox (settable, integer) Description: 显示已作废, Value: 0
+				93 table
+					94 row
+						95 cell
+							96 checkbox (settable, integer) 0
+						97 cell
+							98 text 学生
+						99 cell
+							100 text 班级 / 学院 / 专业
+						101 cell
+							102 text 手机号
+						103 cell
+							104 text 学籍状态
+						105 cell
+							106 text 身份核验
+						107 cell
+							108 text 风险
+						109 cell
+							110 text 主档完整度
+						111 cell
+							112 text 操作
+					113 row
+						114 cell
+							115 checkbox (settable, integer) 0
+						116 cell
+							117 text 四域虚构学生甲
+							118 text D606-S001 ·
+						119 cell
+							120 text D606关系验收班
+							121 text D606四域验收学院 / D606验收专业
+						122 cell
+							123 text 未登记
+						124 cell
+							125 text 在读
+						126 cell
+							127 text 核验服务未配置
+						128 cell
+							129 text 无
+						130 cell
+							131 text 56%
+						132 cell
+							133 button 学生360
+							134 button 编辑
+							135 button 作废
+					136 row
+						137 cell
+							138 checkbox (settable, integer) 0
+						139 cell
+							140 text 四域虚构学生乙
+							141 text D606-S002 ·
+						142 cell
+							143 text D606关系验收班
+							144 text D606四域验收学院 / D606验收专业
+						145 cell
+							146 text 未登记
+						147 cell
+							148 text 在读
+						149 cell
+							150 text 核验服务未配置
+						151 cell
+							152 text 无
+						153 cell
+							154 text 56%
+						155 cell
+							156 button 学生360
+							157 button 编辑
+							158 button 作废
+				159 text 共 2 条
+				160 button (disabled) 上一页
+				161 button 1
+				162 button (disabled) 下一页
+			163 button 我的常用
+
+The focused UI element is 89 button (expanded) 收起筛选 · 1, Secondary Actions: Collapse

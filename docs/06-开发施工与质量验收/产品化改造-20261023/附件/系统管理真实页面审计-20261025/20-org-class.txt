@@ -1,0 +1,390 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/org?tab=class".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/org?tab=class
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:10, Secondary Actions: Expand
+				11 image
+				358 text 10/25周日 12:10
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:04:18, Secondary Actions: Expand
+				32 image
+				789 text 本次工作 00:04:18
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				61 container
+					62 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					63 button 关闭系统总览
+						64 image
+				65 container
+					66 tab (selectable, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 0
+教职工账号
+					67 button 关闭教职工账号
+						68 image
+				69 container
+					70 tab (selectable, settable, boolean) 教职工导入, Help: 身份与账号 / 教职工导入, Value: 0
+教职工导入
+					71 button 关闭教职工导入
+						72 image
+				73 container
+					74 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					75 button 关闭数据交换任务中心
+						76 image
+				202 container
+					203 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					204 button 关闭实施总览
+						205 image
+				208 container
+					209 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					210 button 关闭首次开局向导
+						211 image
+				215 container
+					216 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					217 button 关闭预设方案
+						218 image
+				238 container
+					239 tab (selectable, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 0
+职业教育国家标准库
+					240 button 关闭职业教育国家标准库
+						241 image
+				243 container
+					244 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					245 button 关闭数据导入与智能匹配
+						246 image
+				252 container
+					253 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					254 button 关闭已安装配置
+						255 image
+				258 container
+					259 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					260 button 关闭变更与升级
+						261 image
+				265 container
+					266 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					267 button 关闭上线检查与验收
+						268 image
+				330 container
+					331 tab (selectable, settable, boolean) 学生账号, Help: 身份与账号 / 学生账号, Value: 0
+学生账号
+					332 button 关闭学生账号
+						333 image
+				335 container
+					336 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					337 button 关闭学生导入与账号开通
+						338 image
+				340 container
+					341 tab (selectable, settable, boolean) 账号异常排查, Help: 身份与账号 / 账号异常排查, Value: 0
+账号异常排查
+					342 button 关闭账号异常排查
+						343 image
+				396 container
+					397 tab (selectable, settable, boolean) 登录与安全策略, Help: 身份与账号 / 登录与安全策略, Value: 0
+登录与安全策略
+					398 button 关闭登录与安全策略
+						399 image
+				401 container
+					402 tab (selectable, settable, boolean) 树形定位工作台, Help: 组织主数据 / 树形定位工作台, Value: 0
+树形定位工作台
+					403 button 关闭树形定位工作台
+						404 image
+				642 container
+					643 tab (selectable, settable, boolean) 学院与部门, Help: 组织主数据 / 学院与部门, Value: 0
+学院与部门
+					644 button 关闭学院与部门
+						645 image
+				647 container
+					648 tab (selectable, settable, boolean) 专业管理, Help: 组织主数据 / 专业管理, Value: 0
+专业管理
+					649 button 关闭专业管理
+						650 image
+				652 container
+					653 tab (selected, settable, boolean) 年级与班级, Help: 组织主数据 / 年级与班级, Value: 1
+年级与班级
+					654 button 关闭年级与班级
+						655 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 收藏当前页面, Value: 0
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			405 container 组织主数据
+				406 button 树形定位工作台
+				407 button 学院与部门
+				408 button 专业管理
+				409 button 年级与班级
+				410 button 岗位管理
+				411 button 教职工任职归属查询
+				412 button 业务关系中心
+				413 button 变更版本
+			414 container
+				415 heading 组织与任职, Value: 1
+					416 text 组织与任职
+				417 button ⇪ 数据导入与匹配
+				418 button ⇩ 导出组织结构
+				420 container 组织目录
+					421 container
+						422 image
+						423 text field (settable) 搜索组织
+					424 checkbox 全校组织, Value: 1
+						425 image
+						426 text 全校组织
+					427 container 组织层级
+						428 button (collapsed) Description: 展开智能排课验收学院, Secondary Actions: Expand
+							429 image
+						430 checkbox 智能排课验收学院, Value: 0
+							431 image
+							432 text 智能排课验收学院
+						433 button (collapsed) Description: 展开联通试用学院, Secondary Actions: Expand
+							434 image
+						435 checkbox 联通试用学院, Value: 0
+							436 image
+							437 text 联通试用学院
+						438 button (collapsed) Description: 展开信息工程学院, Secondary Actions: Expand
+							439 image
+						440 checkbox 信息工程学院, Value: 0
+							441 image
+							442 text 信息工程学院
+						443 button (collapsed) Description: 展开智能制造学院, Secondary Actions: Expand
+							444 image
+						445 checkbox 智能制造学院, Value: 0
+							446 image
+							447 text 智能制造学院
+						448 button (collapsed) Description: 展开汽车工程学院, Secondary Actions: Expand
+							449 image
+						450 checkbox 汽车工程学院, Value: 0
+							451 image
+							452 text 汽车工程学院
+						453 button (collapsed) Description: 展开经济管理学院, Secondary Actions: Expand
+							454 image
+						455 checkbox 经济管理学院, Value: 0
+							456 image
+							457 text 经济管理学院
+						458 button (collapsed) Description: 展开文化旅游学院, Secondary Actions: Expand
+							459 image
+						460 checkbox 文化旅游学院, Value: 0
+							461 image
+							462 text 文化旅游学院
+						463 button (collapsed) Description: 展开建筑工程学院, Secondary Actions: Expand
+							464 image
+						465 checkbox 建筑工程学院, Value: 0
+							466 image
+							467 text 建筑工程学院
+						468 button (collapsed) Description: 展开医药健康学院, Secondary Actions: Expand
+							469 image
+						470 checkbox 医药健康学院, Value: 0
+							471 image
+							472 text 医药健康学院
+						473 button (collapsed) Description: 展开艺术设计学院, Secondary Actions: Expand
+							474 image
+						475 checkbox 艺术设计学院, Value: 0
+							476 image
+							477 text 艺术设计学院
+				478 container 组织详情
+					479 container 组织归属
+						480 button 全校
+					481 container
+						482 heading 全校班级, Value: 2
+							483 text 全校班级
+						484 text 选择左侧组织查看下级，也可以直接搜索名称或编码。
+					488 container
+						489 image
+						490 text field (settable) 筛选下级组织
+					656 text 当前层级 · 387 项
+					492 table
+						493 row
+							494 cell
+								495 text 组织名称
+							496 cell
+								497 text 类型
+							498 cell
+								499 text 编码
+							500 cell
+								501 text 成员数
+							502 cell
+								503 text 状态
+							504 cell
+								505 text 操作
+						657 row
+							658 cell
+								659 button 智能排课验收班
+							660 cell
+								661 text 班级
+							662 cell
+								663 text OPT-20260914
+							664 cell
+								665 text 2
+							666 cell
+								667 text 正常
+							668 cell
+								669 button 查看
+						670 row
+							671 cell
+								672 button 联通试用2601班
+							673 cell
+								674 text 班级
+							675 cell
+								676 text PCFLOW-CLASS
+							677 cell
+								678 text 2
+							679 cell
+								680 text 正常
+							681 cell
+								682 button 查看
+						683 row
+							684 cell
+								685 button V5选课联调2602班
+							686 cell
+								687 text 班级
+							688 cell
+								689 text V5SEL-20261004-02
+							690 cell
+								691 text 0
+							692 cell
+								693 text 正常
+							694 cell
+								695 button 查看
+						696 row
+							697 cell
+								698 button 软件技术2401班
+							699 cell
+								700 text 班级
+							701 cell
+								702 text 2024-C01M01-01
+							703 cell
+								704 text 50
+							705 cell
+								706 text 正常
+							707 cell
+								708 button 查看
+						709 row
+							710 cell
+								711 button 软件技术2402班
+							712 cell
+								713 text 班级
+							714 cell
+								715 text 2024-C01M01-02
+							716 cell
+								717 text 50
+							718 cell
+								719 text 正常
+							720 cell
+								721 button 查看
+						722 row
+							723 cell
+								724 button 软件技术2403班
+							725 cell
+								726 text 班级
+							727 cell
+								728 text 2024-C01M01-03
+							729 cell
+								730 text 50
+							731 cell
+								732 text 正常
+							733 cell
+								734 button 查看
+						735 row
+							736 cell
+								737 button 软件技术2404班
+							738 cell
+								739 text 班级
+							740 cell
+								741 text 2024-C01M01-04
+							742 cell
+								743 text 50
+							744 cell
+								745 text 正常
+							746 cell
+								747 button 查看
+						748 row
+							749 cell
+								750 button 软件技术2405班
+							751 cell
+								752 text 班级
+							753 cell
+								754 text 2024-C01M01-05
+							755 cell
+								756 text 50
+							757 cell
+								758 text 正常
+							759 cell
+								760 button 查看
+						761 row
+							762 cell
+								763 button 软件技术2406班
+							764 cell
+								765 text 班级
+							766 cell
+								767 text 2024-C01M01-06
+							768 cell
+								769 text 50
+							770 cell
+								771 text 正常
+							772 cell
+								773 button 查看
+						774 row
+							775 cell
+								776 button 软件技术2501班
+							777 cell
+								778 text 班级
+							779 cell
+								780 text 2025-C01M01-01
+							781 cell
+								782 text 52
+							783 cell
+								784 text 正常
+							785 cell
+								786 button 查看
+					636 container
+						787 text 共 387 项 · 每页 10 项
+						638 button (disabled) 上一页
+						788 text 1 / 39
+						640 button 下一页
+			199 button 我的常用
+
+The focused UI element is 409 button 年级与班级

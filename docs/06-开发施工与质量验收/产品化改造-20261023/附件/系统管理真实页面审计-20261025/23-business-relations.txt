@@ -1,0 +1,286 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/business-relations".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/business-relations
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:10, Secondary Actions: Expand
+				11 image
+				358 text 10/25周日 12:10
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:04:33, Secondary Actions: Expand
+				32 image
+				675 text 本次工作 00:04:33
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				73 container
+					74 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					75 button 关闭数据交换任务中心
+						76 image
+				202 container
+					203 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					204 button 关闭实施总览
+						205 image
+				208 container
+					209 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					210 button 关闭首次开局向导
+						211 image
+				215 container
+					216 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					217 button 关闭预设方案
+						218 image
+				238 container
+					239 tab (selectable, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 0
+职业教育国家标准库
+					240 button 关闭职业教育国家标准库
+						241 image
+				243 container
+					244 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					245 button 关闭数据导入与智能匹配
+						246 image
+				252 container
+					253 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					254 button 关闭已安装配置
+						255 image
+				258 container
+					259 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					260 button 关闭变更与升级
+						261 image
+				265 container
+					266 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					267 button 关闭上线检查与验收
+						268 image
+				330 container
+					331 tab (selectable, settable, boolean) 学生账号, Help: 身份与账号 / 学生账号, Value: 0
+学生账号
+					332 button 关闭学生账号
+						333 image
+				335 container
+					336 tab (selectable, settable, boolean) 学生导入与账号开通, Help: 身份与账号 / 学生导入与账号开通, Value: 0
+学生导入与账号开通
+					337 button 关闭学生导入与账号开通
+						338 image
+				340 container
+					341 tab (selectable, settable, boolean) 账号异常排查, Help: 身份与账号 / 账号异常排查, Value: 0
+账号异常排查
+					342 button 关闭账号异常排查
+						343 image
+				396 container
+					397 tab (selectable, settable, boolean) 登录与安全策略, Help: 身份与账号 / 登录与安全策略, Value: 0
+登录与安全策略
+					398 button 关闭登录与安全策略
+						399 image
+				401 container
+					402 tab (selectable, settable, boolean) 树形定位工作台, Help: 组织主数据 / 树形定位工作台, Value: 0
+树形定位工作台
+					403 button 关闭树形定位工作台
+						404 image
+				642 container
+					643 tab (selectable, settable, boolean) 学院与部门, Help: 组织主数据 / 学院与部门, Value: 0
+学院与部门
+					644 button 关闭学院与部门
+						645 image
+				647 container
+					648 tab (selectable, settable, boolean) 专业管理, Help: 组织主数据 / 专业管理, Value: 0
+专业管理
+					649 button 关闭专业管理
+						650 image
+				652 container
+					653 tab (selectable, settable, boolean) 年级与班级, Help: 组织主数据 / 年级与班级, Value: 0
+年级与班级
+					654 button 关闭年级与班级
+						655 image
+				657 container
+					658 tab (selectable, settable, boolean) 岗位管理, Help: 组织主数据 / 岗位管理, Value: 0
+岗位管理
+					659 button 关闭岗位管理
+						660 image
+				662 container
+					663 tab (selectable, settable, boolean) 教职工任职归属查询, Help: 组织主数据 / 教职工任职归属查询, Value: 0
+教职工任职归属查询
+					664 button 关闭教职工任职归属查询
+						665 image
+				667 container
+					668 tab (selected, settable, boolean) 业务关系中心, Help: 组织主数据 / 业务关系中心, Value: 1
+业务关系中心
+					669 button 关闭业务关系中心
+						670 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 收藏当前页面, Value: 0
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			405 container 组织主数据
+				406 button 树形定位工作台
+				407 button 学院与部门
+				408 button 专业管理
+				409 button 年级与班级
+				410 button 岗位管理
+				411 button 教职工任职归属查询
+				412 button 业务关系中心
+				413 button 变更版本
+			671 container
+				672 heading 业务关系中心, Value: 1
+					673 text 业务关系中心
+				674 button 刷新
+				676 container
+					677 text 关系登记表 共 6 种关系，登记异常 1 种
+				678 table
+					679 row
+						680 cell
+							681 text 业务关系
+						682 cell
+							683 text 归属模块
+						684 cell
+							685 text 权威数据位置
+						686 cell
+							687 text 登记校验
+						688 cell
+							689 text 关系缺口
+						690 cell
+							691 text 操作
+					692 row
+						693 cell
+							694 text 辅导员-班级
+							695 text COUNSELOR_CLASS
+						696 cell
+							697 text studentAffairs
+						698 cell
+							699 text app.models.org.SchoolClass.counselor_id
+							700 text 范围 COUNSELOR_CLASSES
+						701 cell
+							702 text 登记正常
+						703 cell
+							704 container
+								705 text MISSING_SUBJECT  2 条 · 没有指定负责人，相关数据范围解析不出任何人
+							706 container
+								707 text DANGLING_SUBJECT  4 条 · 负责人账号不存在或已停用，关系实际失效
+						708 cell
+							709 button 重新校验
+					710 row
+						711 cell
+							712 text 班主任-班级
+							713 text HEAD_TEACHER_CLASS
+						714 cell
+							715 text studentAffairs
+						716 cell
+							717 text app.models.org.SchoolClass.head_teacher_id
+							718 text 范围 COUNSELOR_CLASSES
+						719 cell
+							720 text 登记正常
+						721 cell
+							722 container
+								723 text MISSING_SUBJECT  2 条 · 没有指定负责人，相关数据范围解析不出任何人
+						724 cell
+							725 button 重新校验
+					726 row
+						727 cell
+							728 text 毕设导师-学生
+							729 text GD_MENTOR_STUDENT
+						730 cell
+							731 text graduationDesign
+						732 cell
+							733 text app.models.graduation.GraduationStudent.mentor_id
+							734 text 范围 GD_STUDENTS
+						735 cell
+							736 text 登记正常
+						737 cell
+							738 text 无缺口
+						739 cell
+							740 button 重新校验
+					741 row
+						742 cell
+							743 text 实习校内指导教师-学生
+							744 text INTERNSHIP_ADVISOR_STUDENT
+						745 cell
+							746 text internship
+						747 cell
+							748 text app.models.internship.InternshipRecord.advisor_user_id
+							749 text 范围 INTERN_STUDENTS
+						750 cell
+							751 text 登记正常
+						752 cell
+							753 container
+								754 text INACTIVE_OBJECT  2000 条 · 关系载体已失效（状态不在有效值内）
+						755 cell
+							756 button 重新校验
+					757 row
+						758 cell
+							759 text 任课教师-教学班
+							760 text TEACHING_CLASS_TEACHER
+						761 cell
+							762 text academicAffairs
+						763 cell
+							764 text app.models.academic_affairs_teaching_class.AaTeachingClassTeacher.teacher_id
+							765 text 范围 COURSE
+						766 cell
+							767 text 登记正常
+						768 cell
+							769 container
+								770 text MISSING_SUBJECT  3 条 · 没有指定负责人，相关数据范围解析不出任何人
+						771 cell
+							772 button 重新校验
+					773 row
+						774 cell
+							775 text 宿管-楼栋
+							776 text DORM_MANAGER_BUILDING
+						777 cell
+							778 text studentAffairs
+						779 cell
+							780 text app.models.affairs_dorm.DormBuilding.manager_teacher_key
+							781 text 范围 DORM_BUILDING
+						782 cell
+							783 text 登记异常
+							784 container
+								785 text UNSTABLE_KEY  关系键是文本（manager_teacher_key），改名即失联，待整改
+						786 cell
+							787 container
+								788 text UNSTABLE_KEY_ONLY  12 条 · 只填了姓名/文本键，没有稳定 ID，改名即失联
+						789 cell
+							790 button 重新校验
+			199 button 我的常用
+
+The focused UI element is 412 button 业务关系中心

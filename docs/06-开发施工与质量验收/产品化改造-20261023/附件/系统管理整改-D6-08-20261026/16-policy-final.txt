@@ -1,0 +1,169 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/login-policy".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/login-policy
+	2 container app
+		3 container
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button 帮助与引导
+			8 button 消息中心
+				9 image
+			10 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				11 text 胡
+				12 text 胡管理
+				13 text 学校管理员
+		14 container
+			15 container 一级菜单
+				16 button 学工中心
+				17 button 教务中心
+				18 button 毕业设计中心
+				19 button 岗位实习中心
+				20 button 系统管理
+			21 button (collapsed) 当前范围, Secondary Actions: Expand
+				22 image
+				23 text 当前范围
+				24 image
+		25 container
+			26 button 目录
+			27 tab group 已打开页面
+				28 container
+					29 tab (selected, settable, boolean) 登录与安全策略, Help: 身份与账号 / 登录与安全策略, Value: 1
+登录与安全策略
+					30 button 关闭登录与安全策略
+						31 image
+			32 button (disabled) 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			38 container
+				39 text 配置继承与恢复
+				40 text 撤销学校层当前和计划中的覆盖后，恢复继承上级设置，不需要手填“默认值”。
+				41 button 刷新
+				42 table
+					43 row
+						44 cell
+							45 text 配置
+						46 cell
+							47 text 当前/计划值
+						48 cell
+							49 text 覆盖链
+						50 cell
+							51 text 当前生效时间
+						52 cell
+							53 text 操作
+					54 row
+						55 cell
+							56 text 登录失败锁定阈值（次）
+							57 text 学校安全配置
+						58 cell
+							59 text 5
+						60 cell
+							61 text 1 条学校覆盖
+						62 cell
+							63 text 2026-07-29 10:30
+						64 cell
+							65 button 恢复继承
+			66 container
+				67 heading 登录与安全策略, Value: 1
+					68 text 登录与安全策略
+				69 container
+					70 text 安全策略 变更需填写原因并写入审计；越过平台底线会被拒绝
+				71 table
+					72 row
+						73 cell
+							74 text 配置项
+						75 cell
+							76 text 当前值
+						77 cell
+							78 text 生效来源
+						79 cell
+							80 text 平台允许范围
+						81 cell
+							82 text 真实读取方
+						83 cell
+							84 text 操作
+					85 row
+						86 cell
+							87 text 登录失败锁定阈值（次）
+							88 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								89 text 实施人员使用
+						90 cell
+							91 text 5
+						92 cell
+							93 text 学校覆盖
+						94 cell
+							95 text 3 ~ 10
+						96 cell
+							97 text 登录失败计数与锁定
+						98 cell
+							99 button 编辑
+							100 button 历史
+					101 row
+						102 cell
+							103 text 登录锁定时长（分钟）
+							104 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								105 text 实施人员使用
+						106 cell
+							107 text 5
+						108 cell
+							109 text 学校配置
+						110 cell
+							111 text 5 ~ 120
+						112 cell
+							113 text 登录锁定时长校验
+						114 cell
+							115 button 编辑
+							116 button 历史
+					117 row
+						118 cell
+							119 text 密码最小长度
+							120 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								121 text 实施人员使用
+						122 cell
+							123 text 8
+						124 cell
+							125 text 套餐默认
+						126 cell
+							127 text 6 ~ 32
+						128 cell
+							129 text 修改密码校验
+						130 cell
+							131 button 编辑
+							132 button 历史
+					133 row
+						134 cell
+							135 text 已验证手机号加密码登录（原账号始终保留）
+							136 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								137 text 实施人员使用
+						138 cell
+							139 text 已关闭
+						140 cell
+							141 text 套餐默认
+						142 cell
+							143 text 关闭 / 启用
+						144 cell
+							145 text 手机号密码登录
+						146 cell
+							147 button 编辑
+							148 button 历史
+					149 row
+						150 cell
+							151 text 普通账号已验证手机号找回密码（高权限独立核验）
+							152 button (collapsed) 实施人员使用, Secondary Actions: Expand
+								153 text 实施人员使用
+						154 cell
+							155 text 已关闭
+						156 cell
+							157 text 套餐默认
+						158 cell
+							159 text 关闭 / 启用
+						160 cell
+							161 text 手机号找回密码
+						162 cell
+							163 button 编辑
+							164 button 历史
+			165 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/login-policy

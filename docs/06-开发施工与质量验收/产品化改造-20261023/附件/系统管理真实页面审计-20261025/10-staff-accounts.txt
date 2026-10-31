@@ -1,0 +1,426 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/accounts/staff".
+0 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/accounts/staff
+	1 container app
+		2 container
+			3 text 高校学生全生命周期管理平台
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button (collapsed) 北京 13° 阴, Secondary Actions: Expand
+				8 image
+				9 text 北京 13° 阴
+			10 button (collapsed) 10/25周日 12:09, Secondary Actions: Expand
+				11 image
+				250 text 10/25周日 12:09
+			13 button 帮助与引导
+			14 button 消息中心
+				15 image
+			16 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				17 text 胡
+				18 text 胡管理
+				19 text 学校管理员
+		20 container
+			21 container 一级菜单
+				22 button 学工中心
+				23 button 教务中心
+				24 button 毕业设计中心
+				25 button 岗位实习中心
+				26 button 系统管理
+			27 button (collapsed) 当前范围, Secondary Actions: Expand
+				28 image
+				29 text 当前范围
+				30 image
+			31 button (collapsed) 本次工作 00:03:20, Secondary Actions: Expand
+				32 image
+				292 text 本次工作 00:03:20
+		34 container 二级菜单
+			35 button 展开二级菜单
+			36 container 二级菜单
+				37 button 系统概览
+				38 button 身份与账号
+				39 button 组织主数据
+				40 button 角色与权限
+				41 button 学校配置
+				42 button 流程配置
+				43 button 安全与审计
+				44 button 接口与同步
+			45 checkbox Description: 取消固定二级菜单, Value: 1
+		46 container 三级菜单
+			47 button 展开三级菜单
+			48 container 三级菜单
+				270 button 教职工账号
+				271 button 学生账号
+				272 button 教职工导入
+				273 button 学生导入与账号开通
+				274 button 数据交换任务中心
+				275 button 账号异常排查
+				276 button 登录与安全策略
+			58 checkbox Description: 取消固定三级菜单, Value: 1
+		59 container
+			60 tab group 已打开页面
+				61 container
+					62 tab (selectable, settable, boolean) 系统总览, Help: 系统概览 / 系统总览, Value: 0
+系统总览
+					63 button 关闭系统总览
+						64 image
+				65 container
+					66 tab (selected, settable, boolean) 教职工账号, Help: 身份与账号 / 教职工账号, Value: 1
+教职工账号
+					67 button 关闭教职工账号
+						68 image
+				69 container
+					70 tab (selectable, settable, boolean) 教职工导入, Help: 身份与账号 / 教职工导入, Value: 0
+教职工导入
+					71 button 关闭教职工导入
+						72 image
+				73 container
+					74 tab (selectable, settable, boolean) 数据交换任务中心, Help: 身份与账号 / 数据交换任务中心, Value: 0
+数据交换任务中心
+					75 button 关闭数据交换任务中心
+						76 image
+				202 container
+					203 tab (selectable, settable, boolean) 实施总览, Help: 系统概览 / 实施总览, Value: 0
+实施总览
+					204 button 关闭实施总览
+						205 image
+				208 container
+					209 tab (selectable, settable, boolean) 首次开局向导, Help: 系统概览 / 首次开局向导, Value: 0
+首次开局向导
+					210 button 关闭首次开局向导
+						211 image
+				215 container
+					216 tab (selectable, settable, boolean) 预设方案, Help: 系统概览 / 预设方案, Value: 0
+预设方案
+					217 button 关闭预设方案
+						218 image
+				238 container
+					239 tab (selectable, settable, boolean) 职业教育国家标准库, Help: 系统概览 / 职业教育国家标准库, Value: 0
+职业教育国家标准库
+					240 button 关闭职业教育国家标准库
+						241 image
+				243 container
+					244 tab (selectable, settable, boolean) 数据导入与智能匹配, Help: 系统概览 / 数据导入与智能匹配, Value: 0
+数据导入与智能匹配
+					245 button 关闭数据导入与智能匹配
+						246 image
+				252 container
+					253 tab (selectable, settable, boolean) 已安装配置, Help: 系统概览 / 已安装配置, Value: 0
+已安装配置
+					254 button 关闭已安装配置
+						255 image
+				258 container
+					259 tab (selectable, settable, boolean) 变更与升级, Help: 系统概览 / 变更与升级, Value: 0
+变更与升级
+					260 button 关闭变更与升级
+						261 image
+				265 container
+					266 tab (selectable, settable, boolean) 上线检查与验收, Help: 系统概览 / 上线检查与验收, Value: 0
+上线检查与验收
+					267 button 关闭上线检查与验收
+						268 image
+			77 button (disabled) 恢复最近关闭的页签
+				78 image
+			79 checkbox Description: 收藏当前页面, Value: 0
+				80 image
+			81 checkbox Description: 专注模式, Value: 0
+				82 image
+			277 container
+				278 heading 教职工账号, Value: 1
+					293 text 教职工账号
+				279 button ⇪ 教职工导入
+				280 button ⇩ 批量导出
+				281 button 手机号治理
+				294 text 操作均写入审计日志
+				282 button ▥ 列设置
+				295 text 关键词
+				283 text field (settable) 关键词
+				296 text 角色
+				284 pop up button (collapsed, settable) 角色, Value: 全部, Secondary Actions: Expand
+					285 menu
+						286 (selected) 全部
+						297 任课教师
+						298 普通教职工
+						299 沙箱联调角色0913
+						300 沙箱联调角色0913（自定义）
+						301 专业毕设负责人
+						302 团委老师
+						303 学工处管理员
+						304 学工老师
+						305 学校管理员
+						306 学院毕设管理员
+						307 学院管理员
+						308 安全审计员
+						309 实习指导教师
+						310 宿管老师
+						311 就业老师
+						312 心理老师
+						313 教务处管理员
+						314 校院领导
+						315 毕设成绩管理员
+						316 毕设指导教师
+						317 毕设管理员
+						318 毕设评阅教师
+						319 答辩专家
+						320 答辩秘书
+						321 系统管理员
+						322 组织人事
+						323 资助老师
+						324 辅导员
+				325 text 账号状态
+				287 pop up button (collapsed, settable) 账号状态, Value: 全部, Secondary Actions: Expand
+					288 menu
+						289 (selected) 全部
+						326 启用中
+						327 已停用
+						328 已锁定
+				290 button 查询
+				291 button 重置
+				329 table
+					330 row
+						331 cell
+							332 checkbox (settable, integer) 0
+						333 cell
+							334 text 教职工
+						335 cell
+							336 text 业务归属
+						337 cell
+							338 text 角色
+						339 cell
+							340 text 手机号（脱敏）
+						341 cell
+							342 text 状态
+						343 cell
+							344 text 最近登录
+						345 cell
+							346 text 操作
+					347 row
+						348 cell
+							349 checkbox (settable, integer) 0
+						350 cell
+							351 text 教务联调学院120责任人
+							352 text v5_a****01
+						353 cell
+							354 text COLLEGE:信息工程学院
+						355 cell
+							356 text 学院管理员
+						357 cell
+							358 text 未登记
+						359 cell
+							360 text 启用中
+						361 cell
+							362 text 从未登录
+						363 cell
+							364 button 查看
+							365 button 编辑
+							366 button 重置密码
+							367 button 停用
+					368 row
+						369 cell
+							370 checkbox (settable, integer) 0
+						371 cell
+							372 text 教务只读验收员（虚构）
+							373 text v5_d****02
+						374 cell
+							375 text 未设置
+						376 cell
+							377 text 校院领导
+						378 cell
+							379 text 未登记
+						380 cell
+							381 text 启用中
+						382 cell
+							383 text 从未登录
+						384 cell
+							385 button 查看
+							386 button 编辑
+							387 button 重置密码
+							388 button 停用
+					389 row
+						390 cell
+							391 checkbox (settable, integer) 0
+						392 cell
+							393 text 智能排课验收教师
+							394 text opt_****er
+						395 cell
+							396 text 未设置
+						397 cell
+							398 text 任课教师
+						399 cell
+							400 text 未登记
+						401 cell
+							402 text 启用中
+						403 cell
+							404 text 从未登录
+						405 cell
+							406 button 查看
+							407 button 编辑
+							408 button 重置密码
+							409 button 停用
+					410 row
+						411 cell
+							412 checkbox (settable, integer) 0
+						413 cell
+							414 text 智能排课验收教务员
+							415 text opt_****in
+						416 cell
+							417 text 未设置
+						418 cell
+							419 text 教务处管理员
+						420 cell
+							421 text 未登记
+						422 cell
+							423 text 启用中
+						424 cell
+							425 text 从未登录
+						426 cell
+							427 button 查看
+							428 button 编辑
+							429 button 重置密码
+							430 button 停用
+					431 row
+						432 cell
+							433 checkbox (settable, integer) 0
+						434 cell
+							435 text 联通学院审核
+							436 text pcfl****ge
+						437 cell
+							438 text COLLEGE:联通试用学院
+						439 cell
+							440 text 任课教师
+							441 text 学院管理员
+							442 text 普通教职工
+						443 cell
+							444 text 未登记
+						445 cell
+							446 text 启用中
+						447 cell
+							448 text 从未登录
+						449 cell
+							450 button 查看
+							451 button 编辑
+							452 button 重置密码
+							453 button 停用
+					454 row
+						455 cell
+							456 checkbox (settable, integer) 0
+						457 cell
+							458 text 联通任课教师
+							459 text pcfl****er
+						460 cell
+							461 text CLASS:联通试用2601班
+						462 cell
+							463 text 任课教师
+							464 text 辅导员
+						465 cell
+							466 text 未登记
+						467 cell
+							468 text 启用中
+						469 cell
+							470 text 从未登录
+						471 cell
+							472 button 查看
+							473 button 编辑
+							474 button 重置密码
+							475 button 停用
+					476 row
+						477 cell
+							478 checkbox (settable, integer) 0
+						479 cell
+							480 text 罗清妍
+							481 text sbx_****96
+						482 cell
+							483 text 按岗位范围
+						484 cell
+							485 text 毕设指导教师
+							486 text 答辩专家
+							487 text 毕设评阅教师
+						488 cell
+							489 text 未登记
+						490 cell
+							491 text 启用中
+						492 cell
+							493 text 从未登录
+						494 cell
+							495 button 查看
+							496 button 编辑
+							497 button 重置密码
+							498 button 停用
+					499 row
+						500 cell
+							501 checkbox (settable, integer) 0
+						502 cell
+							503 text 马清妍
+							504 text sbx_****95
+						505 cell
+							506 text 按岗位范围
+						507 cell
+							508 text 毕设指导教师
+							509 text 答辩专家
+							510 text 毕设评阅教师
+						511 cell
+							512 text 未登记
+						513 cell
+							514 text 启用中
+						515 cell
+							516 text 从未登录
+						517 cell
+							518 button 查看
+							519 button 编辑
+							520 button 重置密码
+							521 button 停用
+					522 row
+						523 cell
+							524 checkbox (settable, integer) 0
+						525 cell
+							526 text 郭清妍
+							527 text sbx_****94
+						528 cell
+							529 text 按岗位范围
+						530 cell
+							531 text 毕设指导教师
+							532 text 答辩专家
+							533 text 毕设评阅教师
+						534 cell
+							535 text 未登记
+						536 cell
+							537 text 启用中
+						538 cell
+							539 text 从未登录
+						540 cell
+							541 button 查看
+							542 button 编辑
+							543 button 重置密码
+							544 button 停用
+					545 row
+						546 cell
+							547 checkbox (settable, integer) 0
+						548 cell
+							549 text 何清妍
+							550 text sbx_****93
+						551 cell
+							552 text 按岗位范围
+						553 cell
+							554 text 毕设指导教师
+							555 text 答辩专家
+							556 text 毕设评阅教师
+						557 cell
+							558 text 未登记
+						559 cell
+							560 text 启用中
+						561 cell
+							562 text 从未登录
+						563 cell
+							564 button 查看
+							565 button 编辑
+							566 button 重置密码
+							567 button 停用
+				568 text 共 1299 条
+				569 button (disabled) 上一页
+				570 button 1
+				571 button 2
+				572 button (disabled) …
+				573 button 130
+				574 button 下一页
+			199 button 我的常用
+
+The focused UI element is 38 button 身份与账号

@@ -1,0 +1,155 @@
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 10° 晴":
+    - generic: 北京 10° 晴
+  - button "10/27周二 09:53":
+    - generic: 10/27周二 09:53
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 00:50:07":
+  - generic: 本次工作 00:50:07
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 毕业设计中心
+  - navigation "二级菜单":
+    - button "总览":
+      - generic: 总览
+    - button "① 准备":
+      - generic: ① 准备
+    - button "② 选题":
+      - generic: ② 选题
+    - button "③ 过程与中期":
+      - generic: ③ 过程与中期
+    - button "④ 论文与评阅":
+      - generic: ④ 论文与评阅
+    - button "⑤ 答辩":
+      - generic: ⑤ 答辩
+    - button "⑥ 成绩与归档":
+      - generic: ⑥ 成绩与归档
+    - button "更多":
+      - generic: 更多
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: ① 准备
+  - navigation "三级菜单":
+    - button "批次与时间节点":
+      - generic: 批次与时间节点
+    - button "学生与进度":
+      - generic: 学生与进度
+    - button "导师与分配":
+      - generic: 导师与分配
+    - button "材料规则":
+      - generic: 材料规则
+    - button "分配冲突检测":
+      - generic: 分配冲突检测
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "批次与时间节点" [selected]:
+    - generic: 批次与时间节点
+  - button "关闭批次与时间节点":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-27 09:53
+  - heading "毕设批次" [level=1]
+  - generic: 当前批次
+  - combobox "选择毕设批次":
+    - option "D606毕设批次" [selected]
+  - generic: 草稿
+  - button "＋ 新建批次"
+  - button "导出台账"
+  - generic: 关键词
+  - textbox "关键词":
+    - /placeholder: 批次名称 / 编号 / 届
+  - generic: 状态
+  - combobox "状态":
+    - option "全部" [selected]
+    - option "草稿"
+    - option "进行中"
+    - option "已结束"
+    - option "已归档"
+    - option "已作废"
+  - button "查询"
+  - button "重置"
+  - table:
+    - rowgroup:
+      - row "批次 / 编号 起止 计划人数 状态 操作":
+        - columnheader "批次 / 编号"
+        - columnheader "起止"
+        - columnheader "计划人数"
+        - columnheader "状态"
+        - columnheader "操作"
+    - rowgroup:
+      - row "D606毕设批次 D606-GD · — · — 未设置 ~ 未设置 0 草稿 打开D606毕设批次详情配置 编辑D606毕设批次 启用 作废":
+        - cell "D606毕设批次 D606-GD · — · —":
+          - generic: D606毕设批次
+          - generic: D606-GD · — · —
+        - cell "未设置 ~ 未设置":
+          - generic "未设置":
+            - generic: 未设置
+          - text: ~
+          - generic "未设置":
+            - generic: 未设置
+        - cell "0"
+        - cell "草稿":
+          - generic: 草稿
+        - cell "打开D606毕设批次详情配置 编辑D606毕设批次 启用 作废":
+          - button "打开D606毕设批次详情配置": 详情/配置
+          - button "编辑D606毕设批次": 编辑
+          - button "启用"
+          - button "作废"
+  - generic: 共 1 条
+  - button "上一页" [disabled]: ‹
+  - button "1"
+  - button "下一页" [disabled]: ›
+  - dialog "页面操作引导":
+    - generic: 1 / 4
+    - heading "一届毕设 = 一个批次" [level=3]
+    - paragraph: 批次是毕设的容器。2026 届的学生、题目、导师、答辩、成绩都挂在 2026 届这个批次下。做任何毕设工作之前，先建好批次。
+    - button "跳过引导"
+    - button "下一步"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃

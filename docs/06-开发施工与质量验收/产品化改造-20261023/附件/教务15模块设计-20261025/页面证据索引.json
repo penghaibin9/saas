@@ -1,0 +1,4052 @@
+{
+  "date": "2026-10-25",
+  "source_main": "ff7786877",
+  "total_entries": 251,
+  "unique_paths": 230,
+  "covered_entries": 251,
+  "unique_covered_paths": 230,
+  "accepted_image_files": 233,
+  "limits": "当前现有服务学校管理员首屏/初始态。读取失败、无权限、未选对象均保留原状态；深层全状态、指定窄屏、其他岗位、写入办理及高保真改版图未通过本索引证明。",
+  "entries": [
+    {
+      "id": "01-01",
+      "module": "教务基础",
+      "label": "学期管理",
+      "path": "/admin/academic-affairs/terms",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/01.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-02",
+      "module": "教务基础",
+      "label": "学年管理",
+      "path": "/admin/academic-affairs/terms/years",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms/years",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/02.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-03",
+      "module": "教务基础",
+      "label": "当前学期",
+      "path": "/admin/academic-affairs/terms/current",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms/current",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/03.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-04",
+      "module": "教务基础",
+      "label": "学期周次",
+      "path": "/admin/academic-affairs/terms/weeks",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms/weeks",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/04.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-05",
+      "module": "教务基础",
+      "label": "教学周配置",
+      "path": "/admin/academic-affairs/terms/teaching-weeks",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms/teaching-weeks",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/05.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-06",
+      "module": "教务基础",
+      "label": "学期状态",
+      "path": "/admin/academic-affairs/terms/status",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms/status",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/06.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-07",
+      "module": "教务基础",
+      "label": "学期切换记录",
+      "path": "/admin/academic-affairs/terms/switch-log",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms/switch-log",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/07.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-08",
+      "module": "教务基础",
+      "label": "学期归档",
+      "path": "/admin/academic-affairs/terms/archive-status",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/terms/archive-status",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/08.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-09",
+      "module": "教务基础",
+      "label": "校历管理",
+      "path": "/admin/academic-affairs/calendar",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/calendar",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/09.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-10",
+      "module": "教务基础",
+      "label": "作息时间",
+      "path": "/admin/academic-affairs/time-slots",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/time-slots",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/10.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-11",
+      "module": "教务基础",
+      "label": "节假日配置",
+      "path": "/admin/academic-affairs/calendar?tab=holiday",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/calendar?tab=holiday",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/11.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-12",
+      "module": "教务基础",
+      "label": "补课日配置",
+      "path": "/admin/academic-affairs/calendar?tab=makeup",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/calendar?tab=makeup",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/12.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-13",
+      "module": "教务基础",
+      "label": "节次管理",
+      "path": "/admin/academic-affairs/time-slots",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/time-slots",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/10.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-14",
+      "module": "教务基础",
+      "label": "上课时间段",
+      "path": "/admin/academic-affairs/time-slots?tab=bands",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/time-slots?tab=bands",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/13.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-15",
+      "module": "教务基础",
+      "label": "教学周日历",
+      "path": "/admin/academic-affairs/calendar?tab=weekCalendar",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/calendar?tab=weekCalendar",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/14.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-16",
+      "module": "教务基础",
+      "label": "校历发布",
+      "path": "/admin/academic-affairs/calendar?tab=publish",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/calendar?tab=publish",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/15.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-17",
+      "module": "教务基础",
+      "label": "校历归档",
+      "path": "/admin/academic-affairs/calendar?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/calendar?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/16.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-18",
+      "module": "教务基础",
+      "label": "学院管理",
+      "path": "/admin/academic-affairs/orgs?tab=college",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=college",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/17.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-19",
+      "module": "教务基础",
+      "label": "专业管理",
+      "path": "/admin/academic-affairs/orgs?tab=major",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=major",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/18.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-20",
+      "module": "教务基础",
+      "label": "年级管理",
+      "path": "/admin/academic-affairs/orgs?tab=grade",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=grade",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/19.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-21",
+      "module": "教务基础",
+      "label": "行政班管理",
+      "path": "/admin/academic-affairs/orgs?tab=class",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=class",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/20.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-22",
+      "module": "教务基础",
+      "label": "教学班管理",
+      "path": "/admin/academic-affairs/orgs?tab=teaching",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=teaching",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/21.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-23",
+      "module": "教务基础",
+      "label": "组织核对",
+      "path": "/admin/academic-affairs/orgs?tab=tree",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=tree",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/22.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-24",
+      "module": "教务基础",
+      "label": "组织统计",
+      "path": "/admin/academic-affairs/orgs?tab=stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/23.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-25",
+      "module": "教务基础",
+      "label": "专业方向",
+      "path": "/admin/academic-affairs/orgs?tab=direction",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=direction",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补01.png",
+          "by": "总控",
+          "note": "专业方向未启用，保留学校政策决定和显式开关，不为审计启用。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-26",
+      "module": "教务基础",
+      "label": "班级学生",
+      "path": "/admin/academic-affairs/orgs?tab=students",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=students",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补02.png",
+          "by": "总控",
+          "note": "行政班与姓名学号查询清楚，初始需选班；批量调整入口提示可改成有权限的直接入口并保留范围。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "01-27",
+      "module": "教务基础",
+      "label": "班级调整",
+      "path": "/admin/academic-affairs/orgs?tab=adjust",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=adjust",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补03.png",
+          "by": "总控",
+          "note": "单学生调整与班级层级调整并置，正文有内部对象ID和版本解释；批量记录区实际读取失败，正常列表未核实。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-01",
+      "module": "学籍管理",
+      "label": "学籍名册",
+      "path": "/admin/academic-affairs/roster",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-01-roster.png",
+          "by": "B",
+          "note": "已查看，主列表；顶栏档案入口与对象选择需核对"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-02",
+      "module": "学籍管理",
+      "label": "学籍档案",
+      "path": "/admin/academic-affairs/roster",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-01-roster.png",
+          "by": "B",
+          "note": "已查看，主列表；顶栏档案入口与对象选择需核对"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-03",
+      "module": "学籍管理",
+      "label": "学籍状态",
+      "path": "/admin/academic-affairs/roster/status",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster/status",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-02.png",
+          "by": "B",
+          "note": "已查看；状态分布明确，change_student_status等实现说明移至实施说明"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-04",
+      "module": "学籍管理",
+      "label": "学籍异动记录",
+      "path": "/admin/academic-affairs/roster/changes",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster/changes",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-03.png",
+          "by": "B",
+          "note": "已查看；学生编号筛选、内部类型和原始时间外露"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-05",
+      "module": "学籍管理",
+      "label": "学籍导入导出",
+      "path": "/admin/academic-affairs/roster/import-export",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster/import-export",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补01.png",
+          "by": "总控",
+          "note": "任务区已稳定显示0条；压缩实现说明，保留文件扫描/预检、范围和任务恢复限制。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-06",
+      "module": "学籍管理",
+      "label": "休学学生",
+      "path": "/admin/academic-affairs/roster?status=SUSPENDED",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster?status=SUSPENDED",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-05.png",
+          "by": "B",
+          "note": "已查看；顶部档案动作与选中对象不一致，需取消默认首行入口"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-07",
+      "module": "学籍管理",
+      "label": "复学学生",
+      "path": "/admin/academic-affairs/roster/resumed-students",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster/resumed-students",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-06.png",
+          "by": "B",
+          "note": "已查看；状态迁移含英文枚举，保留只读结果与申请入口区分"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-08",
+      "module": "学籍管理",
+      "label": "退学学生",
+      "path": "/admin/academic-affairs/roster?status=WITHDRAWN",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster?status=WITHDRAWN",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-07.png",
+          "by": "B",
+          "note": "已查看；空列表仍出现顶部档案按钮，需随对象禁用或移除"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-09",
+      "module": "学籍管理",
+      "label": "转专业学生",
+      "path": "/admin/academic-affairs/roster/transferred-major-students",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster/transferred-major-students",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-08.png",
+          "by": "B",
+          "note": "已查看；空结果合理，说明可缩短并保留结果与申请区别"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-10",
+      "module": "学籍管理",
+      "label": "保留学籍",
+      "path": "/admin/academic-affairs/roster?status=PRESERVED",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster?status=PRESERVED",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-09.png",
+          "by": "B",
+          "note": "已查看；空列表顶部档案动作应移除或禁用"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-11",
+      "module": "学籍管理",
+      "label": "学籍信息更正",
+      "path": "/admin/academic-affairs/roster/corrections",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/roster/corrections",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-10.png",
+          "by": "B",
+          "note": "已查看；固定阶段误示当前进度，原值新值应前移，姓名等信息只保留必要位置"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-12",
+      "module": "学籍管理",
+      "label": "学籍统计",
+      "path": "/admin/academic-affairs/stats?scope=roster&tab=statusChange",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?scope=roster&tab=statusChange",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/02-12-学籍统计.png",
+          "by": "总控",
+          "note": "保留学籍范围参数独立取证；异动类型英文外露，当前指标构成确实把20:47:28显示为20的柱值，需按C统计统一修复。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-13",
+      "module": "学籍管理",
+      "label": "学籍归档",
+      "path": "/admin/academic-affairs/archive?entry=studentStatus",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/archive?entry=studentStatus",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补02.png",
+          "by": "总控",
+          "note": "学籍归档实际进入全教务归档共用页；已归档仍提示先检查完整性再确认归档，需按封存状态改主动作，纠错与历史保护保留。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-14",
+      "module": "学籍管理",
+      "label": "注册批次",
+      "path": "/admin/academic-affairs/registration",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-12.png",
+          "by": "B",
+          "note": "已查看；固定参考流程占首屏，检索仅本页，候选已有后端修复待组合"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-15",
+      "module": "学籍管理",
+      "label": "入学注册",
+      "path": "/admin/academic-affairs/registration?type=ENROLL",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration?type=ENROLL",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-13.png",
+          "by": "B",
+          "note": "已查看；入学类型筛选与列表加载完成"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-16",
+      "module": "学籍管理",
+      "label": "学年注册",
+      "path": "/admin/academic-affairs/registration?type=ANNUAL",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration?type=ANNUAL",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-14.png",
+          "by": "B",
+          "note": "已查看；学年字段待核对，不可把缺数据当0；参考流程应默认折叠"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-17",
+      "module": "学籍管理",
+      "label": "学期注册",
+      "path": "/admin/academic-affairs/registration?type=SEMESTER",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration?type=SEMESTER",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-15.png",
+          "by": "B",
+          "note": "已查看；学期注册固定参考流程占首屏，保留学期类型筛选"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-18",
+      "module": "学籍管理",
+      "label": "注册资格核验",
+      "path": "/admin/academic-affairs/registration/workbench?tab=eligibility",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration/workbench?tab=eligibility",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-16.png",
+          "by": "B",
+          "note": "已查看；未选择批次状态，未核验非空资格详情"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-19",
+      "module": "学籍管理",
+      "label": "未注册学生",
+      "path": "/admin/academic-affairs/registration/workbench?tab=unregistered",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration/workbench?tab=unregistered",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-17.png",
+          "by": "B",
+          "note": "已查看；未注册队列与扫描范围提示，截图已重取"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-20",
+      "module": "学籍管理",
+      "label": "暂缓注册",
+      "path": "/admin/academic-affairs/registration/workbench?tab=deferral",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration/workbench?tab=deferral",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补03.png",
+          "by": "总控",
+          "note": "暂缓记录已读取，期限仍为原始时间、已选批次仍提示默认全部；承接旧候选时间格式和范围文案修复。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-21",
+      "module": "学籍管理",
+      "label": "注册异常",
+      "path": "/admin/academic-affairs/registration/workbench?tab=exception",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration/workbench?tab=exception",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补04.png",
+          "by": "总控",
+          "note": "异常对象、类型、说明、状态和处理入口对应；范围说明按选中批次修正，长原因窄屏继续验证。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-22",
+      "module": "学籍管理",
+      "label": "注册归档",
+      "path": "/admin/academic-affairs/registration/workbench?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/registration/workbench?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补05.png",
+          "by": "总控",
+          "note": "归档列表已稳定，日期原始格式待承接候选修复；保留名单与导出权限。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-23",
+      "module": "学籍管理",
+      "label": "分流批次",
+      "path": "/admin/academic-affairs/major-split",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/major-split",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-21.png",
+          "by": "B",
+          "note": "已查看；已确认分流批次仍固定显示创建步骤，需改按所选批次显示实际阶段"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-24",
+      "module": "学籍管理",
+      "label": "分流志愿与录取",
+      "path": "/admin/academic-affairs/major-split",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/major-split",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-21.png",
+          "by": "B",
+          "note": "已查看；已确认分流批次仍固定显示创建步骤，需改按所选批次显示实际阶段"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-25",
+      "module": "学籍管理",
+      "label": "分流统计",
+      "path": "/admin/academic-affairs/major-split",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/major-split",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-21.png",
+          "by": "B",
+          "note": "已查看；已确认分流批次仍固定显示创建步骤，需改按所选批次显示实际阶段"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-26",
+      "module": "学籍管理",
+      "label": "异动台账",
+      "path": "/admin/academic-affairs/status-changes",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-22.png",
+          "by": "B",
+          "note": "已查看；重复说明与历史毕业类型外露，审批节点和计划生效保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-27",
+      "module": "学籍管理",
+      "label": "发起异动",
+      "path": "/admin/academic-affairs/status-changes/new",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/new",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-23.png",
+          "by": "B",
+          "note": "已查看；申请表单保留生效方式、选填原因和安全材料；流程参考与右侧重复说明收纳"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-28",
+      "module": "学籍管理",
+      "label": "休学申请",
+      "path": "/admin/academic-affairs/status-changes/suspend",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/suspend",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-24.png",
+          "by": "B",
+          "note": "已查看；分类申请队列清楚，行按钮改为查看申请，保留本页统计口径"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-29",
+      "module": "学籍管理",
+      "label": "复学申请",
+      "path": "/admin/academic-affairs/status-changes/resume",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/resume",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-25.png",
+          "by": "B",
+          "note": "已查看；已生效与节点待核对分开，保留历史事实不改写"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-30",
+      "module": "学籍管理",
+      "label": "退学申请",
+      "path": "/admin/academic-affairs/status-changes/withdraw",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/withdraw",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-26.png",
+          "by": "B",
+          "note": "已查看；空态不应把创建退学作为默认下一步，改查询提示并保留独立申请入口"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-31",
+      "module": "学籍管理",
+      "label": "转专业申请",
+      "path": "/admin/academic-affairs/status-changes/transfer-major",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/transfer-major",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-27.png",
+          "by": "B",
+          "note": "已查看；转专业列表应突出原专业→目标专业，不只显示相同学籍状态"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-32",
+      "module": "学籍管理",
+      "label": "异动审批",
+      "path": "/admin/academic-affairs/status-changes/approval",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/approval",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-28.png",
+          "by": "B",
+          "note": "已查看；审批核对6卡挤占操作，版本技术说明折叠，材料状态和审批条件保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-33",
+      "module": "学籍管理",
+      "label": "异动生效",
+      "path": "/admin/academic-affairs/status-changes/effective",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/effective",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-29.png",
+          "by": "B",
+          "note": "已查看；日期和毕业类型原值外露；待生效与已生效分栏正确需保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-34",
+      "module": "学籍管理",
+      "label": "异动统计",
+      "path": "/admin/academic-affairs/status-changes/stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-30.png",
+          "by": "B",
+          "note": "已查看；累计范围与未知类型区分合理；统计范围说明压成一行，保留同范围下钻"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-35",
+      "module": "学籍管理",
+      "label": "转班申请",
+      "path": "/admin/academic-affairs/status-changes/transfer-class",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/transfer-class",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-31.png",
+          "by": "B",
+          "note": "已查看；空态避免鼓励造申请，保留同专业转班条件在表单"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-36",
+      "module": "学籍管理",
+      "label": "保留学籍申请",
+      "path": "/admin/academic-affairs/status-changes/preserve",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/preserve",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-32.png",
+          "by": "B",
+          "note": "已查看；当前节点明确，保留学籍与留级不得混称"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-37",
+      "module": "学籍管理",
+      "label": "异动归档",
+      "path": "/admin/academic-affairs/status-changes/archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/status-changes/archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-33.png",
+          "by": "B",
+          "note": "已查看；原记录回查与正式封存区别保留，原始时间转可读时间；不将已生效当已归档"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-38",
+      "module": "学籍管理",
+      "label": "预警扫描与列表",
+      "path": "/admin/academic-affairs/warnings",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-34.png",
+          "by": "B",
+          "note": "已查看；重复来源说明、级别标签挤压、原生按钮风格不一致；保留扫描与跟进分离"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-39",
+      "module": "学籍管理",
+      "label": "预警看板",
+      "path": "/admin/academic-affairs/warnings/console?tab=dashboard",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=dashboard",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补06.png",
+          "by": "总控",
+          "note": "看板在办总数标非已关闭，但与待处理加已关闭合计相等，需核对统计口径/标签；不擅改查询或忽略已关闭。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-40",
+      "module": "学籍管理",
+      "label": "学分预警",
+      "path": "/admin/academic-affairs/warnings/console?tab=credit",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=credit",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-36.png",
+          "by": "B",
+          "note": "已查看；筛选纵向过宽，空态不应建议调阈值制造结果，保留扫描权限"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-41",
+      "module": "学籍管理",
+      "label": "挂科预警",
+      "path": "/admin/academic-affairs/warnings/console?tab=fail",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=fail",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-37.png",
+          "by": "B",
+          "note": "已查看；列表主体清楚，压缩筛选区并统一风险级别名称，保留逐人跟进"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-42",
+      "module": "学籍管理",
+      "label": "绩点预警",
+      "path": "/admin/academic-affairs/warnings/console?tab=gpa",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=gpa",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-38.png",
+          "by": "B",
+          "note": "已查看；无预警与未扫描需区分，阈值不变"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-43",
+      "module": "学籍管理",
+      "label": "补考重修预警",
+      "path": "/admin/academic-affairs/warnings/console?tab=retake",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=retake",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-39.png",
+          "by": "B",
+          "note": "已查看；空队列，保留补考重修来源与现有阈值"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-44",
+      "module": "学籍管理",
+      "label": "毕业风险预警",
+      "path": "/admin/academic-affairs/warnings/console?tab=graduation",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=graduation",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-40.png",
+          "by": "B",
+          "note": "已查看；空队列不代表毕业资格通过，保留与正式预审的区别"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-45",
+      "module": "学籍管理",
+      "label": "预警规则",
+      "path": "/admin/academic-affairs/warnings/console?tab=rules",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=rules",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-41.png",
+          "by": "B",
+          "note": "已查看；规则单位/触发条件/范围完整保留，缩短标签到输入间距，权限提示按实际能力"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-46",
+      "module": "学籍管理",
+      "label": "预警跟进",
+      "path": "/admin/academic-affairs/warnings/console?tab=followup",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=followup",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-42.png",
+          "by": "B",
+          "note": "已查看；跟进人空值应明确未指派，表格保留来源级别状态和处理入口"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-47",
+      "module": "学籍管理",
+      "label": "预警统计",
+      "path": "/admin/academic-affairs/warnings/console?tab=stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-43.png",
+          "by": "B",
+          "note": "已查看；统计仅当前范围在办预警，分布口径需常显，提供已有分类页跳转"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "02-48",
+      "module": "学籍管理",
+      "label": "预警通知",
+      "path": "/admin/academic-affairs/warnings/console?tab=notify",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=notify",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-44.png",
+          "by": "B",
+          "note": "已查看；通知时间原始格式需统一，累计通知与未读状态保留，说明收纳"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-01",
+      "module": "培养与课程",
+      "label": "方案列表",
+      "path": "/admin/academic-affairs/programs",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补04.png",
+          "by": "总控",
+          "note": "方案名称/版本/阻断可见，仍有正式来源记录与方案内部编号；旧候选已精简的部分可承接，不重复实现。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-02",
+      "module": "培养与课程",
+      "label": "方案制定",
+      "path": "/admin/academic-affairs/programs/console?tab=authoring",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=authoring",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补05.png",
+          "by": "总控",
+          "note": "制定页草稿列表与继续编制入口简洁，可保留；新建与相关工作区不重复展开。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-03",
+      "module": "培养与课程",
+      "label": "方案版本",
+      "path": "/admin/academic-affairs/programs/console?tab=versions",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=versions",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补06.png",
+          "by": "总控",
+          "note": "版本列表可读，但顶部无动作时留有空白工具条；保留版本与新建版本权限，压缩空容器。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-04",
+      "module": "培养与课程",
+      "label": "课程模块",
+      "path": "/admin/academic-affairs/programs/console?tab=courseModules",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=courseModules",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补07.png",
+          "by": "总控",
+          "note": "未选方案空态与选择器重复提示；应优先显示方案选择，选中后再展开课程模块；未查看具体方案模块。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-05",
+      "module": "培养与课程",
+      "label": "学分要求",
+      "path": "/admin/academic-affairs/programs/console?tab=creditRequirements",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=creditRequirements",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补08.png",
+          "by": "总控",
+          "note": "学分要求初始未选方案，未取具体标准；设计应从方案详情保留选中对象进入，避免再次选择。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-06",
+      "module": "培养与课程",
+      "label": "实践环节",
+      "path": "/admin/academic-affairs/programs/console?tab=practiceSegments",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=practiceSegments",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补09.png",
+          "by": "总控",
+          "note": "实践环节初始未选方案，需从同一方案连续进入而非重复选取；具体实践条目未读取。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-07",
+      "module": "培养与课程",
+      "label": "毕业要求",
+      "path": "/admin/academic-affairs/programs/console?tab=graduationRequirements",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=graduationRequirements",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补10.png",
+          "by": "总控",
+          "note": "毕业要求需选方案，当前未读具体条目；保持方案上下文后再展示达成指标，不能填默认要求。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-08",
+      "module": "培养与课程",
+      "label": "方案审核",
+      "path": "/admin/academic-affairs/programs/console?tab=review",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=review",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补11.png",
+          "by": "总控",
+          "note": "审核选中对象与证据卡已对应；可压缩重复对象概览和“设计视角/正式来源”解释，保留阻断卡与完整方案入口。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-09",
+      "module": "培养与课程",
+      "label": "方案发布",
+      "path": "/admin/academic-affairs/programs/console?tab=publish",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=publish",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补12.png",
+          "by": "总控",
+          "note": "发布页已启用对象仍显示当前发布阶段与校验并发布主按钮；设计须依据实际状态/服务允许动作决定标签与可用性，不能仅按页签。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-10",
+      "module": "培养与课程",
+      "label": "方案变更",
+      "path": "/admin/academic-affairs/programs/console?tab=changeStatus",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=changeStatus",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补13.png",
+          "by": "总控",
+          "note": "变更对象已启用但显示课程编制固定阶段；版本链空态说明保留，重复对象责任说明可收拢。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-11",
+      "module": "培养与课程",
+      "label": "方案归档",
+      "path": "/admin/academic-affairs/programs/console?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补14.png",
+          "by": "总控",
+          "note": "归档页实际含被新版本替代的旧版本，旧状态可为已启用；需分清原版本状态与历史替代原因，空工具条可移除。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-12",
+      "module": "培养与课程",
+      "label": "课程列表",
+      "path": "/admin/academic-affairs/courses",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补15.png",
+          "by": "总控",
+          "note": "课程列表仍显示稳定身份、正式课程编号；承接既有候选精简，保留业务代码、名称、版本、学分学时。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-13",
+      "module": "培养与课程",
+      "label": "新增课程",
+      "path": "/admin/academic-affairs/courses/new",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/new",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补16.png",
+          "by": "总控",
+          "note": "新建表单启动条件和前后业务重复顶部流程；字段必填与编码规则保留，按旧候选精简。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-14",
+      "module": "培养与课程",
+      "label": "课程分类",
+      "path": "/admin/academic-affairs/courses/console?tab=category",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=category",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补17.png",
+          "by": "总控",
+          "note": "分类筛选、数量、课程与调整入口清楚，保留主要结构；总量与分类需保持同一统计口径。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-15",
+      "module": "培养与课程",
+      "label": "课程性质",
+      "path": "/admin/academic-affairs/courses/console?tab=nature",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=nature",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补18.png",
+          "by": "总控",
+          "note": "课程性质标签和行内操作简明，首屏结构可保留；调整权限/新版本规则按原逻辑。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-16",
+      "module": "培养与课程",
+      "label": "学分学时",
+      "path": "/admin/academic-affairs/courses/console?tab=credit",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=credit",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补19.png",
+          "by": "总控",
+          "note": "学分与理论/实践学时集中可读；0与缺值显示应维持区别，不补造数值。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-17",
+      "module": "培养与课程",
+      "label": "课程大纲",
+      "path": "/admin/academic-affairs/courses/console?tab=outline",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=outline",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补20.png",
+          "by": "总控",
+          "note": "大纲列表仅课程名与管理入口，不能直接判断大纲是否齐全；设计需以真实材料状态提供可读标记，缺来源另列依赖，不猜有无。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-18",
+      "module": "培养与课程",
+      "label": "考核方式",
+      "path": "/admin/academic-affairs/courses/console?tab=assessment",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=assessment",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补21.png",
+          "by": "总控",
+          "note": "考核方式中文分类和状态明确，保留结构，不改考试/考查规则。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-19",
+      "module": "培养与课程",
+      "label": "课程负责人",
+      "path": "/admin/academic-affairs/courses/console?tab=owner",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=owner",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补22.png",
+          "by": "总控",
+          "note": "已指定/未指定责任人分类可读，保留姓名与逐行操作；未进入人员选择弹窗。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-20",
+      "module": "培养与课程",
+      "label": "课程材料",
+      "path": "/admin/academic-affairs/courses/console?tab=material",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=material",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补23.png",
+          "by": "总控",
+          "note": "材料列表无法直接判断材料是否齐全；设计保留原安全上传流程，并仅用真实材料状态补充列表，不造完成标记。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-21",
+      "module": "培养与课程",
+      "label": "课程停用",
+      "path": "/admin/academic-affairs/courses/console?tab=disable",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=disable",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补24.png",
+          "by": "总控",
+          "note": "停用列表按状态显示可操作对象，保留引用检查与停用确认；本轮未验证确认弹窗。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-22",
+      "module": "培养与课程",
+      "label": "历史课程（已停用/旧版本）",
+      "path": "/admin/academic-affairs/courses/console?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/courses/console?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补25.png",
+          "by": "总控",
+          "note": "历史课程0条却提示课程库为空并引导新建，与实际756课程不符；改成暂无历史/停用版本，不造数据。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-23",
+      "module": "培养与课程",
+      "label": "专业教学计划",
+      "path": "/admin/academic-affairs/programs",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补04.png",
+          "by": "总控",
+          "note": "方案名称/版本/阻断可见，仍有正式来源记录与方案内部编号；旧候选已精简的部分可承接，不重复实现。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-24",
+      "module": "培养与课程",
+      "label": "实践教学计划",
+      "path": "/admin/academic-affairs/programs/console?tab=practicePlan",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=practicePlan",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补26.png",
+          "by": "总控",
+          "note": "实践计划未选方案初始页，选中后字段和异常状态未实测；设计复用同一方案上下文。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-25",
+      "module": "培养与课程",
+      "label": "计划审核",
+      "path": "/admin/academic-affairs/programs/console?tab=review",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=review",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补11.png",
+          "by": "总控",
+          "note": "审核选中对象与证据卡已对应；可压缩重复对象概览和“设计视角/正式来源”解释，保留阻断卡与完整方案入口。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-26",
+      "module": "培养与课程",
+      "label": "计划发布",
+      "path": "/admin/academic-affairs/programs/console?tab=publish",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=publish",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补12.png",
+          "by": "总控",
+          "note": "发布页已启用对象仍显示当前发布阶段与校验并发布主按钮；设计须依据实际状态/服务允许动作决定标签与可用性，不能仅按页签。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "03-27",
+      "module": "培养与课程",
+      "label": "计划变更",
+      "path": "/admin/academic-affairs/programs/console?tab=planChange",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/programs/console?tab=planChange",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补27.png",
+          "by": "总控",
+          "note": "已启用方案的计划变更列表可读；顶部空工具栏应移除，发起变更仍走原版本流程。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-01",
+      "module": "开课管理",
+      "label": "教学任务批次",
+      "path": "/admin/academic-affairs/teaching-tasks",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补28.png",
+          "by": "总控",
+          "note": "批次状态、阻断和下一步集中展示，可保留；摘要解释可精简但本页统计口径保留。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-02",
+      "module": "开课管理",
+      "label": "教学任务生成",
+      "path": "/admin/academic-affairs/teaching-tasks?open=generate",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks?open=generate",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补29.png",
+          "by": "总控",
+          "note": "任务生成表单已出现，批次统计与历史列表占较多位置；表单优先，但一个批次一个责任学院/行政班筛选不改变方案与校历前置必须保留。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-03",
+      "module": "开课管理",
+      "label": "任课教师分配",
+      "path": "/admin/academic-affairs/teaching-tasks/assign",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/assign",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补30.png",
+          "by": "总控",
+          "note": "首行已就绪任务被顶部默认当当前对象，固定分配阶段与状态冲突；承接旧候选去除首行概览，保留逐行分配和确认边界。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-04",
+      "module": "开课管理",
+      "label": "教学班生成",
+      "path": "/admin/academic-affairs/orgs?tab=teaching",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/orgs?tab=teaching",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/A/21.png",
+          "by": "A",
+          "note": "仅本轮现有服务学校管理员首屏；写入/异常/手机宽度未验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-05",
+      "module": "开课管理",
+      "label": "合班拆班",
+      "path": "/admin/academic-affairs/teaching-tasks/merge-split",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/merge-split",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补31.png",
+          "by": "总控",
+          "note": "合拆班队列为空仍固定分配阶段、两个大空态，已有旧候选可压缩；同批次同版本与教师确认前条件保留。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-06",
+      "module": "开课管理",
+      "label": "教学任务确认",
+      "path": "/admin/academic-affairs/teaching-tasks/confirm",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/confirm",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补32.png",
+          "by": "总控",
+          "note": "未选批次却固定学院校对阶段，且列表多为已通过；采用旧候选去固定阶段，选中后显示真实状态。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-07",
+      "module": "开课管理",
+      "label": "教师任务确认",
+      "path": "/admin/academic-affairs/teaching-tasks/teacher-confirm",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/teacher-confirm",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补33.png",
+          "by": "总控",
+          "note": "本人待确认0条仍有固定第3阶段和重复0卡片/页签；缩短空态，保留本人确认与历史入口，非空确认未验证。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-08",
+      "module": "开课管理",
+      "label": "教学任务调整",
+      "path": "/admin/academic-affairs/teaching-tasks/adjust",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/adjust",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补34.png",
+          "by": "总控",
+          "note": "调整页默认首行概览、固定分配阶段和长规则挤压列表；承接旧候选折叠规则，保留换教师需本人确认和重新审核约束。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-09",
+      "module": "开课管理",
+      "label": "教学任务统计",
+      "path": "/admin/academic-affairs/teaching-tasks/stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补35.png",
+          "by": "总控",
+          "note": "批次与任务数量、分配率/确认率分开显示，单位清楚；单一状态的大柱图可简化展示，不能更改分母。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-10",
+      "module": "开课管理",
+      "label": "学期开课计划",
+      "path": "/admin/academic-affairs/teaching-tasks",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补28.png",
+          "by": "总控",
+          "note": "批次状态、阻断和下一步集中展示，可保留；摘要解释可精简但本页统计口径保留。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-11",
+      "module": "开课管理",
+      "label": "计划执行进度",
+      "path": "/admin/academic-affairs/teaching-tasks/stats",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/teaching-tasks/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补35.png",
+          "by": "总控",
+          "note": "批次与任务数量、分配率/确认率分开显示，单位清楚；单一状态的大柱图可简化展示，不能更改分母。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "04-12",
+      "module": "开课管理",
+      "label": "工作量申报审核",
+      "path": "/admin/academic-affairs/workload-review",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/workload-review",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/A补36.png",
+          "by": "总控",
+          "note": "工作量已通过记录仍固定统计口径阶段，顶部首行概览重复台账；保留学期、类别、课时、意见与状态，按真实对象定位。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-01",
+      "module": "排课与课表",
+      "label": "课表批次",
+      "path": "/admin/academic-affairs/schedule",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-01.png",
+          "by": "总控",
+          "note": "列表直接显示批次和状态，未出现默认首行概览；多行显示版本待核对，需保留缺失提示。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-02",
+      "module": "排课与课表",
+      "label": "班级课表",
+      "path": "/admin/academic-affairs/schedule/class",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/class",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-02.png",
+          "by": "总控",
+          "note": "查询学期、周次与班级，选择后加载；未选对象不伪造课表。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-03",
+      "module": "排课与课表",
+      "label": "教师课表",
+      "path": "/admin/academic-affairs/schedule/teacher",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/teacher",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-03.png",
+          "by": "总控",
+          "note": "初始教师选择；查询范围说明和空态重复，可合并。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-04",
+      "module": "排课与课表",
+      "label": "学生课表",
+      "path": "/admin/academic-affairs/schedule/student",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/student",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-04.png",
+          "by": "总控",
+          "note": "姓名/学号选择保留；未选对象时责任大栏与空态重复。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-05",
+      "module": "排课与课表",
+      "label": "教室课表",
+      "path": "/admin/academic-affairs/schedule/room",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/room",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-05.png",
+          "by": "总控",
+          "note": "资源身份、学期周次均在筛选；未选对象时重复查询范围与空态需合并。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-06",
+      "module": "排课与课表",
+      "label": "教学班课表",
+      "path": "/admin/academic-affairs/schedule/teaching-class",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/teaching-class",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-06.png",
+          "by": "总控",
+          "note": "空态提示选择已排课教学班，可用搜索；大块范围摘要与空态重复。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-07",
+      "module": "排课与课表",
+      "label": "周课表",
+      "path": "/admin/academic-affairs/schedule/week",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/week",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-07.png",
+          "by": "总控",
+          "note": "实际默认当前学期第8周并显示日期范围；未选班级空态与顶部范围说明重复，可合并。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-08",
+      "module": "排课与课表",
+      "label": "学期课表",
+      "path": "/admin/academic-affairs/schedule/semester",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/semester",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-08.png",
+          "by": "总控",
+          "note": "检查学期与对象选择、状态和返回入口。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-09",
+      "module": "排课与课表",
+      "label": "课表发布",
+      "path": "/admin/academic-affairs/schedule/publish",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/publish",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-09.png",
+          "by": "总控",
+          "note": "队列有多种状态，顶部却统一显示发布阶段；应移除队列固定完成进度，保留每行实际状态和发布条件。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-10",
+      "module": "排课与课表",
+      "label": "课表调整记录",
+      "path": "/admin/academic-affairs/schedule/adjustments",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/adjustments",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-10.png",
+          "by": "总控",
+          "note": "读取调整记录与筛选，不操作调课。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-11",
+      "module": "排课与课表",
+      "label": "课表导出",
+      "path": "/admin/academic-affairs/schedule/export",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule/export",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-11.png",
+          "by": "总控",
+          "note": "仅核对导出范围和状态，未创建导出任务。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-12",
+      "module": "排课与课表",
+      "label": "排课规则",
+      "path": "/admin/academic-affairs/scheduling?tab=rules",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=rules",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-12.png",
+          "by": "总控",
+          "note": "未选批次却有固定阶段与责任占位；规则表业务参数空白、当前配置未设置但已启用，说明含内部配置键。需补可信规则名称/值映射，不能猜默认值。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-13",
+      "module": "排课与课表",
+      "label": "教师可用时间",
+      "path": "/admin/academic-affairs/scheduling?tab=availability",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=availability",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-13.png",
+          "by": "总控",
+          "note": "教师时段表可读，首屏重复学期编号、责任占位及固定第2阶段；保留采纳状态与原因，压缩无对象流程栏。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-14",
+      "module": "排课与课表",
+      "label": "自动排课",
+      "path": "/admin/academic-affairs/scheduling?tab=auto",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=auto",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-14.png",
+          "by": "总控",
+          "note": "未选批次即显示固定第3阶段，检查条件按钮上下重复；将批次选择提前，阶段只在取得对象状态后呈现。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-15",
+      "module": "排课与课表",
+      "label": "冲突报告",
+      "path": "/admin/academic-affairs/scheduling?tab=conflict",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=conflict",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-15.png",
+          "by": "总控",
+          "note": "未选对象已有固定第4阶段；“处理当前冲突”和“生成冲突报告”语义需统一为当前真实动作，先选批次。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-16",
+      "module": "排课与课表",
+      "label": "手工排课",
+      "path": "/admin/academic-affairs/schedule",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-01.png",
+          "by": "总控",
+          "note": "列表直接显示批次和状态，未出现默认首行概览；多行显示版本待核对，需保留缺失提示。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-17",
+      "module": "排课与课表",
+      "label": "排课约束",
+      "path": "/admin/academic-affairs/scheduling?tab=constraint",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=constraint",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-17.png",
+          "by": "总控",
+          "note": "核对约束入口实际落点。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-18",
+      "module": "排课与课表",
+      "label": "教室可用时间",
+      "path": "/admin/academic-affairs/scheduling?tab=room",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=room",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-18.png",
+          "by": "总控",
+          "note": "嵌套资源占用页出现双标题和多层来源说明，表格仍露资源内部编号；缺场地关联警告必须保留，不能把无记录当空闲。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-19",
+      "module": "排课与课表",
+      "label": "自动排课预留",
+      "path": "/admin/academic-affairs/scheduling?tab=import",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=import",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-19.png",
+          "by": "总控",
+          "note": "侧栏“自动排课预留”实际打开“导入排课结果”；应按实际功能统一名称，保留批次选择及上传前校验。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-20",
+      "module": "排课与课表",
+      "label": "排课结果",
+      "path": "/admin/academic-affairs/scheduling?tab=result",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=result",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-20.png",
+          "by": "总控",
+          "note": "结果入口未选批次却固定为处理冲突阶段，重复指定批次标题；应先选择对象再显示结果状态。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-21",
+      "module": "排课与课表",
+      "label": "排课调整",
+      "path": "/admin/academic-affairs/scheduling?tab=adjust",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/scheduling?tab=adjust",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-21.png",
+          "by": "总控",
+          "note": "调整页未选对象仍显示固定处理冲突进度；先选批次，再呈现已发布/草稿/纠错的实际能力。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "05-22",
+      "module": "排课与课表",
+      "label": "排课归档",
+      "path": "/admin/academic-affairs/schedule?panel=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule?panel=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-22.png",
+          "by": "总控",
+          "note": "读取已归档批次列表，未归档数据。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "06-01",
+      "module": "选课管理",
+      "label": "选课批次",
+      "path": "/admin/academic-affairs/selection",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/selection",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-01.png",
+          "by": "总控",
+          "note": "5个批次卡片和对象概览占首屏，具体办理区在下方；窗口已截止但批次待收口的区别必须保留，批量开选不自动执行。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "06-02",
+      "module": "选课管理",
+      "label": "本人选课",
+      "path": "/admin/academic-affairs/my-selection",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/my-selection",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-02.png",
+          "by": "总控",
+          "note": "管理员进入学生自助页被拒绝，显示为加载失败；设计应区分岗位不适用与读取失败，不放宽授权。学生正常态未验证。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "06-03",
+      "module": "选课管理",
+      "label": "选课规则",
+      "path": "/admin/academic-affairs/selection?tab=rule",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/selection?tab=rule",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-03.png",
+          "by": "总控",
+          "note": "只查看规则页和所选批次，未保存。"
+        },
+        {
+          "path": "/admin/academic-affairs/selection?tab=rule",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-03-detail.png",
+          "by": "总控",
+          "note": "开选后规则只读，当前使用全宽禁用步进器；设计改静态值并保留0含义与变更限制，不能放开修改。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "06-04",
+      "module": "选课管理",
+      "label": "补选管理",
+      "path": "/admin/academic-affairs/selection?tab=reselect",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/selection?tab=reselect",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-04.png",
+          "by": "总控",
+          "note": "实际窗口截止但批次未执行截止，补选指引被阻断；应把这条原因与可办下一步靠近主体，压缩上方卡片与重复阶段。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "06-05",
+      "module": "选课管理",
+      "label": "冲突检测",
+      "path": "/admin/academic-affairs/selection?tab=conflict",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/selection?tab=conflict",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-05.png",
+          "by": "总控",
+          "note": "只读查看冲突内容，未提交选课。"
+        },
+        {
+          "path": "/admin/academic-affairs/selection?tab=conflict",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-05-detail.png",
+          "by": "总控",
+          "note": "内容区按学号查询冲突；0条时既有大型空态又有空明细表和分页，应合并为一处，保留查询结果不等于提交保证。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "06-06",
+      "module": "选课管理",
+      "label": "选课结果",
+      "path": "/admin/academic-affairs/schedule",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/05-01.png",
+          "by": "总控",
+          "note": "列表直接显示批次和状态，未出现默认首行概览；多行显示版本待核对，需保留缺失提示。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "06-07",
+      "module": "选课管理",
+      "label": "选课归档",
+      "path": "/admin/academic-affairs/selection/archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/selection/archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/06-07.png",
+          "by": "总控",
+          "note": "归档表显示学期内部编号和原始日期；已有选中归档对象时应同步高亮对应行，保留只读封存和导出用途限制。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-01",
+      "module": "日常教学",
+      "label": "调停课台账",
+      "path": "/admin/academic-affairs/schedule-change",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-45.png",
+          "by": "B",
+          "note": "已查看；列表原课位→目标清楚，顶部重复台账说明可缩短，通知单与状态保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-02",
+      "module": "日常教学",
+      "label": "调停课申请",
+      "path": "/admin/academic-affairs/schedule-change/apply",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change/apply",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-46.png",
+          "by": "B",
+          "note": "已查看；原课位未选时保留一个主选择入口，流程可折叠，技术编号解释移除；学院协助候选待基线整合"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-03",
+      "module": "日常教学",
+      "label": "调停课审批",
+      "path": "/admin/academic-affairs/schedule-change/approval",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change/approval",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-47.png",
+          "by": "B",
+          "note": "已查看；待审节点与原目标对照清楚；页内分页实现说明删除，保留证据后办理"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-04",
+      "module": "日常教学",
+      "label": "调停课通知",
+      "path": "/admin/academic-affairs/schedule-change",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-45.png",
+          "by": "B",
+          "note": "已查看；列表原课位→目标清楚，顶部重复台账说明可缩短，通知单与状态保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-05",
+      "module": "日常教学",
+      "label": "调停课冲突检测",
+      "path": "/admin/academic-affairs/schedule-change/apply",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change/apply",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-46.png",
+          "by": "B",
+          "note": "已查看；原课位未选时保留一个主选择入口，流程可折叠，技术编号解释移除；学院协助候选待基线整合"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-06",
+      "module": "日常教学",
+      "label": "调停课统计",
+      "path": "/admin/academic-affairs/schedule-change/stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-48.png",
+          "by": "B",
+          "note": "已查看；学期ID改学期，范围移到筛选摘要不作大数字卡，长教师名应可完整查看"
+        },
+        {
+          "path": "/admin/academic-affairs/schedule-change/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-07.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-07",
+      "module": "日常教学",
+      "label": "调停课归档",
+      "path": "/admin/academic-affairs/schedule-change/archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change/archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-49.png",
+          "by": "B",
+          "note": "已查看；固定归档阶段与终态列表混淆，学期主键输入改现有学期选择器，发起时间统一格式"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-08",
+      "module": "日常教学",
+      "label": "课堂考勤",
+      "path": "/admin/academic-affairs/attendance-stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/attendance-stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-50.png",
+          "by": "B",
+          "note": "已查看；正式课堂与补录范围说明重复，合为筛选摘要；考勤汇总及扫描权限保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-09",
+      "module": "日常教学",
+      "label": "考勤场次查询",
+      "path": "/admin/academic-affairs/attendance-stats?panel=sessions",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/attendance-stats?panel=sessions",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-51.png",
+          "by": "B",
+          "note": "已查看；场次ID/班级ID外露，改课程日期班级业务名称；任课关系与提交检查保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-10",
+      "module": "日常教学",
+      "label": "按点名类别统计",
+      "path": "/admin/academic-affairs/attendance-stats",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/attendance-stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-50.png",
+          "by": "B",
+          "note": "已查看；正式课堂与补录范围说明重复，合为筛选摘要；考勤汇总及扫描权限保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-11",
+      "module": "日常教学",
+      "label": "旷课预警联动",
+      "path": "/admin/academic-affairs/warnings/console?tab=dashboard",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/warnings/console?tab=dashboard",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补06.png",
+          "by": "总控",
+          "note": "看板在办总数标非已关闭，但与待处理加已关闭合计相等，需核对统计口径/标签；不擅改查询或忽略已关闭。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-12",
+      "module": "日常教学",
+      "label": "教室预约",
+      "path": "/admin/academic-affairs/classroom-bookings",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/classroom-bookings",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-52.png",
+          "by": "B",
+          "note": "已查看；占用网格保留，资源编号及三处技术说明收纳；待核对不能当空闲"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "07-13",
+      "module": "日常教学",
+      "label": "实训室预约",
+      "path": "/admin/academic-affairs/resources/lab-bookings",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/resources/lab-bookings",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-53.png",
+          "by": "B",
+          "note": "已查看；实训室缺场地映射警告保留；申请仍需审核，不把待核对显示空闲"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-01",
+      "module": "考务管理",
+      "label": "考务安排",
+      "path": "/admin/academic-affairs/exam",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/exam",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-01.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-02",
+      "module": "考务管理",
+      "label": "考务打印",
+      "path": "/admin/academic-affairs/exam/print/seating",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/exam/print/seating",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-02.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-03",
+      "module": "考务管理",
+      "label": "缓考审批",
+      "path": "/admin/academic-affairs/exam?tab=defer",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/exam?tab=defer",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-03.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-04",
+      "module": "考务管理",
+      "label": "考务归档",
+      "path": "/admin/academic-affairs/exam?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/exam?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-04.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-05",
+      "module": "考务管理",
+      "label": "等级考试",
+      "path": "/admin/academic-affairs/level-exams",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/level-exams",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-05.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-06",
+      "module": "考务管理",
+      "label": "补考批次",
+      "path": "/admin/academic-affairs/makeup?tab=makeup",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/makeup?tab=makeup",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-06.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-07",
+      "module": "考务管理",
+      "label": "毕业清考",
+      "path": "/admin/academic-affairs/makeup?tab=clearance",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/makeup?tab=clearance",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-07.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "08-08",
+      "module": "考务管理",
+      "label": "缓考合流",
+      "path": "/admin/academic-affairs/makeup?tab=deferred",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/makeup?tab=deferred",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/08-08.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-01",
+      "module": "成绩管理",
+      "label": "成绩总览",
+      "path": "/admin/academic-affairs/grade-overview",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-overview",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-01.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-02",
+      "module": "成绩管理",
+      "label": "成绩录入",
+      "path": "/admin/academic-affairs/grade-entry",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-entry",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-02.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-03",
+      "module": "成绩管理",
+      "label": "挂科清单",
+      "path": "/admin/academic-affairs/grade-fail",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-fail",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-03.png",
+          "by": "C",
+          "note": "页面读取失败，正常列表未核实"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-04",
+      "module": "成绩管理",
+      "label": "学生成绩单",
+      "path": "/admin/academic-affairs/transcript",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/transcript",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-04.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-05",
+      "module": "成绩管理",
+      "label": "成绩导入",
+      "path": "/admin/academic-affairs/grade-entry?action=import",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-entry?action=import",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-05.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-06",
+      "module": "成绩管理",
+      "label": "成绩导出",
+      "path": "/admin/academic-affairs/transcript?action=export",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/transcript?action=export",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-06.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-07",
+      "module": "成绩管理",
+      "label": "成绩异常",
+      "path": "/admin/academic-affairs/grade-exception",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-exception",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-07.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-08",
+      "module": "成绩管理",
+      "label": "成绩认定与替代",
+      "path": "/admin/academic-affairs/grade-recognition",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-recognition",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-08.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-09",
+      "module": "成绩管理",
+      "label": "重修审批",
+      "path": "/admin/academic-affairs/makeup?tab=retake",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/makeup?tab=retake",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-09.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-10",
+      "module": "成绩管理",
+      "label": "免修审批",
+      "path": "/admin/academic-affairs/makeup?tab=exemption",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/makeup?tab=exemption",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-10.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-11",
+      "module": "成绩管理",
+      "label": "重修免修申请",
+      "path": "/admin/academic-affairs/my-makeup",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/my-makeup",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-11.png",
+          "by": "C",
+          "note": "学校管理员看到无权提示，学生本人办理未核实"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-12",
+      "module": "成绩管理",
+      "label": "统计分析",
+      "path": "/admin/academic-affairs/makeup/stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/makeup/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-12.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-13",
+      "module": "成绩管理",
+      "label": "材料归档",
+      "path": "/admin/academic-affairs/exemption/archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/exemption/archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-13.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-14",
+      "module": "成绩管理",
+      "label": "学院成绩审核",
+      "path": "/admin/academic-affairs/grade-college-review",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-college-review",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-14.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-15",
+      "module": "成绩管理",
+      "label": "成绩发布",
+      "path": "/admin/academic-affairs/grade-publish",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-publish",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-15.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-16",
+      "module": "成绩管理",
+      "label": "成绩更正",
+      "path": "/admin/academic-affairs/grade-change",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-change",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-16.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-17",
+      "module": "成绩管理",
+      "label": "成绩复查",
+      "path": "/admin/academic-affairs/grade-recheck",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-recheck",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-17.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "09-18",
+      "module": "成绩管理",
+      "label": "成绩操作审计",
+      "path": "/admin/academic-affairs/grade-audit",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/grade-audit",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/09-18.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-01",
+      "module": "毕业管理",
+      "label": "毕业预审",
+      "path": "/admin/academic-affairs/graduation",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-54.png",
+          "by": "B",
+          "note": "已查看；预审批次列表简洁，历史学期缺失如实保留，继续预审与查看结果需清楚区分"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-02",
+      "module": "毕业管理",
+      "label": "审核批次",
+      "path": "/admin/academic-affairs/graduation?tab=batches",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation?tab=batches",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-55.png",
+          "by": "B",
+          "note": "已查看；当前页人数口径保留，压缩四卡让批次队列前移"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-03",
+      "module": "毕业管理",
+      "label": "毕业学生名单",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=roster",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=roster",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-56.png",
+          "by": "B",
+          "note": "已查看；批次摘要、阶段条和页签占半屏，合并为紧凑批次栏；毕业/结业/延毕分类保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-04",
+      "module": "毕业管理",
+      "label": "学分达成审核",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=credit",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=credit",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-57.png",
+          "by": "B",
+          "note": "已查看；学生证据区被重复总览推后，压缩顶部；学分当前值/要求值及来源责任保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-05",
+      "module": "毕业管理",
+      "label": "课程达成审核",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=course",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=course",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补07.png",
+          "by": "总控",
+          "note": "课程达成有真实系统异常及选修要求缺数据，应保留阻断与来源入口；批次总览/步骤条/队列信息层叠可压缩。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-06",
+      "module": "毕业管理",
+      "label": "实践环节审核",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=practice",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=practice",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-59.png",
+          "by": "B",
+          "note": "已查看；缺实践学分依据明确，保留责任模块入口；顶部信息应压缩"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-07",
+      "module": "毕业管理",
+      "label": "毕设状态联动",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=thesis",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=thesis",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-60.png",
+          "by": "B",
+          "note": "已查看；毕设台账缺失与不通过区别保留；缺台账引导只能指向有权岗位"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-08",
+      "module": "毕业管理",
+      "label": "实习状态联动",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=internship",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=internship",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-61.png",
+          "by": "B",
+          "note": "已查看；实习证据不通过与责任名称需核对来源；不得把缺证据改通过"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-09",
+      "module": "毕业管理",
+      "label": "费用结清（待接入）",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=fee",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=fee",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-62.png",
+          "by": "B",
+          "note": "已查看；未接入财务显示缺数据且本项不阻断，保留原规则和人工标记边界"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-10",
+      "module": "毕业管理",
+      "label": "处分状态联动",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=discipline",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=discipline",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-63.png",
+          "by": "B",
+          "note": "已查看；无台账导致不能核验，不能显示无处分；来源模块入口保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-11",
+      "module": "毕业管理",
+      "label": "毕业资格终审",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=final",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=final",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-64.png",
+          "by": "B",
+          "note": "已查看；无待终审名单合理，终审不可逆和学院初审前置警告必须常显"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-12",
+      "module": "毕业管理",
+      "label": "不通过原因",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=reason",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=reason",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-65.png",
+          "by": "B",
+          "note": "已查看；系统异常、人工驳回、延毕分类需独立计数，不合并成同一不通过状态"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-13",
+      "module": "毕业管理",
+      "label": "审核结果",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=results",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=results",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-66.png",
+          "by": "B",
+          "note": "已查看；系统预审/学院退回/终审结论区分正确，合并重复总览让结果先出现"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-14",
+      "module": "毕业管理",
+      "label": "毕业证书管理",
+      "path": "/admin/academic-affairs/certificates",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/certificates",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-67.png",
+          "by": "B",
+          "note": "已查看；证书列表被三层摘要推后，状态汇总压缩；正式终审来源、作废不可复用及回执保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "10-15",
+      "module": "毕业管理",
+      "label": "审核归档",
+      "path": "/admin/academic-affairs/graduation/audit-console?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/graduation/audit-console?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-68.png",
+          "by": "B",
+          "note": "已查看；无可归档结果时归档动作仍显，设计按现有资格禁用并说明原因，保留延毕不归本批边界"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "11-01",
+      "module": "教材管理",
+      "label": "教材目录",
+      "path": "/admin/academic-affairs/textbooks?tab=catalog",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/textbooks?tab=catalog",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/11-01.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "11-02",
+      "module": "教材管理",
+      "label": "教材选用",
+      "path": "/admin/academic-affairs/textbooks?tab=selection",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/textbooks?tab=selection",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/11-02.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "11-03",
+      "module": "教材管理",
+      "label": "审核备案",
+      "path": "/admin/academic-affairs/textbooks?tab=review",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/textbooks?tab=review",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/11-03.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "11-04",
+      "module": "教材管理",
+      "label": "征订到货",
+      "path": "/admin/academic-affairs/textbooks?tab=order",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/textbooks?tab=order",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/11-04.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "11-05",
+      "module": "教材管理",
+      "label": "费用台账",
+      "path": "/admin/academic-affairs/textbooks?tab=fee",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/textbooks?tab=fee",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/11-05.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "11-06",
+      "module": "教材管理",
+      "label": "教材库存",
+      "path": "/admin/academic-affairs/textbooks?tab=stock",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/textbooks?tab=stock",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/11-06.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "11-07",
+      "module": "教材管理",
+      "label": "教材统计",
+      "path": "/admin/academic-affairs/textbooks?tab=stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/textbooks?tab=stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/11-07.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "12-01",
+      "module": "教学资源",
+      "label": "教室资源",
+      "path": "/admin/academic-affairs/classrooms",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/classrooms",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-69.png",
+          "by": "B",
+          "note": "已查看；楼栋/状态/容量/卡片结构可保留；资源可用不等于时段空闲的提示必须保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "12-02",
+      "module": "教学资源",
+      "label": "实训室资源",
+      "path": "/admin/academic-affairs/resources/labs",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/resources/labs",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-70.png",
+          "by": "B",
+          "note": "已查看；筛选区过高、历史类型露原码，状态动作集中到更多；未知历史类型不猜映射"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "12-03",
+      "module": "教学资源",
+      "label": "设备资源",
+      "path": "/admin/academic-affairs/resources/equipment",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/resources/equipment",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-71.png",
+          "by": "B",
+          "note": "已查看；资产编号为业务编号保留，筛选压缩、状态动作归更多；未分配位置规则保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "12-04",
+      "module": "教学资源",
+      "label": "资源占用",
+      "path": "/admin/academic-affairs/resources/occupancy",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/resources/occupancy",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-72.png",
+          "by": "B",
+          "note": "已查看；技术来源三卡与底注重复，保留未映射警告并让占用表前移；内部编号默认不显示"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "12-05",
+      "module": "教学资源",
+      "label": "资源冲突",
+      "path": "/admin/academic-affairs/resources/conflicts",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/resources/conflicts",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-73.png",
+          "by": "B",
+          "note": "已查看；来源技术卡可折叠，未映射风险不可折叠，空结果不得显示可预约"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "12-06",
+      "module": "教学资源",
+      "label": "资源维修",
+      "path": "/admin/academic-affairs/resources/repairs",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/resources/repairs",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-74.png",
+          "by": "B",
+          "note": "已查看；恢复早于报修的警告应保留；时间可读化，责任说明卡压缩；不改异常历史数据"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "12-07",
+      "module": "教学资源",
+      "label": "资源统计",
+      "path": "/admin/academic-affairs/resources/stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/resources/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-75.png",
+          "by": "B",
+          "note": "已查看；数量/比例口径保留，六卡紧凑排列减少留白，资源可用率不叫空闲率"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-01",
+      "module": "教学质量",
+      "label": "质量看板",
+      "path": "/admin/academic-affairs/quality",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-01.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-02",
+      "module": "教学质量",
+      "label": "督导听课",
+      "path": "/admin/academic-affairs/quality?tab=supervision",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality?tab=supervision",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-02.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-03",
+      "module": "教学质量",
+      "label": "巡课记录",
+      "path": "/admin/academic-affairs/quality?tab=patrol",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality?tab=patrol",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-03.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-04",
+      "module": "教学质量",
+      "label": "教学检查",
+      "path": "/admin/academic-affairs/quality?tab=inspection",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality?tab=inspection",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-04.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-05",
+      "module": "教学质量",
+      "label": "教学事故",
+      "path": "/admin/academic-affairs/quality?tab=incident",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality?tab=incident",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-05.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-06",
+      "module": "教学质量",
+      "label": "质量整改",
+      "path": "/admin/academic-affairs/quality?tab=rectify",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality?tab=rectify",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-06.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-07",
+      "module": "教学质量",
+      "label": "整改跟进",
+      "path": "/admin/academic-affairs/quality?tab=followUp",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality?tab=followUp",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-07.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-08",
+      "module": "教学质量",
+      "label": "质量归档",
+      "path": "/admin/academic-affairs/quality?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/quality?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-08.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-09",
+      "module": "教学质量",
+      "label": "评价批次",
+      "path": "/admin/academic-affairs/evaluation?tab=batches",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=batches",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-09.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-10",
+      "module": "教学质量",
+      "label": "申诉审核",
+      "path": "/admin/academic-affairs/evaluation?tab=appeals",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=appeals",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-10.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-11",
+      "module": "教学质量",
+      "label": "学生评教",
+      "path": "/admin/academic-affairs/evaluation?tab=studentEval",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=studentEval",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-11.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-12",
+      "module": "教学质量",
+      "label": "教师自评",
+      "path": "/admin/academic-affairs/evaluation?tab=selfEval",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=selfEval",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-12.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-13",
+      "module": "教学质量",
+      "label": "同行评价",
+      "path": "/admin/academic-affairs/evaluation?tab=peerEval",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=peerEval",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-13.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-14",
+      "module": "教学质量",
+      "label": "督导评价",
+      "path": "/admin/academic-affairs/evaluation?tab=supervisorEval",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=supervisorEval",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-14.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-15",
+      "module": "教学质量",
+      "label": "评价统计",
+      "path": "/admin/academic-affairs/evaluation?tab=evalStats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=evalStats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-15.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "13-16",
+      "module": "教学质量",
+      "label": "评价归档",
+      "path": "/admin/academic-affairs/evaluation?tab=archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/evaluation?tab=archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/13-16.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-01",
+      "module": "教务统计",
+      "label": "统计总览",
+      "path": "/admin/academic-affairs/stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-01.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-02",
+      "module": "教务统计",
+      "label": "学籍统计",
+      "path": "/admin/academic-affairs/stats?tab=statusChange",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=statusChange",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-02.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-03",
+      "module": "教务统计",
+      "label": "学籍与注册",
+      "path": "/admin/academic-affairs/stats?tab=registration",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=registration",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-17.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-04",
+      "module": "教务统计",
+      "label": "开课与教学运行",
+      "path": "/admin/academic-affairs/stats?tab=course",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=course",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-04.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-05",
+      "module": "教务统计",
+      "label": "教学任务统计",
+      "path": "/admin/academic-affairs/stats?tab=teachingTask",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=teachingTask",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-05.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-06",
+      "module": "教务统计",
+      "label": "课表统计",
+      "path": "/admin/academic-affairs/stats?tab=schedule",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=schedule",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-06.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-07",
+      "module": "教务统计",
+      "label": "调停课统计",
+      "path": "/admin/academic-affairs/schedule-change/stats",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/schedule-change/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-48.png",
+          "by": "B",
+          "note": "已查看；学期ID改学期，范围移到筛选摘要不作大数字卡，长教师名应可完整查看"
+        },
+        {
+          "path": "/admin/academic-affairs/schedule-change/stats",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-07.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-08",
+      "module": "教务统计",
+      "label": "选课统计",
+      "path": "/admin/academic-affairs/stats?tab=courseSelection",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=courseSelection",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-08.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-09",
+      "module": "教务统计",
+      "label": "考试与成绩",
+      "path": "/admin/academic-affairs/stats?tab=exam",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=exam",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-09.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-10",
+      "module": "教务统计",
+      "label": "成绩统计",
+      "path": "/admin/academic-affairs/stats?tab=grade",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=grade",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-18.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-11",
+      "module": "教务统计",
+      "label": "学业与毕业",
+      "path": "/admin/academic-affairs/stats?tab=warning",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=warning",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-11.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-12",
+      "module": "教务统计",
+      "label": "毕业资格统计",
+      "path": "/admin/academic-affairs/stats?tab=graduation",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=graduation",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-12.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-13",
+      "module": "教务统计",
+      "label": "师资与资源",
+      "path": "/admin/academic-affairs/stats?tab=workload",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=workload",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-13.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-14",
+      "module": "教务统计",
+      "label": "教学资源统计",
+      "path": "/admin/academic-affairs/stats?tab=resource",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=resource",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-14.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-15",
+      "module": "教务统计",
+      "label": "报表与快照",
+      "path": "/admin/academic-affairs/stats?tab=export",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=export",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-15.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-16",
+      "module": "教务统计",
+      "label": "统计快照",
+      "path": "/admin/academic-affairs/stats?tab=snapshot",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=snapshot",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-16.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-17",
+      "module": "教务统计",
+      "label": "注册统计",
+      "path": "/admin/academic-affairs/stats?tab=registration",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=registration",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-17.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "14-18",
+      "module": "教务统计",
+      "label": "成绩统计",
+      "path": "/admin/academic-affairs/stats?tab=grade",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/stats?tab=grade",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/C/14-18.png",
+          "by": "C",
+          "note": "仅当前学校管理员首屏，深层弹窗/异常/其他角色未完整验证"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "15-01",
+      "module": "教务归档",
+      "label": "归档与封存",
+      "path": "/admin/academic-affairs/archive",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-76.png",
+          "by": "B",
+          "note": "已查看；已归档仍提示先检查，须按当前状态显示下一步；不可解冻和独立纠错保护保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "15-02",
+      "module": "教务归档",
+      "label": "归档缺失提醒",
+      "path": "/admin/academic-affairs/archive/precheck",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/archive/precheck",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/R/B补08.png",
+          "by": "总控",
+          "note": "缺失提醒有真实多域阻断，保留首要处理入口；大摘要/重复计数可压缩，待处理不改成已通过。"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "15-03",
+      "module": "教务归档",
+      "label": "批量归档",
+      "path": "/admin/academic-affairs/archive?entry=batch",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/archive?entry=batch",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-78.png",
+          "by": "B",
+          "note": "已查看；批量入口复用单学期归档，设计明确批量指该学期数据域，不新增跨学期批处理"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "15-04",
+      "module": "教务归档",
+      "label": "归档导出",
+      "path": "/admin/academic-affairs/archive/export",
+      "hidden": false,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/archive/export",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-79.png",
+          "by": "B",
+          "note": "已查看；导出范围与用途保留；三种范围长说明按需展开，未执行导出"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "15-05",
+      "module": "教务归档",
+      "label": "计划归档",
+      "path": "/admin/academic-affairs/archive",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-76.png",
+          "by": "B",
+          "note": "已查看；已归档仍提示先检查，须按当前状态显示下一步；不可解冻和独立纠错保护保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    },
+    {
+      "id": "15-06",
+      "module": "教务归档",
+      "label": "教学任务归档",
+      "path": "/admin/academic-affairs/archive",
+      "hidden": true,
+      "evidence": [
+        {
+          "path": "/admin/academic-affairs/archive",
+          "file": "C:/Users/10850/AppData/Local/Temp/academic-design15-20261025/B/B-76.png",
+          "by": "B",
+          "note": "已查看；已归档仍提示先检查，须按当前状态显示下一步；不可解冻和独立纠错保护保留"
+        }
+      ],
+      "coverage": "已取证当前首屏或初始状态；不代表全状态通过"
+    }
+  ]
+}

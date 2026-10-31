@@ -1,0 +1,128 @@
+- link "跳到工作区":
+  - /url: "#student-workspace-main"
+- banner:
+  - link "高校学生全生命周期管理平台":
+    - /url: /portal/home
+    - strong: 高校学生全生命周期管理平台
+  - button "搜索我的事项或服务 Ctrl K":
+    - generic: 搜索我的事项或服务
+    - generic: Ctrl K
+  - time: 10/27周二 10:51
+  - button "消息通知":
+  - button "打开学生账户":
+    - generic: 四
+    - strong: 四域虚构学生甲
+    - generic: 在读学生
+    - generic: ⌄
+- navigation "一级菜单":
+  - button "在校服务"
+  - button "教务学业"
+  - button "毕业设计"
+  - button "岗位实习" [active]
+  - button "就业服务"
+- generic "所有业务仅限当前学生本人": 本人范围
+- button "本次使用 00:00:43":
+  - text: 本次使用
+  - time: 00:00:43
+- complementary "二级菜单":
+  - button "展开二级菜单":
+  - navigation "二级菜单":
+    - button "我的实习":
+      - generic: 实习
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "展开三级菜单":
+  - navigation "三级菜单":
+    - button "实习工作台":
+      - generic: 总览
+    - button "岗位选择":
+      - generic: 岗位
+    - button "实习简历":
+      - generic: 简历
+    - button "上岗合规与安全教育":
+      - generic: 安全
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "我的工作台"
+  - tab "毕业设计工作台"
+  - button "关闭毕业设计工作台": ×
+  - tab "实习工作台" [selected]
+  - button "关闭实习工作台": ×
+- button "恢复关闭页签" [disabled]: 恢复
+- button "收藏"
+- button "专注"
+- main "实习工作台":
+  - region "查看本次实习记录":
+    - text: 当前实习事项
+    - heading "查看本次实习记录" [level=2]
+    - paragraph: 该实习已进入历史记录，可查看本次安排与已保存结果。
+    - generic: 最近变化：当前为历史实习
+    - generic: 完成后：如需核对资料，请联系指导教师
+  - navigation "实习办理分组":
+    - generic "安排与入岗 我的实习":
+      - generic: 安排与入岗
+      - generic: 我的实习
+    - button "我的实习"
+    - button "三方协议"
+    - button "实习保险"
+    - button "实习计划"
+    - generic "选岗与申请 3 项":
+      - generic: 选岗与申请
+      - generic: 3 项
+    - generic "在岗办理 4 项":
+      - generic: 在岗办理
+      - generic: 4 项
+    - generic "变更与结果 3 项":
+      - generic: 变更与结果
+      - generic: 3 项
+  - text: 我的实习安排
+  - heading "D606实习批次" [level=2]
+  - generic: 准备中
+  - term: 实习岗位
+  - definition: 待落实岗位
+  - term: 实习企业
+  - definition: 待落实企业
+  - term: 校内指导教师
+  - definition: 四域验收教师乙
+  - term: 企业导师
+  - definition: 待落实
+  - generic: "1"
+  - generic: 实习准备
+  - generic: "2"
+  - generic: 待上岗
+  - generic: "3"
+  - generic: 在岗实习
+  - generic: "4"
+  - generic: 考核评价
+  - generic: "5"
+  - generic: 归档
+  - complementary "实习资格":
+    - text: 学校资格认定
+    - heading "实习资格" [level=2]
+    - generic: 待认定
+    - paragraph: 学校正在核对本批次实习资格，请关注认定进度。
+    - strong: 下一步
+    - paragraph: 关注学校认定结果；如需补充材料，请联系校内指导教师。
+    - button "刷新认定结果"
+  - text: 结项与就业衔接
+  - heading "实习结果已归档" [level=2]
+  - paragraph: 实习档案已形成历史记录；就业去向、材料核验与后续跟进在就业中心继续办理。
+  - button "查看鉴定与成绩"
+  - button "进入就业中心"
+- navigation "快捷操作":
+  - text: 我的
+  - text: 常用
+  - button "我的工作台":
+    - generic: 我的工作台
+  - button "本人资料":
+    - generic: 本人资料
+  - button "请假与返校":
+    - generic: 请假与返校
+  - button "住宿与调宿":
+    - generic: 住宿与调宿
+  - button "我的课表":
+    - generic: 我的课表
+  - button "补交材料":
+    - generic: 补交材料
+  - button "编辑快捷栏": 编辑
+  - button "收起快捷栏": 收起

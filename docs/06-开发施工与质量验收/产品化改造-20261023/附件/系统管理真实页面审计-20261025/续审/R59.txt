@@ -1,0 +1,220 @@
+http://127.0.0.1:5173/admin/academic-affairs/terms/current
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "北京 天气":
+    - generic: 北京 天气
+  - button "10/25周日 14:48":
+    - generic: 10/25周日 14:48
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "胡 胡管理 学校管理员":
+    - generic: 胡
+    - generic: 胡管理
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- button "本次工作 02:42:03":
+  - generic: 本次工作 02:42:03
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 教务中心
+  - navigation "二级菜单":
+    - button "教务大屏":
+      - generic: 教务大屏
+    - button "教务总览":
+      - generic: 教务总览
+    - button "教务基础":
+      - generic: 教务基础
+    - button "学籍管理":
+      - generic: 学籍管理
+    - button "培养与课程":
+      - generic: 培养与课程
+    - button "开课管理":
+      - generic: 开课管理
+    - button "排课与课表":
+      - generic: 排课与课表
+    - button "选课管理":
+      - generic: 选课管理
+    - button "日常教学":
+      - generic: 日常教学
+    - button "考务管理":
+      - generic: 考务管理
+    - button "成绩管理":
+      - generic: 成绩管理
+    - button "毕业管理":
+      - generic: 毕业管理
+    - button "教材管理":
+      - generic: 教材管理
+    - button "教学资源":
+      - generic: 教学资源
+    - button "教学质量":
+      - generic: 教学质量
+    - button "教务统计":
+      - generic: 教务统计
+    - button "教务归档":
+      - generic: 教务归档
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 教务基础
+  - button "全部业务与设置"
+  - navigation "三级菜单":
+    - button "学期管理":
+      - generic: 学期管理
+    - button "当前学期":
+      - generic: 当前学期
+    - button "校历管理":
+      - generic: 校历管理
+    - button "作息时间":
+      - generic: 作息时间
+    - button "学院管理":
+      - generic: 学院管理
+    - button "专业管理":
+      - generic: 专业管理
+    - button "年级管理":
+      - generic: 年级管理
+    - button "行政班管理":
+      - generic: 行政班管理
+    - button "教学班管理":
+      - generic: 教学班管理
+    - button "组织核对":
+      - generic: 组织核对
+    - button "组织统计":
+      - generic: 组织统计
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "运行总览":
+    - generic: 运行总览
+  - button "关闭运行总览":
+  - tab "成绩总览":
+    - generic: 成绩总览
+  - button "关闭成绩总览":
+  - tab "成绩复查":
+    - generic: 成绩复查
+  - button "关闭成绩复查":
+  - tab "调停课审批":
+    - generic: 调停课审批
+  - button "关闭调停课审批":
+  - tab "方案列表":
+    - generic: 方案列表
+  - button "关闭方案列表":
+  - tab "课程列表":
+    - generic: 课程列表
+  - button "关闭课程列表":
+  - tab "新增课程":
+    - generic: 新增课程
+  - button "关闭新增课程":
+  - tab "选课批次":
+    - generic: 选课批次
+  - button "关闭选课批次":
+  - tab "选课规则":
+    - generic: 选课规则
+  - button "关闭选课规则":
+  - tab "课表发布":
+    - generic: 课表发布
+  - button "关闭课表发布":
+  - tab "方案版本":
+    - generic: 方案版本
+  - button "关闭方案版本":
+  - tab "学分要求":
+    - generic: 学分要求
+  - button "关闭学分要求":
+  - tab "方案制定":
+    - generic: 方案制定
+  - button "关闭方案制定":
+  - tab "学籍导入导出":
+    - generic: 学籍导入导出
+  - button "关闭学籍导入导出":
+  - tab "学期管理":
+    - generic: 学期管理
+  - button "关闭学期管理":
+  - tab "当前学期" [selected]:
+    - generic: 当前学期
+  - button "关闭当前学期":
+  - tab "教学班管理":
+    - generic: 教学班管理
+  - button "关闭教学班管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - generic: 跃科职业技术学院（演示） · 胡管理 · 2026-10-25 14:48
+  - heading "当前学期" [level=1]
+  - heading "当前正式记录" [level=3]
+  - generic: 2026-2027 第 1 学期
+  - generic: 2026-2027学年第一学期
+  - generic: 2026-09-01 ~ 2027-01-15
+  - generic: 教学周 18 周
+  - generic: 已发布
+  - term: 权威来源
+  - definition: 全校学期治理
+  - term: 教务侧直接切换
+  - definition: 由治理岗位统一激活
+  - term: 生效时间
+  - definition: 2026-08-31 00:17
+  - term: 最近切换记录
+  - definition: 胡管理 · 全校学期激活记录
+  - heading "学期启用方式" [level=3]
+  - strong: 全校统一治理已启用
+  - paragraph: 当前学校已启用全校学期治理；教务侧只读当前结论，切换请到“学年学期与业务日历”统一执行。
+  - button "前往学年学期与业务日历"
+  - heading "定义、当前与归档关系" [level=3]
+  - paragraph: 学校在「学年学期与业务日历」统一启用当前学期。
+  - list:
+    - button "2026-2027 第 1 学期"
+    - generic: 当前学期
+  - complementary:
+    - heading "可理解的操作边界" [level=2]
+    - strong: 发布定义
+    - paragraph: 学校启用统一治理后，发布学期定义不自动激活为当前。
+    - strong: 激活当前
+    - paragraph: 由实际治理入口和授权岗位执行；所有端读取同一当前学期结论。
+    - strong: 冻结与封存
+    - paragraph: 冻结可以按原因解冻；已归档数据必须走受控纠错，不能普通解冻。
+- navigation "快捷操作":
+  - text: 我的
+  - text: 常用
+  - button "教务运行大屏":
+    - generic: 教务运行大屏
+  - button "运行总览":
+    - generic: 运行总览
+  - button "学业过程":
+    - generic: 学业过程
+  - button "成绩提交进度":
+    - generic: 成绩提交进度
+  - button "编辑快捷栏": 编辑
+  - button "收起快捷栏": 收起

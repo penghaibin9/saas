@@ -1,0 +1,87 @@
+Browser tab: 4, Title: "高校学生全生命周期管理平台", URL: "http://127.0.0.1:5173/admin/system/integrations".
+1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/integrations
+	2 container app
+		3 container
+			4 image
+			5 text field (settable) 搜索学生、功能或帮助
+			6 text Ctrl K
+			7 button 帮助与引导
+			8 button 消息中心
+				9 image
+			10 button (collapsed) 胡 胡管理 学校管理员, Help: 查看账号与切换身份, Secondary Actions: Expand
+				11 text 胡
+				12 text 胡管理
+				13 text 学校管理员
+		14 container
+			15 container 一级菜单
+				16 button 学工中心
+				17 button 教务中心
+				18 button 毕业设计中心
+				19 button 岗位实习中心
+				20 button 系统管理
+			21 button (collapsed) 当前范围, Secondary Actions: Expand
+				22 image
+				23 text 当前范围
+				24 image
+		25 container
+			26 button 目录
+			27 tab group 已打开页面
+				28 container
+					29 tab (selected, settable, boolean) 接口、凭证与 Webhook, Help: 接口与同步 / 接口、凭证与 Webhook, Value: 1
+接口、凭证与 Webhook
+					30 button 关闭接口、凭证与 Webhook
+						31 image
+			32 button (disabled) 恢复最近关闭的页签
+				33 image
+			34 checkbox Description: 收藏当前页面, Value: 0
+				35 image
+			36 checkbox Description: 专注模式, Value: 0
+				37 image
+			38 container
+				39 heading 接口连接与同步, Value: 1
+					40 text 接口连接与同步
+				41 button ＋ 新建连接
+				42 text 接口能力与权限由系统双重校验。 本页不会因为按钮可见就假定学校已开通接口能力；实际保存、测试、轮换与同步操作仍以系统的能力授权为准。 
+				43 text systemAdmin.integration.manage
+				44 text  校验为准。 连接总数
+				45 text 0
+				46 text 来自本次真实连接列表
+				47 text 启用连接
+				48 text 0
+				49 text 只统计系统状态为“启用”的
+				50 text 同步失败
+				51 text 0
+				52 text 来自当前同步任务列表
+				53 text 同步进行中
+				54 text 0
+				55 text 连接状态与任务状态分开计算
+				56 container
+					57 text 连接配置
+					58 text 只展示脱敏凭证；编辑时留空不改原凭证。
+					59 text 0 个连接
+					60 container
+						61 text ▢ 暂无接口连接 如果学校已经获授权，可由具备接口管理权限的管理员新增连接
+						62 button 返回
+				63 container
+					64 text 同步任务
+					65 text 同步失败、运行中与连接是否启用是不同情况；这里不把“能连接”当作“已同步”。
+					66 button 刷新同步任务
+					67 container
+						68 text ▢ 系统未返回同步任务 这是本次任务的空结果，不表示接口连接已经完成数据同步
+						69 button 返回
+				70 container
+					71 text 一次办成顺序
+					72 text 01 先核对学校授权
+					73 text 未开通接口能力时，不能通过页面按钮绕过系统的限制。
+					74 text 02 配置连接并保护凭证
+					75 text 页面只显示脱敏值；轮换凭证单独留痕。
+					76 text 03 做连通性测试
+					77 text 只回答“能否连接”，不回答“数据是否已经同步”。
+					78 text 04 再看同步任务结果
+					79 text 失败任务在任务层重试，不通过重复保存连接来碰碰运气。
+					80 text 权限边界
+					81 text 当前身份命中接口管理权限
+					82 text 仍需系统继续校验学校能力、学校范围与操作条件。
+			83 button 我的常用
+
+The focused UI element is 1 AXWebArea 高校学生全生命周期管理平台, URL: 127.0.0.1:5173/admin/system/integrations

@@ -1,0 +1,154 @@
+http://127.0.0.1:5196/admin/campus-service/classes/2?returnTo=/admin/system/master-data
+- banner:
+  - generic: 高校学生全生命周期管理平台
+  - textbox "搜索学生、功能或帮助"
+  - generic: Ctrl K
+  - button "帮助与引导": "?"
+  - button "消息中心":
+  - button "整 整改验收经办人 学校管理员":
+    - generic: 整
+    - generic: 整改验收经办人
+    - generic: 学校管理员
+    - generic: ▾
+- navigation "一级菜单":
+  - button "学工中心"
+  - button "教务中心"
+  - button "毕业设计中心"
+  - button "岗位实习中心"
+  - button "系统管理"
+- button "当前范围":
+  - generic: 当前范围
+- complementary "二级菜单":
+  - button "收窄二级菜单":
+    - generic: «
+    - strong: 学工中心
+  - navigation "二级菜单":
+    - button "学工工作台":
+      - generic: 学工工作台
+    - button "学生主档":
+      - generic: 学生主档
+    - button "班级与辅导员":
+      - generic: 班级与辅导员
+    - button "数字迎新":
+      - generic: 数字迎新
+    - button "请假销假":
+      - generic: 请假销假
+    - button "宿舍与公寓":
+      - generic: 宿舍与公寓
+    - button "风险预警与处置":
+      - generic: 风险预警与处置
+    - button "困难认定":
+      - generic: 困难认定
+    - button "奖助勤贷补":
+      - generic: 奖助勤贷补
+    - button "违纪处分":
+      - generic: 违纪处分
+    - button "谈心家校":
+      - generic: 谈心家校
+    - button "心理关注":
+      - generic: 心理关注
+    - button "活动二课与社团":
+      - generic: 活动二课与社团
+    - button "统计与档案":
+      - generic: 统计与档案
+  - button "取消固定二级菜单" [pressed]: 已固定
+- complementary "三级菜单":
+  - button "收窄三级菜单":
+    - generic: «
+    - strong: 学工工作台
+  - navigation "三级菜单":
+    - button "我的工作台":
+      - generic: 我的工作台
+    - button "我的待办":
+      - generic: 我的待办
+    - button "审批中心":
+      - generic: 审批中心
+    - button "消息中心":
+      - generic: 消息中心
+    - button "学工运行大屏":
+      - generic: 学工运行大屏
+    - button "学工领导大屏":
+      - generic: 学工领导大屏
+    - button "最近访问":
+      - generic: 最近访问
+    - button "帮助中心":
+      - generic: 帮助中心
+  - button "取消固定三级菜单" [pressed]: 已固定
+- tablist "已打开页面":
+  - tab "班级管理" [selected]:
+    - generic: 班级管理
+  - button "关闭班级管理":
+- button "恢复最近关闭的页签" [disabled]:
+- button "收藏当前页面":
+- button "专注模式":
+- main:
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - generic: 系统管理整改独立验收学校 · 整改验收经办人 · 2026-10-26 00:51
+  - heading "D606待补辅导员班" [level=1]
+  - button "← 返回系统管理"
+  - generic: D606待补辅导员班D606四域验收学院 · D606验收专业 · 2026级
+  - generic: 辅导员：—
+  - generic: 班主任：—
+  - generic: 班级人数
+  - generic: "0"
+  - generic: 人
+  - generic: 男生
+  - generic: "0"
+  - generic: 人
+  - generic: 女生
+  - generic: "0"
+  - generic: 人
+  - generic: 当前请假
+  - generic: "0"
+  - generic: 人次
+  - generic: 逾期未销
+  - generic: "0"
+  - generic: 件
+  - generic: 在办风险
+  - generic: "0"
+  - generic: 件
+  - generic: 困难认定
+  - generic: "0"
+  - generic: 人
+  - generic: 有效处分
+  - generic: "0"
+  - generic: 件
+  - generic: 班干部
+  - generic: "0"
+  - generic: 人
+  - generic: 班级材料
+  - generic: "0"
+  - generic: 件
+  - button "学生名单"
+  - button "班级材料"
+  - button "班干部"
+  - status:
+    - generic: ▢
+    - generic: 暂无学生
+    - generic: 该班级暂无在籍学生
+    - button "返回"
+- button "我的常用":
+  - text: 我的常用
+  - generic: ⌃
