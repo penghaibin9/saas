@@ -156,6 +156,13 @@ test('governance draft publication does not offer or call the direct current-ter
   assert.equal(state.publishDialog.title, '发布学期')
   await state.doPublish()
   assert.equal(publishes, 1)
+  state.currentContext.canDirectSwitch = true
+  const published = { termId: 'published', status: 'PUBLISHED' }
+  state.askPublish(published)
+  assert.equal(state.publishDialog.visible, false, '统一管理时不得打开直接切换确认')
+  state.publishDialog = { visible: true, submitting: false, row: published, contextKey: state.contextKey() }
+  await state.doPublish()
+  assert.equal(publishes, 1, '强行调用提交方法也不能绕过统一管理')
 })
 
 test('a pending context refresh immediately disables current-changing actions', async () => {

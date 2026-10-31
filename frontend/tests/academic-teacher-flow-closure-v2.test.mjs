@@ -3,6 +3,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { compile } from '@vue/compiler-dom'
+import * as Vue from 'vue'
+import { renderToString } from 'vue/server-renderer'
+import { page } from './academic-pc-parallel-b-harness.mjs'
 
 const here = path.dirname(fileURLToPath(import.meta.url))
 const src = (...parts) => fs.readFileSync(path.resolve(here, '..', 'src', ...parts), 'utf8')
@@ -344,6 +348,34 @@ test('teacher V3 task confirmation shows real current and next responsibility', 
   assert.match(source, /学院已核对，等待教务终审/)
   assert.match(source, /教务终审通过，教学任务已就绪/)
   assert.doesNotMatch(source, /next-owner="学院任务核对岗"/)
+})
+
+test('选中任务的责任信息按教师确认、学院核对、就绪和退回状态实际渲染', async () => {
+  const source = src('modules/academicAffairs/views/AaTeacherTaskConfirmView.vue')
+  const template = source.match(/<AaTeachingTaskObjectBar\b[\s\S]*?\/>/)?.[0]
+  assert.ok(template, '选中任务必须保留当前责任和下一责任展示')
+  const render = text => new Function('Vue', compile(text, { mode: 'function' }).code)(Vue)
+  const child = src('modules/academicAffairs/components/teaching-tasks/AaTeachingTaskObjectBar.vue').match(/<template>([\s\S]*?)<\/template>/)[1]
+  const { state } = page('AaTeacherTaskConfirmView')
+  for (const [status, batchStatus, owner, next] of [
+    ['ASSIGNED', '', '当前正式任课教师', '学院教学任务核对岗'],
+    ['TEACHER_CONFIRMED', '', '学院教学任务核对岗', '学院确认后转学校教务终审'],
+    ['TEACHER_CONFIRMED', 'COLLEGE_CONFIRMED', '学校教务终审岗', '终审通过后可进入排课'],
+    ['READY', '', '教学任务确认链已完成', '进入个人课表与后续教学执行'],
+    ['REJECTED_BY_TEACHER', '', '学院重新分配岗', '学院调整后重新分配教师']
+  ]) {
+    state.rows = [{ taskId: 'first', status: 'ASSIGNED', courseName: '未选中课程' }, { taskId: 'selected', status, batchStatus, courseName: '选中课程' }]
+    state.selectedId = 'selected'
+    const html = await renderToString(Vue.createSSRApp({
+      render: render(template), data: () => ({ primaryRow: state.primaryRow }),
+      methods: { currentOwner: state.currentOwner, nextOwner: state.nextOwner },
+      components: { AaTeachingTaskObjectBar: { props: ['name', 'status', 'owner', 'nextOwner'], render: render(child) } }
+    }))
+    assert.ok(html.includes('当前责任') && html.includes(owner))
+    assert.ok(html.includes('下一责任') && html.includes(next))
+    assert.ok(html.includes('选中课程'))
+    assert.ok(!html.includes('未选中课程'))
+  }
 })
 
 

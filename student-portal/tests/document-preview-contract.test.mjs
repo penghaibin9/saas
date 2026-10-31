@@ -58,6 +58,8 @@ test('W3 StudentDocumentViewer stays presentation-only and fences Blob lifecycle
   assert.match(session, /new AbortController\(\)/)
   assert.match(session, /URL\.revokeObjectURL\(objectUrl\.value\)/)
   assert.match(session, /currentGeneration !== generation/)
+  assert.match(viewer, /effectiveMime\.value\.startsWith\('video\/'\)/)
+  assert.match(viewer, /<video v-else-if="kind === 'video'" :src="session.objectUrl.value"[^>]*controls/)
 })
 
 test('W3 graduation materials use audited preview tickets and the shared upload-status owner', () => {

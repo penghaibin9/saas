@@ -71,7 +71,7 @@
               <p style="margin:12px 0 0;line-height:1.75;white-space:pre-wrap;word-break:break-word">{{ item.content }}</p>
               <p v-if="item.validFrom || item.validUntil" class="sp-muted" style="margin:8px 0 0">有效期：{{ noticeDate(item.validFrom) }} 至 {{ noticeDate(item.validUntil) }}</p>
               <div v-if="item.attachments?.length" style="display:flex;flex-wrap:wrap;gap:8px;margin-top:12px">
-                <button v-for="file in item.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openNoticeAttachment(file)">
+                <button v-for="file in item.attachments" :key="file.fileId" type="button" class="sp-btn sp-btn--ghost sp-btn--sm" @click="openAttachmentPreview(file)">
                   {{ file.fileName || '通知附件' }}
                 </button>
               </div>
@@ -934,6 +934,7 @@
         </div>
       </template>
     </template>
+    <StudentDocumentViewer v-if="attachmentPreview" :file="attachmentPreview" :load-preview="loadAttachmentPreview" @close="closeAttachmentPreview" />
   </div>
 </template>
 
@@ -952,6 +953,7 @@ import { portalApi } from '../../services/portalApi'
 import { internshipCoreApi } from '../../services/internshipCoreApi'
 import { currentSessionGeneration, fetchFileBlob } from '../../services/request'
 import fileSdk from '../../services/fileSdk'
+import StudentDocumentViewer from '../../components/file/viewer/StudentDocumentViewer.vue'
 import { scanState, scanFilesReady, refreshScanFiles } from '../../services/fileScanState'
 import { useSessionStore } from '../../stores/session'
 import { useUiStore } from '../../stores/ui'
@@ -1236,14 +1238,23 @@ function noticeTypeText(value) {
 function noticeUrgencyText(value) {
   return ({ NORMAL: '普通', IMPORTANT: '重要', URGENT: '紧急' })[String(value || '').toUpperCase()] || '普通'
 }
-async function openNoticeAttachment(file) {
+const attachmentPreview = ref(null)
+let attachmentPreviewSequence = 0
+function closeAttachmentPreview() { attachmentPreviewSequence++; attachmentPreview.value = null }
+function loadAttachmentPreview(file, options) { return fileSdk.fetchPreviewBlob(String(file.fileId), options) }
+async function openAttachmentPreview(file, current = () => true) {
+  closeAttachmentPreview()
+  if (!my.value.batchId || !(my.value.recordId || my.value.internshipId)) return ui.notify('当前实习批次上下文已失效，请刷新页面后重试')
+  const sequence = attachmentPreviewSequence
+  const context = currentInternshipContext(), generation = currentSessionGeneration(), epoch = changeEpoch
+  const isCurrent = () => sequence === attachmentPreviewSequence && changeCurrent(epoch, generation, context) && current()
   try {
-    const blob = await fileSdk.fetchPreviewBlob(String(file.fileId))
-    const url = URL.createObjectURL(blob)
-    window.open(url, '_blank', 'noopener,noreferrer')
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
+    const metadata = await fileSdk.metadata(String(file.fileId))
+    if (!isCurrent()) return
+    if (String(metadata.fileId) !== String(file.fileId) || metadata.canPreview !== true) throw new Error('当前附件未授予站内预览权限')
+    attachmentPreview.value = { ...metadata, canDownload: false }
   } catch (e) {
-    ui.notify(e?.message || '通知附件暂时无法打开')
+    if (isCurrent()) ui.notify(e?.message || '附件暂时无法打开')
   }
 }
 function reviewText(s) { return REVIEW_MAP[s] || '状态待核实' }
@@ -1395,6 +1406,7 @@ watch(() => route.query.view, (value) => {
 }, { immediate: true })
 
 watch(tab, (value, previous) => {
+  if (value !== previous) closeAttachmentPreview()
   if (value === 'overview' && value !== previous) refreshProgress()
   if(previous==='help' && value!==previous){helpEpoch++;helpBusy.value=false;sourceStates.help.status='idle'}
   if (previous === 'insurance' && value !== previous) { insuranceProofSequence++; insuranceProofBusy.value = false; closeInsuranceProof() }
@@ -1492,6 +1504,7 @@ const reportProgress = computed(() => {
 })
 
 function resetSourceStates() {
+  closeAttachmentPreview()
   applicationHistoryOpen.value=false;insuranceProofBusy.value=false;closeInsuranceProof()
   helpEpoch++;helpReadSequence++;helpRows.value=[];helpBusy.value=false;helpError.value='';helpReceipt.value=null;helpCommitted.value=false
   Object.assign(helpForm,{title:'',content:'',riskLevel:'MEDIUM'})
@@ -2834,11 +2847,7 @@ async function openReportAttachment(file) {
     const mime = String(file?.mimeType || '').toLowerCase()
     const ext = String(file?.ext || file?.fileName?.split('.').pop() || '').toLowerCase()
     if (mime.startsWith('image/') || mime.startsWith('video/') || ext === 'pdf') {
-      const blob = await fileSdk.fetchPreviewBlob(String(file.fileId))
-      if (!reportIsCurrent(t)) return
-      const url = URL.createObjectURL(blob)
-      window.open(url, '_blank', 'noopener,noreferrer')
-      setTimeout(() => URL.revokeObjectURL(url), 60000)
+      await openAttachmentPreview(file, () => reportIsCurrent(t))
     } else {
       const blob = await fetchFileBlob('/files/download/' + encodeURIComponent(String(file.fileId)))
       saveReportBlob(blob, file.fileName || '报告附件', t)

@@ -40,6 +40,7 @@ const effectiveMime = computed(() => String(session.mimeType.value || selectedFi
 const kind = computed(() => {
   if (effectiveMime.value.includes('pdf') || extension.value === 'pdf') return 'pdf'
   if (effectiveMime.value.startsWith('image/') || ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(extension.value)) return 'image'
+  if (effectiveMime.value.startsWith('video/')) return 'video'
   if (effectiveMime.value === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || extension.value === 'docx') return 'docx'
   return 'unsupported'
 })
@@ -63,6 +64,7 @@ function selectVersion(item) {
         <StudentDocumentState v-if="session.status.value !== 'ready'" :status="session.status.value" :error="session.error.value" @retry="session.retry(selectedFile)" />
         <StudentPdfViewer v-else-if="kind === 'pdf'" :url="session.objectUrl.value" :title="selectedFile.fileName" />
         <StudentImageViewer v-else-if="kind === 'image'" :url="session.objectUrl.value" :alt="selectedFile.fileName" />
+        <video v-else-if="kind === 'video'" :src="session.objectUrl.value" :aria-label="selectedFile.fileName" controls style="width:100%;max-height:100%" />
         <StudentDocxViewer v-else-if="kind === 'docx'" :source="session.blob.value" />
         <StudentUnsupportedViewer v-else :file-name="selectedFile.fileName" :can-download="canDownload" @download="emit('download', selectedFile)" />
       </main>

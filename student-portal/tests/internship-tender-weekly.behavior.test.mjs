@@ -111,7 +111,7 @@ function page(t, overrides={}) {
     portalApi:{internshipMy:async()=>({...ctx}),...portalOverrides},document,fetchFileBlob,fileSdk,scanState:row=>row,scanFilesReady:()=>true,refreshScanFiles(){},systemPrompt(){},systemConfirm(){},internshipCoreApi:api}
   const script=parse(fs.readFileSync(new URL('../src/views/internship/InternshipView.vue',import.meta.url),'utf8')).descriptor.scriptSetup.content.replace(/^import[\s\S]*?from\s+['"][^'"]+['"];?\s*/gm,'')
   const names=['my','tab','busy','sourceStates','weeklyForm','weeklyCanSubmit','reportReceipt','reportError','editWeekly','submitWeekly','resetSourceStates','fetchTabSource','loadTab','uploadReportAttachment','reportVisibilityChanged','reportForm','processConflict','editProcessReport','submitReport','rereadProcessReport','continueProcessAfterConflict','rereadWeeklyAfterConflict','switchReportTab','reportTab','weeklyReading','processReading','reportRules']
-  const optional=['reportReadMode','processExisting','reportMinimum','reportCanSubmit','returnToReportDraft','focusReportFromRoute','weeklyConflict','weeklyDetail','openWeekly','continueWeeklyAfterConflict','processDetail','openProcessReport','reportPages','reportMoreBusy','reportProgress','loadMoreReports','load','loading','weeklyBase','processBase','reviewText']
+  const optional=['attachmentPreview','openAttachmentPreview','openReportAttachment','closeAttachmentPreview','loadAttachmentPreview','reportReadMode','processExisting','reportMinimum','reportCanSubmit','returnToReportDraft','focusReportFromRoute','weeklyConflict','weeklyDetail','openWeekly','continueWeeklyAfterConflict','processDetail','openProcessReport','reportPages','reportMoreBusy','reportProgress','loadMoreReports','load','loading','weeklyBase','processBase','reviewText']
   const vm=scope.run(()=>new Function(...Object.keys(deps),script+'\nreturn {'+names.join(',')+','+optional.map(n=>`${n}:typeof ${n} === "undefined" ? undefined : ${n}`).join(',')+'}')(...Object.values(deps)))
   let closed=false
   const close=()=>{if(!closed){closed=true;lifecycle.unmount?.();scope.stop()}}
@@ -125,6 +125,68 @@ function draftCache() {
   const values=new Map()
   return {getItem:key=>values.get(key)??null,setItem:(key,value)=>values.set(key,value),removeItem:key=>values.delete(key)}
 }
+
+test('通知和报告附件共用站内阅读器，保留授权读取及普通文件下载', async t => {
+  const reads = [], downloads = []
+  const file = { fileId: 'preview', fileName: '报告.pdf', canPreview: true, mimeType: 'application/pdf' }
+  const { vm } = page(t, { fileSdk: { metadata: async id => { reads.push(id); return file }, fetchPreviewBlob: async (id, options) => ({ id, options }) },
+    fetchFileBlob: async path => { downloads.push(path); return new Blob(['附件']) },
+    document: { createElement: () => ({ click() {}, remove() {} }), body: { appendChild() {} } } })
+  await nextTick()
+  await vm.openAttachmentPreview(file)
+  assert.equal(vm.attachmentPreview.value.fileId, file.fileId)
+  vm.closeAttachmentPreview()
+  assert.equal(vm.attachmentPreview.value, null)
+  await vm.openReportAttachment(file)
+  assert.deepEqual(reads, ['preview', 'preview'])
+  assert.equal(vm.attachmentPreview.value.fileId, file.fileId)
+  const signal = new AbortController().signal
+  assert.deepEqual(await vm.loadAttachmentPreview(file, { signal }), { id: file.fileId, options: { signal } })
+  await vm.openReportAttachment({ fileId: 'archive', fileName: '附件.zip' })
+  assert.deepEqual(downloads, ['/files/download/archive'])
+  vm.resetSourceStates()
+  assert.equal(vm.attachmentPreview.value, null)
+})
+
+test('附件预览拒绝未授权和错文件，关闭、切页、换账号及旧请求不回填', async t => {
+  const missing = page(t)
+  await nextTick()
+  missing.vm.my.value = {}
+  await missing.vm.openAttachmentPreview({ fileId: 'f' })
+  assert.match(missing.notices.at(-1), /上下文已失效/)
+  for (const metadata of [{ fileId: 'f', canPreview: false }, { fileId: 'other', canPreview: true }]) {
+    const { vm, notices } = page(t, { fileSdk: { metadata: async () => metadata } })
+    await nextTick()
+    await vm.openAttachmentPreview({ fileId: 'f' })
+    assert.equal(vm.attachmentPreview.value, null)
+    assert.match(notices.at(-1), /未授予站内预览权限/)
+  }
+  for (const action of ['close', 'tab', 'logout', 'reset', 'unmount', 'newer']) {
+    const wait = deferred()
+    let reads = 0
+    const p = page(t, { fileSdk: { metadata: () => ++reads === 1 ? wait.promise : Promise.resolve({ fileId: 'new', canPreview: true }) } })
+    await nextTick()
+    const pending = p.vm.openAttachmentPreview({ fileId: 'old' })
+    if (action === 'close') p.vm.closeAttachmentPreview()
+    if (action === 'tab') { p.vm.tab.value = 'notices'; await nextTick() }
+    if (action === 'logout') p.logout()
+    if (action === 'reset') p.vm.resetSourceStates()
+    if (action === 'unmount') p.close()
+    if (action === 'newer') await p.vm.openAttachmentPreview({ fileId: 'new' })
+    wait.resolve({ fileId: 'old', canPreview: true })
+    await pending
+    assert.equal(p.vm.attachmentPreview.value?.fileId || null, action === 'newer' ? 'new' : null)
+  }
+  const document = { hidden: false }
+  const wait = deferred(), p = page(t, { document, fileSdk: { metadata: () => wait.promise } })
+  await nextTick()
+  const pending = p.vm.openReportAttachment({ fileId: 'f', fileName: '报告.pdf' })
+  document.hidden = true
+  p.vm.reportVisibilityChanged()
+  wait.resolve({ fileId: 'f', canPreview: true })
+  await pending
+  assert.equal(p.vm.attachmentPreview.value, null, '页面隐藏后不得回填旧报告预览')
+})
 test('退出后的过渡组件不读取实习或把旧地址批次写回缓存',async t=>{
   const cache=draftCache();let reads=0
   const {vm}=page(t,{cache,sessionUser:null,route:reactive({query:{view:'report',batchId:'old-batch'}}),portalApi:{internshipMy:async()=>{reads++;return {...ctx}}}})

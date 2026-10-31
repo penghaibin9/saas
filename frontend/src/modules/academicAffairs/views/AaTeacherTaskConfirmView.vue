@@ -65,6 +65,11 @@
       </DataTable>
       <aside v-if="primaryRow" class="task-workspace__panel" aria-label="核对本次教学安排">
         <h3>核对本次教学安排</h3>
+        <AaTeachingTaskObjectBar
+          :name="primaryRow.courseName || '当前教学任务'"
+          :owner="currentOwner(primaryRow)"
+          :next-owner="nextOwner(primaryRow)"
+        />
         <dl class="task-workspace__facts"><div><dt>课程</dt><dd>{{ primaryRow.courseName }}</dd></div><div><dt>任课教师</dt><dd>{{ primaryRow.teacherName || '本人' }}</dd></div><div><dt>教学班</dt><dd>{{ primaryRow.teachingClassName || primaryRow.className || '教学班待核对' }}</dd></div><div><dt>周学时</dt><dd>{{ primaryRow.weeklyHours ?? '—' }}学时</dd></div><div><dt>总学时</dt><dd>{{ primaryRow.totalHours ?? '—' }}学时</dd></div><div><dt>教学周次</dt><dd>第{{ primaryRow.startWeek ?? '—' }}—{{ primaryRow.endWeek ?? '—' }}周</dd></div><div><dt>预计人数</dt><dd>{{ primaryRow.expectedStudents ?? '—' }}人</dd></div></dl>
         <p class="task-workspace__notice">确认的是教学任务安排，具体上课时间以发布课表为准。</p>
         <AppButton v-if="primaryRow.teachingClassCode && primaryRow.termId" :disabled="Boolean(acting || pendingCommand)" @click="openTeachingClass(primaryRow)">查看教学班名单</AppButton>
@@ -119,13 +124,14 @@ import { insertAtCursor, applyInsertion } from '@/utils/insertAtCursor'
 import { academicAffairsApi } from '@/modules/academicAffairs/api/academic-affairs.api'
 import { TASK_STATUS, taskColor } from '@/modules/academicAffairs/constants/teaching'
 import AaOperationReceipt from '../components/parallel-a/AaOperationReceipt.vue'
+import AaTeachingTaskObjectBar from '../components/teaching-tasks/AaTeachingTaskObjectBar.vue'
 import { taskConfirmationEvidence } from '../components/parallel-a/taskFacts'
 import { isDeniedResult, isConflictResult } from '../components/parallel-a/resultState'
 import { toast } from '@/utils/toast'
 
 export default {
   name: 'AaTeacherTaskConfirmView',
-  components: { AppButton, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases, AaOperationReceipt },
+  components: { AppButton, ModulePageShell, DataTable, LoadingState, ErrorState, EmptyState, AppStatusTag, AppConfirmDialog, AppQuickPhrases, AaOperationReceipt, AaTeachingTaskObjectBar },
   props: { ctx: { type: Object, required: true } },
   data() {
     return {

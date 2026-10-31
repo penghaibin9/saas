@@ -48,7 +48,7 @@ test('校管 *：实习大屏与 8 个工作区全部可见', () => {
   const internship = plan.find((x) => x.key === 'internship')
   assert.equal(internship.children.length, 9)
   const visibleLeafCount = internship.children.flatMap((m) => m.children).length
-  assert.ok(visibleLeafCount >= 32 && visibleLeafCount <= 36, '宽权限日常入口必须保持 32～36 个')
+  assert.equal(visibleLeafCount, 46, '原有 35 个入口加上实习扩展的 11 个入口，必须完整可见')
 })
 
 test('planner 视角不做权限投影：空权限集仍见完整能力目录', () => {

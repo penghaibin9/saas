@@ -40,7 +40,7 @@ test('reachable current-changing A-W1 pages do not expose a SYS-12 bypass', () =
   assert.match(listPage, /isResolvedCurrent\(row\)/)
   assert.match(listPage, /currentContext\?\.canDirectSwitch === true/)
   assert.match(listPage, /governanceManaged/)
-  assert.match(listPage, /统一治理切换/)
+  assert.match(listPage, /v-else-if="canViewGovernance && governanceManaged && row.status === 'PUBLISHED'"[\s\S]*?@click="goGovernance"\s*>设置学校当前学期<\/button>/)
   assert.match(listPage, /历史学期列表始终可读/)
   assert.doesNotMatch(listPage, /v-if="row\.isCurrent"/)
   assert.doesNotMatch(listPage, /v-else-if="!row\.isCurrent"/)
