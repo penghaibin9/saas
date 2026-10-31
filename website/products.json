@@ -1,0 +1,109 @@
+{
+  "domains": [
+    {
+      "key": "teaching",
+      "name": "学生与教学",
+      "icon": "School"
+    },
+    {
+      "key": "people",
+      "name": "师资与人事",
+      "icon": "User"
+    },
+    {
+      "key": "training",
+      "name": "继续教育与培训",
+      "icon": "Reading"
+    },
+    {
+      "key": "campus",
+      "name": "校园运行与数据",
+      "icon": "OfficeBuilding"
+    },
+    {
+      "key": "insight",
+      "name": "舆情与信息研判",
+      "icon": "Search"
+    }
+  ],
+  "products": [
+    {
+      "key": "platform",
+      "name": "学生全生命周期平台",
+      "icon": "Reading",
+      "domain": "teaching",
+      "path": "/solutions/student-lifecycle",
+      "children": [
+        "academic-affairs",
+        "student-affairs",
+        "graduation"
+      ],
+      "public": true
+    },
+    {
+      "key": "internship",
+      "name": "岗位实习系统",
+      "icon": "Suitcase",
+      "interest": "岗位实习",
+      "domain": "teaching",
+      "path": "/products/internship",
+      "public": true
+    },
+    {
+      "key": "renshi",
+      "name": "高校人事系统",
+      "icon": "User",
+      "domain": "people",
+      "path": "/products/renshi",
+      "public": true
+    },
+    {
+      "key": "cyber-training",
+      "name": "网络安全实训平台",
+      "domain": "teaching",
+      "icon": "Monitor",
+      "public": true,
+      "path": "/products/cyber-training"
+    },
+    {
+      "key": "non-degree",
+      "name": "一站式非学历教育智慧前台",
+      "domain": "training",
+      "icon": "School",
+      "public": true,
+      "path": "/products/non-degree"
+    },
+    {
+      "key": "training-saas",
+      "name": "教培多机构管理系统",
+      "domain": "training",
+      "icon": "Notebook",
+      "public": true,
+      "path": "/products/training-saas"
+    },
+    {
+      "key": "data-governance",
+      "name": "澜青数治",
+      "domain": "campus",
+      "icon": "DataAnalysis",
+      "public": true,
+      "path": "/products/data-governance"
+    },
+    {
+      "key": "logistics",
+      "name": "后勤管理系统",
+      "domain": "campus",
+      "icon": "OfficeBuilding",
+      "public": true,
+      "path": "/products/logistics"
+    },
+    {
+      "key": "public-opinion",
+      "name": "跃科多源网络舆情监测平台",
+      "domain": "insight",
+      "icon": "Search",
+      "public": true,
+      "path": "/products/public-opinion"
+    }
+  ]
+}

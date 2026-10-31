@@ -1,0 +1,1257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>graduation-module-map-detailed</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:.5rem;background:inherit}iframe{display:block;width:100%;max-width:none;height:calc(100vh - 1rem);margin:0;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="graduation-module-map-detailed" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;graduation-module-map-detailed&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;graduation-module-map-detailed&quot;&gt;
+  &lt;style&gt;
+    :root { --font-size-base:22px; }
+    #graduation-module-map-detailed { color:var(--foreground); }
+    #graduation-module-map-detailed .wide-map { display:block; width:100%; height:auto; }
+    #graduation-module-map-detailed .stage { stroke:var(--border); stroke-width:1; }
+    #graduation-module-map-detailed .stage-a { fill:color-mix(in srgb,var(--viz-series-1) 8%,transparent); }
+    #graduation-module-map-detailed .stage-b { fill:color-mix(in srgb,var(--viz-series-2) 8%,transparent); }
+    #graduation-module-map-detailed .stage-c { fill:color-mix(in srgb,var(--viz-series-3) 8%,transparent); }
+    #graduation-module-map-detailed .stage-d { fill:color-mix(in srgb,var(--viz-series-4) 8%,transparent); }
+    #graduation-module-map-detailed .stage-e { fill:color-mix(in srgb,var(--viz-series-6) 8%,transparent); }
+    #graduation-module-map-detailed .stage-f { fill:color-mix(in srgb,var(--viz-series-5) 8%,transparent); }
+    #graduation-module-map-detailed .node { stroke:var(--border); stroke-width:1.5; }
+    #graduation-module-map-detailed .node-a { fill:color-mix(in srgb,var(--viz-series-1) 19%,var(--background)); }
+    #graduation-module-map-detailed .node-b { fill:color-mix(in srgb,var(--viz-series-2) 19%,var(--background)); }
+    #graduation-module-map-detailed .node-c { fill:color-mix(in srgb,var(--viz-series-3) 19%,var(--background)); }
+    #graduation-module-map-detailed .node-d { fill:color-mix(in srgb,var(--viz-series-4) 19%,var(--background)); }
+    #graduation-module-map-detailed .node-e { fill:color-mix(in srgb,var(--viz-series-6) 19%,var(--background)); }
+    #graduation-module-map-detailed .node-f { fill:color-mix(in srgb,var(--viz-series-5) 19%,var(--background)); }
+    #graduation-module-map-detailed .hub { fill:color-mix(in srgb,var(--viz-series-6) 14%,var(--background)); stroke:var(--border); stroke-width:1.5; }
+    #graduation-module-map-detailed .output { fill:var(--background); stroke:var(--border); stroke-width:1; }
+    #graduation-module-map-detailed .rail { fill:var(--muted); stroke:var(--border); stroke-width:1; }
+    #graduation-module-map-detailed .rail-item { fill:var(--background); stroke:var(--border); stroke-width:1; }
+    #graduation-module-map-detailed .stage-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*1.02); font-weight:500; }
+    #graduation-module-map-detailed .stage-sub { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.78); }
+    #graduation-module-map-detailed .module-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*1.03); font-weight:500; text-anchor:middle; }
+    #graduation-module-map-detailed .module-action { fill:var(--foreground); font-size:calc(var(--font-size-base)*.77); text-anchor:middle; }
+    #graduation-module-map-detailed .module-state { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.72); text-anchor:middle; }
+    #graduation-module-map-detailed .module-no { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.7); }
+    #graduation-module-map-detailed .hub-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*1.12); font-weight:500; }
+    #graduation-module-map-detailed .hub-sub { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.78); }
+    #graduation-module-map-detailed .output-label { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.68); }
+    #graduation-module-map-detailed .output-value { fill:var(--foreground); font-size:calc(var(--font-size-base)*.75); font-weight:500; }
+    #graduation-module-map-detailed .flow { fill:none; stroke:var(--foreground); stroke-width:2.2; marker-end:url(#gd-arrow); }
+    #graduation-module-map-detailed .risk-flow { fill:none; stroke:var(--viz-series-5); stroke-width:2.2; stroke-dasharray:8 7; marker-end:url(#gd-risk-arrow); }
+    #graduation-module-map-detailed .risk-bus { fill:none; stroke:var(--viz-series-5); stroke-width:1.8; stroke-dasharray:8 7; }
+    #graduation-module-map-detailed .hub-flow { fill:none; stroke:var(--muted-foreground); stroke-width:1.5; stroke-dasharray:3 6; marker-end:url(#gd-muted-arrow); }
+    #graduation-module-map-detailed .edge-label { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.68); text-anchor:middle; }
+    #graduation-module-map-detailed .risk-text { fill:var(--foreground); font-size:calc(var(--font-size-base)*.68); text-anchor:middle; }
+    #graduation-module-map-detailed .same-module { fill:none; stroke:var(--muted-foreground); stroke-width:1.4; stroke-dasharray:3 5; }
+    #graduation-module-map-detailed .same-text { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.64); }
+    #graduation-module-map-detailed .rail-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*.82); font-weight:500; }
+    #graduation-module-map-detailed .rail-sub { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.68); }
+    #graduation-module-map-detailed .rail-text { fill:var(--foreground); font-size:calc(var(--font-size-base)*.7); text-anchor:middle; }
+    #graduation-module-map-detailed .legend { display:flex; gap:22px; justify-content:center; flex-wrap:wrap; margin-top:10px; color:var(--muted-foreground); }
+    #graduation-module-map-detailed .legend span { display:flex; align-items:center; gap:8px; }
+    #graduation-module-map-detailed .legend i { display:block; width:42px; border-top:2px solid var(--foreground); }
+    #graduation-module-map-detailed .legend .risk { border-top-color:var(--viz-series-5); border-top-style:dashed; }
+    #graduation-module-map-detailed .legend .hub-line { border-top-color:var(--muted-foreground); border-top-style:dotted; }
+    #graduation-module-map-detailed .mobile-map { display:none; }
+    @media (max-width:860px) {
+      :root { --font-size-base:18px; }
+      #graduation-module-map-detailed .wide-map { display:none; }
+      #graduation-module-map-detailed .mobile-map { display:grid; gap:10px; }
+      #graduation-module-map-detailed .m-hub,
+      #graduation-module-map-detailed .m-node,
+      #graduation-module-map-detailed .m-output { padding:10px 12px; border:1px solid var(--border); text-align:center; }
+      #graduation-module-map-detailed .m-hub { background:color-mix(in srgb,var(--viz-series-6) 14%,var(--background)); }
+      #graduation-module-map-detailed .m-stage { display:grid; gap:8px; padding-top:10px; border-top:1px solid var(--border); }
+      #graduation-module-map-detailed .m-head { display:flex; justify-content:space-between; gap:10px; color:var(--muted-foreground); }
+      #graduation-module-map-detailed .m-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+      #graduation-module-map-detailed .m-node { background:var(--muted); }
+      #graduation-module-map-detailed .m-node small { display:block; margin-top:4px; color:var(--muted-foreground); }
+      #graduation-module-map-detailed .m-output { color:var(--muted-foreground); }
+      #graduation-module-map-detailed .m-arrow { text-align:center; color:var(--muted-foreground); }
+      #graduation-module-map-detailed .m-risk { border-style:dashed; background:color-mix(in srgb,var(--viz-series-5) 18%,var(--background)); }
+      #graduation-module-map-detailed .m-rail { display:grid; gap:6px; padding:10px 0; border-top:1px solid var(--border); color:var(--muted-foreground); }
+    }
+  &lt;/style&gt;
+
+  &lt;svg class=&quot;wide-map&quot; viewBox=&quot;0 0 1800 930&quot; role=&quot;img&quot; aria-labelledby=&quot;gd-map-title gd-map-desc&quot;&gt;
+    &lt;title id=&quot;gd-map-title&quot;&gt;毕业设计中心十一个模块详细业务关系图&lt;/title&gt;
+    &lt;desc id=&quot;gd-map-desc&quot;&gt;毕设工作台贯穿全程。批次与学生底账、题目和导师资源共同支撑学生选题，选题确认后下达任务书、审核开题、开展指导与中期检查，再完成成果提交、查重、评阅、答辩和成绩发布。任一阶段的异常进入问题预警，关闭后才能完成材料归档和统计。&lt;/desc&gt;
+    &lt;defs&gt;
+      &lt;marker id=&quot;gd-arrow&quot; markerWidth=&quot;8&quot; markerHeight=&quot;8&quot; refX=&quot;7&quot; refY=&quot;4&quot; orient=&quot;auto&quot;&gt;&lt;path d=&quot;M0,0 L8,4 L0,8 Z&quot; fill=&quot;var(--foreground)&quot;&gt;&lt;/path&gt;&lt;/marker&gt;
+      &lt;marker id=&quot;gd-risk-arrow&quot; markerWidth=&quot;8&quot; markerHeight=&quot;8&quot; refX=&quot;7&quot; refY=&quot;4&quot; orient=&quot;auto&quot;&gt;&lt;path d=&quot;M0,0 L8,4 L0,8 Z&quot; fill=&quot;var(--viz-series-5)&quot;&gt;&lt;/path&gt;&lt;/marker&gt;
+      &lt;marker id=&quot;gd-muted-arrow&quot; markerWidth=&quot;8&quot; markerHeight=&quot;8&quot; refX=&quot;7&quot; refY=&quot;4&quot; orient=&quot;auto&quot;&gt;&lt;path d=&quot;M0,0 L8,4 L0,8 Z&quot; fill=&quot;var(--muted-foreground)&quot;&gt;&lt;/path&gt;&lt;/marker&gt;
+    &lt;/defs&gt;
+
+    &lt;rect class=&quot;hub&quot; x=&quot;30&quot; y=&quot;24&quot; width=&quot;1740&quot; height=&quot;92&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;hub-title&quot; x=&quot;68&quot; y=&quot;61&quot;&gt;01　毕设工作台&lt;/text&gt;
+    &lt;text class=&quot;hub-sub&quot; x=&quot;68&quot; y=&quot;91&quot;&gt;一个入口看全程：阶段进度　｜　待办任务　｜　问题预警　｜　统计报表&lt;/text&gt;
+    &lt;text class=&quot;hub-sub&quot; x=&quot;1728&quot; y=&quot;72&quot; text-anchor=&quot;end&quot;&gt;主要使用人：教务管理员、学院秘书、指导教师&lt;/text&gt;
+
+    &lt;rect class=&quot;stage stage-a&quot; x=&quot;20&quot; y=&quot;150&quot; width=&quot;280&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-b&quot; x=&quot;320&quot; y=&quot;150&quot; width=&quot;440&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-c&quot; x=&quot;780&quot; y=&quot;150&quot; width=&quot;350&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-d&quot; x=&quot;1150&quot; y=&quot;150&quot; width=&quot;200&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-e&quot; x=&quot;1370&quot; y=&quot;150&quot; width=&quot;200&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-f&quot; x=&quot;1590&quot; y=&quot;150&quot; width=&quot;190&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+
+    &lt;text class=&quot;stage-title&quot; x=&quot;45&quot; y=&quot;188&quot;&gt;① 批次建档&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;45&quot; y=&quot;215&quot;&gt;先定规则、纳入合格学生&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;345&quot; y=&quot;188&quot;&gt;② 题目与师生&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;345&quot; y=&quot;215&quot;&gt;题目、导师共同支撑选题确认&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;805&quot; y=&quot;188&quot;&gt;③ 开题与过程&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;805&quot; y=&quot;215&quot;&gt;任务书、开题、指导、中期依次推进&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;1175&quot; y=&quot;188&quot;&gt;④ 成果把关&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;1175&quot; y=&quot;215&quot;&gt;成果、查重、评阅、整改&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;1395&quot; y=&quot;188&quot;&gt;⑤ 答辩定分&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;1395&quot; y=&quot;215&quot;&gt;安排答辩、核算发布成绩&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;1615&quot; y=&quot;188&quot;&gt;⑥ 预警归档&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;1615&quot; y=&quot;215&quot;&gt;问题闭环后材料收口&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-a&quot; x=&quot;55&quot; y=&quot;255&quot; width=&quot;210&quot; height=&quot;126&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;72&quot; y=&quot;279&quot;&gt;02&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;160&quot; y=&quot;307&quot;&gt;毕设批次&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;160&quot; y=&quot;337&quot;&gt;阶段时间轴 · 规则 · 模板&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;160&quot; y=&quot;367&quot;&gt;草稿 → 启用 → 进行中 → 结束&lt;/text&gt;
+    &lt;rect class=&quot;node node-a&quot; x=&quot;55&quot; y=&quot;458&quot; width=&quot;210&quot; height=&quot;130&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;72&quot; y=&quot;482&quot;&gt;03&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;160&quot; y=&quot;510&quot;&gt;毕设学生&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;160&quot; y=&quot;540&quot;&gt;名单 · 资格 · 进度 · 未选题&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;160&quot; y=&quot;570&quot;&gt;未启动 → 选题中 → 进行中&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-b&quot; x=&quot;345&quot; y=&quot;255&quot; width=&quot;185&quot; height=&quot;126&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;362&quot; y=&quot;279&quot;&gt;04&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;438&quot; y=&quot;307&quot;&gt;题目库&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;438&quot; y=&quot;337&quot;&gt;教师申报 · 审核 · 容量核定&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;438&quot; y=&quot;367&quot;&gt;草稿 → 待审核 → 可选&lt;/text&gt;
+    &lt;rect class=&quot;node node-b&quot; x=&quot;550&quot; y=&quot;255&quot; width=&quot;185&quot; height=&quot;126&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;567&quot; y=&quot;279&quot;&gt;06&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;643&quot; y=&quot;307&quot;&gt;导师管理与分配&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;643&quot; y=&quot;337&quot;&gt;资格 · 方向 · 容量 · 冲突&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;643&quot; y=&quot;367&quot;&gt;待资格 → 可分配 → 已确认&lt;/text&gt;
+    &lt;rect class=&quot;node node-b&quot; x=&quot;400&quot; y=&quot;465&quot; width=&quot;280&quot; height=&quot;134&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;417&quot; y=&quot;489&quot;&gt;05&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;540&quot; y=&quot;517&quot;&gt;选题管理&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;540&quot; y=&quot;547&quot;&gt;轮次 · 志愿 · 匹配 · 容量冲突 · 调整&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;540&quot; y=&quot;577&quot;&gt;未选 → 填志愿 → 匹配 → 导师确认&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-c&quot; x=&quot;810&quot; y=&quot;245&quot; width=&quot;290&quot; height=&quot;106&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;827&quot; y=&quot;269&quot;&gt;07A&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;955&quot; y=&quot;296&quot;&gt;过程指导｜任务书&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;955&quot; y=&quot;326&quot;&gt;导师下达任务书 → 学生确认&lt;/text&gt;
+    &lt;rect class=&quot;node node-c&quot; x=&quot;840&quot; y=&quot;395&quot; width=&quot;230&quot; height=&quot;120&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;857&quot; y=&quot;419&quot;&gt;08&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;955&quot; y=&quot;447&quot;&gt;开题审核&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;955&quot; y=&quot;476&quot;&gt;提交 · 批阅 · 退回修改&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;955&quot; y=&quot;503&quot;&gt;草稿 → 待评审 → 已通过&lt;/text&gt;
+    &lt;rect class=&quot;node node-c&quot; x=&quot;810&quot; y=&quot;560&quot; width=&quot;290&quot; height=&quot;106&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;827&quot; y=&quot;584&quot;&gt;07B&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;955&quot; y=&quot;611&quot;&gt;过程指导｜指导与中期&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;955&quot; y=&quot;641&quot;&gt;指导记录 → 中期检查 → 整改复查&lt;/text&gt;
+    &lt;text class=&quot;same-text&quot; x=&quot;1090&quot; y=&quot;544&quot; text-anchor=&quot;end&quot;&gt;07A / 07B 是同一“过程指导”模块&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-d&quot; x=&quot;1160&quot; y=&quot;300&quot; width=&quot;180&quot; height=&quot;184&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;1177&quot; y=&quot;324&quot;&gt;09&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1250&quot; y=&quot;352&quot;&gt;成果检查&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1250&quot; y=&quot;383&quot;&gt;成果提交与批阅&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1250&quot; y=&quot;410&quot;&gt;查重记录 · 教师评阅&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1250&quot; y=&quot;437&quot;&gt;互查整改&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1250&quot; y=&quot;467&quot;&gt;待提交 → 查重 → 评阅 → 通过&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-e&quot; x=&quot;1380&quot; y=&quot;300&quot; width=&quot;180&quot; height=&quot;204&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;1397&quot; y=&quot;324&quot;&gt;10&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1470&quot; y=&quot;352&quot;&gt;答辩成绩&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1470&quot; y=&quot;383&quot;&gt;答辩安排 · 专家回避&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1470&quot; y=&quot;410&quot;&gt;评分确认 · 成绩核算&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1470&quot; y=&quot;437&quot;&gt;发布 · 更正 · 申诉&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1470&quot; y=&quot;466&quot;&gt;待安排 → 待评分 → 已发布&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-f&quot; x=&quot;1600&quot; y=&quot;250&quot; width=&quot;170&quot; height=&quot;166&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;1617&quot; y=&quot;274&quot;&gt;11A&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1685&quot; y=&quot;302&quot;&gt;问题预警&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1685&quot; y=&quot;333&quot;&gt;未选题 · 进度滞后&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1685&quot; y=&quot;360&quot;&gt;整改逾期 · 查重超限&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1685&quot; y=&quot;398&quot;&gt;待受理 → 处理中 → 关闭&lt;/text&gt;
+    &lt;rect class=&quot;node node-f&quot; x=&quot;1600&quot; y=&quot;485&quot; width=&quot;170&quot; height=&quot;174&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;1617&quot; y=&quot;509&quot;&gt;11B&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1685&quot; y=&quot;537&quot;&gt;材料归档&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1685&quot; y=&quot;568&quot;&gt;材料清单 · 缺项补齐&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1685&quot; y=&quot;595&quot;&gt;档案提交 · 毕设统计&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1685&quot; y=&quot;634&quot;&gt;待生成 → 待提交 → 已归档&lt;/text&gt;
+    &lt;text class=&quot;same-text&quot; x=&quot;1685&quot; y=&quot;458&quot; text-anchor=&quot;middle&quot;&gt;11A / 11B 是同一二级模块&lt;/text&gt;
+
+    &lt;rect class=&quot;output&quot; x=&quot;45&quot; y=&quot;678&quot; width=&quot;230&quot; height=&quot;66&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;62&quot; y=&quot;701&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;62&quot; y=&quot;729&quot;&gt;已启用批次 ＋ 合格学生&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;345&quot; y=&quot;678&quot; width=&quot;390&quot; height=&quot;66&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;362&quot; y=&quot;701&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;362&quot; y=&quot;729&quot;&gt;已确认题目 ＋ 师生指导关系&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;805&quot; y=&quot;678&quot; width=&quot;300&quot; height=&quot;66&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;822&quot; y=&quot;701&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;822&quot; y=&quot;729&quot;&gt;开题通过 ＋ 中期检查结果&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;1160&quot; y=&quot;678&quot; width=&quot;180&quot; height=&quot;66&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;1177&quot; y=&quot;701&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;1177&quot; y=&quot;729&quot;&gt;查重结果 ＋ 评阅意见&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;1380&quot; y=&quot;678&quot; width=&quot;180&quot; height=&quot;66&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;1397&quot; y=&quot;701&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;1397&quot; y=&quot;729&quot;&gt;已发布毕设成绩&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;1600&quot; y=&quot;678&quot; width=&quot;170&quot; height=&quot;66&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;1617&quot; y=&quot;701&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;1617&quot; y=&quot;729&quot;&gt;风险闭环 ＋ 档案包&lt;/text&gt;
+
+    &lt;path class=&quot;flow&quot; d=&quot;M160 381 V453&quot;&gt;&lt;/path&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M265 523 H305 V532 H395&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;332&quot; y=&quot;515&quot;&gt;合格学生&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M438 381 V425 H540 V460&quot;&gt;&lt;/path&gt;&lt;path class=&quot;flow&quot; d=&quot;M643 381 V425 H540 V460&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;540&quot; y=&quot;414&quot;&gt;可选题目 + 可用导师&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M680 532 H775 V298 H805&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;745&quot; y=&quot;514&quot;&gt;选题与导师确认&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M955 351 V390&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;1015&quot; y=&quot;375&quot;&gt;任务书确认&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M955 515 V555&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;1012&quot; y=&quot;541&quot;&gt;开题通过&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M1100 613 H1138 V392 H1155&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;1127&quot; y=&quot;588&quot;&gt;中期通过&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M1340 392 H1375&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;1358&quot; y=&quot;374&quot;&gt;成果通过&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M1560 402 H1580 V572 H1595&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;1582&quot; y=&quot;548&quot;&gt;成绩发布&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M1745 416 V480&quot;&gt;&lt;/path&gt;
+
+    &lt;path class=&quot;risk-bus&quot; d=&quot;M160 744 V765 H1580 V333 H1595&quot;&gt;&lt;/path&gt;
+    &lt;path class=&quot;risk-bus&quot; d=&quot;M540 744 V765&quot;&gt;&lt;/path&gt;&lt;path class=&quot;risk-bus&quot; d=&quot;M955 744 V765&quot;&gt;&lt;/path&gt;&lt;path class=&quot;risk-bus&quot; d=&quot;M1250 744 V765&quot;&gt;&lt;/path&gt;&lt;path class=&quot;risk-bus&quot; d=&quot;M1470 744 V765&quot;&gt;&lt;/path&gt;
+    &lt;text class=&quot;risk-text&quot; x=&quot;930&quot; y=&quot;784&quot;&gt;任一阶段发现未选题、逾期、退回、查重超限或未评分，进入问题预警&lt;/text&gt;
+    &lt;path class=&quot;risk-flow&quot; d=&quot;M1600 365 H1578 V635 H1125 V613 H1105&quot;&gt;&lt;/path&gt;&lt;text class=&quot;risk-text&quot; x=&quot;1365&quot; y=&quot;625&quot;&gt;整改后返回原业务环节继续办理&lt;/text&gt;
+
+    &lt;path class=&quot;hub-flow&quot; d=&quot;M160 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M540 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M955 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1250 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1470 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1685 116 V145&quot;&gt;&lt;/path&gt;
+
+    &lt;rect class=&quot;rail&quot; x=&quot;20&quot; y=&quot;810&quot; width=&quot;1760&quot; height=&quot;96&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;rail-title&quot; x=&quot;46&quot; y=&quot;842&quot;&gt;全过程材料自动沉淀&lt;/text&gt;&lt;text class=&quot;rail-sub&quot; x=&quot;46&quot; y=&quot;870&quot;&gt;同一学生全程关联，归档不重复录入&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;330&quot; y=&quot;827&quot; width=&quot;150&quot; height=&quot;58&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;405&quot; y=&quot;861&quot;&gt;任务书&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;500&quot; y=&quot;827&quot; width=&quot;150&quot; height=&quot;58&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;575&quot; y=&quot;861&quot;&gt;开题报告&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;670&quot; y=&quot;827&quot; width=&quot;170&quot; height=&quot;58&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;755&quot; y=&quot;861&quot;&gt;指导与中期材料&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;860&quot; y=&quot;827&quot; width=&quot;170&quot; height=&quot;58&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;945&quot; y=&quot;861&quot;&gt;成果与查重记录&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;1050&quot; y=&quot;827&quot; width=&quot;160&quot; height=&quot;58&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;1130&quot; y=&quot;861&quot;&gt;教师评阅意见&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;1230&quot; y=&quot;827&quot; width=&quot;180&quot; height=&quot;58&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;1320&quot; y=&quot;861&quot;&gt;答辩评分与总成绩&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;1430&quot; y=&quot;827&quot; width=&quot;170&quot; height=&quot;58&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;1515&quot; y=&quot;861&quot;&gt;学生毕设档案包&lt;/text&gt;
+    &lt;path class=&quot;hub-flow&quot; d=&quot;M480 856 H495&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M650 856 H665&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M840 856 H855&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1030 856 H1045&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1210 856 H1225&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1410 856 H1425&quot;&gt;&lt;/path&gt;
+  &lt;/svg&gt;
+
+  &lt;div class=&quot;mobile-map&quot; role=&quot;img&quot; aria-label=&quot;毕业设计模块详细关系：工作台贯穿全程，依次完成批次建档、题目师生确认、开题过程、成果把关、答辩定分和预警归档。&quot;&gt;
+    &lt;div class=&quot;m-hub&quot;&gt;&lt;strong&gt;01 毕设工作台&lt;/strong&gt;&lt;br&gt;&lt;small&gt;全程汇总：进度｜待办｜预警｜统计&lt;/small&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;① 批次建档&lt;/strong&gt;&lt;span&gt;先准备齐&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;02 毕设批次&lt;small&gt;时间轴·规则·模板｜草稿→启用→进行中&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-arrow&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;03 毕设学生&lt;small&gt;名单·资格·进度｜未启动→选题中→进行中&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：已启用批次＋合格学生&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓ 学生、题目和导师汇合&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;② 题目与师生&lt;/strong&gt;&lt;span&gt;三线汇合&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-grid&quot;&gt;&lt;div class=&quot;m-node&quot;&gt;04 题目库&lt;small&gt;申报·审核·容量｜草稿→待审→可选&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;06 导师管理与分配&lt;small&gt;资格·方向·容量｜可分配→已确认&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;m-arrow&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;05 选题管理&lt;small&gt;轮次·志愿·匹配·冲突·调整｜未选→导师确认&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：已确认题目＋师生指导关系&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓ 选题与导师确认&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;③ 开题与过程&lt;/strong&gt;&lt;span&gt;07模块分两段&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;07A 过程指导｜任务书&lt;small&gt;导师下达→学生确认&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-arrow&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;08 开题审核&lt;small&gt;提交·批阅·退回修改｜待评审→已通过&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-arrow&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;07B 过程指导｜指导与中期&lt;small&gt;指导记录→中期检查→整改复查&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：开题通过＋中期检查结果&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓ 中期通过&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;④ 成果把关&lt;/strong&gt;&lt;span&gt;不合格先整改&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;09 成果检查&lt;small&gt;提交批阅·查重·教师评阅·互查整改｜待提交→评阅→通过&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：查重结果＋评阅意见&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓ 成果通过&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;⑤ 答辩定分&lt;/strong&gt;&lt;span&gt;审核后发布&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;10 答辩成绩&lt;small&gt;安排·专家回避·评分·核算·发布·申诉｜待安排→已发布&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：已发布毕设成绩&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;任一阶段异常 ↘　　成绩发布 ↓&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;⑥ 预警归档&lt;/strong&gt;&lt;span&gt;同一二级模块&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node m-risk&quot;&gt;11A 问题预警&lt;small&gt;未选题·进度滞后·整改逾期·查重超限｜待受理→处理→关闭&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-arrow&quot;&gt;整改返回原环节｜关闭后 ↓&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;11B 材料归档与统计&lt;small&gt;清单·补缺·提交·统计｜待生成→待提交→已归档&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：风险闭环＋学生毕设档案包&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-rail&quot;&gt;&lt;strong&gt;全过程材料自动沉淀&lt;/strong&gt;&lt;span&gt;任务书 → 开题报告 → 指导中期 → 成果查重 → 评阅意见 → 答辩成绩 → 毕设档案包&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;legend&quot; aria-label=&quot;连线含义&quot;&gt;&lt;span&gt;&lt;i&gt;&lt;/i&gt;标准业务主线&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;risk&quot;&gt;&lt;/i&gt;异常触发与整改返回&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;hub-line&quot;&gt;&lt;/i&gt;工作台汇总与材料关联&lt;/span&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

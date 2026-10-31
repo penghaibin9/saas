@@ -1,0 +1,298 @@
+{
+  "products": [
+    {
+      "key": "cyber-training",
+      "name": "网络安全实训平台",
+      "quotes": [
+        {
+          "path": "D:\\网络安全实训平台\\跃科网络空间安全实训平台_正式开发开工骨架\\prototype\\current.html",
+          "sha256": "ca2beff26e4cc736fa03c9f5eef2a075592763ef7d0b809ac20c0aa1b47bc574",
+          "selector": "page-courses",
+          "text": "课程、班级、章节、课时和资源统一维护。"
+        },
+        {
+          "path": "D:\\网络安全实训平台\\跃科网络空间安全实训平台_正式开发开工骨架\\prototype\\current.html",
+          "sha256": "ca2beff26e4cc736fa03c9f5eef2a075592763ef7d0b809ac20c0aa1b47bc574",
+          "selector": "page-lifecycle",
+          "text": "创建课程 → 建班导学生 → 备课 → 签到 → 理论教学 → 发布实验 → 学生实验 → 作业测验 → 自动成绩 → 学情分析 → 课程归档。"
+        },
+        {
+          "path": "D:\\网络安全实训平台\\跃科网络空间安全实训平台_正式开发开工骨架\\prototype\\current.html",
+          "sha256": "ca2beff26e4cc736fa03c9f5eef2a075592763ef7d0b809ac20c0aa1b47bc574",
+          "selector": "page-resources",
+          "text": "不是简单“上传文件”，而是把每个课时应该有什么、缺什么、谁审核、能不能交付全部管起来。"
+        },
+        {
+          "path": "D:\\网络安全实训平台\\跃科网络空间安全实训平台_正式开发开工骨架\\prototype\\current.html",
+          "sha256": "ca2beff26e4cc736fa03c9f5eef2a075592763ef7d0b809ac20c0aa1b47bc574",
+          "selector": "page-analytics",
+          "text": "按课程总览、按小节、实验完成情况三个维度展示教学结果。"
+        },
+        {
+          "path": "D:\\网络安全实训平台\\跃科网络空间安全实训平台_正式开发开工骨架\\prototype\\current.html",
+          "sha256": "ca2beff26e4cc736fa03c9f5eef2a075592763ef7d0b809ac20c0aa1b47bc574",
+          "selector": "page-archive",
+          "text": "冻结成绩、资源版本、实验日志和学情报告，不删除历史事实。"
+        }
+      ],
+      "images": [
+        {
+          "path": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统\\.codex-artifacts\\website-products-20261011\\cyber-teacher.png",
+          "sha256": "931a971fd193014ab33eb232cbc93a40398bf3f64239ce9d0b037ea204dffff5",
+          "target": "frontend/public/official-site/products-20261011/cyber-training-1.png",
+          "kind": "原有交互原型 · 界面示意"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\职校学生全生命周期系统\\.codex-artifacts\\website-products-20261011\\cyber-lifecycle.png",
+          "sha256": "e9646eeae958bcfda0257d58455f45372d5dff6ee2dc2f1904244fb706666925",
+          "target": "frontend/public/official-site/products-20261011/cyber-training-2.png",
+          "kind": "原有交互原型 · 界面示意"
+        }
+      ]
+    },
+    {
+      "key": "non-degree",
+      "name": "一站式非学历教育智慧前台",
+      "quotes": [
+        {
+          "path": "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\frontend\\social-training.js",
+          "sha256": "af6aad3c54893e002712a23bb6e4d220a0754baad6dbecae48b95a3a2b146375",
+          "text": "从项目申报到备案结项，让每一次培训有据可查。"
+        },
+        {
+          "path": "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\frontend\\social-training.js",
+          "sha256": "af6aad3c54893e002712a23bb6e4d220a0754baad6dbecae48b95a3a2b146375",
+          "text": "集中管理培训课程、视频与教学资源，清楚掌握资源数量和视频时长。"
+        },
+        {
+          "path": "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\docs\\USER_MANUAL.md",
+          "sha256": "4f4a36d46f33f7cec9906a875c61c5b5feabefebf14e1fea884270879c94e6e0",
+          "text": "培训台账：进入“培训台账”→按时间/项目/课程筛选→分别查看授课记录和本人参训记录。两张列表各有自己的上一页、下一页，不会被另一张表的条数锁住。详情内核对来源与业务值；有异议按现有核对申请流程处理。"
+        },
+        {
+          "path": "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\docs\\USER_MANUAL.md",
+          "sha256": "4f4a36d46f33f7cec9906a875c61c5b5feabefebf14e1fea884270879c94e6e0",
+          "text": "资质材料：进入“教师资质”→新增或打开本人资质→填写证书信息及依据→上传附件→提交。被退回后打开同一记录查看意见、补正并重交；不能绕开状态直接改已确认历史。已经用于归档考核的当期原附件仍按原证据下载。"
+        },
+        {
+          "path": "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\docs\\USER_MANUAL.md",
+          "sha256": "4f4a36d46f33f7cec9906a875c61c5b5feabefebf14e1fea884270879c94e6e0",
+          "text": "积分与考核：进入积分明细核对来源、规则和计算结果；需要复核时填写原因及依据。进入三级考核的教师页签打开本人结果，查看指标与办理轨迹，再确认或提出异议。已归档件使用冻结依据，不会因当前姓名、组织或规则调整而静默改写。"
+        }
+      ],
+      "images": [
+        {
+          "path": "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\evidence\\ui-polish-20261008\\05-projects-desktop.jpg",
+          "sha256": "067423e35a323bfb49d1888d54c756ffda33fce19c1a2d9782b1acbe8cabfed0",
+          "target": "frontend/public/official-site/products-20261011/non-degree-1.jpg",
+          "kind": "原系统隔离演示界面"
+        }
+      ]
+    },
+    {
+      "key": "training-saas",
+      "name": "教培多机构管理系统",
+      "quotes": [
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md",
+          "sha256": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+          "text": "注册机构 → 开第一个班 → 班内新增学员 → 报名购课 → 排第一节课 → 发布 → 点名消课 → 财务核对"
+        },
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md",
+          "sha256": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+          "text": "工作台首屏改为首次开班黄金流程，不让新客户先研究所有菜单。"
+        },
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md",
+          "sha256": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+          "text": "“新建班级”改成一个向导：同屏可以新建课程、第一位教师、教室和班级。"
+        },
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md",
+          "sha256": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+          "text": "空机构默认展开“新建第一位教师”；教室可选，教师/教室也可稍后补。"
+        },
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md",
+          "sha256": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+          "text": "班级名单增加“新增学员并加入本班”。"
+        },
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md",
+          "sha256": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+          "text": "直接新增学员可以立即办理首次报名/购课、合同、课包和收款。"
+        },
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md",
+          "sha256": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+          "text": "保存第一节课后正确进入排课中心，再发布、点名和财务核对。"
+        }
+      ],
+      "images": [
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\evidence\\current\\fresh-org-golden-flow\\browser-bridge\\13-dashboard-after-real-flow.png",
+          "sha256": "4110dcc9629ebb03d8ba2f4644f39267a82ca83ce5246bbe0f861e404adb8cda",
+          "target": "frontend/public/official-site/products-20261011/training-saas-1.png",
+          "kind": "原系统测试场景界面"
+        },
+        {
+          "path": "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\evidence\\current_course_library\\browser\\01-basketball-preset-filled.png",
+          "sha256": "fc5943917cd328303e5297b711992f3e7a7da37c27a6f68415c1df9d63a7091e",
+          "target": "frontend/public/official-site/products-20261011/training-saas-2.png",
+          "kind": "原系统测试场景界面"
+        }
+      ]
+    },
+    {
+      "key": "data-governance",
+      "name": "澜青数治",
+      "quotes": [
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "一数一源 · 全程留痕 · 默认脱敏 · 最小授权"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "面向中国高校场景的一站式数据治理平台 MVP,解决高校普遍存在的\n数据分散、口径不一、质量不可控、数据难共享、责任不清晰 五大问题。"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "资产总量、质量评分、整改闭环率、共享调用量、敏感访问告警、业务域健康度排名、我的待办"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "10大业务域,数据库/表/字段/API/指标/报表/文件登记,检索、标签、收藏、权限申请、上下游血缘、责任人/管家/密级"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "数据元、代码集(国标/教育部/校标)、指标口径;草稿→审批→发布→废止全生命周期与版本历史"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "完整性/唯一性/有效性/一致性/及时性/准确性六维规则,可视化配置,内置执行引擎,通过率低于阈值自动开工单,派单→整改→复核→关闭全闭环"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "学生/组织机构/专业/课程四类黄金记录,多源比对、疑似重复识别、人工合并、编码映射、变更审计"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "数据服务目录、申请→审批→凭证签发→AppKey/Secret 调用、限流+每日配额、脱敏策略、调用日志、Markdown接口文档"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "RBAC(菜单/按钮/接口三级权限)、行级数据域权限、字段级脱敏、登录/操作/数据访问/导出四类审计、敏感明文访问告警"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md",
+          "sha256": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+          "text": "用户、角色、组织、字典、通知模板、调度任务、通用审批中心"
+        }
+      ],
+      "images": [
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\docs\\screenshots\\02-驾驶舱.png",
+          "sha256": "772fbc619b84202163242daedcdcfdd555d276c7223eafe89b866d12020e7303",
+          "target": "frontend/public/official-site/products-20261011/data-governance-1.png",
+          "kind": "原产品样例界面"
+        },
+        {
+          "path": "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\docs\\screenshots\\07-质量报告.png",
+          "sha256": "f9da602c29dcd51fe7e925d49dbae54870b2de5c499f72fbec8a922d8a9db515",
+          "target": "frontend/public/official-site/products-20261011/data-governance-2.png",
+          "kind": "原产品样例界面"
+        }
+      ]
+    },
+    {
+      "key": "logistics",
+      "name": "后勤管理系统",
+      "quotes": [
+        {
+          "path": "D:\\民族职业技术学院后勤管理系统\\跃科后勤_V4整合开发资源包\\01_一体化总册\\一体化开发总册.md",
+          "sha256": "7067401455ddca4a3d8bc2fc6ad23932b8660a3efa3ab12761d115064310a3d5",
+          "text": "报修提交 → 分类路由/派工 → 上门检查 → 方案与金额 → 必要审批 → 维修及材料 → 完工照片 → 核实 → 查看/可选评价 → 归档。"
+        },
+        {
+          "path": "D:\\民族职业技术学院后勤管理系统\\跃科后勤_V4整合开发资源包\\01_一体化总册\\一体化开发总册.md",
+          "sha256": "7067401455ddca4a3d8bc2fc6ad23932b8660a3efa3ab12761d115064310a3d5",
+          "text": "核心链保持为：报修提交 → 分类路由/派工 → 上门检查 → 方案与金额 → 必要审批 → 维修及材料 → 完工照片 → 核实 → 查看/可选评价 → 归档。投诉是关联但独立留痕的事项，不能改写工单历史。物料必须区分总仓、个人库存、同仓借用、跨仓调拨、退回与消耗。"
+        },
+        {
+          "path": "D:\\民族职业技术学院后勤管理系统\\RC12_A4_D盘同步包_20260930\\跃科_后勤维修系统_RC12_A4_逐页优化收口完整源码_20260930\\docs\\training\\ADMIN_MANUAL.md",
+          "sha256": "cea0eb625174788f705f8a29be1020ca33be88461ea679ebd6a16b314c47e481",
+          "text": "维护：校区、区域、维修项目、维修子项目、部门、服务商、维修人员、阳光服务分类。"
+        },
+        {
+          "path": "D:\\民族职业技术学院后勤管理系统\\RC12_A4_D盘同步包_20260930\\跃科_后勤维修系统_RC12_A4_逐页优化收口完整源码_20260930\\docs\\training\\ADMIN_MANUAL.md",
+          "sha256": "cea0eb625174788f705f8a29be1020ca33be88461ea679ebd6a16b314c47e481",
+          "text": "照片和故障描述规则均为配置项，包括必传、数量、大小、格式、是否仅拍照、描述长度等。演示值不是采购固定值。"
+        }
+      ],
+      "images": [
+        {
+          "path": "D:\\民族职业技术学院后勤管理系统\\跃科后勤_V4整合开发资源包\\02_交互原型\\screenshots\\01_业务工作台_PC.png",
+          "sha256": "2c3311f2d727227f0f075d7d39cf906423c65bcfaead6d96fa215453f4872fc8",
+          "target": "frontend/public/official-site/products-20261011/logistics-1.png",
+          "kind": "原有交互原型 · 界面示意"
+        },
+        {
+          "path": "D:\\民族职业技术学院后勤管理系统\\跃科后勤_V4整合开发资源包\\02_交互原型\\screenshots\\04_材料库存_PC.png",
+          "sha256": "186e22c16b1469247ec49d427f759726123e13ddb2eb5fb42cb9f2bf365cbfa3",
+          "target": "frontend/public/official-site/products-20261011/logistics-2.png",
+          "kind": "原有交互原型 · 界面示意"
+        }
+      ]
+    },
+    {
+      "key": "public-opinion",
+      "name": "跃科多源网络舆情监测平台",
+      "quotes": [
+        {
+          "path": "D:\\舆情软件\\README.md",
+          "sha256": "a8224289e2c048a953a55bb6b1f9752ea913fe3c3dc1cd0c2da810e1b348a34a",
+          "text": "一个采集平台底座 + 消防舆情方案 + 高校舆情方案 + 政企舆情扩展底座。"
+        },
+        {
+          "path": "D:\\舆情软件\\README.md",
+          "sha256": "a8224289e2c048a953a55bb6b1f9752ea913fe3c3dc1cd0c2da810e1b348a34a",
+          "text": "新建监测空间时填写学校名称、简称和地区即可。默认覆盖校园安全、食品安全、宿舍、学生事务、师德师风、教学考试、招生就业、实习、收费投诉等；后续可按学校实际情况修改主题词/排除词/风险词。"
+        },
+        {
+          "path": "D:\\舆情软件\\README.md",
+          "sha256": "a8224289e2c048a953a55bb6b1f9752ea913fe3c3dc1cd0c2da810e1b348a34a",
+          "text": "V4 已提供正式场景协议和可创建的监测空间，默认覆盖投诉举报、服务评价、质量安全、事故、维权、处罚通报、品牌声誉等。后续增加政务/企业专属分析模板时，不需要改六平台 Collector。"
+        }
+      ],
+      "images": [
+        {
+          "path": "D:\\舆情软件\\ui-redesign\\R3_20261002_双原型\\edge-screenshots\\B_home_file_pc.png",
+          "sha256": "f45f250b5b742f7fec750aef2eda81a362a421006c10479970a6e0246bd7905e",
+          "target": "frontend/public/official-site/products-20261011/public-opinion-1.png",
+          "kind": "原有交互原型 · 界面示意"
+        }
+      ]
+    }
+  ],
+  "sourceHashes": {
+    "D:\\网络安全实训平台\\跃科网络空间安全实训平台_正式开发开工骨架\\prototype\\current.html": "ca2beff26e4cc736fa03c9f5eef2a075592763ef7d0b809ac20c0aa1b47bc574",
+    "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\frontend\\social-training.js": "af6aad3c54893e002712a23bb6e4d220a0754baad6dbecae48b95a3a2b146375",
+    "D:\\一站式非学历教育智慧前台\\Yueke_NonDegree_R11_Restricted_Server_Demo\\docs\\USER_MANUAL.md": "4f4a36d46f33f7cec9906a875c61c5b5feabefebf14e1fea884270879c94e6e0",
+    "C:\\Users\\10850\\Documents\\ChatGPT\\教培saas系统\\YuekeTraining-SaaS-Windows56-Security11\\README.md": "1c3255a302d54e5a66a3cb5240f0e658fb49f185998930b5e8350ca27c4721bf",
+    "C:\\Users\\10850\\Desktop\\高校数据治理系统\\澜青数治-LanQing-DataGov-v1.0.0\\lanqing\\README.md": "a21bce0dd71d2d82b7b5d001e571b71540812f3389eac6ff748c00e00806703c",
+    "D:\\民族职业技术学院后勤管理系统\\跃科后勤_V4整合开发资源包\\01_一体化总册\\一体化开发总册.md": "7067401455ddca4a3d8bc2fc6ad23932b8660a3efa3ab12761d115064310a3d5",
+    "D:\\民族职业技术学院后勤管理系统\\RC12_A4_D盘同步包_20260930\\跃科_后勤维修系统_RC12_A4_逐页优化收口完整源码_20260930\\docs\\training\\ADMIN_MANUAL.md": "cea0eb625174788f705f8a29be1020ca33be88461ea679ebd6a16b314c47e481",
+    "D:\\舆情软件\\README.md": "a8224289e2c048a953a55bb6b1f9752ea913fe3c3dc1cd0c2da810e1b348a34a"
+  },
+  "copyScope": "original business excerpts and selected demonstration screenshots only"
+}

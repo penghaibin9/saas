@@ -1,0 +1,8 @@
+{
+  "version": "2026-10-29-audit-1",
+  "checkedAt": "2026-10-29T15:20:00+08:00",
+  "consultation": {
+    "mode": "registered",
+    "retentionDays": 90
+  }
+}

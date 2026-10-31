@@ -1,0 +1,23 @@
+[Unit]
+Description=Yueke independent website consultation retention
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=yueke-website
+Group=yueke-website
+WorkingDirectory=/opt/yueke-website/current/backend
+EnvironmentFile=/etc/yueke-website/website.env
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/opt/yueke-website/current/backend/.venv/bin/python -m website_app.retention_worker
+Restart=on-failure
+RestartSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

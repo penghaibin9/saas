@@ -1,0 +1,9 @@
+**/node_modules/
+**/dist/
+**/.ssr/
+**/__pycache__/
+**/.pytest_cache/
+**/.venv/
+.env
+.runtime/
+*.log

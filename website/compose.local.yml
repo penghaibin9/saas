@@ -1,0 +1,16 @@
+name: yueke-website-local
+services:
+  database:
+    image: mysql:8.4
+    env_file: .runtime/database.env
+    ports:
+      - "127.0.0.1:3310:3306"
+    volumes:
+      - website-mysql:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "--silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+volumes:
+  website-mysql:

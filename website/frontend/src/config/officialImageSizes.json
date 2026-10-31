@@ -1,0 +1,922 @@
+{
+  "/official-site/academic-archive-export.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/academic-attendance-stats.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-calendar.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-course-catalog.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-course-selection-annotated.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-enrollment-change-detail-annotated.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-enrollment-change-ledger.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-evaluation.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/academic-grade-correction-annotated.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-graduation-audit-annotated.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/academic-graduation-precheck.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/academic-major-placement.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-org-structure.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-program-editor.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-quality-dashboard.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/academic-registration-roster.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-registration.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/academic-resource-management.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/academic-schedule-change-annotated.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-schedule.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/academic-scheduling-rules.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-task-progress-annotated.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-teaching-plan.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-term-governance.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-textbook-management.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/academic-warning-dashboard.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic-workbench.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/academic.webp": {
+    "width": 1280,
+    "height": 854
+  },
+  "/official-site/approval-center.webp": {
+    "width": 900,
+    "height": 600
+  },
+  "/official-site/graduation-dashboard.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/graduation-defense-schedule.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/graduation-final-review.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/graduation-material-center-annotated.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/graduation-process-workflow.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/graduation-process.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/graduation-result-review.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/graduation-risk-warning-annotated.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/graduation-student-progress.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/graduation-topic-library.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/internship-batch-detail.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/internship-batch-list.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/internship-guidance.webp": {
+    "width": 1440,
+    "height": 1000
+  },
+  "/official-site/internship-participant-scope.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/internship-risk.webp": {
+    "width": 1440,
+    "height": 1000
+  },
+  "/official-site/internship-students.webp": {
+    "width": 1440,
+    "height": 1000
+  },
+  "/official-site/internship.webp": {
+    "width": 1280,
+    "height": 854
+  },
+  "/official-site/leadership-cockpit.webp": {
+    "width": 700,
+    "height": 486
+  },
+  "/official-site/message-center.webp": {
+    "width": 900,
+    "height": 600
+  },
+  "/official-site/orientation-progress.webp": {
+    "width": 700,
+    "height": 486
+  },
+  "/official-site/products-20261011/cyber-training-1.png": {
+    "width": 1265,
+    "height": 712
+  },
+  "/official-site/products-20261011/cyber-training-2.png": {
+    "width": 1265,
+    "height": 712
+  },
+  "/official-site/products-20261011/data-governance-1.png": {
+    "width": 1440,
+    "height": 860
+  },
+  "/official-site/products-20261011/data-governance-2.png": {
+    "width": 1440,
+    "height": 860
+  },
+  "/official-site/products-20261011/logistics-1.png": {
+    "width": 1440,
+    "height": 1503
+  },
+  "/official-site/products-20261011/logistics-2.png": {
+    "width": 1440,
+    "height": 1368
+  },
+  "/official-site/products-20261011/non-degree-1.jpg": {
+    "width": 1425,
+    "height": 1024
+  },
+  "/official-site/products-20261011/public-opinion-1.png": {
+    "width": 1440,
+    "height": 1000
+  },
+  "/official-site/products-20261011/training-saas-1.png": {
+    "width": 1440,
+    "height": 980
+  },
+  "/official-site/products-20261011/training-saas-2.png": {
+    "width": 1366,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/boards/academic.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/boards/affairs.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/boards/graduation.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/boards/internship.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/scenes/academic.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/scenes/affairs.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/scenes/graduation.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/scenes/internship.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/scenes/overview.webp": {
+    "width": 1672,
+    "height": 941
+  },
+  "/official-site/showcase-20260909/screens/academic-assignment-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-assignment.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-change-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-change.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-exam-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-exam.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-grades-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-grades.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-graduation-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-graduation.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-overview-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-overview.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-profile-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-profile.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-program-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-program.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-schedule-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-schedule.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/academic-selection-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/academic-selection.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-aid-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-aid.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-archive-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-archive.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-discipline-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-discipline.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-dorm-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-dorm.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-growth-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-growth.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-leave-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-leave.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-overview-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-overview.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-profile-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-profile.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-risk-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-risk.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/affairs-talk-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/affairs-talk.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-archive-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-archive.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-finals-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-finals.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-grades-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-grades.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-guidance-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-guidance.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-overview-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-overview.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-plagiarism-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-plagiarism.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-review-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-review.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-score-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-score.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-students-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-students.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/graduation-topics-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/graduation-topics.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/hr-overview-thumb.webp": {
+    "width": 780,
+    "height": 488
+  },
+  "/official-site/showcase-20260909/screens/hr-overview.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/screens/hr-profile-thumb.webp": {
+    "width": 780,
+    "height": 488
+  },
+  "/official-site/showcase-20260909/screens/hr-profile.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/screens/hr-recruitment-thumb.webp": {
+    "width": 780,
+    "height": 488
+  },
+  "/official-site/showcase-20260909/screens/hr-recruitment.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/screens/hr-self-thumb.webp": {
+    "width": 780,
+    "height": 488
+  },
+  "/official-site/showcase-20260909/screens/hr-self.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/screens/hr-title-thumb.webp": {
+    "width": 780,
+    "height": 488
+  },
+  "/official-site/showcase-20260909/screens/hr-title.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/screens/internship-agreement-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-agreement.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-archive-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-archive.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-attendance-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-attendance.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-batch-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-batch.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-enterprise-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-enterprise.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-profile-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-profile.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-risk-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-risk.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-score-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-score.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-visit-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-visit.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/internship-weekly-thumb.webp": {
+    "width": 780,
+    "height": 542
+  },
+  "/official-site/showcase-20260909/screens/internship-weekly.webp": {
+    "width": 2160,
+    "height": 1500
+  },
+  "/official-site/showcase-20260909/screens/student-credits-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-credits.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-exam-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-exam.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-grades-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-grades.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-graduation-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-graduation.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-home-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-home.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-recheck-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-recheck.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-registration-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-registration.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-schedule-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-schedule.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-selection-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-selection.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/student-textbook-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/student-textbook.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/studentpc-schedule-thumb.webp": {
+    "width": 780,
+    "height": 488
+  },
+  "/official-site/showcase-20260909/screens/studentpc-schedule.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/screens/studentpc-selection-thumb.webp": {
+    "width": 780,
+    "height": 488
+  },
+  "/official-site/showcase-20260909/screens/studentpc-selection.webp": {
+    "width": 1440,
+    "height": 900
+  },
+  "/official-site/showcase-20260909/screens/teacher-attendance-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-attendance.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-change-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-change.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-defer-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-defer.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-evaluation-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-evaluation.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-grades-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-grades.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-home-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-home.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-invigilation-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-invigilation.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-schedule-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-schedule.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-tasks-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-tasks.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/showcase-20260909/screens/teacher-warning-thumb.webp": {
+    "width": 300,
+    "height": 649
+  },
+  "/official-site/showcase-20260909/screens/teacher-warning.webp": {
+    "width": 780,
+    "height": 1688
+  },
+  "/official-site/student-affairs-activity-workbench.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-archive-workbench.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-class-counselor.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/student-affairs-dashboard.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/student-affairs-discipline-workbench.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-dorm-checkin.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-dormitory.webp": {
+    "width": 1440,
+    "height": 1000
+  },
+  "/official-site/student-affairs-enrollment-status.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/student-affairs-funding-review.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-hardship-review.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-leave-closure.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-master.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/student-affairs-mental-care.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-orientation-dashboard.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/student-affairs-risk-workbench.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-risk.webp": {
+    "width": 1440,
+    "height": 1000
+  },
+  "/official-site/student-affairs-student-roster.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/student-affairs-student360.png": {
+    "width": 1910,
+    "height": 853
+  },
+  "/official-site/student-affairs-talk-followup.png": {
+    "width": 1920,
+    "height": 1080
+  },
+  "/official-site/student-affairs-talk.webp": {
+    "width": 1440,
+    "height": 1000
+  },
+  "/official-site/student-portal.webp": {
+    "width": 1280,
+    "height": 889
+  },
+  "/official-site/student-selection.webp": {
+    "width": 390,
+    "height": 844
+  },
+  "/official-site/teacher-graduation.webp": {
+    "width": 390,
+    "height": 844
+  },
+  "/official-site/teacher-taskbook.webp": {
+    "width": 390,
+    "height": 844
+  },
+  "/official-site/training-20260917/enrollment.png": {
+    "width": 993,
+    "height": 1404
+  },
+  "/official-site/training-20260917/permissions.png": {
+    "width": 993,
+    "height": 1404
+  },
+  "/official-site/training-20260917/workbench.png": {
+    "width": 993,
+    "height": 1404
+  },
+  "/official-site/workbench.webp": {
+    "width": 1280,
+    "height": 854
+  }
+}

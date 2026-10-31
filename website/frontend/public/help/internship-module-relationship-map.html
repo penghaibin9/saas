@@ -1,0 +1,1250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>internship-module-map-detailed</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:.5rem;background:inherit}iframe{display:block;width:100%;max-width:none;height:calc(100vh - 1rem);margin:0;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="internship-module-map-detailed" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;internship-module-map-detailed&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--viz-font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+.table-responsive {
+  width: 100%;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--foreground);
+  font: inherit;
+  text-align: start;
+}
+
+.table :is(th, td) {
+  padding-block: 10px;
+  padding-inline: 0 24px;
+  overflow-wrap: anywhere;
+  border-bottom: 1px solid var(--border);
+  text-align: start;
+  vertical-align: top;
+}
+
+.table-responsive &gt; .table :is(th, td) {
+  overflow-wrap: break-word;
+}
+
+.table :is(th, td):last-child {
+  padding-inline-end: 0;
+}
+
+.table :is(caption, thead th) {
+  font-weight: 600;
+}
+
+.table thead th {
+  padding-block: 8px;
+  border-bottom-color: color-mix(in srgb, var(--foreground) 16%, transparent);
+}
+
+.table tbody tr:last-child :is(th, td) {
+  border-bottom: 0;
+}
+
+.table.table-sm :is(th, td) {
+  padding-block: 6px;
+}
+
+.table.table-sm :is(th, td):not(:last-child) {
+  padding-inline-end: 16px;
+}
+
+.table :is(.text-end, [align=&quot;right&quot;]) {
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.table :is(.text-center, [align=&quot;center&quot;]) {
+  text-align: center;
+}
+
+.table .text-nowrap {
+  white-space: nowrap;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;div id=&quot;internship-module-map-detailed&quot;&gt;
+  &lt;style&gt;
+    :root { --font-size-base:22px; }
+    #internship-module-map-detailed { color:var(--foreground); }
+    #internship-module-map-detailed .wide-map { display:block; width:100%; height:auto; }
+    #internship-module-map-detailed .stage { stroke:var(--border); stroke-width:1; }
+    #internship-module-map-detailed .stage-a { fill:color-mix(in srgb,var(--viz-series-1) 8%,transparent); }
+    #internship-module-map-detailed .stage-b { fill:color-mix(in srgb,var(--viz-series-2) 8%,transparent); }
+    #internship-module-map-detailed .stage-c { fill:color-mix(in srgb,var(--viz-series-3) 8%,transparent); }
+    #internship-module-map-detailed .stage-d { fill:color-mix(in srgb,var(--viz-series-5) 8%,transparent); }
+    #internship-module-map-detailed .stage-e { fill:color-mix(in srgb,var(--viz-series-6) 8%,transparent); }
+    #internship-module-map-detailed .stage-f { fill:color-mix(in srgb,var(--viz-series-4) 8%,transparent); }
+    #internship-module-map-detailed .node { stroke:var(--border); stroke-width:1.5; }
+    #internship-module-map-detailed .node-a { fill:color-mix(in srgb,var(--viz-series-1) 19%,var(--background)); }
+    #internship-module-map-detailed .node-b { fill:color-mix(in srgb,var(--viz-series-2) 19%,var(--background)); }
+    #internship-module-map-detailed .node-c { fill:color-mix(in srgb,var(--viz-series-3) 19%,var(--background)); }
+    #internship-module-map-detailed .node-d { fill:color-mix(in srgb,var(--viz-series-5) 19%,var(--background)); }
+    #internship-module-map-detailed .node-e { fill:color-mix(in srgb,var(--viz-series-6) 19%,var(--background)); }
+    #internship-module-map-detailed .node-f { fill:color-mix(in srgb,var(--viz-series-4) 19%,var(--background)); }
+    #internship-module-map-detailed .hub { fill:color-mix(in srgb,var(--viz-series-6) 14%,var(--background)); stroke:var(--border); stroke-width:1.5; }
+    #internship-module-map-detailed .output { fill:var(--background); stroke:var(--border); stroke-width:1; }
+    #internship-module-map-detailed .rail { fill:var(--muted); stroke:var(--border); stroke-width:1; }
+    #internship-module-map-detailed .rail-item { fill:var(--background); stroke:var(--border); stroke-width:1; }
+    #internship-module-map-detailed .stage-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*1.02); font-weight:500; }
+    #internship-module-map-detailed .stage-sub { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.78); }
+    #internship-module-map-detailed .module-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*1.03); font-weight:500; text-anchor:middle; }
+    #internship-module-map-detailed .module-action { fill:var(--foreground); font-size:calc(var(--font-size-base)*.77); text-anchor:middle; }
+    #internship-module-map-detailed .module-state { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.72); text-anchor:middle; }
+    #internship-module-map-detailed .module-no { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.7); }
+    #internship-module-map-detailed .hub-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*1.12); font-weight:500; }
+    #internship-module-map-detailed .hub-sub { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.78); }
+    #internship-module-map-detailed .output-label { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.68); }
+    #internship-module-map-detailed .output-value { fill:var(--foreground); font-size:calc(var(--font-size-base)*.76); font-weight:500; }
+    #internship-module-map-detailed .flow { fill:none; stroke:var(--foreground); stroke-width:2.2; marker-end:url(#detail-arrow); }
+    #internship-module-map-detailed .risk-flow { fill:none; stroke:var(--viz-series-5); stroke-width:2.2; stroke-dasharray:8 7; marker-end:url(#detail-risk-arrow); }
+    #internship-module-map-detailed .hub-flow { fill:none; stroke:var(--muted-foreground); stroke-width:1.5; stroke-dasharray:3 6; marker-end:url(#detail-muted-arrow); }
+    #internship-module-map-detailed .edge-label { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.68); text-anchor:middle; }
+    #internship-module-map-detailed .risk-text { fill:var(--foreground); font-size:calc(var(--font-size-base)*.68); text-anchor:middle; }
+    #internship-module-map-detailed .rail-title { fill:var(--foreground); font-size:calc(var(--font-size-base)*.82); font-weight:500; }
+    #internship-module-map-detailed .rail-sub { fill:var(--muted-foreground); font-size:calc(var(--font-size-base)*.68); }
+    #internship-module-map-detailed .rail-text { fill:var(--foreground); font-size:calc(var(--font-size-base)*.7); text-anchor:middle; }
+    #internship-module-map-detailed .legend { display:flex; gap:22px; justify-content:center; flex-wrap:wrap; margin-top:10px; color:var(--muted-foreground); }
+    #internship-module-map-detailed .legend span { display:flex; align-items:center; gap:8px; }
+    #internship-module-map-detailed .legend i { display:block; width:42px; border-top:2px solid var(--foreground); }
+    #internship-module-map-detailed .legend .risk { border-top-color:var(--viz-series-5); border-top-style:dashed; }
+    #internship-module-map-detailed .legend .hub-line { border-top-color:var(--muted-foreground); border-top-style:dotted; }
+    #internship-module-map-detailed .mobile-map { display:none; }
+    @media (max-width:860px) {
+      :root { --font-size-base:18px; }
+      #internship-module-map-detailed .wide-map { display:none; }
+      #internship-module-map-detailed .mobile-map { display:grid; gap:10px; }
+      #internship-module-map-detailed .m-hub,
+      #internship-module-map-detailed .m-node,
+      #internship-module-map-detailed .m-output { padding:10px 12px; border:1px solid var(--border); text-align:center; }
+      #internship-module-map-detailed .m-hub { background:color-mix(in srgb,var(--viz-series-6) 14%,var(--background)); }
+      #internship-module-map-detailed .m-stage { display:grid; gap:8px; padding-top:10px; border-top:1px solid var(--border); }
+      #internship-module-map-detailed .m-head { display:flex; justify-content:space-between; gap:10px; color:var(--muted-foreground); }
+      #internship-module-map-detailed .m-grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+      #internship-module-map-detailed .m-grid--three { grid-template-columns:1fr; }
+      #internship-module-map-detailed .m-node { background:var(--muted); }
+      #internship-module-map-detailed .m-node small { display:block; margin-top:4px; color:var(--muted-foreground); }
+      #internship-module-map-detailed .m-output { color:var(--muted-foreground); }
+      #internship-module-map-detailed .m-arrow { text-align:center; color:var(--muted-foreground); }
+      #internship-module-map-detailed .m-risk { border-style:dashed; background:color-mix(in srgb,var(--viz-series-5) 18%,var(--background)); }
+      #internship-module-map-detailed .m-rail { display:grid; gap:6px; padding:10px 0; border-top:1px solid var(--border); color:var(--muted-foreground); }
+    }
+  &lt;/style&gt;
+
+  &lt;svg class=&quot;wide-map&quot; viewBox=&quot;0 0 1800 930&quot; role=&quot;img&quot; aria-labelledby=&quot;detail-map-title detail-map-desc&quot;&gt;
+    &lt;title id=&quot;detail-map-title&quot;&gt;岗位实习中心十二个模块详细业务关系图&lt;/title&gt;
+    &lt;desc id=&quot;detail-map-desc&quot;&gt;工作台贯穿全程。批次规则生成学生和企业岗位底账，匹配分配后完成申请协议。协议生效后并行开展考勤、报告和指导，异常进入风险处置并整改返回，正常过程和风险结论共同进入评价成绩，最后进行就业转化与归档统计。底部展示全过程自动沉淀的业务材料。&lt;/desc&gt;
+    &lt;defs&gt;
+      &lt;marker id=&quot;detail-arrow&quot; markerWidth=&quot;8&quot; markerHeight=&quot;8&quot; refX=&quot;7&quot; refY=&quot;4&quot; orient=&quot;auto&quot;&gt;&lt;path d=&quot;M0,0 L8,4 L0,8 Z&quot; fill=&quot;var(--foreground)&quot;&gt;&lt;/path&gt;&lt;/marker&gt;
+      &lt;marker id=&quot;detail-risk-arrow&quot; markerWidth=&quot;8&quot; markerHeight=&quot;8&quot; refX=&quot;7&quot; refY=&quot;4&quot; orient=&quot;auto&quot;&gt;&lt;path d=&quot;M0,0 L8,4 L0,8 Z&quot; fill=&quot;var(--viz-series-5)&quot;&gt;&lt;/path&gt;&lt;/marker&gt;
+      &lt;marker id=&quot;detail-muted-arrow&quot; markerWidth=&quot;8&quot; markerHeight=&quot;8&quot; refX=&quot;7&quot; refY=&quot;4&quot; orient=&quot;auto&quot;&gt;&lt;path d=&quot;M0,0 L8,4 L0,8 Z&quot; fill=&quot;var(--muted-foreground)&quot;&gt;&lt;/path&gt;&lt;/marker&gt;
+    &lt;/defs&gt;
+
+    &lt;rect class=&quot;hub&quot; x=&quot;30&quot; y=&quot;24&quot; width=&quot;1740&quot; height=&quot;92&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;hub-title&quot; x=&quot;68&quot; y=&quot;61&quot;&gt;01　实习工作台&lt;/text&gt;
+    &lt;text class=&quot;hub-sub&quot; x=&quot;68&quot; y=&quot;91&quot;&gt;一个入口看全程：批次进度　｜　我的待办　｜　风险提醒　｜　数据趋势&lt;/text&gt;
+    &lt;text class=&quot;hub-sub&quot; x=&quot;1728&quot; y=&quot;72&quot; text-anchor=&quot;end&quot;&gt;主要使用人：实习管理员、学院实习老师、指导教师&lt;/text&gt;
+
+    &lt;rect class=&quot;stage stage-a&quot; x=&quot;20&quot; y=&quot;150&quot; width=&quot;330&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-b&quot; x=&quot;370&quot; y=&quot;150&quot; width=&quot;290&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-c&quot; x=&quot;680&quot; y=&quot;150&quot; width=&quot;430&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-d&quot; x=&quot;1130&quot; y=&quot;150&quot; width=&quot;220&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-e&quot; x=&quot;1370&quot; y=&quot;150&quot; width=&quot;200&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;rect class=&quot;stage stage-f&quot; x=&quot;1590&quot; y=&quot;150&quot; width=&quot;190&quot; height=&quot;610&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+
+    &lt;text class=&quot;stage-title&quot; x=&quot;45&quot; y=&quot;188&quot;&gt;① 建底账&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;45&quot; y=&quot;215&quot;&gt;规则、学生、企业岗位先准备齐&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;395&quot; y=&quot;188&quot;&gt;② 定人岗&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;395&quot; y=&quot;215&quot;&gt;匹配确认并完成协议&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;705&quot; y=&quot;188&quot;&gt;③ 管过程&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;705&quot; y=&quot;215&quot;&gt;考勤、报告、指导三线并行&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;1155&quot; y=&quot;188&quot;&gt;④ 闭风险&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;1155&quot; y=&quot;215&quot;&gt;异常核实、整改、关闭&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;1395&quot; y=&quot;188&quot;&gt;⑤ 评成绩&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;1395&quot; y=&quot;215&quot;&gt;多方评价、审核发布&lt;/text&gt;
+    &lt;text class=&quot;stage-title&quot; x=&quot;1615&quot; y=&quot;188&quot;&gt;⑥ 归档就业&lt;/text&gt;&lt;text class=&quot;stage-sub&quot; x=&quot;1615&quot; y=&quot;215&quot;&gt;材料收口、就业衔接&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-a&quot; x=&quot;75&quot; y=&quot;250&quot; width=&quot;220&quot; height=&quot;112&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;92&quot; y=&quot;273&quot;&gt;02&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;185&quot; y=&quot;300&quot;&gt;批次与规则&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;185&quot; y=&quot;327&quot;&gt;设时间 · 频次 · 阈值 · 权重&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;185&quot; y=&quot;350&quot;&gt;草稿 → 启用 → 进行中&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-a&quot; x=&quot;38&quot; y=&quot;440&quot; width=&quot;145&quot; height=&quot;122&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;53&quot; y=&quot;462&quot;&gt;03&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;111&quot; y=&quot;490&quot;&gt;实习学生&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;111&quot; y=&quot;518&quot;&gt;资格 · 材料 · 保险&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;111&quot; y=&quot;546&quot;&gt;待认定 → 通过 → 到岗&lt;/text&gt;
+    &lt;rect class=&quot;node node-a&quot; x=&quot;195&quot; y=&quot;440&quot; width=&quot;140&quot; height=&quot;122&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;210&quot; y=&quot;462&quot;&gt;04&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;265&quot; y=&quot;490&quot;&gt;企业与岗位&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;265&quot; y=&quot;518&quot;&gt;资质 · 导师 · 岗位&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;265&quot; y=&quot;546&quot;&gt;待审核 → 已发布&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-b&quot; x=&quot;405&quot; y=&quot;270&quot; width=&quot;220&quot; height=&quot;120&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;422&quot; y=&quot;293&quot;&gt;05&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;515&quot; y=&quot;320&quot;&gt;匹配与分配&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;515&quot; y=&quot;348&quot;&gt;意向 · 专业 · 容量 · 导师&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;515&quot; y=&quot;376&quot;&gt;待匹配 → 确认 → 已分配&lt;/text&gt;
+    &lt;rect class=&quot;node node-b&quot; x=&quot;405&quot; y=&quot;465&quot; width=&quot;220&quot; height=&quot;124&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;422&quot; y=&quot;488&quot;&gt;06&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;515&quot; y=&quot;515&quot;&gt;申请与协议&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;515&quot; y=&quot;543&quot;&gt;申请审核 · 学生/企业/学校确认&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;515&quot; y=&quot;571&quot;&gt;待审核 → 三方确认 → 生效&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-c&quot; x=&quot;710&quot; y=&quot;260&quot; width=&quot;180&quot; height=&quot;122&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;726&quot; y=&quot;283&quot;&gt;07&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;800&quot; y=&quot;310&quot;&gt;打卡与请假&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;800&quot; y=&quot;338&quot;&gt;打卡 · 补卡 · 请假 · 销假&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;800&quot; y=&quot;366&quot;&gt;记录 → 核实 → 完成&lt;/text&gt;
+    &lt;rect class=&quot;node node-c&quot; x=&quot;910&quot; y=&quot;260&quot; width=&quot;180&quot; height=&quot;122&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;926&quot; y=&quot;283&quot;&gt;08&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1000&quot; y=&quot;310&quot;&gt;周报与任务&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1000&quot; y=&quot;338&quot;&gt;任务 · 日报 · 周报 · 月报&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1000&quot; y=&quot;366&quot;&gt;待交 → 批阅 → 通过/退回&lt;/text&gt;
+    &lt;rect class=&quot;node node-c&quot; x=&quot;810&quot; y=&quot;468&quot; width=&quot;180&quot; height=&quot;122&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;826&quot; y=&quot;491&quot;&gt;09&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;900&quot; y=&quot;518&quot;&gt;指导与巡访&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;900&quot; y=&quot;546&quot;&gt;计划 · 指导 · 巡访 · 整改&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;900&quot; y=&quot;574&quot;&gt;计划 → 记录 → 闭环&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-d&quot; x=&quot;1150&quot; y=&quot;292&quot; width=&quot;180&quot; height=&quot;144&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;1166&quot; y=&quot;315&quot;&gt;10&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1240&quot; y=&quot;342&quot;&gt;风险处置&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1240&quot; y=&quot;371&quot;&gt;未落岗 · 缺卡 · 逾期&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1240&quot; y=&quot;396&quot;&gt;投诉 · 安全 · 实习中断&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1240&quot; y=&quot;423&quot;&gt;待处理 → 跟进 → 关闭&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-e&quot; x=&quot;1380&quot; y=&quot;448&quot; width=&quot;180&quot; height=&quot;132&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;1396&quot; y=&quot;471&quot;&gt;11&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1470&quot; y=&quot;498&quot;&gt;评价与成绩&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1470&quot; y=&quot;526&quot;&gt;企业 · 学生 · 教师评价&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1470&quot; y=&quot;554&quot;&gt;待评价 → 核算 → 审核 → 发布&lt;/text&gt;
+
+    &lt;rect class=&quot;node node-f&quot; x=&quot;1600&quot; y=&quot;414&quot; width=&quot;170&quot; height=&quot;164&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;module-no&quot; x=&quot;1616&quot; y=&quot;438&quot;&gt;12&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1685&quot; y=&quot;468&quot;&gt;就业转化与&lt;/text&gt;&lt;text class=&quot;module-title&quot; x=&quot;1685&quot; y=&quot;496&quot;&gt;归档统计&lt;/text&gt;
+    &lt;text class=&quot;module-action&quot; x=&quot;1685&quot; y=&quot;526&quot;&gt;就业跟进 · 缺项补齐&lt;/text&gt;&lt;text class=&quot;module-action&quot; x=&quot;1685&quot; y=&quot;551&quot;&gt;档案包 · 多维统计&lt;/text&gt;&lt;text class=&quot;module-state&quot; x=&quot;1685&quot; y=&quot;575&quot;&gt;缺项 → 核验 → 已归档&lt;/text&gt;
+
+    &lt;rect class=&quot;output&quot; x=&quot;45&quot; y=&quot;650&quot; width=&quot;280&quot; height=&quot;72&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;62&quot; y=&quot;675&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;62&quot; y=&quot;704&quot;&gt;可实习学生 ＋ 已发布岗位&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;395&quot; y=&quot;650&quot; width=&quot;240&quot; height=&quot;72&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;412&quot; y=&quot;675&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;412&quot; y=&quot;704&quot;&gt;已落岗学生 ＋ 生效协议&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;705&quot; y=&quot;650&quot; width=&quot;380&quot; height=&quot;72&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;722&quot; y=&quot;675&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;722&quot; y=&quot;704&quot;&gt;考勤记录 ＋ 报告 ＋ 指导巡访记录&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;1150&quot; y=&quot;650&quot; width=&quot;180&quot; height=&quot;72&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;1167&quot; y=&quot;675&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;1167&quot; y=&quot;704&quot;&gt;核实证据 ＋ 结论&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;1380&quot; y=&quot;650&quot; width=&quot;180&quot; height=&quot;72&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;1397&quot; y=&quot;675&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;1397&quot; y=&quot;704&quot;&gt;已发布成绩&lt;/text&gt;
+    &lt;rect class=&quot;output&quot; x=&quot;1600&quot; y=&quot;650&quot; width=&quot;170&quot; height=&quot;72&quot; rx=&quot;8&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;output-label&quot; x=&quot;1617&quot; y=&quot;675&quot;&gt;本阶段产出&lt;/text&gt;&lt;text class=&quot;output-value&quot; x=&quot;1617&quot; y=&quot;704&quot;&gt;档案包 ＋ 就业去向&lt;/text&gt;
+
+    &lt;path class=&quot;flow&quot; d=&quot;M185 362 V405 H111 V435&quot;&gt;&lt;/path&gt;&lt;path class=&quot;flow&quot; d=&quot;M185 362 V405 H265 V435&quot;&gt;&lt;/path&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M183 501 H362 V330 H400&quot;&gt;&lt;/path&gt;&lt;path class=&quot;flow&quot; d=&quot;M335 501 H362 V330 H400&quot;&gt;&lt;/path&gt;
+    &lt;text class=&quot;edge-label&quot; x=&quot;333&quot; y=&quot;310&quot;&gt;学生资格 + 岗位容量&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M515 390 V460&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;560&quot; y=&quot;430&quot;&gt;确认分配&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M625 527 H670 V321 H705&quot;&gt;&lt;/path&gt;&lt;path class=&quot;flow&quot; d=&quot;M625 527 H670 V321 H905&quot;&gt;&lt;/path&gt;&lt;path class=&quot;flow&quot; d=&quot;M625 527 H755 V529 H805&quot;&gt;&lt;/path&gt;
+    &lt;text class=&quot;edge-label&quot; x=&quot;702&quot; y=&quot;510&quot;&gt;协议生效&lt;/text&gt;
+
+    &lt;path class=&quot;risk-flow&quot; d=&quot;M890 321 H1120 V340 H1145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;risk-flow&quot; d=&quot;M1090 321 H1120 V365 H1145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;risk-flow&quot; d=&quot;M990 529 H1105 V390 H1145&quot;&gt;&lt;/path&gt;
+    &lt;text class=&quot;risk-text&quot; x=&quot;1100&quot; y=&quot;250&quot;&gt;规则命中或人工上报异常&lt;/text&gt;
+    &lt;path class=&quot;risk-flow&quot; d=&quot;M1150 410 H1080 V500 H995&quot;&gt;&lt;/path&gt;&lt;text class=&quot;risk-text&quot; x=&quot;1070&quot; y=&quot;482&quot;&gt;整改后回到过程&lt;/text&gt;
+
+    &lt;path class=&quot;flow&quot; d=&quot;M800 382 V610 H1355 V514 H1375&quot;&gt;&lt;/path&gt;&lt;path class=&quot;flow&quot; d=&quot;M1000 382 V610 H1355&quot;&gt;&lt;/path&gt;&lt;path class=&quot;flow&quot; d=&quot;M900 590 V610 H1355&quot;&gt;&lt;/path&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M1240 436 V610 H1355&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;1200&quot; y=&quot;634&quot;&gt;正常过程记录 + 风险处置结论汇入成绩&lt;/text&gt;
+    &lt;path class=&quot;flow&quot; d=&quot;M1560 514 H1595&quot;&gt;&lt;/path&gt;&lt;text class=&quot;edge-label&quot; x=&quot;1578&quot; y=&quot;496&quot;&gt;成绩发布&lt;/text&gt;
+
+    &lt;path class=&quot;hub-flow&quot; d=&quot;M185 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M515 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M895 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1240 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1470 116 V145&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1685 116 V145&quot;&gt;&lt;/path&gt;
+
+    &lt;rect class=&quot;rail&quot; x=&quot;20&quot; y=&quot;792&quot; width=&quot;1760&quot; height=&quot;112&quot; rx=&quot;10&quot;&gt;&lt;/rect&gt;
+    &lt;text class=&quot;rail-title&quot; x=&quot;46&quot; y=&quot;826&quot;&gt;全过程材料自动沉淀&lt;/text&gt;&lt;text class=&quot;rail-sub&quot; x=&quot;46&quot; y=&quot;854&quot;&gt;同一学生全程关联，归档不重复录入&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;360&quot; y=&quot;813&quot; width=&quot;150&quot; height=&quot;62&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;435&quot; y=&quot;850&quot;&gt;协议文件&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;530&quot; y=&quot;813&quot; width=&quot;150&quot; height=&quot;62&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;605&quot; y=&quot;850&quot;&gt;打卡与请假&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;700&quot; y=&quot;813&quot; width=&quot;170&quot; height=&quot;62&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;785&quot; y=&quot;850&quot;&gt;日报 / 周报 / 月报&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;890&quot; y=&quot;813&quot; width=&quot;160&quot; height=&quot;62&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;970&quot; y=&quot;850&quot;&gt;指导与巡访&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;1070&quot; y=&quot;813&quot; width=&quot;170&quot; height=&quot;62&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;1155&quot; y=&quot;850&quot;&gt;风险处置证据&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;1260&quot; y=&quot;813&quot; width=&quot;170&quot; height=&quot;62&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;1345&quot; y=&quot;850&quot;&gt;多方评价与成绩&lt;/text&gt;
+    &lt;rect class=&quot;rail-item&quot; x=&quot;1450&quot; y=&quot;813&quot; width=&quot;170&quot; height=&quot;62&quot; rx=&quot;7&quot;&gt;&lt;/rect&gt;&lt;text class=&quot;rail-text&quot; x=&quot;1535&quot; y=&quot;850&quot;&gt;学生实习档案包&lt;/text&gt;
+    &lt;path class=&quot;hub-flow&quot; d=&quot;M510 844 H525&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M680 844 H695&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M870 844 H885&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1050 844 H1065&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1240 844 H1255&quot;&gt;&lt;/path&gt;&lt;path class=&quot;hub-flow&quot; d=&quot;M1430 844 H1445&quot;&gt;&lt;/path&gt;
+  &lt;/svg&gt;
+
+  &lt;div class=&quot;mobile-map&quot; role=&quot;img&quot; aria-label=&quot;岗位实习模块详细关系：工作台贯穿全程，依次建立底账、匹配签约、管理过程、处理风险、评价成绩、归档就业。&quot;&gt;
+    &lt;div class=&quot;m-hub&quot;&gt;&lt;strong&gt;01 实习工作台&lt;/strong&gt;&lt;br&gt;&lt;small&gt;全程汇总：进度｜待办｜风险｜趋势&lt;/small&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;① 建底账&lt;/strong&gt;&lt;span&gt;先准备齐&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;02 批次与规则&lt;small&gt;时间·频次·阈值·权重｜草稿→启用→进行中&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-arrow&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;m-grid&quot;&gt;&lt;div class=&quot;m-node&quot;&gt;03 实习学生&lt;small&gt;资格·材料·保险｜待认定→通过→到岗&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;04 企业与岗位&lt;small&gt;资质·导师·岗位｜待审核→已发布&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：可实习学生＋已发布岗位&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓ 学生资格与岗位容量汇合&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;② 定人岗&lt;/strong&gt;&lt;span&gt;落岗签约&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;05 匹配与分配&lt;small&gt;意向·专业·容量·导师｜待匹配→确认→已分配&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-arrow&quot;&gt;↓&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;06 申请与协议&lt;small&gt;申请审核·三方确认｜待审核→生效&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：已落岗学生＋生效协议&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓ 协议生效后并行开展&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;③ 管过程&lt;/strong&gt;&lt;span&gt;三线并行&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-grid m-grid--three&quot;&gt;&lt;div class=&quot;m-node&quot;&gt;07 打卡与请假&lt;small&gt;记录→核实→完成&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;08 周报与任务&lt;small&gt;待交→批阅→通过/退回&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;09 指导与巡访&lt;small&gt;计划→记录→闭环&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：考勤＋报告＋指导巡访记录&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;正常记录 ↓　　异常 ↘&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;④ 闭风险&lt;/strong&gt;&lt;span&gt;处理后返回过程&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node m-risk&quot;&gt;10 风险处置&lt;small&gt;未落岗·缺卡·逾期·投诉·安全｜待处理→跟进→关闭&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：核实证据＋处置结论&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓ 过程记录与风险结论汇总&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;⑤ 评成绩&lt;/strong&gt;&lt;span&gt;多方评价&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;11 评价与成绩&lt;small&gt;企业·学生·教师｜待评价→核算→审核→发布&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：已发布成绩&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-arrow&quot;&gt;↓&lt;/div&gt;
+    &lt;div class=&quot;m-stage&quot;&gt;&lt;div class=&quot;m-head&quot;&gt;&lt;strong&gt;⑥ 归档就业&lt;/strong&gt;&lt;span&gt;最后收口&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;m-node&quot;&gt;12 就业转化与归档统计&lt;small&gt;就业跟进·缺项补齐·档案包·统计｜缺项→核验→归档&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;m-output&quot;&gt;产出：档案包＋就业去向&lt;/div&gt;&lt;/div&gt;
+    &lt;div class=&quot;m-rail&quot;&gt;&lt;strong&gt;全过程材料自动沉淀&lt;/strong&gt;&lt;span&gt;协议 → 打卡请假 → 日周月报 → 指导巡访 → 风险证据 → 评价成绩 → 档案包&lt;/span&gt;&lt;/div&gt;
+  &lt;/div&gt;
+
+  &lt;div class=&quot;legend&quot; aria-label=&quot;连线含义&quot;&gt;&lt;span&gt;&lt;i&gt;&lt;/i&gt;标准业务主线&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;risk&quot;&gt;&lt;/i&gt;异常触发与整改闭环&lt;/span&gt;&lt;span&gt;&lt;i class=&quot;hub-line&quot;&gt;&lt;/i&gt;工作台汇总与材料关联&lt;/span&gt;&lt;/div&gt;
+&lt;/div&gt;
+
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>
